@@ -1,5 +1,5 @@
 // Eventpages service worker: app shell offline. Bump VERSION on every deploy that changes the shell.
-const VERSION = 'ep-2026-11-07l';
+const VERSION = 'ep-2026-11-07m';
 const SHELL = ['./', './index.html', './app.js', './styles.css', './airports.js', './examples.js', './osm-snapshots.js', './qrcode.js', './i18n.js', './supabase-config.js',
   './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 // Static third-party libraries and fonts the page needs to render. Data APIs (weather, Overpass, geocoding, map tiles) are never cached here.

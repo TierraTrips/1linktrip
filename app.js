@@ -259,18 +259,19 @@ function classify(els, lat, lon) {
 }
 
 // ---------- deep links ----------
+const enDay = (d) => new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' }).format(asUTC(d)).replace(',', '');
 const L = {
   gflights: (to, from, d1, d2) => `https://www.google.com/travel/flights?q=${enc(`Flights to ${to}${from ? ' from ' + from : ''} on ${d1} through ${d2}`)}`,
   kayak: (from, to, d1, d2) => `https://www.kayak.com/flights/${from}-${to}/${d1}/${d2}`,
-  skyscanner: (from, to, d1, d2) => `https://www.skyscanner.com/transport/flights/${from.toLowerCase()}/${to.toLowerCase()}/${d1.slice(2).replace(/-/g, '')}/${d2.slice(2).replace(/-/g, '')}/`,
+  // Google Hotels only honours dates written into the query
+  ghotels: (q, d1, d2) => `https://www.google.com/travel/hotels?q=${enc(`${q} hotels ${enDay(d1)} to ${enDay(d2)}`)}`,
   booking: (q, d1, d2, n) => `https://www.booking.com/searchresults.html?ss=${enc(q)}&checkin=${d1}&checkout=${d2}&group_adults=${n}&no_rooms=1`,
   airbnb: (q, d1, d2, n) => `https://www.airbnb.com/s/${enc(q.replace(/, /g, '--').replace(/ /g, '-'))}/homes?checkin=${d1}&checkout=${d2}&adults=${n}`,
-  expedia: (q, d1, d2, n) => `https://www.expedia.com/Hotel-Search?destination=${enc(q)}&startDate=${d1}&endDate=${d2}&adults=${n}`,
   gyg: (q, d1, d2) => `https://www.getyourguide.com/s/?q=${enc(q)}&date_from=${d1}&date_to=${d2}`,
-  viator: (q) => `https://www.viator.com/searchResults/all?text=${enc(q)}`,
   airbnbExp: (q, d1, d2) => `https://www.airbnb.com/s/${enc(q.replace(/, /g, '--').replace(/ /g, '-'))}/experiences?checkin=${d1}&checkout=${d2}`,
   kayakCars: (iata, d1, d2) => `https://www.kayak.com/cars/${iata}/${d1}/${d2}`,
   rome2rio: (from, to) => `https://www.rome2rio.com/map/${enc(from.replace(/ /g, '-'))}/${enc(to.replace(/ /g, '-'))}`,
+  transit: (from, v) => `https://www.google.com/maps/dir/?api=1&origin=${enc(from)}&destination=${v.lat},${v.lon}&travelmode=transit`,
   dir: (v, mode) => `https://www.google.com/maps/dir/?api=1&destination=${v.lat},${v.lon}&travelmode=${mode}`,
   place: (name, extra) => `https://www.google.com/maps/search/?api=1&query=${enc([name, extra].filter(Boolean).join(', '))}`,
   uber: (v, name) => `https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff%5Blatitude%5D=${v.lat}&dropoff%5Blongitude%5D=${v.lon}&dropoff%5Bnickname%5D=${enc(name)}`,
@@ -367,7 +368,7 @@ function downloadICS(cfg) {
 }
 
 // ---------- event page rendering ----------
-const ext = (href, label, cls = 'btn') => `<a class="${cls}" href="${esc(href)}" target="_blank" rel="noopener">${label}</a>`;
+const ext = (href, label, cls = 'btn') => `<a class="${cls}" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
 const arrow = '<svg class="arr" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 11L11 5M6 5h5v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 let renderSeq = 0;
 const maps = new Set();
@@ -381,7 +382,7 @@ function typeInfoHTML(cfg, opt = {}) {
   const v = cfg.venue; const lab = Object.fromEntries(sp.fields.map(([k, l]) => [k, l]));
   const has = (k) => { const f = sp.fields.find(x => x[0] === k); return f && filled(f[2], d[k]); };
   const dt = (s) => s ? (s.length > 10 ? `${fmt(s.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' })}, ${fmtTime(s.slice(11, 16))}` : fmt(s, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })) : '';
-  const linkRow = (label, url, sub) => `<li><a href="${esc(url)}" target="_blank" rel="noopener"><b>${esc(t(label))}</b><span>${esc(sub || hostOf(url))}</span>${arrow}</a></li>`;
+  const linkRow = (label, url, sub) => `<li><a href="${esc(url)}" target="_blank" rel="noopener noreferrer"><b>${esc(t(label))}</b><span>${esc(sub || hostOf(url))}</span>${arrow}</a></li>`;
   const noteRow = (label, text) => `<li class="note"><b>${esc(t(label))}</b><span>${esc(text)}</span></li>`;
   const placeURL = (p) => p.lat != null ? `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lon}` : L.place(p.q, v ? placeLabel(v) : '');
   const rows = []; const out = [];
@@ -395,11 +396,11 @@ function typeInfoHTML(cfg, opt = {}) {
     if (['doors', 'opener', 'openerAt', 'headliner', 'headlinerAt', 'rsvpBy', 'blockHotel', 'blockUrl', 'blockCode', 'blockBy', 'packetWhen', 'badgeWhen', 'closuresUrl', 'spots', 'speakers'].includes(k) || !filled(kind, d[k])) continue;
     const val = d[k];
     if (k === 'rsvp') rows.push(linkRow('RSVP', val, d.rsvpBy ? t('Reply by {d}', { d: dt(d.rsvpBy) }) : ''));
-    else if (k === 'course' && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(val)) out.push(`<a class="course-img" href="${esc(val)}" target="_blank" rel="noopener"><img src="${esc(val)}" alt="${t('Course map')}" loading="lazy" referrerpolicy="no-referrer"></a>`);
+    else if (k === 'course' && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(val)) out.push(`<a class="course-img" href="${esc(val)}" target="_blank" rel="noopener noreferrer"><img src="${esc(val)}" alt="${t('Course map')}" loading="lazy" referrerpolicy="no-referrer"></a>`);
     else if (k === 'course') rows.push(linkRow('Course map', val, /\.gpx(\?|$)/i.test(val) ? t('GPX file') : ''));
     else if (k === 'closures') rows.push(d.closuresUrl ? linkRow('Road closures', d.closuresUrl, val) : noteRow('Road closures', val));
-    else if (k === 'packet' || k === 'badge') { const w = d[k + 'When']; rows.push(`<li><a href="${esc(L.place(val, v ? placeLabel(v) : ''))}" target="_blank" rel="noopener"><b>${esc(t(label))}</b><span>${esc([val, dt(w)].filter(Boolean).join(' · '))}</span>${arrow}</a></li>`); }
-    else if (kind === 'place') rows.push(`<li><a href="${esc(placeURL(val))}" target="_blank" rel="noopener"><b>${esc(t(label))}</b><span>${esc(val.q)}</span>${arrow}</a></li>`);
+    else if (k === 'packet' || k === 'badge') { const w = d[k + 'When']; rows.push(`<li><a href="${esc(L.place(val, v ? placeLabel(v) : ''))}" target="_blank" rel="noopener noreferrer"><b>${esc(t(label))}</b><span>${esc([val, dt(w)].filter(Boolean).join(' · '))}</span>${arrow}</a></li>`); }
+    else if (kind === 'place') rows.push(`<li><a href="${esc(placeURL(val))}" target="_blank" rel="noopener noreferrer"><b>${esc(t(label))}</b><span>${esc(val.q)}</span>${arrow}</a></li>`);
     else if (kind === 'links') val.filter(l => l.label && l.url).forEach(l => rows.push(linkRow(label === 'Teams' || l.label.toLowerCase() === label.toLowerCase() ? l.label : `${label} · ${l.label}`, l.url)));
     else if (kind === 'url') rows.push(linkRow(label, val));
     else rows.push(noteRow(label, val));
@@ -414,7 +415,7 @@ function typeInfoHTML(cfg, opt = {}) {
     out.push(`<h3 class="sub-h">${t('Room block')}</h3><ul class="links">${d.blockUrl ? linkRow(d.blockHotel || t('Book the room block'), d.blockUrl, sub || hostOf(d.blockUrl)) : noteRow(d.blockHotel || 'Room block', sub)}</ul>`);
   }
   const lines = (k) => String(d[k] || '').split('\n').map(x => x.trim()).filter(Boolean);
-  if (has('spots')) out.push(`<h3 class="sub-h">${esc(t(lab.spots))}</h3><ul class="links">${lines('spots').map(x => `<li><a href="${esc(L.place(x, v ? placeLabel(v) : ''))}" target="_blank" rel="noopener"><b>${esc(x)}</b><span>Google Maps</span>${arrow}</a></li>`).join('')}</ul>`);
+  if (has('spots')) out.push(`<h3 class="sub-h">${esc(t(lab.spots))}</h3><ul class="links">${lines('spots').map(x => `<li><a href="${esc(L.place(x, v ? placeLabel(v) : ''))}" target="_blank" rel="noopener noreferrer"><b>${esc(x)}</b><span>Google Maps</span>${arrow}</a></li>`).join('')}</ul>`);
   if (has('speakers')) out.push(`<h3 class="sub-h">${esc(t(lab.speakers))}</h3><ul class="links">${lines('speakers').map(x => { const [n, ...r] = x.split(/\s+[—–-]\s+|,\s+/); return `<li class="note"><b>${esc(n)}</b>${r.length ? `<span>${esc(r.join(', '))}</span>` : ''}</li>`; }).join('')}</ul>`);
   return out.join('');
 }
@@ -641,10 +642,37 @@ function wirePacking(cfg, art) {
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
 }
 
+// ---------- booking providers: every outbound booking link goes through bookingLink() ----------
+// mode: 'link' opens the provider's site; 'inapp' is reserved for a future in-app booking flow (API) per provider.
+// affiliate: partner id, empty until there is a real one; affParam is the query parameter it would ride on.
+const PROVIDERS = {
+  gflights: { name: 'Google Flights', kinds: ['flights'], mode: 'link', affiliate: '', affParam: '', url: (p) => L.gflights(p.to, p.from, p.d1, p.d2) },
+  kayak: { name: 'Kayak', kinds: ['flights'], mode: 'link', affiliate: '', affParam: '', url: (p) => L.kayak(p.from, p.to, p.d1, p.d2) },
+  kayakCars: { name: 'Kayak', kinds: ['cars'], mode: 'link', affiliate: '', affParam: '', url: (p) => L.kayakCars(p.iata, p.d1, p.d2) },
+  ghotels: { name: 'Google Hotels', kinds: ['hotels'], mode: 'link', affiliate: '', affParam: '', url: (p) => L.ghotels(p.q, p.d1, p.d2) },
+  booking: { name: 'Booking.com', kinds: ['hotels'], mode: 'link', affiliate: '', affParam: 'aid', url: (p) => L.booking(p.q, p.d1, p.d2, p.n) },
+  airbnb: { name: 'Airbnb', kinds: ['hotels'], mode: 'link', affiliate: '', affParam: '', url: (p) => L.airbnb(p.q, p.d1, p.d2, p.n) },
+  gyg: { name: 'GetYourGuide', kinds: ['tours'], mode: 'link', affiliate: '', affParam: '', url: (p) => L.gyg(p.q, p.d1, p.d2) },
+  airbnbExp: { name: 'Airbnb', kinds: ['tours'], mode: 'link', affiliate: '', affParam: '', url: (p) => L.airbnbExp(p.q, p.d1, p.d2) },
+  opentable: { name: 'OpenTable', kinds: ['restaurants'], mode: 'link', affiliate: '', affParam: '', url: (p) => L.opentable(p.name, p.venue, p.date, p.n) },
+};
+function bookingLink(kind, provider, params) {
+  const P = PROVIDERS[provider]; if (!P || !P.kinds.includes(kind)) throw new Error(`no ${kind} provider ${provider}`);
+  let url = P.url(params);
+  if (P.affiliate && P.affParam) { const u = new URL(url); u.searchParams.set(P.affParam, P.affiliate); url = u.href; }
+  return { provider, name: P.name, mode: P.mode, url };
+}
+// a booking row/button; when a provider switches to 'inapp' this is the one place that changes
+const bookExt = (kind, provider, params, label, cls = 'row-link') => { const b = bookingLink(kind, provider, params); return ext(b.url, label, cls); };
+
 function tripDates(cfg) {
   const s = cfg.start.slice(0, 10), e = (cfg.end || cfg.start).slice(0, 10);
-  const st = LS.get('trip:' + s + ':' + e);
-  return st || { arrive: addDays(s, -1), leave: addDays(e, 1), guests: 2 };
+  const st = LS.get('trip:' + s + ':' + e) || {}; const ok = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
+  const today = todayYMD();
+  let arrive = ok(st.arrive) ? st.arrive : addDays(s, -1), leave = ok(st.leave) ? st.leave : addDays(e, 1);
+  if (arrive < today && s >= today) arrive = today;
+  if (leave <= arrive) leave = addDays(arrive, 1);
+  return { arrive, leave, guests: Math.min(16, Math.max(1, +st.guests || 2)) };
 }
 // ---------- travel mode filter (multi-select; nothing picked = everything) ----------
 const TRAVEL_MODES = [['fly', 'Flying'], ['train', 'Train'], ['rental', 'Rental car'], ['drive', 'Driving'], ['transit', 'Transit']];
@@ -665,16 +693,17 @@ function flightsHTML(cfg, air) {
     <div class="ap-code">${esc(a.iata)}</div>
     <div class="ap-info"><b>${esc(a.name)}</b><span>${esc(t('{d} from the venue', { d: fmtDist(a.d, v.cc) }))}${a.large ? '' : ' · ' + t('regional')}</span></div>
     <div class="btns">
-      ${o === a.iata ? `<span class="muted small">${t('That is your home airport.')}</span>` : `${ext(L.gflights(a.iata, o, tr.arrive, tr.leave), 'Google Flights')}
-      ${o ? ext(L.kayak(o, a.iata, tr.arrive, tr.leave), 'Kayak') + ext(L.skyscanner(o, a.iata, tr.arrive, tr.leave), 'Skyscanner') : ''}`}
+      ${o === a.iata ? `<span class="muted small">${t('That is your home airport.')}</span>` : `${bookExt('flights', 'gflights', { to: a.iata, from: o, d1: tr.arrive, d2: tr.leave }, 'Google Flights', 'btn')}
+      ${o ? bookExt('flights', 'kayak', { from: o, to: a.iata, d1: tr.arrive, d2: tr.leave }, 'Kayak', 'btn') : ''}`}
     </div></li>`).join('')}</ul>
-    ${o ? '' : `<p class="muted small">${t('Add the airport you are flying from to compare fares on Kayak and Skyscanner too.')}</p>`}`;
+    ${o ? '' : `<p class="muted small">${t('Add the airport you are flying from to compare fares on Kayak too.')}</p>`}`;
 }
 function trainsHTML(cfg) {
   const v = cfg.venue; const o = LS.get('origin'); const oa = o && airportByCode(o);
   const from = oa ? (oa[2] || oa[1]) : '';
   const to = v.city || v.name;
   const items = [];
+  if (from) items.push(ext(L.transit(from, v), `${esc(t('Train and bus from {a}', { a: from }))} <small>Google Maps</small>`, 'row-link'));
   if (from) items.push(ext(L.rome2rio(from, to), `${esc(t('Every way from {a} to {b}', { a: from, b: to }))} <small>Rome2Rio</small>`, 'row-link'));
   if (v.cc === 'us') items.push(ext('https://www.amtrak.com/home', `${t('Trains across the US')} <small>Amtrak</small>`, 'row-link'));
   if (TRAINLINE_CC.has(v.cc)) items.push(ext('https://www.thetrainline.com/', `${t('Trains and coaches in Europe')} <small>Trainline</small>`, 'row-link'));
@@ -682,15 +711,17 @@ function trainsHTML(cfg) {
 }
 function rentalHTML(cfg, air) {
   const tr = tripDates(cfg); const v = cfg.venue;
-  const items = air.slice(0, 2).map(a => ext(L.kayakCars(a.iata, tr.arrive, tr.leave), `${esc(t('Rental cars at {c}', { c: a.iata }))} <small>Kayak</small>`, 'row-link'));
-  items.push(ext(L.place('car rental', placeLabel(v) || v.name), `${esc(t('Rental desks in {c}', { c: v.city || v.name }))} <small>Google Maps</small>`, 'row-link'));
-  return `<h3 class="sub-h">${t('Rental car')}</h3><div class="row-links">${items.join('')}</div>`;
+  const items = air.slice(0, 2).map(a => bookExt('cars', 'kayakCars', { iata: a.iata, d1: tr.arrive, d2: tr.leave }, `${esc(t('Rental cars near {a}', { a: `${a.name} (${a.iata})` }))} <small>Kayak</small>`));
+  items.push(ext(L.place('car rental', placeLabel(v) || v.name), `${esc(t('Rental desks near the venue'))} <small>Google Maps</small>`, 'row-link'));
+  const d = (x) => fmt(x, { month: 'short', day: 'numeric' });
+  return `<h3 class="sub-h">${t('Rental car')}</h3><p class="muted small">${esc(t('Pick up {a} (arrival) · return {b} (departure)', { a: d(tr.arrive), b: d(tr.leave) }))}</p><div class="row-links">${items.join('')}</div>`;
 }
 function stayLinks(cfg) {
   const tr = tripDates(cfg); const v = cfg.venue; const q = placeLabel(v) || v.name; const n = tr.guests || 2;
-  return [ext(L.booking(q, tr.arrive, tr.leave, n), `${esc(t('Hotels in {c}', { c: v.city || q }))} <small>Booking.com</small>`, 'row-link'),
-    ext(L.airbnb(q, tr.arrive, tr.leave, n), `${t('Homes and apartments')} <small>Airbnb</small>`, 'row-link'),
-    ext(L.expedia(q, tr.arrive, tr.leave, n), `${t('Hotels and packages')} <small>Expedia</small>`, 'row-link')].join('');
+  const p = { q, d1: tr.arrive, d2: tr.leave, n };
+  return [bookExt('hotels', 'ghotels', p, `${esc(t('Hotels in {c}', { c: v.city || q }))} <small>Google Hotels</small>`),
+    bookExt('hotels', 'booking', p, `${t('Hotels and apartments')} <small>Booking.com</small>`),
+    bookExt('hotels', 'airbnb', p, `${t('Homes and apartments')} <small>Airbnb</small>`)].join('');
 }
 function toursHTML(cfg) {
   return `<div class="row-links" data-slot="tour-links">${tourLinks(cfg)}</div>
@@ -699,9 +730,8 @@ function toursHTML(cfg) {
 }
 function tourLinks(cfg) {
   const tr = tripDates(cfg); const v = cfg.venue; const q = v.city || placeLabel(v) || v.name; const qa = placeLabel(v) || q;
-  return [ext(L.gyg(q, tr.arrive, tr.leave), `${esc(t('Tours in {c}', { c: q }))} <small>GetYourGuide</small>`, 'row-link'),
-    ext(L.viator(q), `${t('Tours and day trips')} <small>Viator</small>`, 'row-link'),
-    ext(L.airbnbExp(qa, tr.arrive, tr.leave), `${t('Experiences with locals')} <small>Airbnb</small>`, 'row-link')].join('');
+  return [bookExt('tours', 'gyg', { q, d1: tr.arrive, d2: tr.leave }, `${esc(t('Tours in {c}', { c: q }))} <small>GetYourGuide</small>`),
+    bookExt('tours', 'airbnbExp', { q: qa, d1: tr.arrive, d2: tr.leave }, `${t('Experiences with locals')} <small>Airbnb</small>`)].join('');
 }
 function sightsHTML(cfg, data) {
   const v = cfg.venue; const xs = data.sights || [];
@@ -717,7 +747,7 @@ function transitHTML(cfg, data) {
   if (!groups.length) return `<p class="muted">${t('No mapped stations or stops within walking distance. Rideshare or driving is the way in.')}</p>`;
   return `<div class="tgroups">${groups.map(([k, xs]) => `<div class="tgroup"><h3 class="sub-h">${t(TRANSIT_LABELS[k])}</h3><ul class="plist">${xs.map(x => `<li>
     <div><b>${esc(x.name)}</b>${x.line ? `<span>${esc(x.line.split(';').join(' · '))}</span>` : ''}</div>
-    <a class="dist" href="${esc(`https://www.google.com/maps/dir/?api=1&origin=${x.lat},${x.lon}&destination=${v.lat},${v.lon}&travelmode=walking`)}" target="_blank" rel="noopener" title="${t('Walking directions to the venue')}">${esc(fmtDist(x.d, v.cc))}<small>${walkTxt(x.d)}</small></a></li>`).join('')}</ul></div>`).join('')}</div>`;
+    <a class="dist" href="${esc(`https://www.google.com/maps/dir/?api=1&origin=${x.lat},${x.lon}&destination=${v.lat},${v.lon}&travelmode=walking`)}" target="_blank" rel="noopener noreferrer" title="${t('Walking directions to the venue')}">${esc(fmtDist(x.d, v.cc))}<small>${walkTxt(x.d)}</small></a></li>`).join('')}</ul></div>`).join('')}</div>`;
 }
 function foodHTML(cfg, data, filter = 'all') {
   const v = cfg.venue; const tr = tripDates(cfg); const date = cfg.start.slice(0, 10);
@@ -728,7 +758,7 @@ function foodHTML(cfg, data, filter = 'all') {
   return `<div class="chips">${chip('all', t('All'))}${chip('restaurant', t('Restaurants'))}${chip('cafe', t('Cafés'))}${chip('bar', t('Bars'))}</div>
   <ul class="plist rich">${list.map((f, i) => `<li${i >= 5 ? ' class="more"' : ''}>
     <div><b>${esc(f.name)}</b><span>${esc([t(f.kind === 'cafe' ? 'café' : f.kind), f.cuisine].filter(Boolean).join(' · '))}</span>
-      <div class="mini">${f.kind !== 'cafe' ? ext(L.opentable(f.name, v, date, tr.guests || 2), t('Reserve') + ' · OpenTable', 'mini-b') : ''}${ext(L.place(f.name, f.street ? `${f.street}, ${v.city}` : placeLabel(v)), 'Google Maps', 'mini-b')}${f.website ? ext(f.website, t('Website'), 'mini-b') : ''}</div></div>
+      <div class="mini">${ext(L.place(f.name, f.street ? `${f.street}, ${v.city}` : placeLabel(v)), 'Google Maps', 'mini-b')}${f.kind !== 'cafe' ? bookExt('restaurants', 'opentable', { name: f.name, venue: v, date, n: tr.guests || 2 }, t('Reserve') + ' · OpenTable', 'mini-b') : ''}${f.website ? ext(f.website, t('Website'), 'mini-b') : ''}</div></div>
     <span class="dist">${esc(fmtDist(f.d, v.cc))}<small>${walkTxt(f.d)}</small></span></li>`).join('')}${list.length > 5 ? `<li class="more-li"><button type="button" class="btn sm" data-more>${t('Show {n} more', { n: list.length - 5 })}</button></li>` : ''}</ul>`;
 }
 function hotelsHTML(cfg, data) {
@@ -737,7 +767,7 @@ function hotelsHTML(cfg, data) {
   const hs = data.hotels.slice(0, 8);
   return `<ul class="plist rich">${hs.map((h, i) => `<li${i >= 3 ? ' class="more"' : ''}>
     <div><b>${esc(h.name)}</b><span>${esc([t(h.kind), h.stars ? `${h.stars}★` : ''].filter(Boolean).join(' · '))}</span>
-      <div class="mini">${ext(L.booking(`${h.name}, ${v.city || placeLabel(v)}`, tr.arrive, tr.leave, tr.guests || 2), t('Check rates') + ' · Booking.com', 'mini-b')}${ext(L.place(h.name, h.street ? `${h.street}, ${v.city}` : placeLabel(v)), 'Google Maps', 'mini-b')}${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
+      <div class="mini">${bookExt('hotels', 'booking', { q: `${h.name}, ${v.city || placeLabel(v)}`, d1: tr.arrive, d2: tr.leave, n: tr.guests || 2 }, t('Check rates') + ' · Booking.com', 'mini-b')}${ext(L.place(h.name, h.street ? `${h.street}, ${v.city}` : placeLabel(v)), 'Google Maps', 'mini-b')}${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
     <span class="dist">${esc(fmtDist(h.d, v.cc))}<small>${h.d < 2000 ? walkTxt(h.d) : t('from the venue')}</small></span></li>`).join('')}${hs.length > 3 ? `<li class="more-li"><button type="button" class="btn sm" data-more>${t('All {n} hotels', { n: hs.length })}</button></li>` : ''}</ul>`;
 }
 function weatherHTML(w, cfg) {
@@ -930,7 +960,7 @@ const sec = (id, title, body, cls = '') => body ? `<section class="ev-sec ${cls}
 function notesHTML(cfg) {
   const ns = cfg.notes.filter(x => x.label && (x.url || x.text)); if (!ns.length) return '';
   return `<ul class="links">${ns.map(x => x.url
-    ? `<li><a href="${esc(x.url)}" target="_blank" rel="noopener"><b>${esc(x.label)}</b><span>${esc(x.text || hostOf(x.url))}</span>${arrow}</a></li>`
+    ? `<li><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(x.label)}</b><span>${esc(x.text || hostOf(x.url))}</span>${arrow}</a></li>`
     : `<li class="note"><b>${esc(x.label)}</b><span>${esc(x.text)}</span></li>`).join('')}</ul>`;
 }
 function needToKnowHTML(cfg) {
@@ -1010,7 +1040,7 @@ function roomBlockHTML(cfg) {
   const d = typeData(cfg); if (!(d.blockHotel || d.blockUrl || d.blockCode || d.blockBy)) return '';
   const sub = [d.blockCode ? t('Code {c}', { c: d.blockCode }) : '', d.blockBy ? t('Book by {d}', { d: fmt(d.blockBy, { month: 'short', day: 'numeric' }) }) : ''].filter(Boolean).join(' · ');
   const inner = `<span><b>${esc(d.blockHotel || t('Room block'))}</b> <em class="badge">${t('Room block')}</em><small class="sub">${esc(sub)}</small></span>${d.blockUrl ? `<small>${t('Book')} ↗</small>` : ''}`;
-  return `<div class="row-links block-row">${d.blockUrl ? `<a class="row-link hl" href="${esc(d.blockUrl)}" target="_blank" rel="noopener">${inner}</a>` : `<div class="row-link hl">${inner}</div>`}</div>`;
+  return `<div class="row-links block-row">${d.blockUrl ? `<a class="row-link hl" href="${esc(d.blockUrl)}" target="_blank" rel="noopener noreferrer">${inner}</a>` : `<div class="row-link hl">${inner}</div>`}</div>`;
 }
 function nearbyTabHTML(cfg) {
   const T = cfg.tools; const out = [];
@@ -1072,7 +1102,7 @@ function renderEvent(cfg, root, opts = {}) {
     ${tabs.some(x => x[0] === 'mytrip') ? panel('mytrip', myTripTabHTML(cfg), tabHead('mytrip')) : ''}
     <footer class="ev-foot">
       ${opts.preview ? '' : `<p class="lang-row"><select class="lang-sel" data-lang aria-label="Language">${LANGS.map(([k, l]) => `<option value="${k}" ${k === LANG ? 'selected' : ''}>${l}</option>`).join('')}</select></p><a href="#edit=${packEvent(cfg)}">${t('Edit a copy of this page')}</a> · <a href="#">${t('Make your own')}</a>`}
-      <p>Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> · Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a></p>
+      <p>Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a> · Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a></p>
     </footer>
   </article>`;
   const art = root.querySelector('.ev');
@@ -1270,7 +1300,7 @@ function renderBuilder(cfg, source, hosted) {
     <h2>Your page is ready to share</h2>
     <textarea id="pub-url" readonly rows="4"></textarea>
     <div id="pub-host"></div>
-    <div class="btns"><button type="button" class="btn primary" data-act="copy">Copy link</button><button type="button" class="btn" data-act="native-share" hidden>Share…</button><button type="button" class="btn" data-act="qr">QR code</button><a class="btn" id="pub-open" href="#" target="_blank" rel="noopener">Open page</a><button class="btn ghost">Close</button></div>
+    <div class="btns"><button type="button" class="btn primary" data-act="copy">Copy link</button><button type="button" class="btn" data-act="native-share" hidden>Share…</button><button type="button" class="btn" data-act="qr">QR code</button><a class="btn" id="pub-open" href="#" target="_blank" rel="noopener noreferrer">Open page</a><button class="btn ghost">Close</button></div>
   </form></dialog>`;
   buildForm();
   const bl = $('.builder');
@@ -1915,7 +1945,7 @@ function wirePubHost() {
 function renderHostNote() {
   const f = $('.b-form'); if (!f) return; let n = $('.b-host', f);
   if (!B.hosted) { if (n) n.remove(); return; }
-  const html = `<p class="b-note b-host">Editing your page at <a href="${esc(shortURL(B.hosted.slug))}" target="_blank" rel="noopener">?e=${esc(B.hosted.slug)}</a>. Publish to update it. <a href="#mine">My pages</a></p>`;
+  const html = `<p class="b-note b-host">Editing your page at <a href="${esc(shortURL(B.hosted.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(B.hosted.slug)}</a>. Publish to update it. <a href="#mine">My pages</a></p>`;
   if (n) n.outerHTML = html; else f.insertAdjacentHTML('afterbegin', html);
 }
 
@@ -1940,7 +1970,7 @@ async function renderMine(id, notice) {
   const { data, error } = await c.from('events').select('id,slug,config,published,updated_at').eq('owner', user.id).order('updated_at', { ascending: false });
   if (error) return shell(`<h1>My pages</h1><p>Couldn’t load your pages. ${esc(error.message)}</p>`);
   shell(`<div class="mine-h"><h1>My pages</h1><span class="muted small">${esc(user.email || '')} · <button type="button" class="link" data-mine="signout">Sign out</button></span></div>
-    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = normalize(r.config); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · hidden'}</span><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener">?e=${esc(r.slug)}</a></div><div class="btns"><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a><button type="button" class="btn sm" data-mine-edit="${esc(r.id)}">Edit</button><button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button></div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Publish, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
+    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = normalize(r.config); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · hidden'}</span><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a></div><div class="btns"><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a><button type="button" class="btn sm" data-mine-edit="${esc(r.id)}">Edit</button><button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button></div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Publish, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
   $('.mine').addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.mine === 'signout') { await c.auth.signOut(); LS.del('signedIn'); LS.del('draftHosted'); location.hash = '#'; }
@@ -1972,7 +2002,7 @@ async function renderMineEvent(id, shell, c, user) {
   const latest = new Map(); (rs.data || []).forEach(x => latest.set((x.email || '').toLowerCase() || normName(x.name), x));
   const replies = [...latest.values()].reverse(); const yes = replies.filter(x => x.attending); const no = replies.filter(x => !x.attending);
   const guests = LS.get(guestListKey(id), []) || []; const waiting = notReplied(guests, replies);
-  shell(`<p><a href="#mine">← My pages</a></p><div class="mine-h"><h1>${esc(cfg.title || 'Untitled')}</h1><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener">?e=${esc(r.slug)}</a></div>
+  shell(`<p><a href="#mine">← My pages</a></p><div class="mine-h"><h1>${esc(cfg.title || 'Untitled')}</h1><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a></div>
     <section class="mine-sec"><h2>Updates</h2><p class="muted small">Guests see these at the top of your page.</p>
       <form class="ann-form" onsubmit="return false"><textarea id="an-body" rows="3" maxlength="2000" placeholder="Shuttle leaves the hotel at 4:30. Bring a jacket."></textarea><div class="btns"><button type="button" class="btn primary" data-an="post">Post update</button></div><p class="hint" role="status" aria-live="polite"></p></form>
       <ul class="ann-list own">${(an.data || []).map(a => `<li><time>${esc(fmtStamp(a.created_at))}</time><p>${esc(a.body)}</p><button type="button" class="link" data-an-del="${esc(a.id)}">Delete</button></li>`).join('')}</ul></section>
@@ -2077,5 +2107,5 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
