@@ -987,8 +987,8 @@ function tripBarHTML(cfg) {
   const tr = tripDates(cfg); const o = LS.get('origin'); const oa = o && airportByCode(o);
   return `<div class="tripbar">
     ${cfg.tools.travel ? `<div class="field origin"><label for="ep-origin">${t('From')}</label><div class="ac"><input id="ep-origin" autocomplete="off" placeholder="${t('City or airport code')}" value="${oa ? esc(`${oa[2] || oa[1]} (${oa[0]})`) : ''}"><ul class="ac-list" hidden></ul></div></div>` : ''}
-    <div class="field"><label for="ep-arrive">${t('Arrive')}</label><input type="date" id="ep-arrive" data-k="arrive" value="${tr.arrive}"></div>
-    <div class="field"><label for="ep-leave">${t('Leave')}</label><input type="date" id="ep-leave" data-k="leave" value="${tr.leave}"></div>
+    <div class="field"><label for="ep-arrive">${t('Arrival')}</label><input type="date" id="ep-arrive" data-k="arrive" value="${tr.arrive}"></div>
+    <div class="field"><label for="ep-leave">${t('Departure')}</label><input type="date" id="ep-leave" data-k="leave" value="${tr.leave}"></div>
     <div class="field narrow"><label for="ep-guests">${t('Guests')}</label><input type="number" id="ep-guests" min="1" max="16" data-k="guests" value="${tr.guests}"></div>
   </div>`;
 }
@@ -1360,7 +1360,7 @@ function renderSheet() {
     <div class="btns"><button type="button" class="btn sm" data-b="add-sched">+ Add item</button>${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`;
   else if (id === 'notes') body = `${c.notes.map((x, i) => `<div class="rowed"><input data-n="${i}" data-k="label" value="${esc(x.label)}" placeholder="Title" aria-label="Title"><input data-n="${i}" data-k="text" value="${esc(x.text || '')}" placeholder="Text" aria-label="Text"><input data-n="${i}" data-k="url" type="url" value="${esc(x.url || '')}" placeholder="Link (optional)" aria-label="Link"><button type="button" class="ic del" data-ndel="${i}" aria-label="Remove">Remove</button></div>`).join('')}
     <button type="button" class="btn sm" data-b="add-note">+ Add note</button>`;
-  else if (id === 'about') body = `${fieldWrap('Hosted by', `<input id="f-host" data-f="host" value="${esc(c.host)}">`, 'f-host')}${fieldWrap('About', `<textarea id="f-desc" data-f="description" rows="6">${esc(c.description)}</textarea>`, 'f-desc')}`;
+  else if (id === 'about') body = `${aboutSiteHTML(c)}${fieldWrap('Hosted by', `<input id="f-host" data-f="host" value="${esc(c.host)}">`, 'f-host')}${fieldWrap('About', `<textarea id="f-desc" data-f="description" rows="6">${esc(c.description)}</textarea>`, 'f-desc')}`;
   else if (id === 'look') body = `${fieldWrap('Cover photo link', `<input id="f-cover" data-f="cover" type="url" value="${esc(c.cover)}" placeholder="https://…/photo.jpg">`, 'f-cover')}
     <div class="field"><label>Color</label><div class="swatches">${SWATCHES.map(s => `<button type="button" class="sw ${s.toLowerCase() === c.theme.accent.toLowerCase() ? 'on' : ''}" style="background:${s}" data-sw="${s}" aria-label="Color ${s}"></button>`).join('')}<input type="color" data-t="accent" value="${esc(c.theme.accent)}" aria-label="Custom color"></div></div>
     <div class="field"><label>Title font</label><div class="fonts">${Object.entries(FONTS).map(([k, x]) => `<button type="button" class="fontb ${k === c.theme.font ? 'on' : ''}" data-font="${k}" style="font-family:${esc(x.css)}">${x.label}</button>`).join('')}</div></div>
@@ -1387,15 +1387,17 @@ function wireInputs(root) {
     else if (d.n != null) { cfg.notes[+d.n][d.k] = i.value; changed(); }
     else if (d.tool) { cfg.tools[d.tool] = i.checked; changed(); }
     else if (i.id === 'vq') B.vq = i.value;
+    else if (i.id === 'f-site') B.site = i.value;
     else if (typeof extraInput === 'function') extraInput(i, cfg);
   };
-  root.onkeydown = (e) => { if (e.target.id === 'vq' && e.key === 'Enter') { e.preventDefault(); venueSearch(); } };
+  root.onkeydown = (e) => { if (e.target.id === 'vq' && e.key === 'Enter') { e.preventDefault(); venueSearch(); } if (e.target.id === 'f-site' && e.key === 'Enter') { e.preventDefault(); aboutFill(); } };
   root.onclick = (e) => {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset; const cfg = c();
     if (d.whenTg != null) { whenToggle(cfg); changed(true); setTimeout(() => root.querySelector(hasTime(cfg.start) ? '[data-when="st"]' : '[data-when-tg]')?.focus(), 0); }
     else if (d.card) openCard(d.card);
     else if (d.b === 'close') $('#sheet').close();
     else if (d.b === 'search') venueSearch();
+    else if (d.b === 'site-fill') { if (!B.siteBusy) aboutFill(); }
     else if (d.pick != null) pickVenue(B.venueResults[+d.pick]);
     else if (d.b === 'clear-venue') { cfg.venue = null; cfg.tz = ''; B.venueResults = []; B.vmsg = ''; changed(true); setTimeout(() => $('#vq')?.focus(), 0); }
     else if (d.sw) { cfg.theme.accent = d.sw; changed(true); }
@@ -1648,6 +1650,58 @@ function accessHTML(cfg, osm) {
 
 function extraClick(b, cfg) { if (b.dataset.act === 'qr') openQR(cfg); }
 function suExtraClick(b, cfg) { if (b.dataset.su === 'qr') openQR(cfg); }
+
+// ================= About: fill from a website link =================
+// Free, keyless, CORS-enabled readers: Microlink first, Jina Reader as the fallback. Everything fetched is treated as plain text.
+const cleanText = (s, max) => String(s ?? '').replace(/<[^>]*>/g, ' ').replace(/[\u0000-\u001f\u007f\u200b-\u200f\u2028\u2029]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+const safeImg = (u) => { try { const x = new URL(String(u || '')); return x.protocol === 'https:' && x.href.length <= 800 ? x.href : ''; } catch { return ''; } };
+function normSite(u) { u = String(u || '').trim(); if (!u) return ''; if (!/^https?:\/\//i.test(u)) u = 'https://' + u; try { const x = new URL(u); return /\./.test(x.hostname) ? x.href : ''; } catch { return ''; } }
+async function fetchTimeout(url, init = {}, ms = 12000) {
+  const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), ms);
+  try { return await fetch(url, { ...init, signal: ac.signal }); } finally { clearTimeout(tm); }
+}
+async function readSite(url) {
+  const tries = [
+    async () => {
+      const r = await fetchTimeout(`https://api.microlink.io/?url=${enc(url)}`); if (!r.ok) throw new Error('microlink ' + r.status);
+      const j = await r.json(); if (j.status !== 'success' || !j.data) throw new Error('microlink failed');
+      const d = j.data; return { title: d.title, description: d.description, image: d.image && d.image.url, publisher: d.publisher };
+    },
+    async () => {
+      const r = await fetchTimeout(`https://r.jina.ai/${url}`, { headers: { Accept: 'application/json' } }); if (!r.ok) throw new Error('jina ' + r.status);
+      const j = await r.json(); const d = j && j.data; if (!d) throw new Error('jina failed');
+      return { title: d.title, description: d.description || '', image: '', publisher: '' };
+    },
+  ];
+  for (const f of tries) {
+    try {
+      const m = await f();
+      const out = { title: cleanText(m.title, 120), description: cleanText(m.description, 1200), image: safeImg(m.image), publisher: cleanText(m.publisher, 80) };
+      // a reader that could not load the page tends to echo the hostname or an error page back
+      const host = hostOf(url);
+      if (/application error|access denied|just a moment|attention required|404|not found|enable javascript/i.test(out.title + ' ' + out.description.slice(0, 120))) continue;
+      if (!out.description && (!out.title || out.title.replace(/^www\./, '') === host)) continue;
+      return out;
+    } catch { /* next reader */ }
+  }
+  return null;
+}
+const aboutSiteHTML = (c) => `<div class="field"><label for="f-site">Website</label><div class="search"><input id="f-site" type="url" inputmode="url" placeholder="Paste a link, e.g. yourwedding.com" value="${esc(B.site || '')}" autocomplete="off"><button type="button" class="btn" data-b="site-fill" ${B.siteBusy ? 'disabled' : ''}>${B.siteBusy ? 'Reading…' : 'Fill in'}</button></div><p class="hint" id="site-msg" role="status" aria-live="polite">${esc(B.siteMsg || 'We’ll copy the title, description and photo. You can edit everything after.')}</p></div>`;
+async function aboutFill() {
+  const c = B.cfg; const url = normSite(B.site);
+  if (!url) { B.siteMsg = 'That doesn’t look like a website link.'; renderSheet(); return; }
+  B.siteBusy = true; B.siteMsg = 'Reading that site…'; renderSheet();
+  const m = await readSite(url);
+  B.siteBusy = false;
+  if (!m) { B.siteMsg = 'Couldn’t read that site. Type it in below.'; renderSheet(); setTimeout(() => $('#f-desc')?.focus(), 0); return; }
+  const got = [];
+  if (m.description) { c.description = m.description; got.push('description'); } else if (m.title && !c.description) { c.description = m.title; got.push('title'); }
+  if (!c.title.trim() && m.title) { c.title = m.title.slice(0, 80); got.push('title'); }
+  if (!c.host.trim() && m.publisher && m.publisher.replace(/^www\./, '') !== hostOf(url)) { c.host = m.publisher; got.push('host'); }
+  if (m.image && !c.cover) { c.cover = m.image; got.push('photo'); }
+  B.siteMsg = got.length ? `Filled in from ${hostOf(url)}. Edit anything below.` : 'That site had nothing to copy. Type it in below.';
+  changed(true);
+}
 
 // ================= dates with optional times =================
 // start/end are wall-clock in the venue's zone: 'YYYY-MM-DD' (date only, the default) or 'YYYY-MM-DDTHH:MM'.
