@@ -987,8 +987,8 @@ function tripBarHTML(cfg) {
   const tr = tripDates(cfg); const o = LS.get('origin'); const oa = o && airportByCode(o);
   return `<div class="tripbar">
     ${cfg.tools.travel ? `<div class="field origin"><label for="ep-origin">${t('From')}</label><div class="ac"><input id="ep-origin" autocomplete="off" placeholder="${t('City or airport code')}" value="${oa ? esc(`${oa[2] || oa[1]} (${oa[0]})`) : ''}"><ul class="ac-list" hidden></ul></div></div>` : ''}
-    <div class="field"><label for="ep-arrive">${t('Travel there')}</label><input type="date" id="ep-arrive" data-k="arrive" value="${tr.arrive}"></div>
-    <div class="field"><label for="ep-leave">${t('Travel home')}</label><input type="date" id="ep-leave" data-k="leave" value="${tr.leave}"></div>
+    <div class="field"><label for="ep-arrive">${t('Arrive')}</label><input type="date" id="ep-arrive" data-k="arrive" value="${tr.arrive}"></div>
+    <div class="field"><label for="ep-leave">${t('Leave')}</label><input type="date" id="ep-leave" data-k="leave" value="${tr.leave}"></div>
     <div class="field narrow"><label for="ep-guests">${t('Guests')}</label><input type="number" id="ep-guests" min="1" max="16" data-k="guests" value="${tr.guests}"></div>
   </div>`;
 }
