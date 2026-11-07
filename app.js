@@ -222,7 +222,7 @@ async function nearby(lat, lon) {
       if (done) return;
       if (i >= OVERPASS.length) { if (!pending) reject(lastErr || new Error('Overpass unavailable')); return; }
       const ep = OVERPASS[i++]; pending++; const hedge = setTimeout(next, 12000);
-      getJSON(ep, { key: key + ep, ttl: 0, timeout: 70000, init: { method: 'POST', body: 'data=' + enc(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } } })
+      getJSON(ep, { key: key + ep, ttl: 0, timeout: 90000, init: { method: 'POST', body: 'data=' + enc(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } } })
         .then(d => { clearTimeout(hedge); if (done) return; done = true; const out = classify(d.elements || [], lat, lon); cacheSet(key, out); resolve(out); })
         .catch(e => { clearTimeout(hedge); lastErr = e; pending--; next(); });
     };
@@ -969,6 +969,7 @@ function normalize(c) {
   c.tools = { ...defaultTools(c.type), ...(c.tools || {}) };
   c.off = c.off || {}; c.notes = Array.isArray(c.notes) ? c.notes : []; c.schedule = Array.isArray(c.schedule) ? c.schedule : [];
   c.x = c.x && typeof c.x === 'object' ? c.x : {}; c.bring = typeof c.bring === 'string' ? c.bring : '';
+  delete c.osm; // hosted pages store a nearby-places snapshot beside the config; it never travels in links or drafts
   return c;
 }
 
@@ -1845,7 +1846,8 @@ async function renderHosted(slug, tab) {
   try { row = await fetchHosted(slug); }
   catch { return hostedProblem(t('Couldn’t load this page. Check your connection and try again.'), true); }
   if (!row) return hostedProblem(t('This page isn’t available. It may have been removed or hidden by its organizer.'));
-  const cfg = normalize(row.config); const hosted = { id: row.id, slug: row.slug, url: shortURL(row.slug) };
+  const osm = row.config && row.config.osm; const cfg = normalize(row.config); const hosted = { id: row.id, slug: row.slug, url: shortURL(row.slug) };
+  if (osm && cfg.venue && Array.isArray(osm.food)) memo.set(osmKey(cfg.venue.lat, cfg.venue.lon), Promise.resolve(osm));
   document.title = (cfg.title || 'Event') + ' · Eventpages';
   $('.vbar').insertAdjacentHTML('beforeend', `<a class="btn sm" href="#edit=${packEvent(cfg)}">${t('Edit a copy')}</a>`);
   renderEvent(cfg, $('#ev-root'), { tab, hosted, shareUrl: hosted.url });
@@ -1942,6 +1944,11 @@ async function authReturn() {
 // ---------- organizer: publish to a short link ----------
 async function publishHosted(cfg, hosted) {
   const c = await sb(); const config = normalize(clone(cfg));
+  if (config.venue) { // guests then skip the slow public Overpass servers
+    const v = config.venue; const cached = LS.get('c4:' + osmKey(v.lat, v.lon)); const snap = window.OSM_SNAPSHOTS && window.OSM_SNAPSHOTS[osmKey(v.lat, v.lon)];
+    const osm = snap || (cached && cached.d) || await Promise.race([nearby(v.lat, v.lon).catch(() => null), sleep(15000).then(() => null)]);
+    if (osm) config.osm = { ...osm, snapshot: osm.snapshot || todayYMD() };
+  }
   if (hosted && hosted.id) {
     const { data, error } = await c.from('events').update({ config, published: true }).eq('id', hosted.id).select('id,slug');
     if (!error && data && data.length) return data[0];
