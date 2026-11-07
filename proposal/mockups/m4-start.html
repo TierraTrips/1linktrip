@@ -1,0 +1,25 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="m.css"><style>
+:root { --accent: #3048F0; }
+body { background: var(--fog); }
+.phone { background: var(--fog); padding: 22px 16px; }
+h1 { font: 800 1.9rem/1.05 'Bricolage Grotesque', sans-serif; margin: 6px 0 18px; letter-spacing: -.02em; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.t { background: #fff; border-radius: 16px; padding: 14px; min-height: 112px; display: flex; flex-direction: column; justify-content: space-between; border: 2px solid transparent; }
+.t b { font-size: 1.02rem; } .t span { font-size: .78rem; color: var(--muted); }
+.t.on { border-color: var(--accent); }
+.t i { width: 30px; height: 30px; border-radius: 9px; display: block; }
+.next { position: absolute; left: 16px; right: 16px; bottom: 22px; }
+.next .btn { width: 100%; min-height: 50px; font-size: 1rem; }
+</style></head><body><div class="phone">
+<span class="lbl">New page</span>
+<h1>What are you planning?</h1>
+<div class="grid">
+  <div class="t on"><i style="background:#0B7A75"></i><div><b>Wedding</b><br><span>RSVP, room block, dress code</span></div></div>
+  <div class="t"><i style="background:#2E7D32"></i><div><b>Race</b><br><span>Start, finish, packet pickup</span></div></div>
+  <div class="t"><i style="background:#3048F0"></i><div><b>Conference</b><br><span>Badges, agenda, speakers</span></div></div>
+  <div class="t"><i style="background:#FF6B35"></i><div><b>Concert or festival</b><br><span>Doors, set times, bag policy</span></div></div>
+  <div class="t"><i style="background:#C2185B"></i><div><b>Game day</b><br><span>Seats, tailgating, parking</span></div></div>
+  <div class="t"><i style="background:#1F2937"></i><div><b>Something else</b><br><span>Party, retreat, reunion</span></div></div>
+</div>
+<div class="next"><span class="btn primary">Continue</span></div>
+</div></body></html>

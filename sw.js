@@ -1,5 +1,5 @@
 // Eventpages service worker: app shell offline. Bump VERSION on every deploy that changes the shell.
-const VERSION = 'ep-2026-11-07d';
+const VERSION = 'ep-2026-11-07e';
 const SHELL = ['./', './index.html', './app.js', './styles.css', './airports.js', './examples.js', './osm-snapshots.js',
   './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 // Static third-party libraries and fonts the page needs to render. Data APIs (weather, Overpass, geocoding, map tiles) are never cached here.
@@ -24,7 +24,9 @@ const staleWhileRevalidate = async (req, ev) => {
 };
 self.addEventListener('fetch', (e) => {
   const req = e.request; if (req.method !== 'GET') return;
-  const url = new URL(req.url); const same = url.origin === self.location.origin && url.pathname.startsWith(new URL('./', self.registration.scope).pathname);
+  const url = new URL(req.url);
+  if (url.origin === self.location.origin && url.pathname.includes('/proposal/')) return; // the proposal is not part of the app: never cached
+  const same = url.origin === self.location.origin && url.pathname.startsWith(new URL('./', self.registration.scope).pathname);
   if (req.mode === 'navigate' || (same && /\/$|\.html$/.test(url.pathname))) { e.respondWith(networkFirst(req)); return; }
   if (same || STATIC_HOSTS.some(re => re.test(req.url))) { e.respondWith(staleWhileRevalidate(req, e)); return; }
   // everything else (weather, Overpass, Nominatim, tiles): straight to the network

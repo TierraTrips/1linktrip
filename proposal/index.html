@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Eventpages: what to build next</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Instrument+Sans:wght@400..700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root { --fog: #E7E9EE; --ink: #12141B; --muted: #5D6372; --paper: #fff; --gate: #3048F0; --line: #DADEE5; --chip: #EEF0F4; --ok: #2E7D32; --warn: #B45309;
+  --mono: 'JetBrains Mono', ui-monospace, monospace; --display: 'Bricolage Grotesque', system-ui, sans-serif; }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--fog); color: var(--ink); font: 16.5px/1.55 'Instrument Sans', system-ui, sans-serif; }
+main { max-width: 1080px; margin: 0 auto; padding: 40px 22px 80px; }
+h1, h2, h3 { font-family: var(--display); letter-spacing: -.02em; line-height: 1.08; }
+h1 { font-size: clamp(2.2rem, 5vw, 3.6rem); font-weight: 800; margin: 6px 0 14px; }
+h2 { font-size: clamp(1.6rem, 3.2vw, 2.3rem); font-weight: 800; margin: 64px 0 10px; padding-top: 10px; }
+h3 { font-size: 1.3rem; font-weight: 750; margin: 34px 0 8px; }
+.kicker { font: 600 .74rem var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.lede { font-size: 1.15rem; max-width: 760px; color: #2A2E37; }
+p { max-width: 780px; }
+a { color: var(--gate); }
+.card { background: var(--paper); border-radius: 20px; padding: 24px 26px; margin: 18px 0; }
+.top5 ol { margin: 6px 0 0; padding: 0; list-style: none; counter-reset: n; display: grid; gap: 12px; }
+.top5 li { counter-increment: n; display: grid; grid-template-columns: 2.4em 1fr; gap: 8px; align-items: start; }
+.top5 li::before { content: counter(n); font: 700 1.05rem var(--mono); color: #fff; background: var(--gate); width: 1.9em; height: 1.9em; border-radius: 50%; display: grid; place-items: center; }
+.top5 b { font-weight: 700; }
+nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; }
+nav.toc a { text-decoration: none; color: var(--ink); background: var(--paper); border-radius: 999px; padding: .4em .9em; font-weight: 600; font-size: .9rem; }
+table { width: 100%; border-collapse: collapse; font-size: .94rem; }
+th { text-align: left; font: 600 .68rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 8px 10px; border-bottom: 2px solid var(--line); }
+td { padding: 11px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td.n { font: 700 .95rem var(--mono); color: var(--gate); width: 2em; }
+td b { display: block; }
+.tag { display: inline-block; font: 600 .7rem var(--mono); letter-spacing: .04em; padding: 2px 7px; border-radius: 6px; background: var(--chip); white-space: nowrap; }
+.tag.s { background: #E3F2E5; color: #1B5E20; } .tag.m { background: #FFF4D6; color: #7A4F00; } .tag.l { background: #FDE2E2; color: #8E1B1B; }
+.tag.srv { background: #E8ECFF; color: #24339C; }
+.scroll { overflow-x: auto; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 18px 0; }
+.stat { background: var(--paper); border-radius: 16px; padding: 14px 16px; }
+.stat b { display: block; font: 800 2rem/1 var(--display); }
+.stat span { font-size: .85rem; color: var(--muted); }
+figure { margin: 0; }
+figcaption { font-size: .84rem; color: var(--muted); margin-top: 8px; }
+img { max-width: 100%; display: block; border-radius: 14px; }
+.shot { box-shadow: 0 1px 0 rgba(18,20,27,.05), 0 16px 34px -20px rgba(18,20,27,.4); background: #fff; }
+.ba { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; margin: 18px 0; }
+.ba > div > .kicker { display: block; margin-bottom: 8px; }
+.ba .before .kicker { color: var(--warn); } .ba .after .kicker { color: var(--ok); }
+.phones { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 16px 0; }
+.phones.three { grid-template-columns: repeat(3, 1fr); }
+.phones.two { grid-template-columns: repeat(2, minmax(0, 300px)); }
+.steplbl { font: 600 .7rem var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; display: block; }
+.desks { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px 0; }
+.strip { display: grid; grid-template-columns: 120px 1fr; gap: 22px; align-items: start; }
+.strip img { width: 120px; border-radius: 8px; }
+ul.tight { margin: 6px 0; padding-left: 1.1em; } ul.tight li { margin: 4px 0; }
+.olap td:first-child { font-weight: 650; white-space: nowrap; }
+.note { font-size: .9rem; color: var(--muted); }
+.pill { display: inline-block; background: var(--chip); border-radius: 999px; padding: .1em .6em; font-size: .85rem; font-weight: 600; margin: 1px 2px; }
+footer { margin-top: 70px; color: var(--muted); font-size: .85rem; }
+@media (max-width: 760px) {
+  .ba, .desks { grid-template-columns: 1fr; }
+  .phones, .phones.three { grid-template-columns: repeat(2, 1fr); }
+  .strip { grid-template-columns: 80px 1fr; } .strip img { width: 80px; }
+  .card { padding: 18px; }
+  td, th { padding: 9px 6px; }
+}
+</style>
+</head>
+<body>
+<main>
+<span class="kicker">Eventpages · Product proposal · November 2026</span>
+<h1>Simple first, then let it grow</h1>
+<p class="lede">Eventpages can already do a lot: type-specific details, live weather, travel, stays, food, transit, a guest itinerary and a packing list. What it has too much of is everything shown at once. This proposal does two things. It ranks what to build next for organizers, and it reworks the experience so a page starts small and grows one step at a time, the way setting up a new phone does.</p>
+
+<section class="card top5">
+  <span class="kicker">The 5 changes I'd make first</span>
+  <ol>
+    <li><div><b>Replace the long form with a 4-screen setup.</b> The setup asks for event type, then name and date, then venue, and then the page is done. Theme, sections and travel tools fill in from the event type.</div></li>
+    <li><div><b>Grow pages through an "Add to your page" gallery.</b> Cards relevant to the event type come first (RSVP, Room block, Packet pickup…), and each one opens a small focused form. The gallery replaces the 14-row section list and the generic links editor.</div></li>
+    <li><div><b>Give guests four tabs instead of one 14-section scroll.</b> The tabs are Event · Travel · Nearby · My trip. The first screen answers what, when and where; everything else is one tap away.</div></li>
+    <li><div><b>Merge the overlaps.</b> One trip bar (from, dates, guests) feeds flights, cars and hotels, and there is one place for directions. A guest's own bookings show inside the schedule, and one notes list replaces both "Details" and the duplicate type fields.</div></li>
+    <li><div><b>Add hosted short links and accounts, sign-up last.</b> With a link like <span class="pill">eventpages.app/maya-theo</span>, organizers can keep editing after they share. Setup and editing work without an account; the sign-up prompt appears only at Share. This is the first small server piece and the base for a paid planner tier and an iPhone app.</div></li>
+  </ol>
+  <nav class="toc"><a href="#ideas">Product ideas</a><a href="#audit">Audit</a><a href="#setup">Guided setup</a><a href="#add">Add to your page</a><a href="#guest">Guest tabs</a><a href="#merge">Consolidations</a><a href="#defaults">Defaults per type</a><a href="#editor">Editor after setup</a><a href="#accounts">Accounts</a><a href="#iphone">iPhone app</a></nav>
+</section>
+
+<!-- ============ PART 1 ============ -->
+<h2 id="ideas">1 · Product ideas, ranked</h2>
+<p>Ranked by impact for organizers, including the revenue path (affiliate links now, a paid planner tier later), against effort. Effort: <span class="tag s">S</span> days, <span class="tag m">M</span> one to three weeks, <span class="tag l">L</span> a month or more. <span class="tag srv">Server</span> marks ideas that need hosting beyond static pages.</p>
+<div class="card scroll">
+<table>
+<thead><tr><th></th><th>Idea</th><th>Why it matters</th><th>Effort</th><th>Server / cost</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>Hosted pages with short links</b>One stable link you can keep editing, with a custom name</td><td>Today the whole event lives inside the URL, so every edit produces a new link and guests holding the old invite see stale details. The links are also thousands of characters long, which is awkward in texts and print.</td><td><span class="tag m">M</span></td><td><span class="tag srv">Server</span> A small key-value store and API. Low cost at early scale.</td></tr>
+<tr><td class="n">2</td><td><b>Affiliate IDs on the existing deep links</b>Hotels, flights, rental cars and tours</td><td>Guests already click Booking.com, Expedia, Kayak, GetYourGuide and Viator from every page. Adding partner IDs where those programs accept the site turns current traffic into revenue with no UI change.</td><td><span class="tag s">S</span></td><td>None. Needs program approvals.</td></tr>
+<tr><td class="n">3</td><td><b>QR code and printable insert card</b></td><td>Invitations, race packets and conference badges are still paper. A QR code that opens the page, on a small printable card, is how most guests will arrive.</td><td><span class="tag s">S</span></td><td>None. Works in the browser.</td></tr>
+<tr><td class="n">4</td><td><b>Import a schedule from .ics or CSV</b></td><td>Race directors and conference teams already have the agenda in a calendar or spreadsheet. Retyping it is the most tedious part of setup.</td><td><span class="tag s">S</span></td><td>None</td></tr>
+<tr><td class="n">5</td><td><b>Built-in RSVP and registration</b>Name, count, meal or shirt size; export to CSV</td><td>Collecting replies is a planner's main job; today Eventpages can only link out to another tool. Built-in replies also give organizers a reason to return.</td><td><span class="tag m">M</span></td><td><span class="tag srv">Server</span> Storage plus privacy handling for guest data.</td></tr>
+<tr><td class="n">6</td><td><b>Live updates</b>Pinned announcements plus a calendar feed guests subscribe to</td><td>Weather moves, venues change and start times shift. One update reaches every guest's page and calendar without a new link. Depends on idea 1.</td><td><span class="tag m">M</span></td><td><span class="tag srv">Server</span> Small</td></tr>
+<tr><td class="n">7</td><td><b>Organizer insights</b>Views, room-block and RSVP clicks, where guests are flying from (in aggregate)</td><td>Helps a planner decide whether to extend a room block or add a shuttle. This is the clearest reason to pay.</td><td><span class="tag m">M</span></td><td><span class="tag srv">Server</span> Event counts, no personal data</td></tr>
+<tr><td class="n">8</td><td><b>Planner tier</b>Multi-event dashboard, client handoff, logo, custom domain, no Eventpages footer</td><td>The paid product for wedding planners and event agencies that run many events a year.</td><td><span class="tag l">L</span></td><td><span class="tag srv">Server</span> Accounts and billing</td></tr>
+<tr><td class="n">9</td><td><b>Accessibility and arrival block</b>Step-free entrance, accessible parking, nearest accessible station</td><td>Questions guests ask organizers again and again. OpenStreetMap already has wheelchair tags for many stations and venues.</td><td><span class="tag s">S</span></td><td>None</td></tr>
+<tr><td class="n">10</td><td><b>Multilingual guest view</b></td><td>Destination weddings and international races have guests in two or three languages. Translating the interface is cheap; translations of the organizer's own text would be optional.</td><td><span class="tag m">M</span></td><td>None</td></tr>
+<tr><td class="n">11</td><td><b>Guest ride-share and transfer board</b></td><td>Splitting airport transfers is valuable for remote venues, but it needs moderation and contact-sharing rules.</td><td><span class="tag l">L</span></td><td><span class="tag srv">Server</span> Moderation</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ============ PART 2 ============ -->
+<h2 id="audit">2 · Audit of the current app</h2>
+<p>The audit used the live site with the Tulum wedding example and a new wedding in the editor, at desktop and phone widths. The figures below were measured on that page.</p>
+<div class="stats">
+  <div class="stat"><b>14</b><span>sections on the guest page, each with its own pill in the top nav</span></div>
+  <div class="stat"><b>11.6</b><span>phone screens to scroll the guest page (9,788 px)</span></div>
+  <div class="stat"><b>7</b><span>"directions" links across three places</span></div>
+  <div class="stat"><b>4</b><span>date fields for the same two trip dates</span></div>
+  <div class="stat"><b>87</b><span>controls in the editor for a blank wedding, in 9 groups</span></div>
+</div>
+
+<h3>Guest page: one long scroll</h3>
+<div class="strip">
+  <figure><img class="shot" src="img/guest-strip.jpg" alt="The full guest page on a phone, scaled down"><figcaption>The whole page on a phone, to scale.</figcaption></figure>
+  <div>
+    <ul class="tight">
+      <li><b>What a guest needs on the day</b> (time, place, directions, next item) sits on the same scroll as things needed weeks earlier (flights, hotels, packing).</li>
+      <li><b>The top navigation</b> is 14 pills in a sideways-scrolling row. On example pages the "Example page" bar overlaps it (visible in the screenshots below).</li>
+      <li><b>The "Where to stay" section</b> lists 8 hotels with 2 to 3 buttons each before the guest reaches the food section. The wedding's room block, the hotel the couple actually wants guests in, lives in a different section.</li>
+      <li><b>Three sections cover getting there.</b> "Getting there", "Getting around" and "Map" each describe how to reach the venue, in different ways.</li>
+    </ul>
+    <div class="phones two">
+      <figure><img class="shot" src="img/before-guest-mobile-top.jpg" alt="Current guest page top on a phone"><figcaption>First screen on a phone: a good start.</figcaption></figure>
+      <figure><img class="shot" src="img/before-guest-mobile-nav.jpg" alt="Sticky navigation overlapped by the example bar"><figcaption>Scrolling: the section nav is hidden under the example bar.</figcaption></figure>
+    </div>
+  </div>
+</div>
+
+<h3>Overlaps</h3>
+<div class="card scroll">
+<table class="olap">
+<thead><tr><th>Topic</th><th>Where it appears today</th><th>Problem</th></tr></thead>
+<tbody>
+<tr><td>Directions</td><td>Ticket "Directions" button · Getting there (Driving, Transit) · Getting around (Transit, Walk, Bike, Drive)</td><td>Same destination, three places, different defaults</td></tr>
+<tr><td>Transit</td><td>Getting there → Transit · Getting around → stations list · Map → Transit layer</td><td>The filter's "Transit" pill only covers part of it</td></tr>
+<tr><td>Trip dates</td><td>Getting there (Arrive / Leave) · Where to stay (Check in / Check out)</td><td>Same values entered twice</td></tr>
+<tr><td>Hotels</td><td>Where to stay list · Map hotel layer · Wedding details → Room block</td><td>The organizer's recommended hotel isn't next to the other hotels</td></tr>
+<tr><td>Schedule</td><td>Schedule · My itinerary (repeats the whole schedule once a booking is added) · Conference "Full agenda" link</td><td>The schedule appears twice on the same page</td></tr>
+<tr><td>Calendar</td><td>Ticket "Add to calendar" · "Save the date" section · Itinerary "Add to calendar"</td><td>Three buttons, two different files</td></tr>
+<tr><td>Links and notes</td><td>"Details" section (RSVP, Registry, Dress code, Parking shortcuts) · type fields (RSVP, Registry, Dress code, Parking)</td><td>Organizers can enter the dress code in two places, and guests then see it twice</td></tr>
+</tbody>
+</table>
+</div>
+<div class="ba">
+  <figure><img class="shot" src="img/before-schedule.jpg" alt="Schedule section"><figcaption>The Schedule section…</figcaption></figure>
+  <figure><img class="shot" src="img/before-itinerary.jpg" alt="My itinerary repeating the schedule"><figcaption>…and My itinerary after one hotel is added: the same schedule again.</figcaption></figure>
+</div>
+
+<h3>Editor: everything at once</h3>
+<div class="strip">
+  <figure><img class="shot" src="img/editor-strip.jpg" alt="The full editor on a phone, scaled down"><figcaption>The whole editor on a phone, to scale.</figcaption></figure>
+  <div>
+    <ul class="tight">
+      <li><b>One long form with 9 groups</b> (Basics, Wedding details, When, Where, Look, Sections, Schedule, Packing list, Details and links) and 87 controls before anything is filled in.</li>
+      <li><b>Event type is a dropdown</b> inside Basics, but it decides which fields exist and what the page looks like. It should be the first decision, not one field among many.</li>
+      <li><b>The Sections list</b> has 14 rows with checkboxes and up/down arrows. Turning on a section that has no content changes nothing on the page, which looks broken.</li>
+      <li><b>"Details and links"</b> overlaps the type fields (RSVP, Registry, Dress code).</li>
+      <li><b>First run:</b> "Create a page" opens the full form. Publishing needs a title, venue and start date, but nothing marks them as the essentials.</li>
+    </ul>
+    <div class="phones two">
+      <figure><img class="shot" src="img/before-editor-sections.jpg" alt="Sections list in the editor"><figcaption>14 section rows with ordering arrows.</figcaption></figure>
+      <figure><img class="shot" src="img/before-editor-links.jpg" alt="Details and links editor"><figcaption>Details and links: a second place for RSVP, Registry and Dress code.</figcaption></figure>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PROPOSALS ============ -->
+<h2 id="setup">3 · Guided setup: four screens, then done</h2>
+<p>Like setting up a new phone: one question per screen, a progress bar, Back and Skip. It asks only what a page can't work without. Everything else gets a sensible default and can be added later from the gallery (section 4). A ticket preview on the phone, and a live page preview on desktop, fills in as the organizer answers.</p>
+<div class="card">
+<ol class="tight" style="margin-top:0">
+  <li><b>What are you planning?</b> Six cards. This sets the type fields, theme, suggested cards and which guest tools are on.</li>
+  <li><b>What's it called, and when?</b> Name, date and start time; end time is optional.</li>
+  <li><b>Where is it?</b> Venue search. This alone turns on weather, travel, stays, nearby places and the map. Skip shows "Venue to be announced".</li>
+  <li><b>Your page is ready.</b> Share, QR code, and the three most useful next additions for this event type. Tapping Share is where the account prompt appears (section 9).</li>
+</ol>
+<p class="note" style="margin-bottom:0">Moved out of setup and given defaults: cover photo and colors (a theme per type), RSVP and dress code (suggested first in the gallery), schedule, notes and section order (a fixed, sensible order per type).</p>
+</div>
+<span class="steplbl">Phone</span>
+<div class="phones">
+  <figure><span class="steplbl">1 · Type</span><img class="shot" src="img/setup-1-mob.jpg" alt="Setup step 1, choose event type"></figure>
+  <figure><span class="steplbl">2 · Name and date</span><img class="shot" src="img/setup-2-mob.jpg" alt="Setup step 2, name and date"></figure>
+  <figure><span class="steplbl">3 · Venue</span><img class="shot" src="img/setup-3-mob.jpg" alt="Setup step 3, venue search"></figure>
+  <figure><span class="steplbl">4 · Done</span><img class="shot" src="img/setup-4-mob.jpg" alt="Setup step 4, page ready"></figure>
+</div>
+<span class="steplbl">Desktop, with live preview</span>
+<div class="desks">
+  <figure><span class="steplbl">1 · Type</span><img class="shot" src="img/setup-1-desk.jpg" alt="Setup step 1 on desktop"></figure>
+  <figure><span class="steplbl">2 · Name and date</span><img class="shot" src="img/setup-2-desk.jpg" alt="Setup step 2 on desktop"></figure>
+  <figure><span class="steplbl">3 · Venue</span><img class="shot" src="img/setup-3-desk.jpg" alt="Setup step 3 on desktop"></figure>
+  <figure><span class="steplbl">4 · Done</span><img class="shot" src="img/setup-4-desk.jpg" alt="Setup step 4 on desktop"></figure>
+</div>
+<div class="desks" style="grid-template-columns: minmax(0,300px) 1fr">
+  <figure><span class="steplbl">At Share · phone</span><img class="shot" src="img/setup-5-mob.jpg" alt="Account prompt at share on a phone"></figure>
+  <figure><span class="steplbl">At Share · desktop</span><img class="shot" src="img/setup-5-desk.jpg" alt="Account prompt at share on desktop"></figure>
+</div>
+<div class="ba">
+  <div class="before"><span class="kicker">Before · first screen after "Create a page"</span><img class="shot" src="img/before-editor-mobile-top.jpg" alt="Current editor first screen"></div>
+  <div class="after"><span class="kicker">After · first screen</span><img class="shot" src="img/setup-1-mob.jpg" alt="Proposed first setup screen"></div>
+</div>
+
+<h2 id="add">4 · "Add to your page": grow the page one card at a time</h2>
+<p>After setup, organizers add things the same way they add widgets on a phone. A gallery of cards puts the ones for this event type first. Each card opens a short form of two to four fields in a bottom sheet (phone) or dialog (desktop), and the card shows a check once it's on the page. Automatic guest tools are simple on/off switches, with no ordering to manage.</p>
+<p>This one pattern replaces three things in today's editor: the 14-row Sections list, the "Details and links" editor, and the always-visible type fields.</p>
+<div class="phones">
+  <figure><span class="steplbl">Gallery</span><img class="shot" src="img/add-gallery-mob.jpg" alt="Add to your page gallery on a phone"></figure>
+  <figure><span class="steplbl">Tap "Room block"</span><img class="shot" src="img/add-sheet-mob.jpg" alt="Room block form in a bottom sheet"></figure>
+  <figure><span class="steplbl">Before · Sections</span><img class="shot" src="img/before-editor-sections.jpg" alt="Current sections list"></figure>
+  <figure><span class="steplbl">Before · Links</span><img class="shot" src="img/before-editor-links.jpg" alt="Current details and links editor"></figure>
+</div>
+<div class="desks">
+  <figure><span class="steplbl">Desktop gallery, page preview on the right</span><img class="shot" src="img/add-gallery-desk.jpg" alt="Add to your page gallery on desktop"></figure>
+  <figure><span class="steplbl">Desktop: one focused form</span><img class="shot" src="img/add-sheet-desk.jpg" alt="Room block dialog on desktop"></figure>
+</div>
+<div class="card">
+<b>Cards per type</b> (type-relevant cards first; "For any event" cards are always available)
+<div class="scroll"><table style="margin-top:8px">
+<thead><tr><th>Type</th><th>Suggested first</th></tr></thead>
+<tbody>
+<tr><td>Wedding</td><td><span class="pill">RSVP</span><span class="pill">Room block</span><span class="pill">Dress code</span><span class="pill">Registry</span></td></tr>
+<tr><td>Race</td><td><span class="pill">Start and finish</span><span class="pill">Packet pickup</span><span class="pill">Course map</span><span class="pill">Spectator spots</span><span class="pill">Road closures</span></td></tr>
+<tr><td>Conference</td><td><span class="pill">Badge pickup</span><span class="pill">Schedule</span><span class="pill">Speakers</span><span class="pill">Import agenda</span></td></tr>
+<tr><td>Concert or festival</td><td><span class="pill">Set times</span><span class="pill">Bag policy</span><span class="pill">Rideshare pickup</span><span class="pill">Tickets</span></td></tr>
+<tr><td>Game day</td><td><span class="pill">Seating chart</span><span class="pill">Tailgating</span><span class="pill">Parking</span><span class="pill">Bag policy</span></td></tr>
+<tr><td>Any event</td><td><span class="pill">Schedule</span><span class="pill">Notes for guests</span><span class="pill">Cover and colors</span><span class="pill">Must-bring items</span></td></tr>
+</tbody></table></div>
+</div>
+
+<h2 id="guest">5 · Guest side: what you see first, and what's one tap away</h2>
+<p>The same principle applies to guests. The first screen answers <i>what, when, where</i> and gives the three actions guests take most: add to calendar, directions, RSVP. Everything else sits in four tabs (a bottom bar on phones, a top bar on desktop), each short enough to scan.</p>
+<div class="card">
+<div class="scroll"><table>
+<thead><tr><th>Tab</th><th>Contains</th><th>Replaces today's</th></tr></thead>
+<tbody>
+<tr><td><b>Event</b></td><td>Ticket (date, time, venue, three actions) · Need to know (type details and notes) · Schedule</td><td>About, Wedding details, Details, Schedule, Save the date</td></tr>
+<tr><td><b>Travel</b></td><td>Trip bar (from, dates, guests) · mode pills · Flights · Rental car · Where to stay with the room block first, 3 hotels and "All 8"</td><td>Getting there, Where to stay, the transit and drive parts of Getting around</td></tr>
+<tr><td><b>Nearby</b></td><td>Map · Eat and drink · Things to do · Stations, walk and bike</td><td>Map, Eat &amp; drink, Tours, the rest of Getting around</td></tr>
+<tr><td><b>My trip</b></td><td>The schedule with the guest's own bookings mixed in · one "Add to calendar" · Packing list (collapsed, with progress)</td><td>My itinerary, Packing list, the itinerary calendar button</td></tr>
+</tbody></table></div>
+</div>
+<div class="ba">
+  <div class="before"><span class="kicker">Before · one scroll, 14 sections</span><img class="shot" src="img/before-guest-mobile-top.jpg" alt="Current guest page on a phone"></div>
+  <div class="after"><span class="kicker">After · Event tab</span><img class="shot" src="img/after-m1-tabs.jpg" alt="Proposed Event tab"></div>
+</div>
+<div class="ba">
+  <div class="before"><span class="kicker">Before · Getting there and Where to stay</span><div class="ba" style="margin:0;gap:10px"><img class="shot" src="img/before-travel.jpg" alt="Current Getting there section"><img class="shot" src="img/before-stay.jpg" alt="Current Where to stay section"></div></div>
+  <div class="after"><span class="kicker">After · Travel tab</span><img class="shot" src="img/after-m2-travel.jpg" alt="Proposed Travel tab"></div>
+</div>
+<div class="ba">
+  <div class="before"><span class="kicker">Before · Schedule and My itinerary are separate</span><img class="shot" src="img/before-itinerary.jpg" alt="Current itinerary"></div>
+  <div class="after"><span class="kicker">After · My trip tab</span><img class="shot" src="img/after-m3-mytrip.jpg" alt="Proposed My trip tab"></div>
+</div>
+
+<h2 id="merge">6 · Consolidations</h2>
+<div class="card scroll">
+<table class="olap">
+<thead><tr><th>Area</th><th>Change</th></tr></thead>
+<tbody>
+<tr><td>Trip bar</td><td>One "from, dates, guests" bar at the top of Travel. Flights, rental cars and hotel searches all read from it. The duplicate check-in and check-out fields go away.</td></tr>
+<tr><td>Directions</td><td>One Directions button on the ticket that opens the guest's chosen mode. The Travel and Nearby tabs link to it and stop repeating it.</td></tr>
+<tr><td>Room block</td><td>Shown first inside Where to stay, highlighted, instead of in the type details.</td></tr>
+<tr><td>Hotels and food lists</td><td>Show 3, then "All 8". Two buttons per row: one primary action plus Maps.</td></tr>
+<tr><td>Schedule and itinerary</td><td>One timeline. Guest bookings are tinted and tagged "Yours", with an "Everything / Event only" switch. One calendar export that can include bookings.</td></tr>
+<tr><td>Notes and links</td><td>One "Notes for guests" card for anything not covered by a type card. RSVP, Registry and Dress code exist only as type cards.</td></tr>
+<tr><td>Calendar</td><td>The ticket button and My trip's button remain; the "Save the date" section goes away.</td></tr>
+<tr><td>Packing list</td><td>Collapsed into one row with progress (6 of 15) under My trip. Host items replace a matching automatic item instead of adding a near-duplicate.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="defaults">7 · Smart defaults per event type</h2>
+<p>Setup chooses these so an organizer who answers four screens still gets a page that fits the event.</p>
+<div class="card scroll">
+<table>
+<thead><tr><th>Type</th><th>Look</th><th>Guest tools on</th><th>Off by default</th></tr></thead>
+<tbody>
+<tr><td>Wedding</td><td>Teal · editorial serif · light</td><td>Weather, Travel, Stay, Nearby, My trip, Packing</td><td>—</td></tr>
+<tr><td>Race</td><td>Green · wide · light</td><td>Weather, Travel, Stay, My trip, Packing</td><td>Things to do</td></tr>
+<tr><td>Conference</td><td>Blue · grotesk · light</td><td>Travel, Stay, Nearby, My trip</td><td>Packing</td></tr>
+<tr><td>Concert or festival</td><td>Orange · poster · dark</td><td>Weather, Travel, Nearby, My trip, Packing</td><td>Stay (on for festivals of more than one day)</td></tr>
+<tr><td>Game day</td><td>Magenta · poster · dark</td><td>Weather, Travel, Nearby, My trip</td><td>Stay, Packing</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="editor">8 · The editor after setup</h2>
+<p>Returning organizers get a short checklist instead of the long form. Each group is collapsed and shows its status (done, partly done, empty) and a one-line summary, and only one group is open at a time. Guest tools appear as a single "Automatic" row. The live preview stays on the right on desktop; on phones it is one tap away.</p>
+<div class="ba">
+  <div class="before"><span class="kicker">Before</span><img class="shot" src="img/before-editor-desktop.jpg" alt="Current editor on desktop"></div>
+  <div class="after"><span class="kicker">After</span><img class="shot" src="img/after-m5-editor.jpg" alt="Proposed checklist editor"></div>
+</div>
+
+<h2 id="accounts">9 · Accounts: build first, sign up later</h2>
+<p>No account is needed to try Eventpages. Setup, the gallery and the editor all work with the draft saved on the device, as they do today. The prompt appears only when it gives something back:</p>
+<ul class="tight">
+  <li><b>At Share or Publish:</b> "Keep your page. Edit it from any device and keep the same link." The options are Apple, Google or email, plus "Not now, copy the link", which keeps today's link-only behavior.</li>
+  <li><b>In the editor:</b> a quiet "Save to use on other devices" row.</li>
+  <li><b>On sign-in,</b> the local draft moves into the account unchanged. Nothing is retyped and nothing is lost.</li>
+</ul>
+<p>This needs the server from idea 1. The same server also enables editing from several devices, the organizer dashboard, the paid tier and the iPhone app.</p>
+
+<h2 id="iphone">10 · Path to an iPhone app</h2>
+<div class="card">
+<b>Two routes</b>
+<div class="scroll"><table style="margin-top:8px">
+<thead><tr><th>Route</th><th>What it means</th><th>Trade-off</th></tr></thead>
+<tbody>
+<tr><td><b>Wrap the web app</b> (for example Capacitor)</td><td>The existing HTML/JS runs inside a native iOS shell, and native plugins and native extensions are added around it.</td><td>Most code is shared with the website, so the app ships much sooner. The risk is App Store rejection if the app feels like a website in a box (see below).</td></tr>
+<tr><td><b>Native rewrite</b> (SwiftUI)</td><td>A separate iOS app that talks to the same server.</td><td>Best feel and full platform access, but a second codebase to build and maintain. Worth it later, if the app becomes the main way guests use Eventpages.</td></tr>
+</tbody></table></div>
+<p style="margin-bottom:0"><b>Recommendation:</b> wrap first, and add real native features from day one so the app clears review. Rewrite only if usage justifies it.</p>
+</div>
+<h3>App Store risk: guideline 4.2, "Minimum Functionality"</h3>
+<p>Apple's review guidelines say an app should offer more than a repackaged website. A thin wrapper around Eventpages would be at risk. How strictly reviewers apply this varies and can't be known in advance <span class="tag">uncertain</span>. The usual way to clear it is native features a website can't offer. Ones that fit Eventpages:</p>
+<div class="card scroll">
+<table>
+<thead><tr><th>Native feature</th><th>For whom</th><th>Needs</th></tr></thead>
+<tbody>
+<tr><td><b>Push notifications for schedule changes</b></td><td>Guests: "Ceremony moved to 5:00 PM"</td><td>Server plus Apple push setup; pairs with idea 6</td></tr>
+<tr><td><b>Offline itinerary</b></td><td>Guests without signal at the venue or abroad</td><td>Local storage in the app; the web version already caches pages offline</td></tr>
+<tr><td><b>Apple Wallet pass</b> for the event</td><td>Guests: date, venue, and a reminder on the lock screen</td><td>Passes must be signed with an Apple developer certificate, so on the server</td></tr>
+<tr><td><b>Share-sheet import of confirmations</b></td><td>Guests: share a hotel or flight email from Mail straight into My trip</td><td>A native share extension that feeds the existing <code>parseReservation</code> function</td></tr>
+<tr><td><b>Home-screen widget</b> and <b>Live Activity</b> on event day</td><td>Guests: countdown and "next up" on the home and lock screen</td><td>Native Swift code (WidgetKit, ActivityKit). Live Activities have a time limit, about 8 hours <span class="tag">verify against current Apple docs</span></td></tr>
+</tbody>
+</table>
+</div>
+<h3>What to build now so the port is cheap</h3>
+<ul class="tight">
+  <li><b>Server and accounts</b> (ideas 1 and 5, section 9). Push, Wallet passes, syncing and in-app sign-in all depend on them.</li>
+  <li><b>A clean, versioned event data model.</b> Event config, guest bookings and packing state as documented JSON that the server, website and app all read the same way. The event already carries a version field (<code>v: 1</code>).</li>
+  <li><b>Keep parsing behind one function.</b> <code>parseReservation</code> already is, so the share extension can reuse it or a server version of it.</li>
+  <li><b>A domain you control</b> (e.g. eventpages.app). Universal links, which open event links directly in the app, need a verification file served from the domain. A custom domain makes that straightforward.</li>
+  <li><b>Separate business logic from page rendering</b>, so a native screen can be swapped in later without rewriting the rules.</li>
+</ul>
+<p class="note">Other things to know: Apple's developer program has an annual fee ($99 per year for individuals and companies). If the app offers Google sign-in, Apple's rules require an equivalent privacy-focused option, which in practice means Sign in with Apple <span class="tag">check the current wording of guideline 4.8</span>.</p>
+
+<h3>Small fixes that need no redesign</h3>
+<ul class="tight">
+  <li>The example-page bar overlaps the sticky section nav on phones.</li>
+  <li>Trip dates appear twice (Getting there and Where to stay).</li>
+  <li>Turning on a section with no content does nothing visible. Hide that toggle until the section has content, or show it as "add details".</li>
+  <li>The title and tagline placeholders always show the wedding example ("Maya &amp; Theo") whatever the event type.</li>
+</ul>
+
+<h3>Suggested order</h3>
+<ol class="tight">
+  <li>Guided setup and the "Add to your page" gallery (no server).</li>
+  <li>Guest tabs and the consolidations (no server).</li>
+  <li>Affiliate IDs, QR card and .ics/CSV import (no server).</li>
+  <li>Hosted short links with sign-up at Share, then RSVP, live updates and insights (small server), which together lead into the planner tier.</li>
+  <li>iPhone app: wrap the web app, adding push for schedule changes, Wallet pass, share-sheet import and an event-day widget.</li>
+</ol>
+
+<footer>Mockups are static images of proposed screens, built on the current Eventpages styles. "Before" images are screenshots of the live app with the Tulum wedding example.</footer>
+</main>
+</body>
+</html>

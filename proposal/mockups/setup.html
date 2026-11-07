@@ -1,0 +1,95 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="m.css"><style>
+:root { --accent: #3048F0; }
+body { background: var(--fog); }
+.wrap { position: relative; }
+.mob { width: 390px; height: 844px; padding: 18px 18px 22px; display: flex; flex-direction: column; }
+.desk { width: 1280px; height: 800px; display: grid; grid-template-columns: 520px 1fr; }
+.desk .q { padding: 34px 44px; display: flex; flex-direction: column; }
+.prog { display: flex; gap: 5px; margin-bottom: 18px; } .prog i { flex: 1; height: 4px; border-radius: 2px; background: #D3D7DF; } .prog i.on { background: var(--accent); }
+.topq { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.topq .back { font-weight: 600; color: var(--muted); font-size: .9rem; } .topq .skip { font-weight: 600; color: var(--accent); font-size: .9rem; }
+h1 { font: 800 1.85rem/1.08 'Bricolage Grotesque', sans-serif; letter-spacing: -.02em; margin: 6px 0 20px; }
+.desk h1 { font-size: 2.4rem; }
+.inp { background: #fff; border: 2px solid var(--line); border-radius: 14px; padding: 13px 14px; font-size: 1.05rem; margin-bottom: 12px; }
+.inp.focus { border-color: var(--accent); } .inp.ph { color: #9AA1AF; }
+.inp small { display: block; font: 600 .62rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.res { background: #fff; border-radius: 14px; overflow: hidden; }
+.res div { padding: 11px 14px; border-top: 1px solid var(--line); } .res div:first-child { border-top: 0; background: color-mix(in srgb, var(--accent) 8%, white); }
+.res b { display: block; font-size: .95rem; } .res span { font-size: .8rem; color: var(--muted); }
+.grow { flex: 1; }
+.cta .btn { width: 100%; min-height: 52px; font-size: 1.02rem; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.t { background: #fff; border-radius: 16px; padding: 13px; min-height: 100px; display: flex; flex-direction: column; justify-content: space-between; border: 2px solid transparent; }
+.t b { font-size: 1rem; } .t span { font-size: .76rem; color: var(--muted); } .t.on { border-color: var(--accent); } .t i { width: 28px; height: 28px; border-radius: 8px; display: block; }
+.sw { display: flex; gap: 10px; margin: 4px 0 16px; } .sw i { width: 38px; height: 38px; border-radius: 50%; display: block; } .sw i.on { box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--ink); }
+.covers { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 14px; } .covers div { height: 74px; border-radius: 12px; background-size: cover; background-position: center; border: 3px solid transparent; } .covers .on { border-color: var(--ink); }
+.covers .up { background: #fff; display: grid; place-items: center; font-weight: 600; font-size: .8rem; color: var(--muted); border: 2px dashed var(--line); }
+/* mini ticket preview (mobile) */
+.mt { display: grid; grid-template-columns: 1fr 76px; background: #fff; border-radius: 14px; box-shadow: 0 10px 26px -14px rgba(0,0,0,.35); margin: 12px 0 14px; border-left: 5px solid var(--acc, var(--accent)); overflow: hidden; }
+.mt > div { padding: 11px 13px; } .mt .r { border-left: 2px dashed var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.mt b { display: block; font: 700 1.05rem/1.15 var(--disp, 'Bricolage Grotesque'); } .mt span { display: block; font-size: .78rem; color: var(--muted); }
+.mt .r b { font: 600 1.25rem var(--mono); color: var(--acc, var(--accent)); } .ghost { color: #B8BDC8 !important; }
+.lbl2 { font: 600 .6rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+/* desktop live preview */
+.pv { margin: 26px 26px 26px 0; background: #fff; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 44px -22px rgba(0,0,0,.35); position: relative; }
+.pv .tag { position: absolute; top: 14px; right: 14px; z-index: 3; font: 600 .62rem var(--mono); letter-spacing: .08em; text-transform: uppercase; background: rgba(255,255,255,.9); padding: 4px 8px; border-radius: 6px; color: var(--muted); }
+.ph-hero { height: 300px; background: var(--acc, #3048F0); background-size: cover; background-position: center; position: relative; color: #fff; }
+.ph-hero.cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(transparent 35%, rgba(0,0,0,.55)); }
+.ph-hero div { position: absolute; left: 34px; bottom: 70px; z-index: 1; }
+.ph-hero p { margin: 0; font: 600 .7rem var(--mono); letter-spacing: .1em; text-transform: uppercase; opacity: .9; }
+.ph-hero h2 { margin: 4px 0 0; font: 700 3rem/1 var(--disp, 'Bricolage Grotesque'); }
+.stub { margin: -46px 30px 0; position: relative; z-index: 2; background: #fff; border-radius: 16px; box-shadow: 0 14px 30px -16px rgba(0,0,0,.35); display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 14px; padding: 18px 20px; }
+.stub b { display: block; font-size: 1rem; }
+.secs { padding: 22px 30px; display: grid; gap: 10px; }
+.secs .s { background: var(--chip); border-radius: 14px; padding: 14px 16px; } .secs .s b { font: 700 1.05rem var(--disp, 'Bricolage Grotesque'); display: block; margin-bottom: 4px; }
+.secs .s span { font-size: .85rem; color: var(--muted); }
+.secs .new { outline: 2px solid var(--acc, var(--accent)); background: #fff; }
+.done-ic { width: 64px; height: 64px; border-radius: 50%; background: #2E7D32; color: #fff; display: grid; place-items: center; font-size: 2rem; margin: 10px 0 6px; }
+.link { background: #fff; border-radius: 14px; padding: 12px 14px; font: 500 .8rem var(--mono); color: var(--muted); display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.later { background: #fff; border-radius: 14px; } .later div { display: flex; justify-content: space-between; padding: 12px 14px; border-top: 1px solid var(--line); font-weight: 600; font-size: .93rem; } .later div:first-child { border-top: 0; } .later span { color: var(--accent); }
+.dim { position: absolute; inset: 0; background: rgba(18,20,27,.45); z-index: 5; }
+.acct { position: absolute; z-index: 6; background: #fff; padding: 12px 20px 26px; left: 0; right: 0; bottom: 0; border-radius: 22px 22px 0 0; }
+.desk .acct { left: 50%; top: 50%; right: auto; bottom: auto; width: 480px; transform: translate(-50%, -50%); border-radius: 22px; padding: 26px 28px; }
+.acct .grab { width: 40px; height: 5px; border-radius: 3px; background: #D3D7DF; margin: 0 auto 14px; }
+.acct h2 { font: 800 1.45rem/1.1 'Bricolage Grotesque'; margin: 0 0 6px; } .acct p { margin: 0 0 16px; color: var(--muted); font-size: .92rem; }
+.acct .b { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 50px; border-radius: 999px; font-weight: 650; margin-bottom: 9px; border: 1.5px solid var(--line); }
+.acct .apple { background: #000; color: #fff; border-color: #000; } .acct .later2 { border: 0; color: var(--muted); margin: 4px 0 0; min-height: 36px; }
+</style></head><body><div id="root"></div>
+<script>
+const [step, mode] = location.hash.slice(1).split(',');
+const RAW = +step; const S = Math.min(RAW, 3); const desk = mode === 'desk';
+const COVER = "https://upload.wikimedia.org/wikipedia/commons/thumb/f/ff/Mexico_-_beach_by_Tulum%2C_2022.jpg/1280px-Mexico_-_beach_by_Tulum%2C_2022.jpg";
+const st = { type: S >= 1 ? 'Wedding' : '', title: S >= 2 ? 'Maya & Theo' : '', date: S >= 2 ? 'Sat, Mar 13, 2027' : '', time: S >= 2 ? '4:30 PM' : '', venue: S >= 3 ? 'Playa Paraíso, Tulum' : '', code: S >= 3 ? 'TQO' : '',
+  rsvp: false, look: S >= 3 };
+const acc = st.look ? '#0B7A75' : '#3048F0'; const disp = st.look ? "'Fraunces', Georgia, serif" : "'Bricolage Grotesque'";
+document.documentElement.style.setProperty('--acc', acc); document.documentElement.style.setProperty('--disp', disp);
+const prog = `<div class="prog">${[1,2,3,4].map(i => `<i class="${i <= S + 1 ? 'on' : ''}"></i>`).join('')}</div>`;
+const topBar = (skip) => `<div class="topq"><span class="back">${S ? '← Back' : ''}</span>${skip ? '<span class="skip">Skip</span>' : ''}</div>`;
+const steps = [
+  { q: 'What are you planning?', body: `<div class="grid">
+    <div class="t on"><i style="background:#0B7A75"></i><div><b>Wedding</b><br><span>RSVP, room block, dress code</span></div></div>
+    <div class="t"><i style="background:#2E7D32"></i><div><b>Race</b><br><span>Start, finish, packet pickup</span></div></div>
+    <div class="t"><i style="background:#3048F0"></i><div><b>Conference</b><br><span>Badges, agenda, speakers</span></div></div>
+    <div class="t"><i style="background:#FF6B35"></i><div><b>Concert or festival</b><br><span>Doors, set times, bags</span></div></div>
+    <div class="t"><i style="background:#C2185B"></i><div><b>Game day</b><br><span>Seats, tailgating, parking</span></div></div>
+    <div class="t"><i style="background:#1F2937"></i><div><b>Something else</b><br><span>Party, retreat, reunion</span></div></div></div>`, cta: 'Continue' },
+  { q: 'What’s it called, and when?', body: `<div class="inp focus"><small>Name</small>Maya &amp; Theo</div><div class="two"><div class="inp"><small>Date</small>Mar 13, 2027</div><div class="inp"><small>Starts</small>4:30 PM</div></div><div class="inp ph"><small>Ends</small>Optional</div>`, cta: 'Continue' },
+  { q: 'Where is it?', body: `<div class="inp focus">Playa Paraíso Tulum</div><div class="res"><div><b>Playa Paraíso</b><span>Tulum, Quintana Roo, México</span></div><div><b>Paraíso Beach Club</b><span>Carretera Tulum-Boca Paila, Tulum</span></div><div><b>Hotel Playa Paraíso</b><span>Playa del Carmen, Quintana Roo</span></div></div>`, cta: 'Continue', skip: true },
+  { q: 'Your page is ready', body: `<div class="done-ic">✓</div><div class="link">eventpages…/#e=N4Ig…<b style="color:var(--ink)">Copy</b></div>
+     <div class="two" style="margin-bottom:18px"><span class="btn primary" style="background:#0B7A75;border-color:#0B7A75">Share</span><span class="btn">QR code</span></div>
+     <div class="lbl" style="margin-bottom:6px">Add to your page</div><div class="later"><div>RSVP<span>+ Add</span></div><div>Schedule<span>+ Add</span></div><div>Room block<span>+ Add</span></div><div>See all<span>→</span></div></div>`, cta: 'View my page', ghostCta: true }
+];
+const s = steps[S];
+const ticket = `<div class="mt"><div><span class="lbl2">${st.type || 'Event'}${st.venue ? ' · Tulum' : ''}</span><b class="${st.title ? '' : 'ghost'}">${st.title || 'Your event'}</b><span class="${st.date ? '' : 'ghost'}">${st.date || 'Date'}${st.time ? ' · ' + st.time : ''}</span><span class="${st.venue ? '' : 'ghost'}">${st.venue || 'Venue'}</span></div><div class="r"><span class="lbl2">Fly into</span><b class="${st.code ? '' : 'ghost'}">${st.code || '···'}</b></div></div>`;
+const cta = `<div class="cta"><span class="btn ${s.ghostCta ? '' : 'primary'}">${s.cta}</span></div>`;
+const preview = `<div class="pv"><span class="tag">Live preview</span>
+  <div class="ph-hero"><div><p>${st.type || 'Event'}${st.venue ? ' · Tulum' : ''}</p><h2>${st.title || '<span style="opacity:.5">Your event</span>'}</h2></div></div>
+  <div class="stub"><div><span class="lbl2">Date</span><b>${st.date || '<span class="ghost">—</span>'}</b></div><div><span class="lbl2">Time</span><b>${st.time || '<span class="ghost">—</span>'}</b></div><div><span class="lbl2">Venue</span><b>${st.venue || '<span class="ghost">To be announced</span>'}</b></div></div>
+  <div class="secs">${st.rsvp ? `<div class="s ${S === 4 ? '' : ''}${S === 3 ? 'new' : ''}"><b>Wedding details</b><span>RSVP by Jan 15 · Dress code: Beach formal</span></div>` : ''}
+    ${st.venue ? `<div class="s ${S === 2 ? 'new' : ''}"><b>Travel, stay and nearby</b><span>Flights into TQO and CUN, hotels, weather, map. Added automatically.</span></div>` : ''}</div></div>`;
+const acct = RAW === 4 ? `<div class="dim"></div><div class="acct">${desk ? '' : '<div class="grab"></div>'}<h2>Keep your page</h2><p>Edit it from any device and keep the same link.</p><div class="b apple"> Continue with Apple</div><div class="b">Continue with Google</div><div class="b">Continue with email</div><div class="b later2">Not now, copy the link</div></div>` : '';
+document.getElementById('root').innerHTML = (desk
+  ? `<div class="desk"><div class="q">${prog}${topBar(s.skip)}<h1>${s.q}</h1>${s.body}<div class="grow"></div>${cta}</div>${preview}</div>`
+  : `<div class="mob">${prog}${topBar(s.skip)}<h1>${s.q}</h1>${s.body}<div class="grow"></div>${S >= 1 && S < 3 ? ticket : ''}${cta}</div>`).replace(/<\/div>$/, acct + '</div>');
+</script></body></html>

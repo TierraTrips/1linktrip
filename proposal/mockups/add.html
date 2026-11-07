@@ -1,0 +1,54 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="m.css"><style>
+:root { --accent: #0B7A75; --b: #3048F0; }
+body { background: var(--fog); }
+.mob { width: 390px; height: 844px; position: relative; overflow: hidden; padding: 16px 14px; }
+.desk { width: 1280px; height: 800px; position: relative; overflow: hidden; display: grid; grid-template-columns: 1fr 1fr; }
+.bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.bar b { font: 700 1.05rem 'Bricolage Grotesque'; }
+h1 { font: 800 1.7rem/1.05 'Bricolage Grotesque'; letter-spacing: -.02em; margin: 2px 0 14px; }
+.grp { font: 600 .66rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 14px 2px 8px; }
+.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.desk .cards { grid-template-columns: 1fr 1fr 1fr; }
+.c { background: #fff; border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 6px; min-height: 92px; position: relative; }
+.c b { font-size: .95rem; } .c span { font-size: .76rem; color: var(--muted); line-height: 1.3; }
+.c .ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 12%, white); color: var(--accent); }
+.c .ic svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.c .plus { position: absolute; top: 10px; right: 10px; width: 24px; height: 24px; border-radius: 50%; background: var(--b); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: .95rem; }
+.c.on .plus { background: #2E7D32; font-size: .75rem; }
+.auto { display: flex; flex-wrap: wrap; gap: 6px; }
+.tg { display: inline-flex; align-items: center; gap: 7px; background: #fff; border-radius: 999px; padding: 6px 10px 6px 8px; font-size: .82rem; font-weight: 600; }
+.tg i { width: 26px; height: 15px; border-radius: 8px; background: #2E7D32; position: relative; } .tg i::after { content: ''; position: absolute; right: 2px; top: 2px; width: 11px; height: 11px; border-radius: 50%; background: #fff; }
+.tg.off i { background: #C9CED8; } .tg.off i::after { right: auto; left: 2px; }
+.dim { position: absolute; inset: 0; background: rgba(18,20,27,.42); }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; background: #fff; border-radius: 22px 22px 0 0; padding: 10px 18px 24px; }
+.desk .sheet { left: 50%; top: 50%; bottom: auto; right: auto; width: 520px; transform: translate(-50%, -50%); border-radius: 22px; padding: 22px 26px 26px; }
+.grab { width: 40px; height: 5px; border-radius: 3px; background: #D3D7DF; margin: 0 auto 12px; }
+.sheet h2 { font: 800 1.4rem 'Bricolage Grotesque'; margin: 0 0 14px; display: flex; justify-content: space-between; align-items: center; }
+.sheet h2 span { font: 600 1.4rem system-ui; color: var(--muted); }
+.f { margin-bottom: 10px; } .f label { display: block; font: 600 .62rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.f div { border: 1.5px solid var(--line); border-radius: 11px; padding: 11px 12px; background: #F8F9FB; font-size: .95rem; } .f .ph { color: #9AA1AF; } .f .fo { border-color: var(--b); background: #fff; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sheet .btn { width: 100%; min-height: 50px; background: var(--b); border-color: var(--b); color: #fff; margin-top: 6px; font-size: 1rem; }
+.pv { margin: 22px; border-radius: 18px; overflow: hidden; background: #fff; box-shadow: 0 18px 40px -20px rgba(0,0,0,.3); }
+.pv img { width: 100%; display: block; }
+.side { padding: 22px 26px; overflow: hidden; }
+</style></head><body><div id="root"></div>
+<script>
+const [view, mode] = location.hash.slice(1).split(',');
+const I = { rsvp: '<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>', dress: '<path d="M9 3l3 3 3-3 3 4-3 2v12H9V9L6 7z"/>', block: '<path d="M3 20V8l9-5 9 5v12"/><path d="M9 20v-6h6v6"/>', gift: '<rect x="3" y="8" width="18" height="13" rx="1"/><path d="M12 8v13M3 12h18M12 8s-4-5-6-3 6 3 6 3 8-1 6-3-6 3-6 3"/>',
+  sched: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', note: '<path d="M5 4h14v16H5z"/><path d="M8 9h8M8 13h8M8 17h5"/>', photo: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-6-5-9 8"/>', bag: '<path d="M6 8h12l-1 12H7z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>', link: '<path d="M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1"/><path d="M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1"/>' };
+const card = (ic, t, d, on) => `<div class="c ${on ? 'on' : ''}"><span class="ic"><svg viewBox="0 0 24 24">${I[ic]}</svg></span><b>${t}</b><span>${d}</span><span class="plus">${on ? '✓' : '+'}</span></div>`;
+const gallery = `<h1>Add to your page</h1>
+  <div class="grp">For weddings</div><div class="cards">${card('rsvp', 'RSVP', 'Link and reply-by date', true)}${card('block', 'Room block', 'Hotel, code, book-by date')}${card('dress', 'Dress code', 'One line guests will see')}${card('gift', 'Registry', 'One or more links')}</div>
+  <div class="grp">For any event</div><div class="cards">${card('sched', 'Schedule', 'Times and places')}${card('note', 'Notes for guests', 'Kids, parking, FAQ')}${card('photo', 'Cover and colors', 'Photo, color, font')}${card('bag', 'Must-bring items', 'Top of the packing list')}</div>
+  <div class="grp">Automatic for guests</div><div class="auto"><span class="tg"><i></i>Weather</span><span class="tg"><i></i>Travel</span><span class="tg"><i></i>Stay</span><span class="tg"><i></i>Nearby</span><span class="tg"><i></i>My trip</span><span class="tg off"><i></i>Tours</span></div>`;
+const sheet = `<div class="dim"></div><div class="sheet">${mode === 'mob' ? '<div class="grab"></div>' : ''}<h2>Room block <span>×</span></h2>
+  <div class="f"><label>Hotel</label><div class="fo">Hotel Esencia</div></div>
+  <div class="f"><label>Booking link</label><div class="ph">https://…</div></div>
+  <div class="two"><div class="f"><label>Group code</label><div>MT2027</div></div><div class="f"><label>Book by</label><div>Feb 1, 2027</div></div></div>
+  <span class="btn">Add to page</span></div>`;
+const head = `<div class="bar"><b>Maya &amp; Theo</b><span class="btn" style="min-height:34px;font-size:.82rem">View page</span></div>`;
+document.getElementById('root').innerHTML = mode === 'mob'
+  ? `<div class="mob">${head}${gallery}${view === 'sheet' ? sheet : ''}</div>`
+  : `<div class="desk"><div class="side">${head}${gallery}</div><div class="pv"><img src="pv.png"></div>${view === 'sheet' ? sheet : ''}</div>`;
+</script></body></html>

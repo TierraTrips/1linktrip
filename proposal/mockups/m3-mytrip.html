@@ -1,0 +1,33 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="m.css"><style>
+.top { padding: 18px 16px 8px; font: 700 1.6rem/1 var(--display); display: flex; justify-content: space-between; align-items: center; }
+.tl li.mine { background: color-mix(in srgb, var(--accent) 8%, white); border-top: 0; border-radius: 12px; padding: 9px 8px; margin: 4px -8px; }
+.tl li.mine time { color: var(--ink); }
+.seg { display: inline-flex; background: var(--chip); border-radius: 999px; padding: 3px; margin-bottom: 4px; }
+.seg span { padding: .35em .9em; border-radius: 999px; font-size: .8rem; font-weight: 600; } .seg .on { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.pack { display: flex; align-items: center; justify-content: space-between; }
+.bar { height: 6px; border-radius: 3px; background: var(--chip); margin-top: 8px; overflow: hidden; } .bar i { display: block; height: 100%; width: 40%; background: var(--accent); }
+.add { display: flex; gap: 8px; margin-top: 10px; }
+</style></head><body><div class="phone">
+<div class="top">My trip <span class="btn" style="min-height:34px;font-size:.8rem">Add to calendar</span></div>
+<div class="card">
+  <div class="seg"><span class="on">Everything</span><span>Event only</span></div>
+  <div class="day">Thursday, Mar 11</div>
+  <ol class="tl"><li class="mine"><time>7:05 AM</time><div><b>United UA 1532 <span class="badge">Yours</span></b><span>ORD → CUN · arrives 11:52 AM</span><span style="color:var(--accent);font-weight:600">Flight status ↗</span></div></li></ol>
+  <div class="day">Friday, Mar 12</div>
+  <ol class="tl"><li class="mine"><time>3:00 PM</time><div><b>Hotel Esencia <span class="badge">Yours</span></b><span>Check-in · until Mar 15 · Conf. 83920417</span></div></li>
+  <li><time>7:00 PM</time><div><b>Welcome drinks</b><span>Casual. Sandals encouraged.</span></div></li></ol>
+  <div class="day">Saturday, Mar 13</div>
+  <ol class="tl"><li><time>4:30 PM</time><div><b>Ceremony</b><span>On the beach. Please arrive by 4:15.</span></div></li></ol>
+  <div class="add"><span class="btn primary">+ Add booking</span></div>
+</div>
+<div class="card">
+  <div class="pack"><div class="h2" style="margin:0">Packing list</div><span class="muted small">6 of 15 packed</span></div>
+  <div class="bar"><i></i></div>
+</div>
+<nav class="tabbar">
+  <div class="tab"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="12" rx="2"/><path d="M15 7v12" stroke-dasharray="2 2"/></svg>Event</div>
+  <div class="tab"><svg viewBox="0 0 24 24"><path d="M2 16l20-6-3-3-6 2-6-5-2 1 4 6-4 1-2-2-1 1z"/></svg>Travel</div>
+  <div class="tab"><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>Nearby</div>
+  <div class="tab on"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="17" rx="2"/><path d="M8 2v4M16 2v4M8 12l2.5 2.5L16 9"/></svg>My trip</div>
+</nav>
+</div></body></html>

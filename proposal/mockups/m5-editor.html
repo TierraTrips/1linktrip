@@ -1,0 +1,39 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="m.css"><style>
+:root { --accent: #3048F0; }
+body { background: var(--fog); width: 1280px; height: 820px; display: grid; grid-template-columns: 440px 1fr; }
+.left { padding: 18px 16px; overflow: hidden; }
+.acc { background: #fff; border-radius: 14px; margin-bottom: 8px; }
+.acc > div:first-child { display: flex; align-items: center; gap: 12px; padding: 14px 16px; font-weight: 650; }
+.st { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: .72rem; font-weight: 700; flex: none; }
+.st.ok { background: #2E7D32; color: #fff; } .st.todo { border: 2px solid var(--line); } .st.part { background: #FFF3D6; color: #8A5A00; border: 2px solid #F0C36A; }
+.acc small { margin-left: auto; color: var(--muted); font-weight: 500; font-size: .8rem; }
+.body { padding: 0 16px 16px; display: grid; gap: 10px; }
+.f label { display: block; font: 600 .66rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.f div { border: 1.5px solid var(--line); border-radius: 10px; padding: 9px 11px; background: #F8F9FB; font-size: .92rem; }
+.f div.ph { color: #9AA1AF; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.auto { font-size: .82rem; color: var(--muted); padding: 0 16px 14px; }
+.auto .chip { font-size: .74rem; margin: 2px 2px 0 0; }
+.right { padding: 18px; }
+.pv { background: #fff; border-radius: 18px; height: 100%; overflow: hidden; box-shadow: 0 18px 40px -20px rgba(0,0,0,.3); }
+.pv img { width: 100%; display: block; }
+.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+</style></head><body>
+<div class="left">
+  <div class="topbar"><b style="font:700 1.05rem 'Bricolage Grotesque'">Maya &amp; Theo</b><span class="btn primary" style="background:#3048F0;border-color:#3048F0">Publish</span></div>
+  <div class="acc"><div><span class="st ok">✓</span>Basics<small>Title, photo, host</small></div></div>
+  <div class="acc"><div><span class="st ok">✓</span>When &amp; where<small>Mar 13 · Playa Paraíso</small></div></div>
+  <div class="acc"><div><span class="st part">2/5</span>Wedding details<small>RSVP, dress code, room block</small></div>
+    <div class="body">
+      <div class="two"><div class="f"><label>RSVP link</label><div class="ph">https://…</div></div><div class="f"><label>Reply by</label><div>Jan 15, 2027</div></div></div>
+      <div class="f"><label>Dress code</label><div>Beach formal</div></div>
+      <div class="f"><label>Room block</label><div class="ph">Hotel, link, code, book-by date</div></div>
+    </div></div>
+  <div class="acc"><div><span class="st ok">✓</span>Schedule<small>5 items</small></div></div>
+  <div class="acc"><div><span class="st todo"></span>Notes for guests<small>Anything else</small></div></div>
+  <div class="acc"><div><span class="st ok">✓</span>Guest tools<small>Automatic</small></div>
+    <div class="auto"><span class="chip">Weather</span><span class="chip">Travel</span><span class="chip">Stay</span><span class="chip">Nearby</span><span class="chip">My trip</span><span class="chip">Packing</span></div></div>
+  <div class="acc"><div><span class="st ok">✓</span>Look<small>Teal · Serif · Light</small></div></div>
+</div>
+<div class="right"><div class="pv"><img src="pv.png"></div></div>
+</body></html>
