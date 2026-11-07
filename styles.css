@@ -643,3 +643,13 @@ dialog.place-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .pc-hours ul { list-style: none; margin: 4px 0 0; padding: 0; font-size: .92rem; }
 .pc .btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 @media (max-width: 600px) { .pf-cats, .pf-diet { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -4px; padding: 0 4px 2px; } .pf-cats::-webkit-scrollbar, .pf-diet::-webkit-scrollbar { display: none; } .pf-cats .chip, .pf-diet .chip { flex: none; } }
+
+/* Google ratings and photos (only with a key) */
+.rt { display: inline-flex; align-items: baseline; gap: 4px; margin: 0; font-size: .86rem; }
+.stars { color: #B8860B; font-weight: 700; } .rt small { color: var(--muted, var(--slate)); }
+.place-row .rt { color: inherit; }
+.pc-photo { margin: 0 0 4px; border-radius: 14px; overflow: hidden; background: var(--fog, #EEF0F4); }
+.pc-photo img { display: block; width: 100%; height: 190px; object-fit: cover; }
+.pc-photo figcaption { font-size: .7rem; color: var(--muted, var(--slate)); padding: 4px 8px; }
+.g-attr { margin-top: 6px; }
+.oauth { display: grid; gap: 8px; margin-bottom: 4px; } .oauth .btn { width: 100%; justify-content: center; } .or { text-align: center; margin: 4px 0 8px; }
