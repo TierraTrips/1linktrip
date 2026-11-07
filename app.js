@@ -285,10 +285,10 @@ const placeLabel = (v) => [v.city, v.cc === 'us' ? v.region : v.country].filter(
 
 // ---------- event model ----------
 const SECTION_NAMES = {
-  about: 'About', typeinfo: 'Event details', schedule: 'Schedule', itinerary: 'My itinerary', links: 'Details', weather: 'Weather', map: 'Map',
+  about: 'About', typeinfo: 'Event details', schedule: 'Schedule', itinerary: 'My itinerary', packing: 'Packing list', links: 'Details', weather: 'Weather', map: 'Map',
   travel: 'Getting there', stay: 'Where to stay', food: 'Eat & drink', tours: 'Tours & things to do', around: 'Getting around', calendar: 'Save the date'
 };
-const DEFAULT_ORDER = ['about', 'typeinfo', 'schedule', 'itinerary', 'links', 'weather', 'map', 'travel', 'stay', 'food', 'tours', 'around', 'calendar'];
+const DEFAULT_ORDER = ['about', 'typeinfo', 'schedule', 'itinerary', 'links', 'weather', 'map', 'travel', 'stay', 'food', 'tours', 'around', 'packing', 'calendar'];
 const FONTS = {
   grotesk: { label: 'Grotesk', css: "'Bricolage Grotesque', system-ui, sans-serif", gf: null },
   serif: { label: 'Editorial serif', css: "'Fraunces', Georgia, serif", gf: 'Fraunces:opsz,wght@9..144,400..800' },
@@ -337,10 +337,10 @@ function blankEvent() {
 function normalize(c) {
   const b = blankEvent(); c = { ...b, ...c, theme: { ...b.theme, ...(c.theme || {}) } };
   const have = new Set((c.sections || []).map(s => s.id));
-  c.sections = (c.sections || []).filter(s => SECTION_NAMES[s.id]).concat(DEFAULT_ORDER.filter(id => !have.has(id)).map(id => ({ id, on: id === 'typeinfo' || id === 'itinerary' })));
+  c.sections = (c.sections || []).filter(s => SECTION_NAMES[s.id]).concat(DEFAULT_ORDER.filter(id => !have.has(id)).map(id => ({ id, on: id === 'typeinfo' || id === 'itinerary' || id === 'packing' })));
   if (!have.has('typeinfo')) { const ti = c.sections.findIndex(s => s.id === 'typeinfo'), sec = c.sections.splice(ti, 1)[0], ai = c.sections.findIndex(s => s.id === 'about'); c.sections.splice(ai + 1, 0, sec); }
   if (!have.has('itinerary')) { const ii = c.sections.findIndex(s => s.id === 'itinerary'), sec = c.sections.splice(ii, 1)[0], si = c.sections.findIndex(s => s.id === 'schedule'); c.sections.splice(si + 1, 0, sec); }
-  c.schedule = c.schedule || []; c.links = c.links || []; c.x = c.x && typeof c.x === 'object' ? c.x : {};
+  c.bring = typeof c.bring === 'string' ? c.bring : ''; c.schedule = c.schedule || []; c.links = c.links || []; c.x = c.x && typeof c.x === 'object' ? c.x : {};
   return c;
 }
 const packEvent = (c) => LZString.compressToEncodedURIComponent(JSON.stringify(c));
@@ -440,7 +440,7 @@ function sectionAvailable(id, cfg) {
   if (id === 'links') return cfg.links.some(x => x.label && (x.url || x.note));
   if (id === 'about') return !!(cfg.description || cfg.host);
   if (id === 'typeinfo') return hasTypeInfo(cfg);
-  if (id === 'itinerary') return !!cfg.start;
+  if (id === 'itinerary' || id === 'packing') return !!cfg.start;
   if (id === 'calendar') return !!cfg.start;
   return true;
 }
@@ -464,6 +464,7 @@ function sectionHTML(id, cfg, air) {
     case 'map': return `<div class="map-wrap"><div class="map" data-slot="map" role="region" aria-label="Map of the venue and surroundings"></div><div class="map-legend" data-slot="legend"></div></div>`;
     case 'typeinfo': return typeInfoHTML(cfg);
     case 'itinerary': return itinHTML(cfg);
+    case 'packing': return `<div data-slot="pack-list"></div><div class="pack-add"><input placeholder="Add an item" aria-label="Add an item" maxlength="80"><button type="button" class="btn" data-pack-add>Add</button></div>`;
     case 'travel': return travelHTML(cfg, air);
     case 'stay': return stayHTML(cfg);
     case 'food': return `<div data-slot="food">${loading('places to eat')}</div>`;
@@ -696,6 +697,92 @@ function wireItin(cfg, art) {
   });
 }
 
+// ---------- packing list (guest-side) ----------
+// One table of rules. Each: [id, label (text or ctx => text), when(ctx) => bool]. Extend here.
+const isT = (...ts) => (c) => ts.includes(c.type);
+const PACK_RULES = [
+  ['clothes', c => `Clothes for ${c.days} days`, c => c.days > 1],
+  ['toiletries', 'Toiletries', c => c.days > 1],
+  ['charger', 'Phone charger', () => true],
+  ['meds', 'Medications', () => true],
+  ['passport', 'Passport', c => c.intl],
+  ['adapter', c => `Plug adapter${c.plugs ? ', type ' + c.plugs : ''}`, c => c.adapter],
+  ['photoid', 'Photo ID', c => c.mode.fly && !c.intl],
+  ['boarding', 'Boarding pass', c => c.mode.fly],
+  ['liquids', 'Liquids bag', c => c.mode.fly],
+  ['license', "Driver's license", c => c.mode.rental || c.mode.drive],
+  ['ccard', 'Credit card for the rental', c => c.mode.rental],
+  ['traintix', 'Train tickets', c => c.mode.train],
+  ['transitcard', 'Transit or contactless card', c => c.mode.transit],
+  ['umbrella', 'Umbrella or rain jacket', c => c.wx.rain],
+  ['coat', 'Winter coat, hat and gloves', c => c.wx.cold],
+  ['layers', 'Warm layers', c => c.wx.cool],
+  ['sunscreen', 'Sunscreen', c => c.wx.hot || c.beach],
+  ['sunglasses', 'Sunglasses', c => c.wx.hot || c.beach],
+  ['swimsuit', 'Swimsuit', c => c.beach],
+  ['outfit', c => c.td.dress ? `Outfit: ${c.td.dress.split(/[.;]/)[0].trim()}` : 'Wedding outfit', isT('Wedding')],
+  ['gift', 'Card or gift', isT('Wedding')],
+  ['runshoes', 'Running shoes', isT('Race')],
+  ['racekit', 'Race-day kit', isT('Race')],
+  ['bibpins', 'Safety pins for your bib', isT('Race')],
+  ['gels', 'Energy gels', isT('Race')],
+  ['clearbag', 'Clear bag', c => /clear/i.test(c.td.bags || '')],
+  ['tickets', 'Tickets', isT('Concert', 'Sporting event', 'Festival')],
+  ['earplugs', 'Earplugs', isT('Concert', 'Festival')],
+  ['teamgear', 'Team gear', isT('Sporting event')],
+  ['laptop', 'Laptop and charger', isT('Conference')],
+  ['bizcards', 'Business cards', isT('Conference')],
+  ['powerbank', 'Portable charger', isT('Festival', 'Concert', 'Conference', 'Race')]
+];
+// IEC plug types per country (lowercase ISO code)
+const PLUGS = { us: 'AB', ca: 'AB', mx: 'AB', jp: 'AB', co: 'AB', pe: 'ABC', th: 'ABCO', tw: 'AB', ph: 'ABC', gb: 'G', ie: 'G', mt: 'G', cy: 'G', hk: 'G', sg: 'G', my: 'G', ae: 'G',
+  fr: 'CE', be: 'CE', pl: 'CE', cz: 'CE', sk: 'CE', de: 'CF', nl: 'CF', es: 'CF', pt: 'CF', at: 'CF', se: 'CF', no: 'CF', fi: 'CF', gr: 'CF', is: 'CF', tr: 'CF', hr: 'CF', hu: 'CF', ro: 'CF', kr: 'CF', ru: 'CF', dk: 'CFK',
+  it: 'CFL', ch: 'CJ', cl: 'CL', au: 'I', nz: 'I', ar: 'CI', cn: 'ACI', in: 'CDM', za: 'CDMN', br: 'CN', il: 'CH' };
+const packKey = (cfg) => 'pack:' + eventKey(cfg).slice(6);
+function packContext(cfg, art) {
+  const v = cfg.venue; const t = tripDates(cfg);
+  const sel = art ? $$('.mode-bar [aria-pressed="true"]', art).map(b => b.dataset.tmode).filter(k => k !== 'all') : [];
+  const o = LS.get('origin'); const oa = o && airportByCode(o);
+  const home = oa ? String(oa[3]).toLowerCase() : ((navigator.language || '').split('-')[1] || '').toLowerCase();
+  const intl = !!(v && v.cc && home && home !== v.cc);
+  const hp = PLUGS[home], vp = v && PLUGS[v.cc];
+  const adapter = intl && (!hp || !vp || ![...vp].some(x => hp.includes(x)));
+  const w = art && art._wx; const wx = { rain: false, cold: false, cool: false, hot: false };
+  if (w && w.days && w.days.length) {
+    const lo = Math.min(...w.days.map(d => d.lo)), hi = Math.max(...w.days.map(d => d.hi));
+    wx.rain = w.days.some(d => w.kind === 'typical' ? d.wet / (d.of || 1) >= 0.3 : (d.pop != null ? d.pop >= 40 : d.code >= 51 && d.code <= 99 && !(d.code >= 71 && d.code <= 77)));
+    wx.cold = lo < 40; wx.cool = !wx.cold && lo < 60; wx.hot = hi >= 85;
+  }
+  return { type: cfg.type, td: typeData(cfg), days: Math.max(1, daysBetween(t.arrive, t.leave) + 1), mode: Object.fromEntries(sel.map(k => [k, true])),
+    intl, adapter, plugs: adapter && vp ? [...vp].join('/') : '', wx, beach: !!(v && /\b(beach|playa|plage|praia|spiaggia|strand)\b/i.test(`${v.name} ${v.address || ''}`)) };
+}
+function packItems(cfg, art) {
+  const st = LS.get(packKey(cfg), {}) || {}; const removed = st.removed || {}; const ctx = packContext(cfg, art);
+  const host = String(cfg.bring || '').split('\n').map(s => s.trim()).filter(Boolean).map((text, i) => ({ id: 'h:' + text.toLowerCase(), text, host: true }));
+  const auto = PACK_RULES.filter(([, , when]) => { try { return when(ctx); } catch { return false; } }).map(([id, label]) => ({ id, text: typeof label === 'function' ? label(ctx) : label }));
+  const own = (st.custom || []).map(x => ({ id: x.id, text: x.text }));
+  return { st, host: host.filter(x => !removed[x.id]), rest: auto.concat(own).filter(x => !removed[x.id]) };
+}
+function packListHTML(cfg, art) {
+  const { st, host, rest } = packItems(cfg, art); const done = st.done || {};
+  const li = (x) => `<li class="${done[x.id] ? 'done' : ''}"><label><input type="checkbox" data-pack="${esc(x.id)}" ${done[x.id] ? 'checked' : ''}><span>${esc(x.text)}</span></label><button type="button" class="pack-x" data-pack-del="${esc(x.id)}" aria-label="Remove ${esc(x.text)}">×</button></li>`;
+  return `${host.length ? `<h3 class="sub-h">From the host</h3><ul class="pack">${host.map(li).join('')}</ul>${rest.length ? '<h3 class="sub-h">Also pack</h3>' : ''}` : ''}<ul class="pack">${rest.map(li).join('')}</ul>`;
+}
+function wirePacking(cfg, art) {
+  const sec = art.querySelector('#sec-packing'); if (!sec) return;
+  const list = sec.querySelector('[data-slot="pack-list"]'); const save = (st) => LS.set(packKey(cfg), st);
+  const render = () => { list.innerHTML = packListHTML(cfg, art); };
+  art._pack = render; render();
+  sec.addEventListener('change', (e) => { const id = e.target.dataset.pack; if (id == null) return; const st = LS.get(packKey(cfg), {}) || {}; st.done = st.done || {}; e.target.checked ? st.done[id] = true : delete st.done[id]; save(st); e.target.closest('li').classList.toggle('done', e.target.checked); });
+  sec.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pack-del]'); if (b) { const id = b.dataset.packDel; const st = LS.get(packKey(cfg), {}) || {}; if (id.startsWith('c:')) st.custom = (st.custom || []).filter(x => x.id !== id); else (st.removed = st.removed || {})[id] = true; save(st); render(); return; }
+    if (e.target.closest('[data-pack-add]')) add();
+  });
+  const inp = sec.querySelector('.pack-add input');
+  const add = () => { const text = inp.value.trim(); if (!text) return; const st = LS.get(packKey(cfg), {}) || {}; (st.custom = st.custom || []).push({ id: 'c:' + Date.now().toString(36), text }); save(st); inp.value = ''; render(); inp.focus(); };
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+}
+
 function tripDates(cfg) {
   const s = cfg.start.slice(0, 10), e = (cfg.end || cfg.start).slice(0, 10);
   const st = LS.get('trip:' + s + ':' + e);
@@ -854,7 +941,7 @@ function wireEvent(cfg, art, seq, air, opts) {
     else if (a.dataset.jump) { e.preventDefault(); art.querySelector('#sec-' + a.dataset.jump)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }
     else if (a.dataset.food) { const s = slot('food'); s.innerHTML = foodHTML(cfg, art._osm, a.dataset.food); }
   });
-  wireItin(cfg, art);
+  wireItin(cfg, art); wirePacking(cfg, art);
   if (!v) return;
 
   // travel mode filter: show content for every picked mode; nothing picked = all
@@ -864,6 +951,7 @@ function wireEvent(cfg, art, seq, air, opts) {
     const sel = new Set((LS.get(eventKey(cfg), []) || []).filter(k => avail.includes(k)));
     if (bar) $$('[data-tmode]', bar).forEach(b => { const on = b.dataset.tmode === 'all' ? !sel.size : sel.has(b.dataset.tmode); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
     $$('[data-mode]', art).forEach(el => { el.hidden = !!sel.size && !el.dataset.mode.split(' ').some(k => sel.has(k)); });
+    art._pack && art._pack();
   };
   art._applyModes = applyModes;
 
@@ -872,6 +960,7 @@ function wireEvent(cfg, art, seq, air, opts) {
     if (slot('flights')) slot('flights').innerHTML = flightsHTML(cfg, air);
     if (slot('trains')) slot('trains').innerHTML = trainsHTML(cfg);
     if (slot('rental')) slot('rental').innerHTML = rentalHTML(cfg, air);
+    art._pack && art._pack();
     if (slot('stay-links')) slot('stay-links').innerHTML = stayLinks(cfg);
     if (slot('tour-links')) slot('tour-links').innerHTML = tourLinks(cfg);
     if (art._osm && slot('hotels')) slot('hotels').innerHTML = hotelsHTML(cfg, art._osm);
@@ -901,9 +990,9 @@ function wireEvent(cfg, art, seq, air, opts) {
   }
   refreshTrip(); applyModes();
 
-  if (slot('weather') && cfg.start) {
-    weatherFor(cfg).then(w => { if (alive()) slot('weather').innerHTML = weatherHTML(w, cfg); })
-      .catch(() => { if (alive()) slot('weather').innerHTML = `<p class="muted">Weather is unavailable right now. Try reloading the page.</p>`; });
+  if ((slot('weather') || art._pack) && cfg.start) {
+    weatherFor(cfg).then(w => { if (!alive()) return; art._wx = w; if (slot('weather')) slot('weather').innerHTML = weatherHTML(w, cfg); art._pack && art._pack(); })
+      .catch(() => { if (alive() && slot('weather')) slot('weather').innerHTML = `<p class="muted">Weather is unavailable right now. Try reloading the page.</p>`; });
   }
   const mapEl = slot('map'); let map, layers = {};
   if (mapEl && window.L) {
@@ -1106,6 +1195,9 @@ function buildForm() {
   <fieldset><legend>Schedule</legend>
     ${c.schedule.map((x, i) => `<div class="rowed"><div class="two"><input type="date" data-s="${i}" data-k="date" value="${esc(x.date)}" aria-label="Date"><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time"></div><input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="What's happening" aria-label="Title"><input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Where or a note (optional)" aria-label="Note"><button type="button" class="ic del" data-sdel="${i}" aria-label="Remove item">Remove</button></div>`).join('')}
     <button type="button" class="btn sm" data-b="add-sched">Add schedule item</button>
+  </fieldset>
+  <fieldset><legend>Packing list</legend>
+    ${field('Guests must bring', `<textarea data-f="bring" rows="3" placeholder="One item per line">${esc(c.bring || '')}</textarea>`)}
   </fieldset>
   <fieldset><legend>Details and links</legend>
     <p class="hint">Add a link (registration, RSVP form, registry, tickets) or a short note (dress code, FAQ).</p>
