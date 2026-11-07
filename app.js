@@ -277,8 +277,8 @@ const L = {
   lyft: (v) => `https://lyft.com/ride?id=lyft&destination%5Blatitude%5D=${v.lat}&destination%5Blongitude%5D=${v.lon}`,
   opentable: (name, v, date, n) => `https://www.opentable.com/s?term=${enc(name)}&latitude=${v.lat}&longitude=${v.lon}&covers=${n}${date ? `&dateTime=${date}T19%3A00` : ''}`,
   gcal: (cfg, url) => {
-    const s = wallToUTC(cfg.start, cfg.tz), e = cfg.end ? wallToUTC(cfg.end, cfg.tz) : new Date(s.getTime() + 2 * 3600e3);
-    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${enc(cfg.title)}&dates=${icsStamp(s)}/${icsStamp(e)}&details=${enc((cfg.tagline ? cfg.tagline + '\n\n' : '') + url)}&location=${enc(venueLine(cfg.venue))}${cfg.tz ? '&ctz=' + enc(cfg.tz) : ''}`;
+    const w = eventSpan(cfg); const dates = w.allDay ? `${w.s.replace(/-/g, '')}/${w.e.replace(/-/g, '')}` : `${icsStamp(w.s)}/${icsStamp(w.e)}`;
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${enc(cfg.title)}&dates=${dates}&details=${enc((cfg.tagline ? cfg.tagline + '\n\n' : '') + url)}&location=${enc(venueLine(cfg.venue))}${cfg.tz ? '&ctz=' + enc(cfg.tz) : ''}`;
   }
 };
 const LYFT_CC = new Set(['us', 'ca']);
@@ -348,8 +348,8 @@ function icsText(cfg, url) {
   const escI = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
   const fold = (line) => { const out = []; let cur = ''; for (const ch of line) { if (new Blob([cur + ch]).size > 74) { out.push(cur); cur = ' ' + ch; } else cur += ch; } out.push(cur); return out.join('\r\n'); };
   const now = icsStamp(new Date()); const uidBase = Math.abs([...cfg.title + cfg.start].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7));
-  const ev = (uid, title, s, e, desc) => ['BEGIN:VEVENT', `UID:${uid}-${uidBase}@eventpages`, `DTSTAMP:${now}`, `DTSTART:${icsStamp(s)}`, `DTEND:${icsStamp(e)}`, `SUMMARY:${escI(title)}`, `LOCATION:${escI(venueLine(cfg.venue))}`, `DESCRIPTION:${escI(desc)}`, `URL:${url}`, 'END:VEVENT'];
-  const s = wallToUTC(cfg.start, cfg.tz), e = cfg.end ? wallToUTC(cfg.end, cfg.tz) : new Date(s.getTime() + 2 * 3600e3);
+  const ev = (uid, title, s, e, desc) => ['BEGIN:VEVENT', `UID:${uid}-${uidBase}@eventpages`, `DTSTAMP:${now}`, ...(typeof s === 'string' ? [`DTSTART;VALUE=DATE:${s.replace(/-/g, '')}`, `DTEND;VALUE=DATE:${e.replace(/-/g, '')}`] : [`DTSTART:${icsStamp(s)}`, `DTEND:${icsStamp(e)}`]), `SUMMARY:${escI(title)}`, `LOCATION:${escI(venueLine(cfg.venue))}`, `DESCRIPTION:${escI(desc)}`, `URL:${url}`, 'END:VEVENT'];
+  const { s, e } = eventSpan(cfg);
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Eventpages//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', `X-WR-CALNAME:${escI(cfg.title)}`];
   lines.push(...ev('main', cfg.title, s, e, [cfg.tagline, url].filter(Boolean).join('\n\n')));
   cfg.schedule.filter(x => x.date && x.time && x.title).forEach((x, i) => {
@@ -880,7 +880,7 @@ const cardIcon = (id) => `<svg viewBox="0 0 24 24" aria-hidden="true">${CARD_ICO
 
 function blankEvent(type) {
   const s = addDays(todayYMD(), 30); type = type || 'Party';
-  return { v: 2, type, title: '', tagline: '', host: '', description: '', start: s + 'T18:00', end: '', tz: '', venue: null, cover: '',
+  return { v: 2, type, title: '', tagline: '', host: '', description: '', start: s, end: '', tz: '', venue: null, cover: '',
     theme: { ...typeDefaults(type).theme }, tools: defaultTools(type), off: {}, schedule: [], notes: [], x: {}, bring: '' };
 }
 // Old links (v1) carried a `sections` list and a generic `links` list. Map them onto tools, notes and type cards so they open as before.
@@ -967,7 +967,7 @@ function ticketHTML(cfg, air) {
   const dirModes = [['driving', 'Drive'], ['transit', 'Transit'], ['walking', 'Walk'], ['bicycling', 'Bike']];
   return `<section class="stub" aria-label="${t('Event summary')}">
       <div class="stub-main">
-        <div class="stub-cell"><span class="lbl">${t('Date')}</span><b>${esc(dateRange(cfg.start, cfg.end))}</b></div>
+        <div class="stub-cell"><span class="lbl">${t('Date')}</span><b>${esc(dateRange(cfg.start, cfg.end))}</b>${countdown(cfg) ? `<small class="cd">${esc(countdown(cfg))}</small>` : ''}</div>
         ${cfg.start && cfg.start.length >= 16 ? `<div class="stub-cell"><span class="lbl">${sameDay || !cfg.end ? t('Time') : t('Starts')}</span><b>${esc(sameDay ? timeRange(cfg.start, cfg.end) : fmtTime(cfg.start.slice(11, 16)))}</b></div>` : ''}
         <div class="stub-cell wide"><span class="lbl">${t('Venue')}</span><b>${v ? esc(v.name) : t('To be announced')}</b>${v && v.address && v.address !== v.name ? `<small>${esc(v.address)}</small>` : ''}</div>
       </div>
@@ -987,8 +987,8 @@ function tripBarHTML(cfg) {
   const tr = tripDates(cfg); const o = LS.get('origin'); const oa = o && airportByCode(o);
   return `<div class="tripbar">
     ${cfg.tools.travel ? `<div class="field origin"><label for="ep-origin">${t('From')}</label><div class="ac"><input id="ep-origin" autocomplete="off" placeholder="${t('City or airport code')}" value="${oa ? esc(`${oa[2] || oa[1]} (${oa[0]})`) : ''}"><ul class="ac-list" hidden></ul></div></div>` : ''}
-    <div class="field"><label for="ep-arrive">${t('Arrive')}</label><input type="date" id="ep-arrive" data-k="arrive" value="${tr.arrive}"></div>
-    <div class="field"><label for="ep-leave">${t('Leave')}</label><input type="date" id="ep-leave" data-k="leave" value="${tr.leave}"></div>
+    <div class="field"><label for="ep-arrive">${t('Travel there')}</label><input type="date" id="ep-arrive" data-k="arrive" value="${tr.arrive}"></div>
+    <div class="field"><label for="ep-leave">${t('Travel home')}</label><input type="date" id="ep-leave" data-k="leave" value="${tr.leave}"></div>
     <div class="field narrow"><label for="ep-guests">${t('Guests')}</label><input type="number" id="ep-guests" min="1" max="16" data-k="guests" value="${tr.guests}"></div>
   </div>`;
 }
@@ -1333,7 +1333,7 @@ function buildForm() {
     ${fieldWrap('Tagline', `<input id="f-tagline" data-f="tagline" value="${esc(c.tagline)}" maxlength="140" placeholder="Optional">`, 'f-tagline')}
   </div></details>
   <details class="acc" data-acc="when" ${open.has('when') ? 'open' : ''}><summary><span class="st ${whenOk ? 'ok' : ''}" aria-hidden="true"></span><b>When and where</b><small>${esc([c.start ? fmt(c.start.slice(0, 10), { month: 'short', day: 'numeric', year: 'numeric' }) : '', c.venue ? c.venue.name : ''].filter(Boolean).join(' · '))}</small></summary><div class="acc-b">
-    <div class="two">${fieldWrap('Starts', `<input id="f-start" type="datetime-local" data-f="start" value="${esc(c.start)}">`, 'f-start')}${fieldWrap('Ends', `<input id="f-end" type="datetime-local" data-f="end" value="${esc(c.end)}">`, 'f-end')}</div>
+    ${whenFieldsHTML(c, 'f')}
     ${venueFieldHTML(c)}
   </div></details>
   <h2 class="b-h">Add to your page</h2>
@@ -1376,7 +1376,8 @@ function wireInputs(root) {
   root.oninput = (e) => {
     const i = e.target; const d = i.dataset; const cfg = c();
     const xd = () => (cfg.x[cfg.type] = cfg.x[cfg.type] || {});
-    if (d.x) { xd()[d.x] = i.value; changed(); }
+    if (d.when) { whenInput(cfg, d.when, i.value); changed(); }
+    else if (d.x) { xd()[d.x] = i.value; changed(); }
     else if (d.xl) { xd()[d.xl][+d.i][d.k] = i.value; changed(); }
     else if (d.xp) { xd()[d.xp] = i.value ? { q: i.value } : null; const fb = root.querySelector(`[data-xfind="${d.xp}"]`); if (fb) fb.textContent = 'Pin on map'; changed(); }
     else if (d.f) { cfg[d.f] = i.value; if (d.f === 'start' && cfg.end && cfg.end < cfg.start) { cfg.end = ''; const en = root.querySelector('[data-f="end"]'); if (en) en.value = ''; } changed(d.f === 'type'); }
@@ -1391,7 +1392,8 @@ function wireInputs(root) {
   root.onkeydown = (e) => { if (e.target.id === 'vq' && e.key === 'Enter') { e.preventDefault(); venueSearch(); } };
   root.onclick = (e) => {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset; const cfg = c();
-    if (d.card) openCard(d.card);
+    if (d.whenTg != null) { whenToggle(cfg); changed(true); setTimeout(() => root.querySelector(hasTime(cfg.start) ? '[data-when="st"]' : '[data-when-tg]')?.focus(), 0); }
+    else if (d.card) openCard(d.card);
     else if (d.b === 'close') $('#sheet').close();
     else if (d.b === 'search') venueSearch();
     else if (d.pick != null) pickVenue(B.venueResults[+d.pick]);
@@ -1450,10 +1452,8 @@ function suRender() {
     body = `<div class="su-types">${SETUP_TYPES.map(([type, label, sub, col]) => `<button type="button" class="su-type ${c.type === type && SU.typed ? 'on' : ''}" data-su-type="${esc(type)}"><i style="background:${col}"></i><b>${esc(label)}</b><span>${esc(sub)}</span></button>`).join('')}</div>`;
   } else if (n === 1) {
     h = 'What’s it called, and when?';
-    const date = SU.dated ? c.start.slice(0, 10) : ''; const time = c.start.slice(11, 16);
     body = `<div class="field"><label for="su-title">Name</label><input id="su-title" data-su-f="title" value="${esc(c.title)}" maxlength="80" autocomplete="off"></div>
-      <div class="two"><div class="field"><label for="su-date">Date</label><input id="su-date" type="date" data-su-f="date" value="${date}"></div><div class="field"><label for="su-time">Starts</label><input id="su-time" type="time" data-su-f="time" value="${time}"></div></div>
-      <div class="field"><label for="su-end">Ends</label><input id="su-end" type="datetime-local" data-su-f="end" value="${esc(c.end)}"></div>`;
+      ${whenFieldsHTML(c, 'su', !SU.dated)}`;
     cta = `<button type="button" class="btn primary big" data-su="next" ${c.title.trim() && SU.dated ? '' : 'disabled'}>Continue</button>`;
   } else if (n === 2) {
     h = 'Where is it?';
@@ -1481,7 +1481,8 @@ document.addEventListener('click', (e) => {
   if (d.suType) {
     const type = d.suType; const keep = { title: c.title, start: c.start, end: c.end, venue: c.venue, tz: c.tz };
     SU.cfg = Object.assign(blankEvent(type), keep); SU.typed = true; B.cfg = SU.cfg; SU.step = 1; suRender();
-  } else if (d.su === 'back') { SU.step = Math.max(0, SU.step - 1); suRender(); }
+  } else if (d.whenTg != null) { whenToggle(c); suRender(); const f = $(hasTime(c.start) ? '#su-st' : '#su-sd'); if (f) f.focus(); }
+  else if (d.su === 'back') { SU.step = Math.max(0, SU.step - 1); suRender(); }
   else if (d.su === 'skip') { c.venue = null; SU.step = 3; suRender(); }
   else if (d.su === 'next') { if (!b.disabled) { SU.step++; suRender(); } }
   else if (d.su === 'search') suSearch();
@@ -1498,11 +1499,9 @@ document.addEventListener('input', (e) => {
   if (!SU || !e.target.closest('.setup')) return;
   const i = e.target; const c = SU.cfg; const f = i.dataset.suF;
   if (i.id === 'su-q') { SU.q = i.value; return; }
-  if (!f) return;
+  if (i.dataset.when) { if (i.dataset.when === 'sd') SU.dated = !!i.value; whenInput(c, i.dataset.when, i.value); }
+  else if (!f) return;
   if (f === 'title') c.title = i.value;
-  if (f === 'date') { SU.dated = !!i.value; if (i.value) c.start = i.value + 'T' + (c.start.slice(11, 16) || '18:00'); }
-  if (f === 'time') c.start = c.start.slice(0, 10) + 'T' + (i.value || '18:00');
-  if (f === 'end') c.end = i.value;
   const nb = $('[data-su="next"]'); if (nb) nb.disabled = !(c.title.trim() && SU.dated);
   const tk = $('.su-ticket'); if (tk) tk.outerHTML = suTicket(c);
   LS.set('draft', c); suPreview();
@@ -1649,6 +1648,54 @@ function accessHTML(cfg, osm) {
 
 function extraClick(b, cfg) { if (b.dataset.act === 'qr') openQR(cfg); }
 function suExtraClick(b, cfg) { if (b.dataset.su === 'qr') openQR(cfg); }
+
+// ================= dates with optional times =================
+// start/end are wall-clock in the venue's zone: 'YYYY-MM-DD' (date only, the default) or 'YYYY-MM-DDTHH:MM'.
+const hasTime = (s) => !!s && s.length > 10;
+// Calendar span. Date-only events are all-day: { allDay, s: 'YYYY-MM-DD', e: day after the last day }. Timed: UTC Dates.
+function eventSpan(cfg) {
+  const st = cfg.start, en = cfg.end || '';
+  if (!hasTime(st)) return { allDay: true, s: st.slice(0, 10), e: addDays((en && en.slice(0, 10) > st.slice(0, 10) ? en : st).slice(0, 10), 1) };
+  const s = wallToUTC(st, cfg.tz);
+  let e = en ? wallToUTC(hasTime(en) ? en : en.slice(0, 10) + 'T23:59', cfg.tz) : null;
+  if (!e || e <= s) e = new Date(s.getTime() + 2 * 3600e3);
+  return { allDay: false, s, e };
+}
+function countdown(cfg) {
+  if (!cfg.start) return '';
+  const today = todayYMD(), s = cfg.start.slice(0, 10), e = (cfg.end || cfg.start).slice(0, 10);
+  const n = daysBetween(today, s);
+  if (n > 1) return t('In {n} days', { n });
+  if (n === 1) return t('Tomorrow');
+  if (n === 0) return t('Today');
+  if (today <= e) return t('Happening now');
+  return '';
+}
+function whenFieldsHTML(c, p, blankDate = false) {
+  const timed = hasTime(c.start); const sd = blankDate ? '' : c.start.slice(0, 10); const ed = (c.end || '').slice(0, 10);
+  const fld = (k, label, type, val, extra = '') => `<div class="field"><label for="${p}-${k}">${label}</label><input id="${p}-${k}" type="${type}" data-when="${k}" value="${esc(val)}"${extra}></div>`;
+  return `<div class="when ${timed ? 'timed' : ''}">
+    <div class="when-row">${fld('sd', 'Starts', 'date', sd)}${timed ? fld('st', 'Time', 'time', c.start.slice(11, 16)) : ''}</div>
+    <div class="when-row">${fld('ed', 'Ends <small>optional</small>', 'date', ed, sd ? ` min="${sd}"` : '')}${timed ? fld('et', 'Time', 'time', hasTime(c.end) ? c.end.slice(11, 16) : '') : ''}</div>
+    <button type="button" class="link when-tg" data-when-tg>${timed ? 'Remove times' : '+ Add time'}</button>
+  </div>`;
+}
+function whenInput(c, k, v) {
+  const sd = c.start.slice(0, 10), st = hasTime(c.start) ? c.start.slice(11, 16) : '';
+  const ed = (c.end || '').slice(0, 10), et = hasTime(c.end) ? c.end.slice(11, 16) : '';
+  if (k === 'sd' && v) { c.start = v + (st ? 'T' + st : ''); if (ed && ed < v) c.end = ''; }
+  if (k === 'st' && v) c.start = sd + 'T' + v;
+  if (k === 'ed') c.end = v && v >= sd ? v + (et ? 'T' + et : '') : '';
+  if (k === 'et') c.end = v ? (ed || sd) + 'T' + v : ed;
+  if (c.end && c.end.slice(0, 10) === sd && !hasTime(c.end) && !hasTime(c.start)) c.end = '';
+}
+function whenToggle(c) {
+  if (hasTime(c.start)) {
+    c.start = c.start.slice(0, 10); const ed = (c.end || '').slice(0, 10); c.end = ed && ed > c.start ? ed : '';
+  } else {
+    c.start = c.start.slice(0, 10) + 'T18:00'; if (c.end) c.end = c.end.slice(0, 10);
+  }
+}
 
 // ---------- router ----------
 function route() {

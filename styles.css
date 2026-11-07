@@ -529,3 +529,14 @@ dialog.sheet { width: min(560px, 100vw); max-height: min(88vh, 900px); }
   .pc-qr { margin: auto 0 6pt; width: 2.6in; } .pc-qr svg { width: 100%; height: auto; display: block; }
   .pc-cta { font-size: 9pt; color: #5D6372; margin: 0; }
 }
+
+/* dates with optional times (setup + editor) */
+.when { display: grid; gap: 12px; }
+.when-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.when.timed .when-row { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+.when label small { font: inherit; text-transform: none; letter-spacing: 0; opacity: .75; margin-left: 4px; }
+.when input[type="date"], .when input[type="time"] { -webkit-appearance: none; appearance: none; display: block; width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; text-align: left; line-height: 1.3; }
+.when input::-webkit-date-and-time-value { text-align: left; margin: 0; }
+.when input::-webkit-datetime-edit { padding: 0; }
+.when-tg { justify-self: start; padding: 4px 0; font-weight: 600; }
+.stub-cell .cd { display: block; margin-top: 2px; font: 600 .72rem var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
