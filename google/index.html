@@ -17,11 +17,11 @@ a{color:#3048F0}.note{background:#fff;border-radius:12px;padding:12px;margin-top
 <li><b>Turn on the two services.</b> Left menu → <b>APIs &amp; Services</b> (or go to <a href="https://console.cloud.google.com/google/maps-apis/api-list" target="_blank" rel="noopener">API list</a>). Find each of these and make sure it says <b>Enabled</b> (click it → <b>Enable</b> if not):
 <div class="c"><code>Places API (New)</code><button data-c="Places API (New)">Copy</button></div>
 <div class="c"><code>Maps JavaScript API</code><button data-c="Maps JavaScript API">Copy</button></div></li>
-<li><b>Lock the key to our site.</b> Left menu → <b>Keys &amp; Credentials</b> → click your key's name (or ⋮ → <b>Edit API key</b>). On that page:
-<br>• Under <b>Application restrictions</b> pick <b>Websites</b> → <b>Add</b> → paste:
-<div class="c"><code>https://bbbot0209.github.io/*</code><button data-c="https://bbbot0209.github.io/*">Copy</button></div>
-• Under <b>API restrictions</b> pick <b>Restrict key</b> → in the dropdown tick <b>Places API (New)</b> and <b>Maps JavaScript API</b> → OK.
-<br>• Click <b>Save</b> at the bottom.</li>
+<li><b>Lock the key to our site.</b> Open <a href="https://console.cloud.google.com/google/maps-apis/credentials" target="_blank" rel="noopener">Maps Platform → Keys &amp; Credentials</a> (check "Eventpages" is selected at the top) → click the key's <b>name</b> (blue text, e.g. "Maps Platform API Key") — not the copy icon. That opens <b>Edit API key</b>; scroll down to <b>Key restrictions</b>:
+<br>• Under <b>Set an application restriction</b> choose <b>Websites</b> → <b>Add</b> → paste:
+<div class="c"><code>https://bbbot0209.github.io/*</code><button data-c="https://bbbot0209.github.io/*">Copy</button></div>→ <b>Done</b>.
+<br>• Under <b>API restrictions</b> choose <b>Restrict key</b> → tick <b>Places API (New)</b> and <b>Maps JavaScript API</b> → OK.
+<br>• Click <b>Save</b>. On a phone this page can be cramped — a computer is easier.</li>
 <li><b>Set a spending alert (recommended).</b> Go to <a href="https://console.cloud.google.com/billing/budgets" target="_blank" rel="noopener">Budgets &amp; alerts</a> → <b>Create budget</b> → Next → amount:
 <div class="c"><code>10</code><button data-c="10">Copy</button></div>→ <b>Finish</b>. Google emails you if spend gets near $10/month.</li>
 <li><b>Text bbbot the key</b> (the <code style="flex:none;padding:2px 6px">AIza…</code> code from step 4). Once it's locked to our site it's safe to send.</li>
