@@ -6,24 +6,26 @@ ol{padding-left:22px}li{margin:0 0 14px}
 code{flex:1;font:13px ui-monospace,Menlo,monospace;background:#fff;border:1px solid #ccc;border-radius:10px;padding:10px;word-break:break-all}
 button{font:600 15px -apple-system,system-ui,sans-serif;padding:10px 14px;border:0;border-radius:10px;background:#3048F0;color:#fff}
 a{color:#3048F0}.note{background:#fff;border-radius:12px;padding:12px;margin-top:10px}</style></head>
-<body><h2 style="margin:0 0 4px">Google ratings &amp; photos setup</h2>
-<div>About 10 minutes on a computer is easiest. This gives the app Google ratings, photos, hours and reviews for places.</div>
+<body><h2 style="margin:0 0 4px">Get a Google API key</h2>
+<div>Best on a computer (about 10 minutes). Each step is one screen.</div>
 <ol>
-<li>Open <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Google Cloud → New project</a>. Name it <b>Eventpages</b> → Create.</li>
-<li>Turn on billing for that project: <a href="https://console.cloud.google.com/billing" target="_blank" rel="noopener">Billing</a> → link a billing account (Google asks for a card; there's a monthly free allowance).</li>
-<li>Enable these two APIs (search each in <a href="https://console.cloud.google.com/apis/library" target="_blank" rel="noopener">API Library</a> → Enable):
+<li><b>Open Google Maps Platform.</b> Tap: <a href="https://console.cloud.google.com/google/maps-apis/start" target="_blank" rel="noopener">console.cloud.google.com/google/maps-apis/start</a><br>Sign in with your Google account if asked.</li>
+<li><b>Make a project.</b> At the top of the page, click the project picker (it may say "Select a project") → <b>New project</b> → name it:
+<div class="c"><code>Eventpages</code><button data-c="Eventpages">Copy</button></div>→ <b>Create</b>. Make sure "Eventpages" is now shown in the picker at the top.</li>
+<li><b>Add billing.</b> Google will ask you to add a billing account (name, address, card). Follow its prompts and click <b>Submit</b> / <b>Start</b>. There's a monthly free allowance.</li>
+<li><b>Copy your key.</b> After billing, Google shows a box titled something like <b>"Your API key"</b> with a long code starting with <code style="flex:none;padding:2px 6px">AIza</code>. Copy it and keep this tab open.<br>Don't see it? Left menu → <b>Keys &amp; Credentials</b> → your key is listed there → <b>Show key</b>.</li>
+<li><b>Turn on the two services.</b> Left menu → <b>APIs &amp; Services</b> (or go to <a href="https://console.cloud.google.com/google/maps-apis/api-list" target="_blank" rel="noopener">API list</a>). Find each of these and make sure it says <b>Enabled</b> (click it → <b>Enable</b> if not):
 <div class="c"><code>Places API (New)</code><button data-c="Places API (New)">Copy</button></div>
 <div class="c"><code>Maps JavaScript API</code><button data-c="Maps JavaScript API">Copy</button></div></li>
-<li><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Credentials</a> → <b>Create credentials → API key</b>. Then click the key to edit it:
-<br>• Application restrictions → <b>Websites</b> → add these two:
+<li><b>Lock the key to our site.</b> Left menu → <b>Keys &amp; Credentials</b> → click your key's name (or ⋮ → <b>Edit API key</b>). On that page:
+<br>• Under <b>Application restrictions</b> pick <b>Websites</b> → <b>Add</b> → paste:
 <div class="c"><code>https://bbbot0209.github.io/*</code><button data-c="https://bbbot0209.github.io/*">Copy</button></div>
-<div class="c"><code>http://localhost/*</code><button data-c="http://localhost/*">Copy</button></div>
-• API restrictions → <b>Restrict key</b> → tick the two APIs from step 3 → Save.</li>
-<li>Safety cap: <a href="https://console.cloud.google.com/billing/budgets" target="_blank" rel="noopener">Budgets &amp; alerts</a> → Create budget → amount:
-<div class="c"><code>10</code><button data-c="10">Copy</button></div>
-(emails you if spend nears $10/month).</li>
-<li>Text bbbot the API key. Because it only works from this site, it's safe to send — like the Supabase publishable key.</li>
+• Under <b>API restrictions</b> pick <b>Restrict key</b> → in the dropdown tick <b>Places API (New)</b> and <b>Maps JavaScript API</b> → OK.
+<br>• Click <b>Save</b> at the bottom.</li>
+<li><b>Set a spending alert (recommended).</b> Go to <a href="https://console.cloud.google.com/billing/budgets" target="_blank" rel="noopener">Budgets &amp; alerts</a> → <b>Create budget</b> → Next → amount:
+<div class="c"><code>10</code><button data-c="10">Copy</button></div>→ <b>Finish</b>. Google emails you if spend gets near $10/month.</li>
+<li><b>Text bbbot the key</b> (the <code style="flex:none;padding:2px 6px">AIza…</code> code from step 4). Once it's locked to our site it's safe to send.</li>
 </ol>
-<div class="note">Never send anything labeled "service account" or a JSON key file — only the API key from step 4.</div>
+<div class="note">Stuck on a screen? Text a screenshot and I'll tell you exactly what to click. Never send a "service account" or a JSON file — only the AIza… key.</div>
 <script>document.querySelectorAll('button[data-c]').forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.c)}catch(e){const t=document.createElement('textarea');t.value=b.dataset.c;document.body.append(t);t.select();document.execCommand('copy');t.remove()}const o=b.textContent;b.textContent='Copied';setTimeout(()=>b.textContent=o,1200)})</script>
 </body></html>
