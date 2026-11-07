@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eventpages Google setup</title><meta name="robots" content="noindex">
+<style>body{font:16px -apple-system,system-ui,sans-serif;margin:0;padding:20px;background:#E7E9EE;color:#111;line-height:1.45}
+ol{padding-left:22px}li{margin:0 0 14px}
+.c{display:flex;gap:8px;align-items:center;margin:6px 0}
+code{flex:1;font:13px ui-monospace,Menlo,monospace;background:#fff;border:1px solid #ccc;border-radius:10px;padding:10px;word-break:break-all}
+button{font:600 15px -apple-system,system-ui,sans-serif;padding:10px 14px;border:0;border-radius:10px;background:#3048F0;color:#fff}
+a{color:#3048F0}.note{background:#fff;border-radius:12px;padding:12px;margin-top:10px}</style></head>
+<body><h2 style="margin:0 0 4px">Google ratings &amp; photos setup</h2>
+<div>About 10 minutes on a computer is easiest. This gives the app Google ratings, photos, hours and reviews for places.</div>
+<ol>
+<li>Open <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Google Cloud → New project</a>. Name it <b>Eventpages</b> → Create.</li>
+<li>Turn on billing for that project: <a href="https://console.cloud.google.com/billing" target="_blank" rel="noopener">Billing</a> → link a billing account (Google asks for a card; there's a monthly free allowance).</li>
+<li>Enable these two APIs (search each in <a href="https://console.cloud.google.com/apis/library" target="_blank" rel="noopener">API Library</a> → Enable):
+<div class="c"><code>Places API (New)</code><button data-c="Places API (New)">Copy</button></div>
+<div class="c"><code>Maps JavaScript API</code><button data-c="Maps JavaScript API">Copy</button></div></li>
+<li><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Credentials</a> → <b>Create credentials → API key</b>. Then click the key to edit it:
+<br>• Application restrictions → <b>Websites</b> → add these two:
+<div class="c"><code>https://bbbot0209.github.io/*</code><button data-c="https://bbbot0209.github.io/*">Copy</button></div>
+<div class="c"><code>http://localhost/*</code><button data-c="http://localhost/*">Copy</button></div>
+• API restrictions → <b>Restrict key</b> → tick the two APIs from step 3 → Save.</li>
+<li>Safety cap: <a href="https://console.cloud.google.com/billing/budgets" target="_blank" rel="noopener">Budgets &amp; alerts</a> → Create budget → amount:
+<div class="c"><code>10</code><button data-c="10">Copy</button></div>
+(emails you if spend nears $10/month).</li>
+<li>Text bbbot the API key. Because it only works from this site, it's safe to send — like the Supabase publishable key.</li>
+</ol>
+<div class="note">Never send anything labeled "service account" or a JSON key file — only the API key from step 4.</div>
+<script>document.querySelectorAll('button[data-c]').forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.c)}catch(e){const t=document.createElement('textarea');t.value=b.dataset.c;document.body.append(t);t.select();document.execCommand('copy');t.remove()}const o=b.textContent;b.textContent='Copied';setTimeout(()=>b.textContent=o,1200)})</script>
+</body></html>
