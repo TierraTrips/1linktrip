@@ -309,3 +309,8 @@ dialog::backdrop { background: rgba(18,20,27,.5); }
 /* travel mode filter */
 .mode-bar { margin-bottom: 14px; }
 .ev [hidden] { display: none !important; }
+
+/* type-specific details */
+.secs li[hidden] { display: none; }
+.course-img { display: block; margin-bottom: 10px; } .course-img img { width: 100%; border-radius: 12px; display: block; }
+.tpin span { display: inline-block; transform: translate(-50%, -50%); white-space: nowrap; font: 700 .72rem var(--mono, monospace); letter-spacing: .04em; text-transform: uppercase; padding: 4px 8px; border-radius: 999px; background: #12141B; color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.3); }

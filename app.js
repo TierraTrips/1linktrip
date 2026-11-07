@@ -285,10 +285,10 @@ const placeLabel = (v) => [v.city, v.cc === 'us' ? v.region : v.country].filter(
 
 // ---------- event model ----------
 const SECTION_NAMES = {
-  about: 'About', schedule: 'Schedule', links: 'Details', weather: 'Weather', map: 'Map',
+  about: 'About', typeinfo: 'Event details', schedule: 'Schedule', links: 'Details', weather: 'Weather', map: 'Map',
   travel: 'Getting there', stay: 'Where to stay', food: 'Eat & drink', tours: 'Tours & things to do', around: 'Getting around', calendar: 'Save the date'
 };
-const DEFAULT_ORDER = ['about', 'schedule', 'links', 'weather', 'map', 'travel', 'stay', 'food', 'tours', 'around', 'calendar'];
+const DEFAULT_ORDER = ['about', 'typeinfo', 'schedule', 'links', 'weather', 'map', 'travel', 'stay', 'food', 'tours', 'around', 'calendar'];
 const FONTS = {
   grotesk: { label: 'Grotesk', css: "'Bricolage Grotesque', system-ui, sans-serif", gf: null },
   serif: { label: 'Editorial serif', css: "'Fraunces', Georgia, serif", gf: 'Fraunces:opsz,wght@9..144,400..800' },
@@ -296,7 +296,37 @@ const FONTS = {
   condensed: { label: 'Poster', css: "'Big Shoulders Display', 'Arial Narrow', sans-serif", gf: 'Big+Shoulders+Display:wght@600..900' },
   wide: { label: 'Wide', css: "'Unbounded', system-ui, sans-serif", gf: 'Unbounded:wght@400..800' }
 };
-const TYPES = ['Wedding', 'Conference', 'Concert', 'Festival', 'Bachelor party', 'Bachelorette party', 'Birthday', 'Reunion', 'Retreat', 'Meetup', 'Party', 'Other'];
+const TYPES = ['Wedding', 'Conference', 'Concert', 'Race', 'Sporting event', 'Festival', 'Bachelor party', 'Bachelorette party', 'Birthday', 'Reunion', 'Retreat', 'Meetup', 'Party', 'Other'];
+// ---------- type-specific details: fields appear in the editor only for that type; on the page only if filled ----------
+// field: [key, label, kind, placeholder]; kinds: text, url, date, time, datetime, place {q,lat,lon}, links [{label,url}], lines
+const TYPE_FIELDS = {
+  Wedding: { name: 'Wedding details', fields: [
+    ['rsvp', 'RSVP link', 'url', 'https://…'], ['rsvpBy', 'RSVP by', 'date'], ['dress', 'Dress code', 'text', 'Beach formal'],
+    ['registry', 'Registry', 'links'],
+    ['blockHotel', 'Room block hotel', 'text', 'Hotel name'], ['blockUrl', 'Room block booking link', 'url', 'https://…'],
+    ['blockCode', 'Room block code', 'text', 'Group code'], ['blockBy', 'Book the room block by', 'date']] },
+  Race: { name: 'Race day', fields: [
+    ['startAt', 'Start', 'place', 'Start line location'], ['finishAt', 'Finish', 'place', 'Finish line location'],
+    ['packet', 'Packet pickup', 'text', 'Where'], ['packetWhen', 'Packet pickup time', 'datetime'],
+    ['course', 'Course map', 'url', 'Link, GPX or image URL'], ['spots', 'Spectator spots', 'lines', 'One per line'],
+    ['closures', 'Road closures', 'text', 'Which roads, and when'], ['closuresUrl', 'Road closures link', 'url', 'https://…']] },
+  Concert: { name: 'Show info', fields: [
+    ['doors', 'Doors', 'time'], ['opener', 'Opener', 'text', 'Act name'], ['openerAt', 'Opener on at', 'time'],
+    ['headliner', 'Headliner', 'text', 'Act name'], ['headlinerAt', 'Headliner on at', 'time'],
+    ['setlist', 'Setlist', 'url', 'https://…'], ['bags', 'Bag policy', 'text', 'Clear bags only'],
+    ['parking', 'Parking', 'text'], ['pickup', 'Rideshare pickup spot', 'text']] },
+  'Sporting event': { name: 'Game day', fields: [
+    ['seating', 'Seating chart', 'url', 'https://…'], ['teams', 'Teams', 'links'],
+    ['tailgate', 'Tailgating', 'text'], ['parking', 'Parking', 'text'], ['bags', 'Bag policy', 'text', 'Clear bags only']] },
+  Conference: { name: 'Attending', fields: [
+    ['badge', 'Badge pickup', 'text', 'Where'], ['badgeWhen', 'Badge pickup time', 'datetime'],
+    ['agenda', 'Full agenda', 'url', 'https://…'], ['speakers', 'Speakers', 'lines', 'One per line: Name, talk']] }
+};
+const typeSpec = (cfg) => TYPE_FIELDS[cfg.type] || null;
+const typeData = (cfg) => (cfg.x && cfg.x[cfg.type]) || {};
+const filled = (kind, val) => kind === 'links' ? (val || []).some(l => l.label && l.url) : kind === 'place' ? !!(val && val.q) : !!(val && String(val).trim());
+const hasTypeInfo = (cfg) => { const sp = typeSpec(cfg), d = typeData(cfg); return !!sp && sp.fields.some(([k, , kind]) => filled(kind, d[k])); };
+const secName = (id, cfg) => id === 'typeinfo' ? (typeSpec(cfg)?.name || 'Event details') : SECTION_NAMES[id];
 const SWATCHES = ['#3048F0', '#0B7A75', '#FF6B35', '#C2185B', '#6D28D9', '#B8860B', '#1F2937', '#2E7D32'];
 
 function blankEvent() {
@@ -307,8 +337,9 @@ function blankEvent() {
 function normalize(c) {
   const b = blankEvent(); c = { ...b, ...c, theme: { ...b.theme, ...(c.theme || {}) } };
   const have = new Set((c.sections || []).map(s => s.id));
-  c.sections = (c.sections || []).filter(s => SECTION_NAMES[s.id]).concat(DEFAULT_ORDER.filter(id => !have.has(id)).map(id => ({ id, on: false })));
-  c.schedule = c.schedule || []; c.links = c.links || [];
+  c.sections = (c.sections || []).filter(s => SECTION_NAMES[s.id]).concat(DEFAULT_ORDER.filter(id => !have.has(id)).map(id => ({ id, on: id === 'typeinfo' })));
+  if (!have.has('typeinfo')) { const ti = c.sections.findIndex(s => s.id === 'typeinfo'), sec = c.sections.splice(ti, 1)[0], ai = c.sections.findIndex(s => s.id === 'about'); c.sections.splice(ai + 1, 0, sec); }
+  c.schedule = c.schedule || []; c.links = c.links || []; c.x = c.x && typeof c.x === 'object' ? c.x : {};
   return c;
 }
 const packEvent = (c) => LZString.compressToEncodedURIComponent(JSON.stringify(c));
@@ -389,9 +420,9 @@ function renderEvent(cfg, root, opts = {}) {
         <button class="btn" data-act="share">Share</button>
       </div>
     </section>
-    ${enabled.length > 2 ? `<nav class="ev-nav" aria-label="Sections">${enabled.map(s => `<a href="#" data-jump="${s.id}">${SECTION_NAMES[s.id]}</a>`).join('')}</nav>` : ''}
+    ${enabled.length > 2 ? `<nav class="ev-nav" aria-label="Sections">${enabled.map(s => `<a href="#" data-jump="${s.id}">${esc(secName(s.id, cfg))}</a>`).join('')}</nav>` : ''}
     <div class="ev-body">
-      ${enabled.map(s => `<section class="ev-sec" id="sec-${s.id}" data-sec="${s.id}"><h2 class="sec-h">${SECTION_NAMES[s.id]}</h2><div class="sec-b">${sectionHTML(s.id, cfg, air)}</div></section>`).join('')}
+      ${enabled.map(s => `<section class="ev-sec" id="sec-${s.id}" data-sec="${s.id}"><h2 class="sec-h">${esc(secName(s.id, cfg))}</h2><div class="sec-b">${sectionHTML(s.id, cfg, air)}</div></section>`).join('')}
     </div>
     <footer class="ev-foot">
       ${opts.preview ? '' : `<a href="#edit=${packEvent(cfg)}">Edit a copy of this page</a> · <a href="#">Make your own</a>`}
@@ -407,6 +438,7 @@ function sectionAvailable(id, cfg) {
   if (id === 'schedule') return cfg.schedule.some(x => x.title);
   if (id === 'links') return cfg.links.some(x => x.label && (x.url || x.note));
   if (id === 'about') return !!(cfg.description || cfg.host);
+  if (id === 'typeinfo') return hasTypeInfo(cfg);
   if (id === 'calendar') return !!cfg.start;
   return true;
 }
@@ -428,6 +460,7 @@ function sectionHTML(id, cfg, air) {
         : `<li class="note"><b>${esc(x.label)}</b><span>${esc(x.note)}</span></li>`).join('')}</ul>`;
     case 'weather': return `<div data-slot="weather"><div class="skel" role="status"><span></span><span></span><em>Loading weather…</em></div></div>`;
     case 'map': return `<div class="map-wrap"><div class="map" data-slot="map" role="region" aria-label="Map of the venue and surroundings"></div><div class="map-legend" data-slot="legend"></div></div>`;
+    case 'typeinfo': return typeInfoHTML(cfg);
     case 'travel': return travelHTML(cfg, air);
     case 'stay': return stayHTML(cfg);
     case 'food': return `<div data-slot="food">${loading('places to eat')}</div>`;
@@ -439,6 +472,48 @@ function sectionHTML(id, cfg, air) {
 }
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
 
+function typeInfoHTML(cfg) {
+  const sp = typeSpec(cfg), d = typeData(cfg); if (!sp) return '';
+  const v = cfg.venue; const lab = Object.fromEntries(sp.fields.map(([k, l]) => [k, l]));
+  const has = (k) => { const f = sp.fields.find(x => x[0] === k); return f && filled(f[2], d[k]); };
+  const dt = (s) => s ? (s.length > 10 ? `${fmt(s.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' })}, ${fmtTime(s.slice(11, 16))}` : fmt(s, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })) : '';
+  const linkRow = (label, url, sub) => `<li><a href="${esc(url)}" target="_blank" rel="noopener"><b>${esc(label)}</b><span>${esc(sub || hostOf(url))}</span>${arrow}</a></li>`;
+  const noteRow = (label, text) => `<li class="note"><b>${esc(label)}</b><span>${esc(text)}</span></li>`;
+  const placeURL = (p) => p.lat != null ? `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lon}` : L.place(p.q, v ? placeLabel(v) : '');
+  const rows = []; const out = [];
+  // time-line style rows (concert running order)
+  const tl = [];
+  if (has('doors')) tl.push([d.doors, 'Doors']);
+  if (has('openerAt') || has('opener')) tl.push([d.openerAt || '', d.opener || lab.opener]);
+  if (has('headlinerAt') || has('headliner')) tl.push([d.headlinerAt || '', d.headliner || lab.headliner]);
+  if (tl.length) out.push(`<ol class="tl">${tl.sort((a, b) => (a[0] || '99').localeCompare(b[0] || '99')).map(([t, n]) => `<li><time>${esc(fmtTime(t)) || '—'}</time><div><b>${esc(n)}</b></div></li>`).join('')}</ol>`);
+  for (const [k, label, kind] of sp.fields) {
+    if (['doors', 'opener', 'openerAt', 'headliner', 'headlinerAt', 'rsvpBy', 'blockHotel', 'blockUrl', 'blockCode', 'blockBy', 'packetWhen', 'badgeWhen', 'closuresUrl', 'spots', 'speakers'].includes(k) || !filled(kind, d[k])) continue;
+    const val = d[k];
+    if (k === 'rsvp') rows.push(linkRow('RSVP', val, d.rsvpBy ? `Reply by ${dt(d.rsvpBy)}` : ''));
+    else if (k === 'course' && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(val)) out.push(`<a class="course-img" href="${esc(val)}" target="_blank" rel="noopener"><img src="${esc(val)}" alt="Course map" loading="lazy" referrerpolicy="no-referrer"></a>`);
+    else if (k === 'course') rows.push(linkRow('Course map', val, /\.gpx(\?|$)/i.test(val) ? 'GPX file' : ''));
+    else if (k === 'closures') rows.push(d.closuresUrl ? linkRow('Road closures', d.closuresUrl, val) : noteRow('Road closures', val));
+    else if (k === 'packet' || k === 'badge') { const w = d[k + 'When']; rows.push(`<li><a href="${esc(L.place(val, v ? placeLabel(v) : ''))}" target="_blank" rel="noopener"><b>${esc(label)}</b><span>${esc([val, dt(w)].filter(Boolean).join(' · '))}</span>${arrow}</a></li>`); }
+    else if (kind === 'place') rows.push(`<li><a href="${esc(placeURL(val))}" target="_blank" rel="noopener"><b>${esc(label)}</b><span>${esc(val.q)}</span>${arrow}</a></li>`);
+    else if (kind === 'links') val.filter(l => l.label && l.url).forEach(l => rows.push(linkRow(`${label === 'Teams' ? '' : label + ' · '}${l.label}`, l.url)));
+    else if (kind === 'url') rows.push(linkRow(label, val));
+    else rows.push(noteRow(label, val));
+  }
+  if (!has('packet') && has('packetWhen')) rows.push(noteRow('Packet pickup', dt(d.packetWhen)));
+  if (!has('badge') && has('badgeWhen')) rows.push(noteRow('Badge pickup', dt(d.badgeWhen)));
+  if (!has('rsvp') && has('rsvpBy')) rows.push(noteRow('RSVP', `Reply by ${dt(d.rsvpBy)}`));
+  if (!has('closures') && has('closuresUrl')) rows.push(linkRow('Road closures', d.closuresUrl));
+  if (rows.length) out.push(`<ul class="links">${rows.join('')}</ul>`);
+  if (['blockHotel', 'blockUrl', 'blockCode', 'blockBy'].some(has)) {
+    const sub = [d.blockCode ? `Code ${d.blockCode}` : '', d.blockBy ? `Book by ${dt(d.blockBy)}` : ''].filter(Boolean).join(' · ');
+    out.push(`<h3 class="sub-h">Room block</h3><ul class="links">${d.blockUrl ? linkRow(d.blockHotel || 'Book the room block', d.blockUrl, sub || hostOf(d.blockUrl)) : noteRow(d.blockHotel || 'Room block', sub)}</ul>`);
+  }
+  const lines = (k) => String(d[k] || '').split('\n').map(x => x.trim()).filter(Boolean);
+  if (has('spots')) out.push(`<h3 class="sub-h">${esc(lab.spots)}</h3><ul class="links">${lines('spots').map(x => `<li><a href="${esc(L.place(x, v ? placeLabel(v) : ''))}" target="_blank" rel="noopener"><b>${esc(x)}</b><span>Google Maps</span>${arrow}</a></li>`).join('')}</ul>`);
+  if (has('speakers')) out.push(`<h3 class="sub-h">${esc(lab.speakers)}</h3><ul class="links">${lines('speakers').map(x => { const [n, ...r] = x.split(/\s+[—–-]\s+|,\s+/); return `<li class="note"><b>${esc(n)}</b>${r.length ? `<span>${esc(r.join(', '))}</span>` : ''}</li>`; }).join('')}</ul>`);
+  return out.join('');
+}
 function tripDates(cfg) {
   const s = cfg.start.slice(0, 10), e = (cfg.end || cfg.start).slice(0, 10);
   const st = LS.get('trip:' + s + ':' + e);
@@ -654,6 +729,13 @@ function wireEvent(cfg, art, seq, air, opts) {
     window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
     const pin = window.L.divIcon({ className: 'pin', html: `<span style="--accent:${cfg.theme.accent}"></span>`, iconSize: [30, 40], iconAnchor: [15, 38] });
     window.L.marker([v.lat, v.lon], { icon: pin, title: v.name, zIndexOffset: 1000 }).addTo(map).bindPopup(`<b>${esc(v.name)}</b><br>${esc(v.address || '')}`);
+    const sp = typeSpec(cfg), td = typeData(cfg), pts = [[v.lat, v.lon]];
+    if (sp && cfg.sections.some(s => s.id === 'typeinfo' && s.on)) sp.fields.filter(f => f[2] === 'place' && td[f[0]] && td[f[0]].lat != null).forEach(([k, label]) => {
+      const p = td[k]; pts.push([p.lat, p.lon]);
+      const ic = window.L.divIcon({ className: 'tpin', html: `<span>${esc(label)}</span>`, iconSize: null, iconAnchor: [0, 0] });
+      window.L.marker([p.lat, p.lon], { icon: ic, title: `${label}: ${p.q}`, zIndexOffset: 900 }).addTo(map).bindPopup(`<b>${esc(label)}</b><br>${esc(p.q)}`);
+    });
+    if (pts.length > 1) map.fitBounds(pts, { padding: [50, 50], maxZoom: 16 });
     setTimeout(() => map.invalidateSize(), 120);
   }
   const needOSM = ['food', 'stay', 'tours', 'around', 'map'].some(id => cfg.sections.find(s => s.id === id && s.on));
@@ -815,6 +897,7 @@ function buildForm() {
     ${field('Description', `<textarea data-f="description" rows="5" placeholder="What guests should know. Leave a blank line between paragraphs.">${esc(c.description)}</textarea>`)}
     ${field('Cover image link', `<input data-f="cover" type="url" value="${esc(c.cover)}" placeholder="https://…/photo.jpg">`, 'Paste a link to a photo that is already online. Landscape photos work best.')}
   </fieldset>
+  ${typeFieldset(c)}
   <fieldset><legend>When</legend>
     <div class="two">${field('Starts', `<input type="datetime-local" data-f="start" value="${esc(c.start)}">`)}${field('Ends', `<input type="datetime-local" data-f="end" value="${esc(c.end)}">`)}</div>
     <p class="hint">Times are local to the venue${c.tz ? ` (${esc(c.tz.replace(/_/g, ' '))})` : ''}.</p>
@@ -833,7 +916,7 @@ function buildForm() {
   </fieldset>
   <fieldset><legend>Sections</legend>
     <p class="hint">Turn sections on or off and set their order.</p>
-    <ol class="secs">${c.sections.map((s, i) => `<li><label><input type="checkbox" data-sec="${i}" ${s.on ? 'checked' : ''}> ${SECTION_NAMES[s.id]}</label><span><button type="button" class="ic" data-up="${i}" ${i === 0 ? 'disabled' : ''} aria-label="Move ${SECTION_NAMES[s.id]} up">↑</button><button type="button" class="ic" data-down="${i}" ${i === c.sections.length - 1 ? 'disabled' : ''} aria-label="Move ${SECTION_NAMES[s.id]} down">↓</button></span></li>`).join('')}</ol>
+    <ol class="secs">${c.sections.map((s, i) => `<li${s.id === 'typeinfo' && !typeSpec(c) ? ' hidden' : ''}><label><input type="checkbox" data-sec="${i}" ${s.on ? 'checked' : ''}> ${esc(secName(s.id, c))}</label><span><button type="button" class="ic" data-up="${i}" ${i === 0 ? 'disabled' : ''} aria-label="Move ${SECTION_NAMES[s.id]} up">↑</button><button type="button" class="ic" data-down="${i}" ${i === c.sections.length - 1 ? 'disabled' : ''} aria-label="Move ${SECTION_NAMES[s.id]} down">↓</button></span></li>`).join('')}</ol>
   </fieldset>
   <fieldset><legend>Schedule</legend>
     ${c.schedule.map((x, i) => `<div class="rowed"><div class="two"><input type="date" data-s="${i}" data-k="date" value="${esc(x.date)}" aria-label="Date"><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time"></div><input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="What's happening" aria-label="Title"><input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Where or a note (optional)" aria-label="Note"><button type="button" class="ic del" data-sdel="${i}" aria-label="Remove item">Remove</button></div>`).join('')}
@@ -847,11 +930,35 @@ function buildForm() {
   <div class="b-end"><button type="button" class="btn primary" data-act="publish">Publish</button><button type="button" class="btn ghost" data-b="reset">Start over</button></div>`;
   wireForm();
 }
+function typeFieldset(c) {
+  const sp = typeSpec(c); if (!sp) return '';
+  const d = typeData(c);
+  const one = ([k, label, kind, ph = '']) => {
+    const id = `x-${k}`; const val = d[k];
+    if (kind === 'links') return `<div class="field"><label>${esc(label)}</label>${(val || []).map((l, i) => `<div class="rowed"><input data-xl="${k}" data-i="${i}" data-k="label" value="${esc(l.label)}" placeholder="Name" aria-label="${esc(label)} name"><input data-xl="${k}" data-i="${i}" data-k="url" type="url" value="${esc(l.url)}" placeholder="https://…" aria-label="${esc(label)} link"><button type="button" class="ic del" data-xdel="${k}" data-i="${i}" aria-label="Remove">Remove</button></div>`).join('')}<button type="button" class="btn sm" data-xadd="${k}">Add ${esc(label.toLowerCase())}</button></div>`;
+    if (kind === 'place') return `<div class="field"><label for="${id}">${esc(label)}</label><div class="search"><input id="${id}" data-xp="${k}" value="${esc(val ? val.q : '')}" placeholder="${esc(ph)}"><button type="button" class="btn" data-xfind="${k}">${val && val.lat != null ? 'Pinned' : 'Pin on map'}</button></div></div>`;
+    if (kind === 'lines') return `<div class="field"><label for="${id}">${esc(label)}</label><textarea id="${id}" data-x="${k}" rows="3" placeholder="${esc(ph)}">${esc(val || '')}</textarea></div>`;
+    const type = { url: 'url', date: 'date', time: 'time', datetime: 'datetime-local' }[kind] || 'text';
+    return `<div class="field"><label for="${id}">${esc(label)}</label><input id="${id}" type="${type}" data-x="${k}" value="${esc(val || '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}></div>`;
+  };
+  // pair short fields side by side
+  const html = []; const fs = sp.fields;
+  for (let i = 0; i < fs.length; i++) {
+    const short = (f) => f && ['date', 'time', 'datetime'].includes(f[2]);
+    if (short(fs[i + 1]) && !['links', 'lines', 'place'].includes(fs[i][2])) { html.push(`<div class="two">${one(fs[i])}${one(fs[i + 1])}</div>`); i++; }
+    else html.push(one(fs[i]));
+  }
+  return `<fieldset class="typef"><legend>${esc(sp.name)}</legend>${html.join('')}</fieldset>`;
+}
 function wireForm() {
   const f = $('.b-form'); const c = B.cfg;
   f.oninput = (e) => {
     const i = e.target; const d = i.dataset;
-    if (d.f) { c[d.f] = i.value; if (d.f === 'start' && c.end && c.end < c.start) { c.end = c.start; const en = f.querySelector('[data-f="end"]'); if (en) en.value = c.end; } changed(); }
+    const xd = () => (c.x[c.type] = c.x[c.type] || {});
+    if (d.x) { xd()[d.x] = i.value; changed(); }
+    else if (d.xl) { xd()[d.xl][+d.i][d.k] = i.value; changed(); }
+    else if (d.xp) { xd()[d.xp] = i.value ? { q: i.value } : null; const fb = f.querySelector(`[data-xfind="${d.xp}"]`); if (fb) fb.textContent = 'Pin on map'; changed(); }
+    else if (d.f) { c[d.f] = i.value; if (d.f === 'start' && c.end && c.end < c.start) { c.end = c.start; const en = f.querySelector('[data-f="end"]'); if (en) en.value = c.end; } changed(d.f === 'type'); }
     else if (d.v) { c.venue[d.v] = i.value; changed(); }
     else if (d.t) { c.theme[d.t] = i.value; $$('.sw', f).forEach(s => s.classList.remove('on')); changed(); }
     else if (d.s != null) { c.schedule[+d.s][d.k] = i.value; changed(); }
@@ -872,9 +979,23 @@ function wireForm() {
     else if (d.b === 'add-sched') { const last = c.schedule[c.schedule.length - 1]; c.schedule.push({ date: last?.date || c.start.slice(0, 10), time: '', title: '', note: '' }); changed(true); }
     else if (d.sdel != null) { c.schedule.splice(+d.sdel, 1); changed(true); }
     else if (d.ldel != null) { c.links.splice(+d.ldel, 1); changed(true); }
+    else if (d.xadd) { const x = (c.x[c.type] = c.x[c.type] || {}); (x[d.xadd] = x[d.xadd] || []).push({ label: '', url: '' }); changed(true); }
+    else if (d.xdel) { c.x[c.type][d.xdel].splice(+d.i, 1); changed(true); }
+    else if (d.xfind) pinPlace(d.xfind, b);
     else if (d.lp) { c.links.push({ label: d.lp, url: '', note: '' }); changed(true); }
     else if (d.b === 'reset') { if (confirm('Clear this draft and start over?')) { LS.del('draft'); renderBuilder(blankEvent()); } }
   };
+}
+async function pinPlace(k, btn) {
+  const c = B.cfg; const x = c.x[c.type] || {}; const p = x[k]; if (!p || !p.q || p.q.trim().length < 3) { toast('Type a place first'); return; }
+  btn.disabled = true; btn.textContent = 'Finding…';
+  try {
+    const near = c.venue ? `${p.q}, ${c.venue.city || ''}` : p.q;
+    let r = await geocode(near); if (!r.length && near !== p.q) r = await geocode(p.q);
+    if (!r.length) { toast('No match. Add a street or landmark.'); btn.textContent = 'Pin on map'; }
+    else { x[k] = { q: p.q, lat: r[0].lat, lon: r[0].lon }; btn.textContent = 'Pinned'; changed(); }
+  } catch { toast('Search is unavailable right now'); btn.textContent = 'Pin on map'; }
+  btn.disabled = false;
 }
 async function venueSearch() {
   const q = ($('#vq')?.value || '').trim(); B.vq = q;

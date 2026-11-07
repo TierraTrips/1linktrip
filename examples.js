@@ -17,7 +17,7 @@ window.EXAMPLES = {
     },
     cover: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Javits_Center_November_2022.jpg/1280px-Javits_Center_November_2022.jpg',
     theme: { accent: '#3048F0', font: 'grotesk', mode: 'light' },
-    sections: ['about', 'schedule', 'weather', 'map', 'travel', 'stay', 'food', 'tours', 'around', 'links', 'calendar'].map(id => ({ id, on: true })),
+    sections: ['about', 'typeinfo', 'schedule', 'weather', 'map', 'travel', 'stay', 'food', 'tours', 'around', 'links', 'calendar'].map(id => ({ id, on: true })),
     schedule: [
       { date: '2026-11-18', time: '08:00', title: 'Badge pickup and coffee', note: 'North Concourse' },
       { date: '2026-11-18', time: '09:30', title: 'Opening keynote', note: 'Main stage, Hall 1A' },
@@ -26,6 +26,7 @@ window.EXAMPLES = {
       { date: '2026-11-19', time: '09:00', title: 'Hands-on workshops', note: 'Bring a laptop' },
       { date: '2026-11-19', time: '16:30', title: 'Closing panel', note: 'Main stage, Hall 1A' }
     ],
+    x: { Conference: { badge: 'North Concourse', badgeWhen: '2026-11-18T08:00' } },
     links: [
       { label: 'Venue information', url: 'https://www.javitscenter.com/' },
       { label: 'Subway and bus service', url: 'https://new.mta.info/' },
@@ -50,7 +51,7 @@ window.EXAMPLES = {
     },
     cover: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/ff/Mexico_-_beach_by_Tulum%2C_2022.jpg/1280px-Mexico_-_beach_by_Tulum%2C_2022.jpg',
     theme: { accent: '#0B7A75', font: 'serif', mode: 'light' },
-    sections: ['about', 'schedule', 'links', 'weather', 'travel', 'stay', 'food', 'tours', 'around', 'map', 'calendar'].map(id => ({ id, on: true })),
+    sections: ['about', 'typeinfo', 'schedule', 'links', 'weather', 'travel', 'stay', 'food', 'tours', 'around', 'map', 'calendar'].map(id => ({ id, on: true })),
     schedule: [
       { date: '2027-03-12', time: '19:00', title: 'Welcome drinks', note: 'Casual. Sandals encouraged.' },
       { date: '2027-03-13', time: '16:30', title: 'Ceremony', note: 'On the beach. Please arrive by 4:15.' },
@@ -58,11 +59,44 @@ window.EXAMPLES = {
       { date: '2027-03-13', time: '20:30', title: 'Dancing', note: '' },
       { date: '2027-03-14', time: '11:00', title: 'Farewell brunch', note: 'Come as you are' }
     ],
+    x: { Wedding: { dress: 'Beach formal. Linen is perfect; leave the stilettos at home.', rsvpBy: '2027-01-15' } },
     links: [
-      { label: 'Dress code', note: 'Beach formal. Linen is perfect; leave the stilettos at home.' },
-      { label: 'RSVP', note: 'Please reply to the invitation card by January 15.' },
       { label: 'Kids', note: 'Little ones are welcome at the welcome drinks and brunch.' }
     ]
+  },
+
+  'chicago-10k': {
+    v: 1,
+    type: 'Race',
+    title: 'Lakefront 10K',
+    tagline: 'A flat, fast spring 10K along the Chicago lakefront',
+    host: 'Lakefront Running Club',
+    description: 'Point to point from Buckingham Fountain to the Adler Planetarium, with the skyline at your back and the lake on your left.\n\nThe course is flat and chip timed. Waves start every five minutes from 7:00 AM; the course closes at 9:30 AM.',
+    start: '2027-05-16T07:00',
+    end: '2027-05-16T10:00',
+    tz: 'America/Chicago',
+    venue: {
+      name: 'Buckingham Fountain',
+      address: 'South Columbus Drive, Chicago, IL 60605',
+      lat: 41.8758, lon: -87.61897, city: 'Chicago', region: 'Illinois', country: 'United States', cc: 'us'
+    },
+    cover: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Buckingham_Fountain_%26_Chicago_skyline%2C_Aug_10.jpg/1280px-Buckingham_Fountain_%26_Chicago_skyline%2C_Aug_10.jpg',
+    theme: { accent: '#2E7D32', font: 'wide', mode: 'light' },
+    sections: ['about', 'typeinfo', 'schedule', 'map', 'weather', 'travel', 'stay', 'food', 'tours', 'around', 'calendar'].map(id => ({ id, on: true })),
+    schedule: [
+      { date: '2027-05-15', time: '10:00', title: 'Packet pickup opens', note: 'Lower Hutchinson Field, until 5 PM' },
+      { date: '2027-05-16', time: '06:00', title: 'Gear check opens', note: 'Next to the start corrals' },
+      { date: '2027-05-16', time: '07:00', title: 'First wave starts', note: 'Buckingham Fountain' },
+      { date: '2027-05-16', time: '08:30', title: 'Awards', note: 'Finish area, Adler Planetarium' }
+    ],
+    x: { Race: {
+      startAt: { q: 'Buckingham Fountain', lat: 41.8758, lon: -87.61897 },
+      finishAt: { q: 'Adler Planetarium', lat: 41.86637, lon: -87.60663 },
+      packet: 'Lower Hutchinson Field', packetWhen: '2027-05-15T10:00',
+      spots: 'Museum Campus\nNortherly Island',
+      closures: 'Columbus Drive between Balbo and Roosevelt is closed from 5 to 10 AM on race morning.'
+    } },
+    links: []
   },
 
   'sf-festival': {
