@@ -770,7 +770,7 @@ function renderLanding() {
   const ex = window.EXAMPLES; const draft = LS.get('draft');
   $('#app').innerHTML = `
   <main class="land">
-    <header class="land-top"><a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>Eventpages</a><a class="btn primary" href="#new">Create a page</a></header>
+    <header class="land-top"><a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>Eventpages</a><span class="land-nav">${LS.get('signedIn') ? '<a class="link" href="#mine">My pages</a>' : ''}<a class="btn primary" href="#new">Create a page</a></span></header>
     <section class="land-hero">
       <div class="land-copy">
         <h1>Give every guest the whole trip <em>in one link</em>.</h1>
@@ -1077,6 +1077,7 @@ function renderEvent(cfg, root, opts = {}) {
   </article>`;
   const art = root.querySelector('.ev');
   wireEvent(cfg, art, seq, air, opts);
+  if (opts.hosted && typeof wireHosted === 'function') wireHosted(cfg, art, opts.hosted, opts);
 }
 function showTab(art, k, opts = {}) {
   $$('.ev-panel', art).forEach(p => { p.hidden = p.dataset.panel !== k; });
@@ -1249,10 +1250,11 @@ function renderViewer(cfg, { exampleId, tab } = {}) {
 
 // ---------- editor ----------
 let B = null; // builder state
-function renderBuilder(cfg, source) {
+function renderBuilder(cfg, source, hosted) {
   LANG = 'en'; document.documentElement.lang = 'en';
   document.title = 'Edit your page · Eventpages';
-  B = { cfg: normalize(cfg), venueResults: [], tab: 'edit', card: null };
+  B = { cfg: normalize(cfg), venueResults: [], tab: 'edit', card: null, hosted: hosted && hosted.id ? hosted : null };
+  LS.set('draftHosted', B.hosted);
   $('#app').innerHTML = `
   <div class="builder" data-tab="edit">
     <header class="b-top">
@@ -1267,6 +1269,7 @@ function renderBuilder(cfg, source) {
   <dialog id="pub"><form method="dialog" class="pub">
     <h2>Your page is ready to share</h2>
     <textarea id="pub-url" readonly rows="4"></textarea>
+    <div id="pub-host"></div>
     <div class="btns"><button type="button" class="btn primary" data-act="copy">Copy link</button><button type="button" class="btn" data-act="native-share" hidden>Share…</button><button type="button" class="btn" data-act="qr">QR code</button><a class="btn" id="pub-open" href="#" target="_blank" rel="noopener">Open page</a><button class="btn ghost">Close</button></div>
   </form></dialog>`;
   buildForm();
@@ -1280,24 +1283,27 @@ function renderBuilder(cfg, source) {
     const a = e.target.closest('[data-act]'); if (!a) return;
     if (a.dataset.act === 'copy') copy($('#pub-url').value);
     if (a.dataset.act === 'native-share') navigator.share({ title: B.cfg.title, url: $('#pub-url').value }).catch(() => {});
-    if (a.dataset.act === 'qr') openQR(B.cfg);
+    if (a.dataset.act === 'qr') openQR(B.cfg, $('#pub-url').value);
   });
   const sh = $('#sheet');
   sh.addEventListener('close', () => { B.card = null; buildForm(); });
   sh.addEventListener('click', (e) => { if (e.target === sh) sh.close(); });
   wireInputs(sh.querySelector('.sheet-in'));
+  if (typeof wirePubHost === 'function') wirePubHost();
   preview();
   if (window.__openCard) { const id = window.__openCard; window.__openCard = null; openCard(id); }
 }
-function publish() {
+function publish(opts = {}) {
   const c = B.cfg; const problems = [];
   if (!c.title.trim()) problems.push('a title');
   if (!c.start) problems.push('a date');
   if (problems.length) { toast('Add ' + problems.join(' and ') + ' first'); return; }
   const url = shareURL(c); $('#pub-url').value = url; $('#pub-open').href = url;
   $('[data-act="native-share"]').hidden = !navigator.share;
+  $('#pub h2').textContent = 'Your page is ready to share'; $('#pub-url').rows = 4;
   LS.set('published:' + Date.now(), { title: c.title, url });
-  $('#pub').showModal();
+  if (!$('#pub').open) $('#pub').showModal();
+  if (typeof renderPubHost === 'function') { B.pub = { state: 'offer' }; renderPubHost(); if (SB && (B.hosted || opts.host)) hostNow(); }
 }
 const savedraft = debounce(() => LS.set('draft', B.cfg), 300);
 const preview = debounce(() => { const p = $('#preview'); if (!p) return; const sc = p.parentElement; const y = sc.scrollTop; const tab = p.querySelector('[data-tab-go][aria-selected="true"]')?.dataset.tabGo; renderEvent(B.cfg, p, { preview: true, shareUrl: shareURL(B.cfg), tab }); sc.scrollTop = y; }, 350);
@@ -1316,12 +1322,12 @@ function cardDone(c, id) {
   const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id);
   if (tc) { const sp = typeSpec(c), d = typeData(c); return tc[3].some(k => { const f = sp.fields.find(x => x[0] === k); return f && filled(f[2], d[k]); }); }
   return { schedule: () => c.schedule.some(x => x.title), notes: () => c.notes.some(x => x.label), about: () => !!(c.description || c.host), look: () => !!c.cover, bring: () => !!c.bring.trim(),
-    access: () => !!(c.access && Object.values(c.access).some(Boolean)) }[id]?.() || false;
+    access: () => !!(c.access && Object.values(c.access).some(Boolean)), replies: () => !c.off.rsvp }[id]?.() || false;
 }
 const cardBtn = (c, [id, title, sub]) => { const done = cardDone(c, id); return `<button type="button" class="acard ${done ? 'on' : ''}" data-card="${id}"><span class="aic">${cardIcon(id)}</span><b>${esc(title)}</b><span>${esc(sub)}</span><i class="plus" aria-hidden="true">${done ? '✓' : '+'}</i></button>`; };
 function allCards(c) { return { type: TYPE_CARDS[c.type] || [], common: COMMON_CARDS }; }
 function buildForm() {
-  const c = B.cfg; const f = $('.b-form'); if (!f) return; const keepNote = f.querySelector('.b-note');
+  const c = B.cfg; const f = $('.b-form'); if (!f) return; const keepNote = f.querySelector('.b-note:not(.b-host)');
   const open = new Set($$('details.acc[open]', f).map(d => d.dataset.acc));
   if (!f.dataset.init) { f.dataset.init = '1'; if (!c.title) open.add('basics'); }
   const basicsOk = !!c.title.trim(); const whenOk = !!(c.start && c.venue);
@@ -1343,6 +1349,7 @@ function buildForm() {
   <div class="tools">${TOOLS.map(([k, l]) => `<label class="tool"><input type="checkbox" data-tool="${k}" ${c.tools[k] ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${esc(l)}</label>`).join('')}</div>
   <div class="b-end"><button type="button" class="btn primary" data-act="publish">Publish</button><button type="button" class="btn ghost" data-b="reset">Start over</button></div>`;
   wireInputs(f);
+  if (typeof renderHostNote === 'function') renderHostNote();
 }
 function venueFieldHTML(c) {
   return c.venue ? `<div class="venue-sel"><div><b>${esc(c.venue.name)}</b><span>${esc(c.venue.address || '')}</span></div><button type="button" class="btn sm" data-b="clear-venue">Change</button></div>
@@ -1433,7 +1440,7 @@ let SU = null;
 function renderSetup() {
   LANG = 'en'; document.documentElement.lang = 'en';
   document.title = 'Create a page · Eventpages';
-  SU = { step: 0, cfg: blankEvent('Party'), results: [], q: '', msg: '' };
+  SU = { step: 0, cfg: blankEvent('Party'), results: [], q: '', msg: '' }; LS.del('draftHosted');
   B = { cfg: SU.cfg, venueResults: [] };
   $('#app').innerHTML = `<div class="setup"><div class="su-main"></div><div class="su-preview"><div class="su-tag">Preview</div><div class="b-frame" id="su-frame"></div></div></div>`;
   suRender();
@@ -1538,8 +1545,8 @@ function qrSVG(text, cell = 4) {
   return null;
 }
 const qrButtonHTML = () => `<button type="button" class="btn" data-su="qr">QR code and print card</button>`;
-function openQR(cfg) {
-  const url = shareURL(cfg); const q = qrSVG(url);
+function openQR(cfg, url) {
+  url = url || shareURL(cfg); const q = qrSVG(url);
   if (!q) { toast('This page has too much text for a QR code. Shorten the description or notes.'); return; }
   let d = $('#qrdlg');
   if (!d) { d = document.createElement('dialog'); d.id = 'qrdlg'; document.body.appendChild(d); d.addEventListener('click', (e) => { if (e.target === d) d.close(); }); }
@@ -1626,13 +1633,16 @@ function extraInput(i, cfg) {
     });
     return;
   }
+  if (i.dataset.rsvpOn != null) { cfg.off.rsvp = !i.checked; changed(); return; }
   if (i.dataset.access) { cfg.access = cfg.access || {}; cfg.access[i.dataset.access] = i.value; changed(); }
 }
 
 // ---- access and arrival ----
 const ACCESS_FIELDS = [['dropoff', 'Drop-off point'], ['entrance', 'Step-free entrance'], ['parking', 'Accessible parking'], ['restrooms', 'Accessible restrooms'], ['notes', 'Other access notes']];
 COMMON_CARDS.splice(3, 0, ['access', 'Access and arrival', 'Drop-off, step-free entrance']);
+COMMON_CARDS.splice(1, 0, ['replies', 'RSVP form', 'Guests reply on your short link']);
 function extraCardBody(id, c) {
+  if (id === 'replies') return `<label class="chk"><input type="checkbox" data-rsvp-on ${c.off.rsvp ? '' : 'checked'}> Show an RSVP form on your short link</label><p class="hint">Guests reply on the page. Only you see the replies, in My pages. Pages shared as a long link (no account) don’t have an RSVP form.</p>`;
   if (id !== 'access') return '';
   const a = c.access || {};
   return ACCESS_FIELDS.map(([k, l]) => fieldWrap(l, `<input id="acc-${k}" data-access="${k}" value="${esc(a[k] || '')}">`, `acc-${k}`)).join('');
@@ -1703,6 +1713,300 @@ async function aboutFill() {
   changed(true);
 }
 
+// ================= phase C: hosted pages (Supabase) =================
+// Guests talk to the database over plain REST with the publishable key (no library download).
+// Organizers load supabase-js only when they ask for a short link or open My pages (lazy sign-in, magic link only).
+const SB = window.EP_SUPABASE && window.EP_SUPABASE.url ? window.EP_SUPABASE : null;
+const SB_JS = { src: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js', integrity: 'sha384-uteMfOloLDGt042uDz+xHGF3ym63/WQ6rFq7murQRG8Ih7QrXGEGNtWd8688sb4O' };
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,46}[a-z0-9]$/;
+const siteBase = () => location.origin + location.pathname;
+const shortURL = (slug) => `${siteBase()}?e=${slug}`;
+let sbClient = null, sbLoading = null;
+function sb() {
+  if (sbClient) return Promise.resolve(sbClient);
+  if (!SB) return Promise.reject(new Error('Hosting is not set up'));
+  return sbLoading || (sbLoading = new Promise((res, rej) => {
+    const go = () => {
+      try {
+        sbClient = window.supabase.createClient(SB.url, SB.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit', storageKey: 'ep-auth' } });
+        res(sbClient);
+      } catch (e) { sbLoading = null; rej(e); }
+    };
+    if (window.supabase && window.supabase.createClient) return go();
+    const s = document.createElement('script'); s.src = SB_JS.src; s.integrity = SB_JS.integrity; s.crossOrigin = 'anonymous';
+    s.onload = go; s.onerror = () => { sbLoading = null; s.remove(); rej(new Error('Could not load sign-in. Check your connection.')); };
+    document.head.appendChild(s);
+  }));
+}
+async function sbUser() { const c = await sb(); const { data } = await c.auth.getSession(); return data && data.session ? data.session.user : null; }
+async function rest(path, { method = 'GET', body, prefer } = {}) {
+  if (!SB) throw new Error('Hosting is not set up');
+  const headers = { apikey: SB.key, Accept: 'application/json' };
+  if (body) headers['Content-Type'] = 'application/json';
+  if (prefer) headers.Prefer = prefer;
+  const r = await fetchTimeout(`${SB.url}/rest/v1/${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined }, 15000);
+  if (!r.ok) { const e = new Error('Request failed (' + r.status + ')'); e.status = r.status; throw e; }
+  return r.status === 204 || r.status === 201 && prefer === 'return=minimal' ? null : r.json();
+}
+async function fetchHosted(slug) {
+  if (!SLUG_RE.test(slug)) return null;
+  const rows = await rest(`events?slug=eq.${enc(slug)}&select=id,slug,config,updated_at&limit=1`);
+  return rows && rows[0] ? rows[0] : null;
+}
+const fetchAnnouncements = (id) => rest(`announcements?event_id=eq.${enc(id)}&select=id,body,created_at&order=created_at.desc&limit=20`);
+const sendRSVP = (row) => rest('rsvps', { method: 'POST', body: row, prefer: 'return=minimal' });
+function makeSlug(title) {
+  let base = String(title || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32).replace(/-+$/, '');
+  if (base.length < 2) base = 'event';
+  const abc = 'abcdefghjkmnpqrstuvwxyz23456789';
+  return base + '-' + Array.from(crypto.getRandomValues(new Uint8Array(5)), b => abc[b % abc.length]).join('');
+}
+const fmtStamp = (iso) => { try { return new Intl.DateTimeFormat(LOCALES[LANG] || 'en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(iso)); } catch { return ''; } };
+
+// ---------- guest side: a hosted page ----------
+async function renderHosted(slug, tab) {
+  LANG = pickLang(); document.documentElement.lang = LANG;
+  $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#"><span class="brand-mark" aria-hidden="true"></span>Eventpages</a></div><div id="ev-root"><div class="skel" role="status"><span></span><span></span><em>${t('Loading…')}</em></div></div></div>`;
+  let row = null;
+  try { row = await fetchHosted(slug); }
+  catch { return hostedProblem(t('Couldn’t load this page. Check your connection and try again.'), true); }
+  if (!row) return hostedProblem(t('This page isn’t available. It may have been removed or hidden by its organizer.'));
+  const cfg = normalize(row.config); const hosted = { id: row.id, slug: row.slug, url: shortURL(row.slug) };
+  document.title = (cfg.title || 'Event') + ' · Eventpages';
+  $('.vbar').insertAdjacentHTML('beforeend', `<a class="btn sm" href="#edit=${packEvent(cfg)}">${t('Edit a copy')}</a>`);
+  renderEvent(cfg, $('#ev-root'), { tab, hosted, shareUrl: hosted.url });
+  // '#' alone can't leave a ?e= page (the hash doesn't change), so home links point at the app itself
+  $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
+  window.scrollTo(0, 0);
+}
+function hostedProblem(msg, retry) {
+  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#"><span class="brand-mark"></span>Eventpages</a></header><section class="broken"><h1>${esc(msg)}</h1>${retry ? `<button class="btn primary" onclick="location.reload()">${t('Try again')}</button>` : `<a class="btn primary" href="${esc(siteBase())}">${t('Go to Eventpages')}</a>`}</section></main>`;
+  $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
+}
+function rsvpFormHTML(cfg, hosted) {
+  const mine = LS.get('rsvp:' + hosted.id);
+  if (mine && !mine.editing) return `<div class="rsvp-done"><p><b>${esc(t('Thanks, {n}.', { n: mine.name }))}</b> ${esc(mine.attending ? t('We’ve got you down as coming.') : t('We’ve let the host know you can’t make it.'))}</p><button type="button" class="btn sm" data-rsvp="again">${t('Change my reply')}</button></div>`;
+  const prev = mine || {};
+  return `<form class="rsvp" novalidate onsubmit="return false">
+    <div class="field"><label for="rs-name">${t('Your name')}</label><input id="rs-name" maxlength="120" autocomplete="name" value="${esc(prev.name || '')}" required></div>
+    <div class="field"><span class="lbl-s">${t('Will you be there?')}</span><div class="seg2" role="radiogroup"><button type="button" role="radio" data-rsvp-att="1" aria-checked="${prev.attending !== false}" class="${prev.attending !== false ? 'on' : ''}">${t('Yes, I’ll be there')}</button><button type="button" role="radio" data-rsvp-att="0" aria-checked="${prev.attending === false}" class="${prev.attending === false ? 'on' : ''}">${t('Can’t make it')}</button></div></div>
+    <div class="two"><div class="field" data-rsvp-guests ${prev.attending === false ? 'hidden' : ''}><label for="rs-guests">${t('How many, including you')}</label><input id="rs-guests" type="number" min="1" max="20" inputmode="numeric" value="${esc(prev.guests || 1)}"></div>
+    <div class="field"><label for="rs-email">${t('Email (optional)')}</label><input id="rs-email" type="email" maxlength="254" autocomplete="email" value="${esc(prev.email || '')}"></div></div>
+    <div class="field"><label for="rs-note">${t('Note for the host (optional)')}</label><textarea id="rs-note" rows="2" maxlength="1000">${esc(prev.note || '')}</textarea></div>
+    <p class="rsvp-msg" role="status" aria-live="polite"></p>
+    <button type="button" class="btn primary" data-rsvp="send">${t('Send reply')}</button>
+    <p class="muted small">${t('Only the host sees your reply.')}</p>
+  </form>`;
+}
+function wireHosted(cfg, art, hosted, opts = {}) {
+  const body = art.querySelector('.ev-panel[data-panel="event"] .ev-body'); if (!body) return;
+  body.insertAdjacentHTML('afterbegin', '<div data-slot="ann"></div>');
+  if (!cfg.off.rsvp) {
+    const html = sec('rsvp', t('RSVP'), `<div data-slot="rsvp">${rsvpFormHTML(cfg, hosted)}</div>`);
+    const after = body.querySelector('#sec-details') || body.querySelector('#sec-about');
+    if (after) after.insertAdjacentHTML('afterend', html); else body.querySelector('[data-slot="ann"]').insertAdjacentHTML('afterend', html);
+  }
+  if (opts.preview) { art.querySelectorAll('.rsvp input, .rsvp textarea, .rsvp button').forEach(x => { x.disabled = true; }); return; }
+  fetchAnnouncements(hosted.id).then(rows => {
+    const s = art.querySelector('[data-slot="ann"]'); if (!s || !rows || !rows.length) return;
+    s.innerHTML = `<section class="ev-sec ann" aria-label="${t('Updates from the host')}"><h2 class="sec-h">${t('Updates from the host')}</h2><ul class="ann-list">${rows.map(r => `<li><time>${esc(fmtStamp(r.created_at))}</time><p>${esc(r.body)}</p></li>`).join('')}</ul></section>`;
+  }).catch(() => {});
+  art.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-rsvp],[data-rsvp-att]'); if (!b) return;
+    const slot = art.querySelector('[data-slot="rsvp"]');
+    if (b.dataset.rsvpAtt != null) {
+      $$('[data-rsvp-att]', slot).forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-checked', String(on)); });
+      slot.querySelector('[data-rsvp-guests]').hidden = b.dataset.rsvpAtt === '0'; return;
+    }
+    if (b.dataset.rsvp === 'again') { const m = LS.get('rsvp:' + hosted.id) || {}; m.editing = true; LS.set('rsvp:' + hosted.id, m); slot.innerHTML = rsvpFormHTML(cfg, hosted); return; }
+    if (b.dataset.rsvp !== 'send') return;
+    const v = (id) => (slot.querySelector('#' + id)?.value || '').trim();
+    const msg = slot.querySelector('.rsvp-msg');
+    const attending = slot.querySelector('[data-rsvp-att="1"]').classList.contains('on');
+    const name = v('rs-name').slice(0, 120), email = v('rs-email').slice(0, 254), note = v('rs-note').slice(0, 1000);
+    const guests = attending ? Math.min(20, Math.max(1, parseInt(v('rs-guests'), 10) || 1)) : 0;
+    if (!name) { msg.textContent = t('Add your name first.'); slot.querySelector('#rs-name').focus(); return; }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msg.textContent = t('That email doesn’t look right.'); slot.querySelector('#rs-email').focus(); return; }
+    b.disabled = true; msg.textContent = t('Sending…');
+    try {
+      await sendRSVP({ event_id: hosted.id, name, email: email || null, attending, guests, note: note || null });
+      LS.set('rsvp:' + hosted.id, { name, email, attending, guests, note, at: Date.now() });
+      slot.innerHTML = rsvpFormHTML(cfg, hosted);
+    } catch { b.disabled = false; msg.textContent = t('Couldn’t send your reply. Check your connection and try again.'); }
+  });
+}
+
+// ---------- organizer: sign-in (magic link) ----------
+async function sendMagicLink(email) {
+  const c = await sb();
+  const { error } = await c.auth.signInWithOtp({ email, options: { emailRedirectTo: siteBase(), shouldCreateUser: true } });
+  if (error) throw error;
+}
+const signInFormHTML = (msg, email = '') => `<div class="signin">
+    <div class="field"><label for="si-email">Your email</label><div class="search"><input id="si-email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" value="${esc(email)}"><button type="button" class="btn primary" data-si="send">Send link</button></div></div>
+    <p class="hint" role="status" aria-live="polite">${esc(msg || 'We’ll email you a one-time sign-in link. No password.')}</p></div>`;
+async function signInSubmit(root, after) {
+  const inp = root.querySelector('#si-email'); const hint = root.querySelector('.signin .hint'); const btn = root.querySelector('[data-si="send"]');
+  const email = (inp.value || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { hint.textContent = 'Enter the email address you want to sign in with.'; inp.focus(); return; }
+  btn.disabled = true; hint.textContent = 'Sending…';
+  try { if (after) after(); await sendMagicLink(email); LS.set('signinEmail', email); root.querySelector('.signin').outerHTML = `<div class="signin sent"><p><b>Check your email.</b> We sent a sign-in link to ${esc(email)}. Open it on this device to finish.</p><button type="button" class="link" data-si="retry">Use a different email</button></div>`; }
+  catch (e) { btn.disabled = false; hint.textContent = /rate|too many|seconds/i.test(e.message || '') ? 'Too many sign-in emails just now. Wait a minute and try again.' : 'Couldn’t send the link. ' + (e.message || 'Try again.'); }
+}
+async function authReturn() {
+  $('#app').innerHTML = `<main class="land"><section class="broken"><h1>Signing you in…</h1></section></main>`;
+  let session = null;
+  try { const c = await sb(); const r = await c.auth.getSession(); session = r.data && r.data.session; } catch { /* below */ }
+  history.replaceState(null, '', siteBase());
+  if (!session) { LS.del('pendingPublish'); return renderMine('', 'That sign-in link has expired or was already used. Send yourself a new one.'); }
+  LS.set('signedIn', true);
+  const p = LS.get('pendingPublish'); LS.del('pendingPublish');
+  if (p && p.cfg) { LS.set('draft', p.cfg); LS.set('draftHosted', p.hosted || null); history.replaceState(null, '', siteBase() + '#new'); renderBuilder(p.cfg, null, p.hosted || null); publish({ host: true }); return; }
+  history.replaceState(null, '', siteBase() + '#mine'); renderMine('');
+}
+
+// ---------- organizer: publish to a short link ----------
+async function publishHosted(cfg, hosted) {
+  const c = await sb(); const config = normalize(clone(cfg));
+  if (hosted && hosted.id) {
+    const { data, error } = await c.from('events').update({ config, published: true }).eq('id', hosted.id).select('id,slug');
+    if (!error && data && data.length) return data[0];
+  }
+  for (let i = 0; i < 4; i++) {
+    const { data, error } = await c.from('events').insert({ slug: makeSlug(cfg.title), config }).select('id,slug').single();
+    if (!error) return data;
+    if (error.code !== '23505') throw error;
+  }
+  throw new Error('Could not pick a free link. Try again.');
+}
+function pubHostHTML() {
+  const P = B.pub || {};
+  if (!SB) return '';
+  if (P.state === 'busy') return `<div class="pub-host"><p><b>Publishing your short link…</b></p></div>`;
+  if (P.state === 'done') return `<div class="pub-host ok"><p><b>Short link is live.</b> Publish again any time to update it. Guests can RSVP on it. <a href="#mine">See replies in My pages</a></p></div>`;
+  if (P.state === 'signin') return `<div class="pub-host"><p><b>Sign in to get a short link.</b> Your page is saved here and publishes when you come back from the email.</p>${signInFormHTML(P.msg, LS.get('signinEmail') || '')}</div>`;
+  return `<div class="pub-host"><p><b>Want a short link?</b> Like <span class="mono">…/eventpages/?e=${esc(makeSlug(B.cfg.title).replace(/-[a-z0-9]{5}$/, ''))}</span>. You can keep editing after you share it, and guests can RSVP.</p>${P.msg ? `<p class="hint">${esc(P.msg)}</p>` : ''}<button type="button" class="btn" data-ph="go">Get a short link</button></div>`;
+}
+function renderPubHost() { const box = $('#pub-host'); if (box) box.innerHTML = pubHostHTML(); }
+async function hostNow() {
+  B.pub = { state: 'busy' }; renderPubHost();
+  let user = null;
+  try { user = await sbUser(); } catch (e) { B.pub = { state: 'offer', msg: e.message }; renderPubHost(); return; }
+  if (!user) { B.pub = { state: 'signin' }; renderPubHost(); setTimeout(() => $('#si-email')?.focus(), 0); return; }
+  try {
+    const row = await publishHosted(B.cfg, B.hosted);
+    B.hosted = { id: row.id, slug: row.slug }; LS.set('draftHosted', B.hosted); LS.set('signedIn', true);
+    const url = shortURL(row.slug); $('#pub-url').value = url; $('#pub-url').rows = 2; $('#pub-open').href = url;
+    $('#pub h2').textContent = 'Your short link is ready';
+    LS.set('published:' + Date.now(), { title: B.cfg.title, url });
+    B.pub = { state: 'done' }; renderPubHost(); renderHostNote();
+  } catch (e) { B.pub = { state: 'offer', msg: 'Couldn’t publish: ' + (e.message || 'try again') }; renderPubHost(); }
+}
+function wirePubHost() {
+  const dlg = $('#pub'); if (!dlg || dlg._host) return; dlg._host = true;
+  dlg.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-ph],[data-si]'); if (!b) return;
+    if (b.dataset.ph === 'go') hostNow();
+    if (b.dataset.si === 'send') signInSubmit(dlg, () => LS.set('pendingPublish', { cfg: B.cfg, hosted: B.hosted }));
+    if (b.dataset.si === 'retry') { B.pub = { state: 'signin' }; renderPubHost(); }
+  });
+  dlg.addEventListener('keydown', (e) => { if (e.target.id === 'si-email' && e.key === 'Enter') { e.preventDefault(); signInSubmit(dlg, () => LS.set('pendingPublish', { cfg: B.cfg, hosted: B.hosted })); } });
+}
+function renderHostNote() {
+  const f = $('.b-form'); if (!f) return; let n = $('.b-host', f);
+  if (!B.hosted) { if (n) n.remove(); return; }
+  const html = `<p class="b-note b-host">Editing your page at <a href="${esc(shortURL(B.hosted.slug))}" target="_blank" rel="noopener">?e=${esc(B.hosted.slug)}</a>. Publish to update it. <a href="#mine">My pages</a></p>`;
+  if (n) n.outerHTML = html; else f.insertAdjacentHTML('afterbegin', html);
+}
+
+// ---------- organizer: My pages, replies, updates ----------
+async function renderMine(id, notice) {
+  LANG = 'en'; document.documentElement.lang = 'en'; document.title = 'My pages · Eventpages';
+  const shell = (inner) => { $('#app').innerHTML = `<main class="mine"><header class="land-top"><a class="brand" href="#"><span class="brand-mark"></span>Eventpages</a><nav class="mine-nav"><a href="#mine">My pages</a><a class="btn sm primary" href="#setup">New page</a></nav></header><div class="mine-in">${notice ? `<p class="b-note">${esc(notice)}</p>` : ''}${inner}</div></main>`; };
+  if (!SB) return shell('<h1>Hosting isn’t set up</h1>');
+  shell('<p class="muted">Loading…</p>');
+  let user = null;
+  try { user = await sbUser(); } catch (e) { return shell(`<h1>My pages</h1><p>${esc(e.message)}</p>`); }
+  if (!user) {
+    LS.del('signedIn');
+    shell(`<h1>My pages</h1><p class="lede">Sign in to see your short links, RSVPs and updates.</p>${signInFormHTML('', LS.get('signinEmail') || '')}`);
+    const m = $('.mine'); m.addEventListener('click', (e) => { const b = e.target.closest('[data-si]'); if (!b) return; if (b.dataset.si === 'send') signInSubmit(m); if (b.dataset.si === 'retry') renderMine(id); });
+    m.addEventListener('keydown', (e) => { if (e.target.id === 'si-email' && e.key === 'Enter') { e.preventDefault(); signInSubmit(m); } });
+    return;
+  }
+  LS.set('signedIn', true);
+  const c = await sb();
+  if (id) return renderMineEvent(id, shell, c, user);
+  const { data, error } = await c.from('events').select('id,slug,config,published,updated_at').eq('owner', user.id).order('updated_at', { ascending: false });
+  if (error) return shell(`<h1>My pages</h1><p>Couldn’t load your pages. ${esc(error.message)}</p>`);
+  shell(`<div class="mine-h"><h1>My pages</h1><span class="muted small">${esc(user.email || '')} · <button type="button" class="link" data-mine="signout">Sign out</button></span></div>
+    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = normalize(r.config); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · hidden'}</span><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener">?e=${esc(r.slug)}</a></div><div class="btns"><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a><button type="button" class="btn sm" data-mine-edit="${esc(r.id)}">Edit</button><button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button></div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Publish, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
+  $('.mine').addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.mine === 'signout') { await c.auth.signOut(); LS.del('signedIn'); LS.del('draftHosted'); location.hash = '#'; }
+    if (b.dataset.mineCopy) copy(shortURL(b.dataset.mineCopy));
+    if (b.dataset.mineEdit) { const r = data.find(x => x.id === b.dataset.mineEdit); const cfg = normalize(r.config); LS.set('draft', cfg); LS.set('draftHosted', { id: r.id, slug: r.slug }); location.hash = '#new'; }
+  });
+}
+const guestListKey = (id) => 'guests:' + id;
+function parseGuestList(text) {
+  const rows = String(text || '').split(/\r?\n/).map(l => l.split(/[,;\t]/).map(x => x.replace(/^"|"$/g, '').trim())).filter(r => r.some(Boolean));
+  if (!rows.length) return [];
+  const head = rows[0].map(h => h.toLowerCase()); const ni = head.findIndex(h => /name/.test(h)), ei = head.findIndex(h => /e-?mail/.test(h));
+  const body = ni >= 0 || ei >= 0 ? rows.slice(1) : rows;
+  return body.map(r => { const email = (ei >= 0 ? r[ei] : r.find(x => /@/.test(x))) || ''; const name = ni >= 0 ? r[ni] : (r.find(x => x && !/@/.test(x)) || ''); return { name: name.slice(0, 120), email: email.toLowerCase().slice(0, 254) }; }).filter(g => g.name || g.email);
+}
+const normName = (s) => String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+function notReplied(guests, rsvps) {
+  const names = new Set(rsvps.map(r => normName(r.name))), emails = new Set(rsvps.map(r => (r.email || '').toLowerCase()).filter(Boolean));
+  return guests.filter(g => !(g.email && emails.has(g.email)) && !(g.name && names.has(normName(g.name))));
+}
+const csvCell = (v) => { const s = String(v ?? ''); return /[",\n;]/.test(s) || /^[=+\-@]/.test(s) ? '"' + (/^[=+\-@]/.test(s) ? "'" : '') + s.replace(/"/g, '""') + '"' : s; };
+async function renderMineEvent(id, shell, c, user) {
+  const ev = await c.from('events').select('id,slug,config,published').eq('id', id).maybeSingle();
+  if (ev.error || !ev.data) return shell(`<h1>Page not found</h1><p><a href="#mine">Back to My pages</a></p>`);
+  const r = ev.data; const cfg = normalize(r.config);
+  const [rs, an] = await Promise.all([c.from('rsvps').select('id,name,email,attending,guests,note,created_at').eq('event_id', id).order('created_at', { ascending: true }),
+    c.from('announcements').select('id,body,created_at').eq('event_id', id).order('created_at', { ascending: false })]);
+  // one row per guest: a later reply from the same name or email replaces the earlier one
+  const latest = new Map(); (rs.data || []).forEach(x => latest.set((x.email || '').toLowerCase() || normName(x.name), x));
+  const replies = [...latest.values()].reverse(); const yes = replies.filter(x => x.attending); const no = replies.filter(x => !x.attending);
+  const guests = LS.get(guestListKey(id), []) || []; const waiting = notReplied(guests, replies);
+  shell(`<p><a href="#mine">← My pages</a></p><div class="mine-h"><h1>${esc(cfg.title || 'Untitled')}</h1><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener">?e=${esc(r.slug)}</a></div>
+    <section class="mine-sec"><h2>Updates</h2><p class="muted small">Guests see these at the top of your page.</p>
+      <form class="ann-form" onsubmit="return false"><textarea id="an-body" rows="3" maxlength="2000" placeholder="Shuttle leaves the hotel at 4:30. Bring a jacket."></textarea><div class="btns"><button type="button" class="btn primary" data-an="post">Post update</button></div><p class="hint" role="status" aria-live="polite"></p></form>
+      <ul class="ann-list own">${(an.data || []).map(a => `<li><time>${esc(fmtStamp(a.created_at))}</time><p>${esc(a.body)}</p><button type="button" class="link" data-an-del="${esc(a.id)}">Delete</button></li>`).join('')}</ul></section>
+    <section class="mine-sec"><h2>Replies</h2>
+      <p class="rs-sum"><b>${yes.reduce((n, x) => n + (x.guests || 1), 0)}</b> coming <span class="muted">(${yes.length} ${yes.length === 1 ? 'reply' : 'replies'})</span> · <b>${no.length}</b> can’t make it${guests.length ? ` · <b>${waiting.length}</b> of ${guests.length} on your list haven’t replied` : ''}</p>
+      ${replies.length ? `<div class="tbl-wrap"><table class="rs-tbl"><thead><tr><th>Name</th><th>Reply</th><th>Party</th><th>Email</th><th>Note</th></tr></thead><tbody>${replies.map(x => `<tr><td>${esc(x.name)}</td><td>${x.attending ? 'Coming' : 'Can’t make it'}</td><td>${x.attending ? esc(x.guests) : '–'}</td><td>${esc(x.email || '')}</td><td>${esc(x.note || '')}</td></tr>`).join('')}</tbody></table></div><div class="btns"><button type="button" class="btn sm" data-rs="csv">Download CSV</button></div>` : '<p class="muted">No replies yet. Share your short link and they’ll show up here.</p>'}
+      <h3 class="sub-h">Guest list</h3><p class="muted small">Import a CSV or paste names (one per line, optional email) to see who hasn’t replied. Your list stays on this device.</p>
+      <div class="btns"><label class="btn sm file-btn">Import CSV<input type="file" data-gl-file accept=".csv,.txt,text/csv,text/plain"></label>${guests.length ? '<button type="button" class="btn sm ghost" data-gl="clear">Clear list</button>' : ''}</div>
+      <textarea id="gl-paste" rows="3" placeholder="Ana Ruiz, ana@example.com&#10;Ben Okafor"></textarea><div class="btns"><button type="button" class="btn sm" data-gl="add">Add to list</button></div>
+      ${guests.length ? `<h3 class="sub-h">Haven’t replied (${waiting.length})</h3>${waiting.length ? `<ul class="gl-list">${waiting.map(g => `<li>${esc(g.name || g.email)}${g.name && g.email ? ` <span class="muted small">${esc(g.email)}</span>` : ''}</li>`).join('')}</ul>` : '<p class="muted">Everyone on your list has replied.</p>'}` : ''}
+    </section>
+    <section class="mine-sec"><h2>Page</h2><div class="btns"><button type="button" class="btn sm" data-pg="edit">Edit page</button><button type="button" class="btn sm ghost" data-pg="vis">${r.published ? 'Hide page' : 'Show page again'}</button></div><p class="muted small">${r.published ? 'Anyone with the link can see it.' : 'Hidden: guests see “This page isn’t available”.'}</p></section>`);
+  const m = $('.mine'); const again = () => renderMine(id);
+  const addGuests = (list) => { if (!list.length) { toast('No names found'); return; } const cur = LS.get(guestListKey(id), []) || []; const seen = new Set(cur.map(g => g.email || normName(g.name))); list.forEach(g => { const k = g.email || normName(g.name); if (!seen.has(k)) { seen.add(k); cur.push(g); } }); LS.set(guestListKey(id), cur); toast(`${cur.length} on your guest list`); again(); };
+  m.addEventListener('change', (e) => { const i = e.target; if (i.dataset.glFile != null && i.files && i.files[0]) i.files[0].text().then(tx => addGuests(parseGuestList(tx))); });
+  m.addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
+    if (d.an === 'post') {
+      const body = $('#an-body').value.trim().slice(0, 2000); const hint = $('.ann-form .hint'); if (!body) { hint.textContent = 'Write something first.'; return; }
+      b.disabled = true; const { error } = await c.from('announcements').insert({ event_id: id, body }); if (error) { b.disabled = false; hint.textContent = 'Couldn’t post: ' + error.message; return; } again();
+    }
+    if (d.anDel && confirm('Delete this update?')) { await c.from('announcements').delete().eq('id', d.anDel); again(); }
+    if (d.rs === 'csv') {
+      const lines = [['Name', 'Reply', 'Party', 'Email', 'Note', 'Sent']].concat(replies.map(x => [x.name, x.attending ? 'Coming' : 'Can’t make it', x.attending ? x.guests : 0, x.email || '', x.note || '', x.created_at]));
+      const blob = new Blob(['﻿' + lines.map(l => l.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (cfg.title || 'event').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() + '-replies.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    }
+    if (d.gl === 'add') addGuests(parseGuestList($('#gl-paste').value));
+    if (d.gl === 'clear' && confirm('Clear your guest list on this device?')) { LS.del(guestListKey(id)); again(); }
+    if (d.pg === 'edit') { LS.set('draft', cfg); LS.set('draftHosted', { id: r.id, slug: r.slug }); location.hash = '#new'; }
+    if (d.pg === 'vis') { await c.from('events').update({ published: !r.published }).eq('id', id); again(); }
+  });
+}
+
 // ================= dates with optional times =================
 // start/end are wall-clock in the venue's zone: 'YYYY-MM-DD' (date only, the default) or 'YYYY-MM-DDTHH:MM'.
 const hasTime = (s) => !!s && s.length > 10;
@@ -1753,19 +2057,25 @@ function whenToggle(c) {
 
 // ---------- router ----------
 function route() {
-  const full = location.hash.slice(1); const [h, tab] = full.split('&t=');
+  const full = location.hash.slice(1);
+  if (/(^|&)(access_token|error_description|error_code)=/.test(full)) return authReturn();
+  const [h, tab] = full.split('&t=');
   maps.forEach(m => { try { m.remove(); } catch {} }); maps.clear();
+  const qe = new URLSearchParams(location.search).get('e');
+  if (qe && (h === '' || h.startsWith('t='))) { SU = null; return renderHosted(qe.toLowerCase(), h.startsWith('t=') ? h.slice(2) : tab); }
+  if (qe) history.replaceState(null, '', siteBase() + location.hash);
+  if (h === 'mine' || h.startsWith('mine/')) { SU = null; return renderMine(h.slice(5)); }
   if (!h.startsWith('new') && !h.startsWith('setup')) SU = null;
   if (h.startsWith('e=')) { const c = unpackEvent(h.slice(2)); if (c) return renderViewer(c, { tab }); return renderBroken(); }
   if (h.startsWith('ex=')) { const e = window.EXAMPLES[h.slice(3)]; if (e) return renderViewer(normalize(clone(e)), { exampleId: h.slice(3), tab }); return renderBroken(); }
   if (h.startsWith('edit=')) { const c = unpackEvent(h.slice(5)); if (c) return renderBuilder(c, 'Editing a copy. Publish to get a new link; the original link keeps showing the old version.'); return renderBroken(); }
   if (h.startsWith('edit-ex=')) { const e = window.EXAMPLES[h.slice(8)]; if (e) return renderBuilder(clone(e), 'Started from an example. Change anything, then publish your own link.'); }
   if (h === 'setup') return renderSetup();
-  if (h === 'new') { const d = LS.get('draft'); return d && d.title ? renderBuilder(d) : renderSetup(); }
+  if (h === 'new') { const d = LS.get('draft'); return d && d.title ? renderBuilder(d, null, LS.get('draftHosted')) : renderSetup(); }
   SU = null; renderLanding();
 }
 
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
