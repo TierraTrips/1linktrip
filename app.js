@@ -285,10 +285,10 @@ const placeLabel = (v) => [v.city, v.cc === 'us' ? v.region : v.country].filter(
 
 // ---------- event model ----------
 const SECTION_NAMES = {
-  about: 'About', typeinfo: 'Event details', schedule: 'Schedule', links: 'Details', weather: 'Weather', map: 'Map',
+  about: 'About', typeinfo: 'Event details', schedule: 'Schedule', itinerary: 'My itinerary', links: 'Details', weather: 'Weather', map: 'Map',
   travel: 'Getting there', stay: 'Where to stay', food: 'Eat & drink', tours: 'Tours & things to do', around: 'Getting around', calendar: 'Save the date'
 };
-const DEFAULT_ORDER = ['about', 'typeinfo', 'schedule', 'links', 'weather', 'map', 'travel', 'stay', 'food', 'tours', 'around', 'calendar'];
+const DEFAULT_ORDER = ['about', 'typeinfo', 'schedule', 'itinerary', 'links', 'weather', 'map', 'travel', 'stay', 'food', 'tours', 'around', 'calendar'];
 const FONTS = {
   grotesk: { label: 'Grotesk', css: "'Bricolage Grotesque', system-ui, sans-serif", gf: null },
   serif: { label: 'Editorial serif', css: "'Fraunces', Georgia, serif", gf: 'Fraunces:opsz,wght@9..144,400..800' },
@@ -337,8 +337,9 @@ function blankEvent() {
 function normalize(c) {
   const b = blankEvent(); c = { ...b, ...c, theme: { ...b.theme, ...(c.theme || {}) } };
   const have = new Set((c.sections || []).map(s => s.id));
-  c.sections = (c.sections || []).filter(s => SECTION_NAMES[s.id]).concat(DEFAULT_ORDER.filter(id => !have.has(id)).map(id => ({ id, on: id === 'typeinfo' })));
+  c.sections = (c.sections || []).filter(s => SECTION_NAMES[s.id]).concat(DEFAULT_ORDER.filter(id => !have.has(id)).map(id => ({ id, on: id === 'typeinfo' || id === 'itinerary' })));
   if (!have.has('typeinfo')) { const ti = c.sections.findIndex(s => s.id === 'typeinfo'), sec = c.sections.splice(ti, 1)[0], ai = c.sections.findIndex(s => s.id === 'about'); c.sections.splice(ai + 1, 0, sec); }
+  if (!have.has('itinerary')) { const ii = c.sections.findIndex(s => s.id === 'itinerary'), sec = c.sections.splice(ii, 1)[0], si = c.sections.findIndex(s => s.id === 'schedule'); c.sections.splice(si + 1, 0, sec); }
   c.schedule = c.schedule || []; c.links = c.links || []; c.x = c.x && typeof c.x === 'object' ? c.x : {};
   return c;
 }
@@ -439,6 +440,7 @@ function sectionAvailable(id, cfg) {
   if (id === 'links') return cfg.links.some(x => x.label && (x.url || x.note));
   if (id === 'about') return !!(cfg.description || cfg.host);
   if (id === 'typeinfo') return hasTypeInfo(cfg);
+  if (id === 'itinerary') return !!cfg.start;
   if (id === 'calendar') return !!cfg.start;
   return true;
 }
@@ -461,6 +463,7 @@ function sectionHTML(id, cfg, air) {
     case 'weather': return `<div data-slot="weather"><div class="skel" role="status"><span></span><span></span><em>Loading weather…</em></div></div>`;
     case 'map': return `<div class="map-wrap"><div class="map" data-slot="map" role="region" aria-label="Map of the venue and surroundings"></div><div class="map-legend" data-slot="legend"></div></div>`;
     case 'typeinfo': return typeInfoHTML(cfg);
+    case 'itinerary': return itinHTML(cfg);
     case 'travel': return travelHTML(cfg, air);
     case 'stay': return stayHTML(cfg);
     case 'food': return `<div data-slot="food">${loading('places to eat')}</div>`;
@@ -514,6 +517,185 @@ function typeInfoHTML(cfg) {
   if (has('speakers')) out.push(`<h3 class="sub-h">${esc(lab.speakers)}</h3><ul class="links">${lines('speakers').map(x => { const [n, ...r] = x.split(/\s+[—–-]\s+|,\s+/); return `<li class="note"><b>${esc(n)}</b>${r.length ? `<span>${esc(r.join(', '))}</span>` : ''}</li>`; }).join('')}</ul>`);
   return out.join('');
 }
+// ---------- my itinerary (guest-side, stays in this browser) ----------
+// parseReservation is the single seam: today heuristics, later a server/AI importer can replace it with the same output shape.
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const AIRLINES = {
+  UA: ['United', 'https://www.united.com/en/us/manageres/mytrips'], AA: ['American', 'https://www.aa.com/reservation/view/find-your-trip'],
+  DL: ['Delta', 'https://www.delta.com/my-trips/search'], WN: ['Southwest', 'https://www.southwest.com/air/manage-reservation/'],
+  B6: ['JetBlue', 'https://www.jetblue.com/manage-trips'], AS: ['Alaska', 'https://www.alaskaair.com/booking/reservation-lookup'],
+  AC: ['Air Canada', 'https://www.aircanada.com/us/en/aco/home/book/manage-bookings.html'], BA: ['British Airways', 'https://www.britishairways.com/travel/managebooking/public/en_us'],
+  AM: ['Aeromexico', 'https://www.aeromexico.com/en-us/manage-your-booking'], LH: ['Lufthansa', 'https://www.lufthansa.com/us/en/my-bookings'],
+  NK: ['Spirit', ''], F9: ['Frontier', ''], Y4: ['Volaris', ''], VB: ['Viva Aerobus', ''], AF: ['Air France', ''], KL: ['KLM', ''], HA: ['Hawaiian', ''], WS: ['WestJet', '']
+};
+const AIRLINE_NAMES = Object.entries(AIRLINES).map(([c, [n]]) => [c, n]);
+const VENDORS = [
+  [/airbnb/i, 'stay', 'Airbnb'], [/vrbo/i, 'stay', 'Vrbo'],
+  [/hertz/i, 'car', 'Hertz'], [/\bavis\b/i, 'car', 'Avis'], [/enterprise rent|enterprise\.com|\benterprise\b.*(rental|car)/i, 'car', 'Enterprise'], [/budget (rent|car)|budget\.com/i, 'car', 'Budget'],
+  [/national car|nationalcar\.com/i, 'car', 'National'], [/\bsixt\b/i, 'car', 'Sixt'], [/\balamo\b/i, 'car', 'Alamo'], [/thrifty/i, 'car', 'Thrifty'], [/\bturo\b/i, 'car', 'Turo'],
+  [/opentable/i, 'food', 'OpenTable'], [/\bresy\b/i, 'food', 'Resy'], [/exploretock|\btock\b/i, 'food', 'Tock'],
+  [/amtrak/i, 'train', 'Amtrak'], [/eurostar/i, 'train', 'Eurostar'], [/trainline/i, 'train', 'Trainline'], [/\bsncf\b/i, 'train', 'SNCF'], [/\brenfe\b/i, 'train', 'Renfe'], [/via rail/i, 'train', 'VIA Rail'],
+  [/marriott/i, 'hotel', 'Marriott'], [/hilton/i, 'hotel', 'Hilton'], [/hyatt/i, 'hotel', 'Hyatt'], [/\bihg\b|holiday inn/i, 'hotel', 'IHG'], [/booking\.com/i, 'hotel', 'Booking.com'], [/hotels\.com/i, 'hotel', 'Hotels.com'], [/expedia/i, 'hotel', 'Expedia']
+];
+const ITIN_KINDS = { flight: 'Flight', hotel: 'Hotel', stay: 'Rental home', car: 'Rental car', food: 'Restaurant', train: 'Train', other: 'Other' };
+
+function parseReservation(text, refDate) {
+  const raw = String(text || ''); const r = { kind: '', name: '', start: '', end: '', address: '', confNo: '', link: '', flight: '', note: '' };
+  if (!raw.trim()) return r;
+  const lines = raw.split(/\r?\n/).map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const url = raw.match(/https?:\/\/[^\s<>"')]+/i); if (url) r.link = url[0].replace(/[.,;]+$/, '');
+  const host = r.link ? hostOf(r.link) : '';
+  // vendor + kind
+  const vendor = VENDORS.find(([re]) => re.test(raw) || (host && re.test(host)));
+  const fl = raw.match(/\b(?:flight|flt)\s*(?:number|no\.?|#)?\s*:?\s*([A-Z0-9]{2})\s?(\d{1,4})\b/i) || raw.match(/\b(UA|AA|DL|WN|B6|AS|AC|BA|AM|LH|NK|F9|Y4|VB|AF|KL|HA|WS)\s?(\d{1,4})\b/);
+  if (fl && AIRLINES[fl[1].toUpperCase()]) { r.kind = 'flight'; r.flight = fl[1].toUpperCase() + ' ' + fl[2]; }
+  else if (fl && /\bflight\b/i.test(raw)) { r.kind = 'flight'; r.flight = fl[1].toUpperCase() + ' ' + fl[2]; }
+  else if (vendor) r.kind = vendor[1];
+  else if (/\b(rental car|car rental|pick[- ]?up location|drop[- ]?off)\b/i.test(raw)) r.kind = 'car';
+  else if (/\b(table for|party of|reservation at|covers?)\b/i.test(raw)) r.kind = 'food';
+  else if (/\b(train|coach \d|platform|rail)\b/i.test(raw)) r.kind = 'train';
+  else if (/\b(check[- ]?in|check[- ]?out|hotel|room|nights?)\b/i.test(raw)) r.kind = 'hotel';
+  // name
+  const lab = (re) => { for (const l of lines) { const m = l.match(re); if (m && m[1].trim()) return m[1].trim(); } return ''; };
+  if (r.kind === 'flight') { const a = AIRLINES[r.flight.split(' ')[0]]; r.name = [a ? a[0] : '', r.flight].filter(Boolean).join(' '); }
+  else r.name = lab(/^(?:hotel|property|restaurant|listing|accommodation|venue)\s*(?:name)?\s*[:\-–]\s*(.+)$/i)
+    || ((raw.match(/\b(?:reservation|table|booking|stay) at ([A-Z][^\n,.!]{2,60})/) || [])[1] || '').replace(/\s+(is|has been|was)\b.*$/i, '').trim()
+    || (r.kind === 'hotel' ? lines.find(l => l.length < 70 && /\b(hotel|inn|resort|suites|lodge)\b/i.test(l) && !/confirm|reservation|check/i.test(l)) || '' : '')
+    || (r.kind === 'car' ? lab(/^pick[- ]?up location\s*[:\-–]\s*(.+)$/i) : '')
+    || (vendor ? vendor[2] : '');
+  // confirmation number
+  for (const cm of raw.matchAll(/\b(?:confirmation|conf\.|booking|reservation|record locator|pnr|itinerary)\b\s*(?:number|no\.?|code|#|id)?\s*[:#]?\s*#?\s*([A-Z0-9][A-Z0-9-]{4,})\b/gi)) {
+    if (/\d/.test(cm[1]) || /^[A-Z]{6}$/.test(cm[1])) { r.confNo = cm[1].toUpperCase(); break; }
+  }
+  // address: labelled, else a street-looking line
+  const ai = lines.findIndex(l => /^(address|location)\s*:?$/i.test(l));
+  r.address = lab(/^(?:address|location|pick[- ]?up location)\s*[:\-–]\s*(.+\d.+)$/i)
+    || (ai >= 0 && lines[ai + 1] && lines[ai + 1].length < 120 ? lines[ai + 1] : '')
+    || lines.find(l => /^(carretera|calle|avenida|av\.|rue|via|camino)\b|\bkm\s*\d/i.test(l) && /\d/.test(l) && l.length < 120 && !/confirm|reserv/i.test(l))
+    || lines.find(l => /^\d+[A-Za-z]?\s+[\w .'-]+\b(st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|way|ln|lane|pl|place|plaza|pkwy|parkway|hwy|highway|carretera|calle|av\.?)\b/i.test(l) && l.length < 120) || '';
+  // dates and times
+  const ref = refDate ? asUTC(refDate) : new Date();
+  const mk = (y, mo, d) => { if (!(mo >= 1 && mo <= 12 && d >= 1 && d <= 31)) return ''; if (!y) { const cands = [ref.getUTCFullYear() - 1, ref.getUTCFullYear(), ref.getUTCFullYear() + 1].map(yy => `${yy}-${pad(mo)}-${pad(d)}`); return cands.sort((a, b) => Math.abs(asUTC(a) - ref) - Math.abs(asUTC(b) - ref))[0]; } return `${y < 100 ? 2000 + y : y}-${pad(mo)}-${pad(d)}`; };
+  const DATE_RE = /\b(\d{4})-(\d{2})-(\d{2})\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?|\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?(?:\s+(\d{4}))?|\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/gi;
+  const datesIn = (l) => [...l.matchAll(DATE_RE)].map(m => m[1] ? mk(+m[1], +m[2], +m[3]) : m[4] ? mk(+m[6] || 0, MONTHS.indexOf(m[4].toLowerCase()) + 1, +m[5]) : m[8] ? mk(+m[9] || 0, MONTHS.indexOf(m[8].toLowerCase()) + 1, +m[7]) : mk(+m[12], +m[10], +m[11])).filter(Boolean);
+  const TIME_RE = /\b(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\.?(?![a-z])|\b(noon)\b|\b([01]?\d|2[0-3]):([0-5]\d)\b/gi;
+  const timesIn = (l) => [...l.matchAll(TIME_RE)].map(m => { if (m[4]) return '12:00'; if (m[3]) { let h = +m[1] % 12; if (/p/i.test(m[3])) h += 12; return `${pad(h)}:${m[2] || '00'}`; } return `${pad(+m[5])}:${m[6]}`; });
+  const dateIn = (l) => datesIn(l)[0] || '', timeIn = (l) => timesIn(l)[0] || '';
+  const START = /check[- ]?in|pick[- ]?up(?! location)|\bdepart(s|ure|ing)?\b|\bleaves?\b|boarding|reservation (date|time)|^date\b|^when\b|^time\b/i;
+  const END = /check[- ]?out|drop[- ]?off|\breturn\b|\barriv(al|es|e|ing)\b|^until\b/i;
+  const labelled = (l) => START.test(l) || END.test(l);
+  const grab = (isStart) => {
+    const re = isStart ? START : END; let lastDate = '';
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i]; const m = l.match(re);
+      if (!m) { lastDate = dateIn(l) || lastDate; continue; }
+      const sm = l.match(START), em = l.match(END);
+      const both = sm && em; const col = both && !isStart && sm.index < em.index ? 1 : 0;
+      // the part of the line that belongs to this label
+      let seg = l.slice(m.index); if (both) { const other = isStart ? em : sm; if (other.index > m.index) seg = l.slice(m.index, other.index); }
+      const next = [lines[i + 1], lines[i + 2]].filter(x => x && !labelled(x));
+      const d = dateIn(seg) || (next.map(datesIn).find(x => x.length > col) || [])[col] || lastDate;
+      const t = timeIn(seg) || (next.map(timesIn).find(x => x.length > col) || [])[col] || '';
+      if (d) return d + (t ? 'T' + t : '');
+      lastDate = dateIn(l) || lastDate;
+    }
+    return '';
+  };
+  r.start = grab(true); r.end = grab(false);
+  if (!r.start) { // fall back to the first dated line, second dated line as the end
+    const ds = []; lines.forEach(l => { const d = dateIn(l); if (d) ds.push(d + (timeIn(l) ? 'T' + timeIn(l) : '')); });
+    if (ds[0]) r.start = ds[0]; if (!r.end && ds[1] && ds[1] !== ds[0]) r.end = ds[1];
+  }
+  if (r.end && r.start && r.end < r.start) r.end = '';
+  return r;
+}
+const itinKey = (cfg) => 'itin:' + eventKey(cfg).slice(6);
+const itinLoad = (cfg) => LS.get(itinKey(cfg), []) || [];
+const flightLinks = (f) => { const code = (f || '').replace(/\s+/g, '').toUpperCase(); if (!/^[A-Z0-9]{2}\d{1,4}$/.test(code)) return {}; const a = AIRLINES[code.slice(0, 2)]; return { status: `https://www.flightaware.com/live/flight/${code}`, manage: a && a[1] ? a[1] : '' }; };
+function itinHTML(cfg) {
+  const items = itinLoad(cfg);
+  const evs = cfg.schedule.filter(x => x.title && x.date).map(x => ({ ev: true, start: x.date + (x.time ? 'T' + x.time : ''), name: x.title, note: x.note }));
+  if (!cfg.schedule.some(x => x.title && x.date) && cfg.start) evs.push({ ev: true, start: cfg.start, name: cfg.title || 'The event' });
+  const all = items.map((x, i) => ({ ...x, i })).concat(items.length ? evs : []).sort((a, b) => (a.start || '9999').localeCompare(b.start || '9999'));
+  const days = {}; all.forEach(x => (days[(x.start || '').slice(0, 10)] = days[(x.start || '').slice(0, 10)] || []).push(x));
+  const list = Object.entries(days).map(([d, xs]) => `<div class="day"><h3 class="day-h">${d ? esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' })) : 'No date yet'}</h3><ol class="tl itin">${xs.map(x => {
+    if (x.ev) return `<li class="itin-ev"><time>${esc(fmtTime((x.start || '').slice(11, 16))) || '—'}</time><div><b>${esc(x.name)}</b>${x.note ? `<span>${esc(x.note)}</span>` : ''}</div></li>`;
+    const fLinks = x.kind === 'flight' ? flightLinks(x.flight) : {};
+    const links = [fLinks.status ? ext(fLinks.status, 'Flight status', 'mini-b') : '', fLinks.manage ? ext(fLinks.manage, 'Manage booking', 'mini-b') : '', x.link ? ext(x.link, 'Open booking', 'mini-b') : '', x.address ? ext(L.place(x.address), 'Google Maps', 'mini-b') : ''].join('');
+    return `<li><time>${esc(fmtTime((x.start || '').slice(11, 16))) || '—'}</time><div><b>${esc(x.name || ITIN_KINDS[x.kind] || 'Reservation')}</b><span>${esc([ITIN_KINDS[x.kind], x.end ? 'until ' + (x.end.slice(0, 10) !== (x.start || '').slice(0, 10) ? fmt(x.end.slice(0, 10), { month: 'short', day: 'numeric' }) + (x.end.length > 10 ? ' ' + fmtTime(x.end.slice(11, 16)) : '') : fmtTime(x.end.slice(11, 16))) : '', x.confNo ? 'Conf. ' + x.confNo : ''].filter(Boolean).join(' · '))}</span>${x.address ? `<span>${esc(x.address)}</span>` : ''}${x.note ? `<span>${esc(x.note)}</span>` : ''}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${x.i}">Edit</button></div></div></li>`;
+  }).join('')}</ol></div>`).join('');
+  return `${list}<div class="btns itin-btns"><button type="button" class="btn" data-itin-add>+ Add reservation</button>${items.length ? '<button type="button" class="btn" data-itin-ics>Add to calendar</button>' : ''}</div><div data-slot="itin-form"></div>`;
+}
+function itinFormHTML(x, i) {
+  const k = x.kind || '';
+  const f = (key, label, type = 'text', ph = '', cls = '') => `<div class="field ${cls}"><label for="it-${key}">${label}</label><input id="it-${key}" type="${type}" data-it="${key}" value="${esc(x[key] || '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}></div>`;
+  return `<form class="itin-form" onsubmit="return false">
+    ${i == null ? `<div class="field wide"><label for="it-paste">Confirmation</label><textarea id="it-paste" rows="3" placeholder="Paste a confirmation email or link"></textarea></div>` : ''}
+    <div class="trip">
+      <div class="field"><label for="it-kind">Type</label><select id="it-kind" data-it="kind"><option value="">Choose</option>${Object.entries(ITIN_KINDS).map(([v, l]) => `<option value="${v}" ${v === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      ${f('flight', 'Flight number', 'text', 'UA 1234').replace('<div class="field', `<div${k === 'flight' ? '' : ' hidden'} class="field`)}
+      ${f('name', 'Name')}
+      ${f('start', k === 'flight' ? 'Departs' : 'Starts', 'datetime-local')}${f('end', k === 'flight' ? 'Arrives' : 'Ends', 'datetime-local')}
+      ${f('address', 'Address', 'text', '', 'wide')}
+      ${f('confNo', 'Confirmation')}${f('link', 'Link', 'url', 'https://…')}
+      ${f('note', 'Note', 'text', k === 'flight' ? 'Confirmation code, last name' : '', 'wide')}
+    </div>
+    <div class="btns"><button type="button" class="btn primary" data-itin-save="${i == null ? '' : i}">Save</button><button type="button" class="btn ghost" data-itin-cancel>Cancel</button>${i != null ? `<button type="button" class="btn ghost" data-itin-del="${i}">Remove</button>` : ''}</div>
+  </form>`;
+}
+function itinICS(cfg) {
+  const items = itinLoad(cfg).filter(x => x.start); const now = icsStamp(new Date());
+  const esc2 = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+  const loc = (s) => s.replace(/[-:]/g, '') + (s.length === 16 ? '00' : '');
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Eventpages//Itinerary//EN', 'CALSCALE:GREGORIAN', `X-WR-CALNAME:${esc2('My trip · ' + cfg.title)}`];
+  items.forEach((x, i) => {
+    const allDay = x.start.length === 10; const fLinks = x.kind === 'flight' ? flightLinks(x.flight) : {};
+    let end = x.end || (allDay ? addDays(x.start, 1) : null);
+    if (!allDay && (!end || end.length === 10)) end = new Date(asUTC(x.start).getTime() + 3600e3).toISOString().slice(0, 16);
+    lines.push('BEGIN:VEVENT', `UID:itin-${i}-${x.start.replace(/\D/g, '')}@eventpages`, `DTSTAMP:${now}`,
+      allDay ? `DTSTART;VALUE=DATE:${x.start.replace(/-/g, '')}` : `DTSTART:${loc(x.start)}`,
+      allDay ? `DTEND;VALUE=DATE:${end.slice(0, 10).replace(/-/g, '')}` : `DTEND:${loc(end)}`,
+      `SUMMARY:${esc2(x.name || ITIN_KINDS[x.kind] || 'Reservation')}`, `LOCATION:${esc2(x.address)}`,
+      `DESCRIPTION:${esc2([x.confNo ? 'Confirmation ' + x.confNo : '', x.note, fLinks.status, x.link].filter(Boolean).join('\n'))}`, 'END:VEVENT');
+  });
+  lines.push('END:VCALENDAR');
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'my-itinerary.ics';
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+function wireItin(cfg, art) {
+  const sec = art.querySelector('#sec-itinerary'); if (!sec) return;
+  const body = sec.querySelector('.sec-b'); let draft = null, editing = null;
+  const rerender = () => { body.innerHTML = itinHTML(cfg); };
+  const openForm = (x, i) => {
+    draft = { ...x }; editing = i; const slot = body.querySelector('[data-slot="itin-form"]'); slot.innerHTML = itinFormHTML(draft, i);
+    body.querySelector('[data-itin-add]')?.setAttribute('hidden', '');
+    (slot.querySelector('#it-paste') || slot.querySelector('#it-name')).focus();
+  };
+  const fill = () => { const slot = body.querySelector('[data-slot="itin-form"]'); slot.querySelectorAll('[data-it]').forEach(el => { el.value = draft[el.dataset.it] || ''; });
+    const fo = slot.querySelector('[data-it="flight"]').closest('.field'); fo.hidden = draft.kind !== 'flight';
+    slot.querySelector('label[for="it-start"]').textContent = draft.kind === 'flight' ? 'Departs' : 'Starts'; slot.querySelector('label[for="it-end"]').textContent = draft.kind === 'flight' ? 'Arrives' : 'Ends';
+    slot.querySelector('#it-note').placeholder = draft.kind === 'flight' ? 'Confirmation code, last name' : ''; };
+  body.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
+    if ('itinAdd' in d) openForm({}, null);
+    else if ('itinEdit' in d) openForm(itinLoad(cfg)[+d.itinEdit], +d.itinEdit);
+    else if ('itinCancel' in d) rerender();
+    else if ('itinDel' in d) { const xs = itinLoad(cfg); xs.splice(+d.itinDel, 1); LS.set(itinKey(cfg), xs); rerender(); }
+    else if ('itinSave' in d) {
+      if (!draft.name && !draft.flight && !draft.start) { toast('Add a name or a date'); return; }
+      if (draft.kind === 'flight' && draft.flight && !draft.name) { const a = AIRLINES[draft.flight.replace(/\s+/g, '').slice(0, 2).toUpperCase()]; draft.name = [a ? a[0] : '', draft.flight.toUpperCase()].filter(Boolean).join(' '); }
+      const xs = itinLoad(cfg); editing == null ? xs.push(draft) : (xs[editing] = draft); LS.set(itinKey(cfg), xs); rerender();
+    }
+    else if ('itinIcs' in d) itinICS(cfg);
+  });
+  body.addEventListener('input', (e) => {
+    const t = e.target; if (!draft) return;
+    if (t.id === 'it-paste') { const p = parseReservation(t.value, cfg.start); for (const k in p) if (p[k]) draft[k] = p[k]; if (!t.value.trim()) for (const k in draft) draft[k] = ''; fill(); return; }
+    if (t.dataset.it) { draft[t.dataset.it] = t.value; if (t.dataset.it === 'kind') fill(); }
+  });
+}
+
 function tripDates(cfg) {
   const s = cfg.start.slice(0, 10), e = (cfg.end || cfg.start).slice(0, 10);
   const st = LS.get('trip:' + s + ':' + e);
@@ -672,6 +854,7 @@ function wireEvent(cfg, art, seq, air, opts) {
     else if (a.dataset.jump) { e.preventDefault(); art.querySelector('#sec-' + a.dataset.jump)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }
     else if (a.dataset.food) { const s = slot('food'); s.innerHTML = foodHTML(cfg, art._osm, a.dataset.food); }
   });
+  wireItin(cfg, art);
   if (!v) return;
 
   // travel mode filter: show content for every picked mode; nothing picked = all
@@ -783,19 +966,19 @@ async function copy(text) {
 
 // ---------- landing ----------
 function renderLanding() {
-  document.title = 'Eventpages — a page for your event, with the trip attached';
+  document.title = 'Eventpages — give every guest the whole trip in one link';
   const ex = window.EXAMPLES; const draft = LS.get('draft');
   $('#app').innerHTML = `
   <main class="land">
     <header class="land-top"><a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>Eventpages</a><a class="btn primary" href="#new">Create a page</a></header>
     <section class="land-hero">
       <div class="land-copy">
-        <h1>One link for the event <em>and</em> the trip to it.</h1>
-        <p class="lede">Make a page for a wedding, a conference or a weekend away. Guests get the schedule, live weather, a map, flights, places to stay, tables to book and the train to the door.</p>
+        <h1>Give every guest the whole trip <em>in one link</em>.</h1>
+        <p class="lede">For wedding planners, race directors and conference teams. One page carries your schedule and event details, plus live weather, the map, flights, places to stay, tables to book and the train to the door.</p>
         <div class="btns"><a class="btn primary big" href="#new">${draft && draft.title ? 'Continue your draft' : 'Create a page'}</a><a class="btn big" href="#ex=tulum-wedding">See an example</a></div>
         <p class="muted small">Free, no account. The whole page lives in the link you share.</p>
       </div>
-      <div class="land-stack" aria-hidden="true">${Object.entries(ex).map(([id, e], i) => miniTicket(id, e, i)).join('')}</div>
+      <div class="land-stack" aria-hidden="true">${Object.entries(ex).slice(0, 3).map(([id, e], i) => miniTicket(id, e, i)).join('')}</div>
     </section>
     <section class="land-ex">
       <h2>Open an example</h2>
@@ -807,13 +990,15 @@ function renderLanding() {
         </a>`).join('')}</div>
     </section>
     <section class="land-what">
-      <h2>What every page can show</h2>
+      <h2>What your guests get</h2>
       <dl>
         <div><dt>Weather</dt><dd>The live forecast once the event is within 16 days, and the typical weather for those dates before that.</dd></div>
         <div><dt>Map</dt><dd>The venue pinned, with restaurants, hotels and stations around it.</dd></div>
-        <div><dt>Flights</dt><dd>The nearest airports, with fares searched for your dates on Google Flights, Kayak and Skyscanner.</dd></div>
+        <div><dt>Flights</dt><dd>The nearest airports, with fares searched for their dates on Google Flights, Kayak and Skyscanner.</dd></div>
         <div><dt>Stays</dt><dd>Hotels near the venue, plus Booking.com, Airbnb and Expedia searches with the dates filled in.</dd></div>
         <div><dt>Tables</dt><dd>Restaurants, cafés and bars within walking distance, each with a link to reserve.</dd></div>
+        <div><dt>Event details</dt><dd>RSVP and room blocks for weddings, packet pickup and the course for races, doors and bag policy for shows.</dd></div>
+        <div><dt>Their itinerary</dt><dd>Guests paste their bookings and see them beside your schedule, ready for their calendar.</dd></div>
         <div><dt>Getting around</dt><dd>The nearest subway, rail, bus and bike-share stops, directions for every mode, and Uber or Lyft with the drop-off set.</dd></div>
       </dl>
     </section>
@@ -1027,5 +1212,5 @@ function renderBroken() {
 }
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

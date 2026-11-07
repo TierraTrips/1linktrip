@@ -314,3 +314,18 @@ dialog::backdrop { background: rgba(18,20,27,.5); }
 .secs li[hidden] { display: none; }
 .course-img { display: block; margin-bottom: 10px; } .course-img img { width: 100%; border-radius: 12px; display: block; }
 .tpin span { display: inline-block; transform: translate(-50%, -50%); white-space: nowrap; font: 700 .72rem var(--mono, monospace); letter-spacing: .04em; text-transform: uppercase; padding: 4px 8px; border-radius: 999px; background: #12141B; color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+
+/* my itinerary */
+.itin-ev { opacity: .6; }
+.tl.itin .mini { margin-top: 6px; }
+.itin-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.itin-form { margin-top: 14px; padding: 14px; border-radius: 14px; background: var(--chip); }
+.itin-form .trip { margin: 10px 0 12px; }
+.itin-form .wide { grid-column: 1 / -1; }
+.itin-form .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.ev textarea { width: 100%; border-radius: 10px; border: 1.5px solid var(--line); background: var(--bg); color: inherit; padding: .6em .7em; font: inherit; font-size: 16px; resize: vertical; }
+.ev textarea:focus, .ev select:focus { border-color: var(--accent); outline: none; }
+.ev select { color: inherit; }
+.ev input { color: inherit; }
+.tl.itin span { display: block; }
+button.mini-b { background: transparent; font-family: inherit; color: inherit; cursor: pointer; }
