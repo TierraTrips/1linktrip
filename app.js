@@ -120,7 +120,7 @@ async function getJSON(url, { ttl = 3600e3, init, timeout = 20000, key } = {}) {
   p.catch(() => memo.delete(key));
   return p;
 }
-function cacheSet(key, d) { LS.set('c3:' + key, { t: Date.now(), d }); }
+function cacheSet(key, d) { LS.set('c4:' + key, { t: Date.now(), d }); }
 
 // ---------- external integrations ----------
 let lastNominatim = 0;
@@ -192,11 +192,13 @@ async function weatherFor(cfg) {
   return { kind: 'typical', from: Math.min(...yrs), to: Math.max(...yrs), days };
 }
 
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
 function osmQuery(lat, lon) {
   const A = (r) => `(around:${r},${lat},${lon})`;
   return `[out:json][timeout:60];(
-nwr["amenity"~"^(restaurant|cafe|bar|pub)$"]["name"]${A(800)};
+nwr["amenity"~"^(restaurant|cafe|bar|pub|fast_food)$"]["name"]${A(900)};
+nwr["amenity"="pharmacy"]["name"]${A(1200)};
+nwr["shop"~"^(supermarket|convenience|greengrocer)$"]["name"]${A(800)};
 nwr["tourism"~"^(hotel|hostel|guest_house|motel)$"]["name"]${A(2500)};
 nwr["railway"~"^(station|halt|tram_stop)$"]${A(1500)};
 node["public_transport"="station"]${A(1500)};
@@ -210,30 +212,41 @@ const osmKey = (lat, lon) => `osm:${(+lat).toFixed(4)},${(+lon).toFixed(4)}`;
 async function nearby(lat, lon) {
   const key = osmKey(lat, lon);
   const snap = window.OSM_SNAPSHOTS && window.OSM_SNAPSHOTS[key]; if (snap) return snap;
-  const c = LS.get('c3:' + key); if (c && Date.now() - c.t < 864e5) return c.d;
+  const c = LS.get('c4:' + key); if (c && Date.now() - c.t < 864e5) return c.d;
   if (memo.has(key)) return memo.get(key);
   const q = osmQuery(lat, lon);
-  const p = (async () => {
-    let lastErr;
-    for (const ep of OVERPASS) { // public servers: one at a time, fail over on errors
-      try {
-        const d = await getJSON(ep, { key: key + ep, ttl: 0, timeout: 70000, init: { method: 'POST', body: 'data=' + enc(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } } });
-        const out = classify(d.elements || [], lat, lon); cacheSet(key, out); return out;
-      } catch (e) { lastErr = e; }
-    }
-    throw lastErr || new Error('Overpass unavailable');
-  })();
+  // Public servers, gently hedged: ask the next server only if the current one fails or is still busy after 12 s.
+  const p = new Promise((resolve, reject) => {
+    let i = 0, pending = 0, done = false, lastErr;
+    const next = () => {
+      if (done) return;
+      if (i >= OVERPASS.length) { if (!pending) reject(lastErr || new Error('Overpass unavailable')); return; }
+      const ep = OVERPASS[i++]; pending++; const hedge = setTimeout(next, 12000);
+      getJSON(ep, { key: key + ep, ttl: 0, timeout: 70000, init: { method: 'POST', body: 'data=' + enc(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } } })
+        .then(d => { clearTimeout(hedge); if (done) return; done = true; const out = classify(d.elements || [], lat, lon); cacheSet(key, out); resolve(out); })
+        .catch(e => { clearTimeout(hedge); lastErr = e; pending--; next(); });
+    };
+    next();
+  });
   memo.set(key, p); p.catch(() => memo.delete(key));
   return p;
 }
 function classify(els, lat, lon) {
-  const food = [], hotels = [], sights = [], transit = { subway: [], rail: [], tram: [], bus: [], bike: [], ferry: [] };
+  const food = [], places = [], hotels = [], sights = [], transit = { subway: [], rail: [], tram: [], bus: [], bike: [], ferry: [] };
   for (const el of els) {
     const t = el.tags || {}; const la = el.lat ?? el.center?.lat, lo = el.lon ?? el.center?.lon; if (la == null) continue;
     const d = distM(lat, lon, la, lo);
     const base = { name: t.name || '', wheelchair: t.wheelchair || '', lat: la, lon: lo, d, website: t.website || t['contact:website'] || '', street: [t['addr:housenumber'], t['addr:street']].filter(Boolean).join(' ') };
-    if (/^(restaurant|cafe|bar|pub)$/.test(t.amenity)) {
-      food.push({ ...base, kind: t.amenity === 'pub' ? 'bar' : t.amenity, cuisine: (t.cuisine || '').split(';').map(x => x.replace(/_/g, ' ')).slice(0, 2).join(', ') });
+    const more = { city: t['addr:city'] || '', hours: t.opening_hours || '', phone: t.phone || t['contact:phone'] || '' };
+    if (/^(restaurant|cafe|bar|pub|fast_food)$/.test(t.amenity)) {
+      const diet = {}; ['gluten_free', 'vegan', 'vegetarian', 'halal', 'kosher'].forEach(k => { if (t['diet:' + k]) diet[k] = t['diet:' + k]; });
+      const cuisines = (t.cuisine || '').split(';').map(x => x.trim().toLowerCase()).filter(Boolean).slice(0, 4);
+      food.push({ ...base, ...more, kind: t.amenity === 'pub' ? 'bar' : t.amenity, cuisine: cuisines.slice(0, 2).map(x => x.replace(/_/g, ' ')).join(', '), cuisines, diet,
+        price: t['price:range'] || t.price_range || '', outdoor: t.outdoor_seating || '', takeaway: t.takeaway || '' });
+    } else if (t.amenity === 'pharmacy') {
+      places.push({ ...base, ...more, kind: 'pharmacy' });
+    } else if (/^(supermarket|convenience|greengrocer)$/.test(t.shop)) {
+      places.push({ ...base, ...more, kind: 'grocery' });
     } else if (/^(attraction|museum|gallery|viewpoint|zoo|aquarium|theme_park)$/.test(t.tourism)) {
       sights.push({ ...base, kind: t.tourism.replace('_', ' ') });
     } else if (t.tourism) {
@@ -254,7 +267,7 @@ function classify(els, lat, lon) {
     }
   }
   const dedupe = (arr, n) => { const seen = new Set(); return arr.sort((a, b) => a.d - b.d).filter(x => { const k = x.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, n); };
-  const r = { food: dedupe(food, 60), hotels: dedupe(hotels, 30), sights: dedupe(sights, 12), transit: {} };
+  const r = { food: dedupe(food, 150), places: dedupe(places, 40), hotels: dedupe(hotels, 30), sights: dedupe(sights, 12), transit: {} };
   for (const k in transit) r.transit[k] = dedupe(transit[k], k === 'bus' ? 4 : 3);
   return r;
 }
@@ -741,7 +754,7 @@ function sightsHTML(cfg, data) {
   if (!xs.length) return `<p class="muted">${t('No museums, viewpoints or attractions are mapped within 3 km of the venue.')}</p>${ext(L.place('things to do', placeLabel(v)), t('Search on Google Maps'), 'btn')}`;
   return `<ul class="plist rich">${xs.slice(0, 8).map(x => `<li>
     <div><b>${esc(x.name)}</b><span>${esc(t(x.kind))}</span>
-      <div class="mini">${ext(L.place(x.name, placeLabel(v)), 'Google Maps', 'mini-b')}${x.website ? ext(x.website, t('Website'), 'mini-b') : ''}</div></div>
+      <div class="mini"><button type="button" class="mini-b" data-place="${esc(placeKey(x))}">${t('Details')}</button>${x.website ? ext(x.website, t('Website'), 'mini-b') : ''}</div></div>
     <span class="dist">${esc(fmtDist(x.d, v.cc))}<small>${x.d < 2000 ? walkTxt(x.d) : t('from the venue')}</small></span></li>`).join('')}</ul>`;
 }
 const TRANSIT_LABELS = { subway: 'Subway & metro', rail: 'Rail', tram: 'Light rail & tram', bus: 'Bus stops', bike: 'Bike share & rental', ferry: 'Ferry' };
@@ -770,7 +783,7 @@ function hotelsHTML(cfg, data) {
   const hs = data.hotels.slice(0, 8);
   return `<ul class="plist rich">${hs.map((h, i) => `<li${i >= 3 ? ' class="more"' : ''}>
     <div><b>${esc(h.name)}</b><span>${esc([t(h.kind), h.stars ? `${h.stars}★` : ''].filter(Boolean).join(' · '))}</span>
-      <div class="mini">${bookExt('hotels', 'booking', { q: `${h.name}, ${v.city || placeLabel(v)}`, d1: tr.arrive, d2: tr.leave, n: tr.guests || 2 }, t('Check rates') + ' · Booking.com', 'mini-b')}${ext(L.place(h.name, h.street ? `${h.street}, ${v.city}` : placeLabel(v)), 'Google Maps', 'mini-b')}${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
+      <div class="mini">${bookExt('hotels', 'booking', { q: `${h.name}, ${v.city || placeLabel(v)}`, d1: tr.arrive, d2: tr.leave, n: tr.guests || 2 }, t('Check rates') + ' · Booking.com', 'mini-b')}<button type="button" class="mini-b" data-place="${esc(placeKey(h))}">${t('Details')}</button>${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
     <span class="dist">${esc(fmtDist(h.d, v.cc))}<small>${h.d < 2000 ? walkTxt(h.d) : t('from the venue')}</small></span></li>`).join('')}${hs.length > 3 ? `<li class="more-li"><button type="button" class="btn sm" data-more>${t('All {n} hotels', { n: hs.length })}</button></li>` : ''}</ul>`;
 }
 function weatherHTML(w, cfg) {
@@ -1061,7 +1074,7 @@ function roomBlockHTML(cfg) {
 function nearbyTabHTML(cfg) {
   const T = cfg.tools; const out = [];
   if (T.nearby) out.push(sec('map', t('Map'), `<div class="map-wrap"><div class="map" data-slot="map" role="region" aria-label="${t('Map of the venue and surroundings')}"></div><div class="map-legend" data-slot="legend"></div></div>`));
-  if (T.nearby) out.push(sec('food', t('Eat & drink'), `<div data-slot="food">${loading(t('places to eat'))}</div>`));
+  if (T.nearby) out.push(sec('food', t('Places nearby'), `<div data-slot="food">${loading(t('places to eat'))}</div>`));
   if (T.tours) out.push(sec('tours', t('Things to do'), toursHTML(cfg)));
   return out.join('');
 }
@@ -1223,7 +1236,6 @@ function wireEvent(cfg, art, seq, air, opts) {
     nearby(v.lat, v.lon).then(d => {
       if (!alive()) return; art._osm = d;
       const ft = art.querySelector('.ev-foot p'); if (ft && d.snapshot) ft.insertAdjacentHTML('beforeend', ` · ${esc(t('Nearby places as mapped on {d}', { d: d.snapshot }))}`);
-      if (slot('food')) slot('food').innerHTML = foodHTML(cfg, d);
       if (slot('hotels')) slot('hotels').innerHTML = hotelsHTML(cfg, d);
       if (slot('sights')) slot('sights').innerHTML = sightsHTML(cfg, d);
       if (slot('transit')) slot('transit').innerHTML = transitHTML(cfg, d);
@@ -1241,6 +1253,13 @@ function wireEvent(cfg, art, seq, air, opts) {
         lg.innerHTML = Object.entries(layers).map(([k, x]) => `<button class="chip on" data-layer="${k}" aria-pressed="true"><i style="background:${x.color}"></i>${x.label}</button>`).join('');
         lg.addEventListener('click', (e) => { const b = e.target.closest('[data-layer]'); if (!b) return; const l = layers[b.dataset.layer]; const on = map.hasLayer(l.layer); on ? map.removeLayer(l.layer) : l.layer.addTo(map); b.classList.toggle('on', !on); b.setAttribute('aria-pressed', String(!on)); });
       }
+      // food markers follow the place filters; tapping one opens its card
+      const setMarkers = map && layers.food ? (items) => {
+        const g = layers.food.layer; g.clearLayers();
+        items.forEach(x => window.L.circleMarker([x.lat, x.lon], { radius: 6, color: '#fff', weight: 1.5, fillColor: '#E4572E', fillOpacity: .95 }).on('click', () => art._openPlace && art._openPlace(placeKey(x))).addTo(g));
+      } : null;
+      art._focusPlace = (p) => { if (!map) return; showTab(art, 'nearby', opts); map.setView([p.lat, p.lon], 17); art.querySelector('[data-slot="map"]')?.scrollIntoView({ block: 'center' }); };
+      if (slot('food')) wirePlaces(cfg, art, d, setMarkers);
     }).catch(() => {
       if (!alive()) return;
       const msg = (what, q) => `<p class="muted">${t('Nearby places could not be loaded from OpenStreetMap right now.')}</p>${ext(L.place(q, placeLabel(v)), t('Search on Google Maps'), 'btn')}`;
@@ -2062,6 +2081,146 @@ async function renderMineEvent(id, shell, c, user) {
   });
 }
 
+// ================= phase D: in-app Nearby places with filters (OpenStreetMap data) =================
+// Guests browse and filter here; they only leave the app to get directions, reserve, call, or visit the place's own site.
+const PLACE_CATS = [['restaurant', 'Restaurants'], ['cafe', 'Cafés'], ['bar', 'Bars'], ['fast_food', 'Quick bites'], ['pharmacy', 'Pharmacies'], ['grocery', 'Groceries']];
+const PLACE_ONE = { restaurant: 'Restaurant', cafe: 'Café', bar: 'Bar', fast_food: 'Quick bite', pharmacy: 'Pharmacy', grocery: 'Grocery', hotel: 'Hotel', sight: 'Sight' };
+const DIETS = [['gluten_free', 'Gluten-free'], ['vegan', 'Vegan'], ['vegetarian', 'Vegetarian'], ['halal', 'Halal'], ['kosher', 'Kosher']];
+const DISTS = [[0, 'Any distance'], [400, '5 min walk'], [800, '10 min walk'], [1200, '15 min walk']];
+const isEatery = (k) => /^(restaurant|cafe|bar|fast_food)$/.test(k);
+// OSM diet:* = yes | only | limited | no
+const hasDiet = (p, k) => /^(yes|only|limited)$/.test((p.diet || {})[k] || '');
+
+// ---- opening_hours: the common subset (day ranges, several time ranges, overnight, off, 24/7). Anything else → unknown ----
+const OH_DAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+function ohOpenAt(spec, wall) {
+  spec = String(spec || '').trim(); if (!spec) return null;
+  if (/^24\/7$/.test(spec)) return true;
+  const day = (wall.getUTCDay() + 6) % 7, prev = (day + 6) % 7, mins = wall.getUTCHours() * 60 + wall.getUTCMinutes();
+  let result = false;
+  for (let rule of spec.split(/\s*;\s*/)) {
+    rule = rule.trim(); if (!rule) continue;
+    if (/^(PH|SH)\b/.test(rule)) continue; // holidays: ignore
+    if (/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|week|easter|sunrise|sunset|dawn|dusk)\b|\[|"/.test(rule)) return null;
+    const m = rule.match(/^((?:Mo|Tu|We|Th|Fr|Sa|Su)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?(?:,(?:Mo|Tu|We|Th|Fr|Sa|Su)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?)*)?\s*(.*)$/);
+    if (!m) return null;
+    const days = new Set();
+    if (!m[1]) for (let i = 0; i < 7; i++) days.add(i);
+    else for (const seg of m[1].split(',')) { const [a, b] = seg.split('-'); const ia = OH_DAYS.indexOf(a), ib = b ? OH_DAYS.indexOf(b) : ia; for (let i = ia, n = 0; n < 8; i = (i + 1) % 7, n++) { days.add(i); if (i === ib) break; } }
+    const times = m[2].trim().replace(/^:\s*/, '');
+    if (/^(off|closed)$/i.test(times)) { if (days.has(day)) result = false; continue; }
+    const ranges = times.split(/\s*,\s*/).map(r => r.match(/^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\+?$/));
+    if (!ranges.length || ranges.some(r => !r)) return null;
+    let touched = false, open = false;
+    for (const r of ranges) {
+      const s = +r[1] * 60 + +r[2]; let e = +r[3] * 60 + +r[4]; if (e === 0) e = 1440;
+      if (days.has(day)) { touched = true; if (e > s ? (mins >= s && mins < e) : mins >= s) open = true; }
+      if (days.has(prev) && e <= s && mins < e) { touched = true; open = true; } // past midnight from yesterday
+    }
+    if (touched) result = open;
+  }
+  return result;
+}
+const venueNow = (cfg) => asUTC(utcToWall(new Date(), cfg.tz || 'UTC'));
+const prettyHours = (spec) => String(spec || '').split(/\s*;\s*/).filter(Boolean).map(r => r.replace(/\bMo\b/g, 'Mon').replace(/\bTu\b/g, 'Tue').replace(/\bWe\b/g, 'Wed').replace(/\bTh\b/g, 'Thu').replace(/\bFr\b/g, 'Fri').replace(/\bSa\b/g, 'Sat').replace(/\bSu\b/g, 'Sun').replace(/,(?=[A-Z])/g, ', ').replace(/\boff\b/g, 'closed').replace(/(\d{1,2}):(\d{2})/g, (_, h, mm) => fmtTime(`${pad(+h % 24)}:${mm}`)));
+
+// all browsable places from the classified OSM data
+function allPlaces(data) {
+  const food = (data.food || []).map(p => ({ ...p, cat: p.kind === 'bar' || p.kind === 'pub' ? 'bar' : p.kind }));
+  return food.concat((data.places || []).map(p => ({ ...p, cat: p.kind })));
+}
+const placeKey = (p) => `${p.name}|${(+p.lat).toFixed(5)},${(+p.lon).toFixed(5)}`;
+const cuisineList = (p) => (p.cuisines || String(p.cuisine || '').split(',')).map(x => String(x).trim().toLowerCase()).filter(Boolean);
+const cuisineLabel = (c) => c.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+
+function placeFilters(cfg, art) { return art._pf || (art._pf = { cat: 'restaurant', cuisine: '', diet: [], open: false, dist: 0, price: '' }); }
+function filterPlaces(cfg, places, f) {
+  const now = f.open ? venueNow(cfg) : null;
+  return places.filter(p => (!f.cat || f.cat === 'all' || p.cat === f.cat)
+    && (!f.cuisine || cuisineList(p).includes(f.cuisine))
+    && f.diet.every(k => hasDiet(p, k))
+    && (!f.dist || p.d <= f.dist)
+    && (!f.price || p.price === f.price)
+    && (!now || ohOpenAt(p.hours, now) === true));
+}
+function placesHTML(cfg, data, art) {
+  const v = cfg.venue; const f = placeFilters(cfg, art); const all = allPlaces(data);
+  if (!all.length) return `<p class="muted">${t('No restaurants, cafés or bars are mapped within 900 m of the venue.')}</p>${ext(L.place('restaurants', placeLabel(v)), t('Search on Google Maps'), 'btn')}`;
+  const counts = {}; all.forEach(p => counts[p.cat] = (counts[p.cat] || 0) + 1);
+  if (f.cat !== 'all' && !counts[f.cat]) f.cat = PLACE_CATS.find(([k]) => counts[k])?.[0] || 'all';
+  const inCat = all.filter(p => f.cat === 'all' || p.cat === f.cat);
+  const cuis = {}; inCat.forEach(p => cuisineList(p).forEach(c => { cuis[c] = (cuis[c] || 0) + 1; }));
+  const cuisTop = Object.entries(cuis).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30);
+  if (f.cuisine && !cuis[f.cuisine]) f.cuisine = '';
+  const prices = [...new Set(inCat.map(p => p.price).filter(Boolean))].sort((a, b) => a.length - b.length);
+  const eat = isEatery(f.cat) || f.cat === 'all';
+  const dietCount = (k) => inCat.filter(p => hasDiet(p, k)).length;
+  const list = filterPlaces(cfg, all, f); const now = venueNow(cfg);
+  const active = (f.cuisine ? 1 : 0) + f.diet.length + (f.open ? 1 : 0) + (f.dist ? 1 : 0) + (f.price ? 1 : 0);
+  return `<div class="pf" role="group" aria-label="${t('Filters')}">
+    <div class="chips pf-cats">${PLACE_CATS.filter(([k]) => counts[k]).map(([k, l]) => `<button type="button" class="chip ${f.cat === k ? 'on' : ''}" data-pf-cat="${k}" aria-pressed="${f.cat === k}">${t(l)} <span>${counts[k]}</span></button>`).join('')}</div>
+    <div class="pf-row">
+      ${eat && cuisTop.length ? `<label class="pf-sel"><span class="sr">${t('Cuisine')}</span><select data-pf="cuisine"><option value="">${t('Any cuisine')}</option>${cuisTop.map(([c, n]) => `<option value="${esc(c)}" ${f.cuisine === c ? 'selected' : ''}>${esc(cuisineLabel(c))} (${n})</option>`).join('')}</select></label>` : ''}
+      <label class="pf-sel"><span class="sr">${t('Distance')}</span><select data-pf="dist">${DISTS.map(([m, l]) => `<option value="${m}" ${+f.dist === m ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></label>
+      <button type="button" class="chip ${f.open ? 'on' : ''}" data-pf-open aria-pressed="${f.open}">${t('Open now')}</button>
+    </div>
+    ${eat ? `<div class="chips pf-diet">${DIETS.map(([k, l]) => { const n = dietCount(k); const on = f.diet.includes(k); return n || on ? `<button type="button" class="chip ${on ? 'on' : ''}" data-pf-diet="${k}" aria-pressed="${on}">${t(l)} <span>${n}</span></button>` : ''; }).join('')}</div>` : ''}
+    ${prices.length > 1 ? `<div class="chips pf-price">${prices.map(pr => `<button type="button" class="chip ${f.price === pr ? 'on' : ''}" data-pf-price="${esc(pr)}" aria-pressed="${f.price === pr}">${esc(pr)}</button>`).join('')}</div>` : ''}
+  </div>
+  <p class="pf-count muted small" role="status" aria-live="polite">${esc(list.length === 1 ? t('1 place') : t('{n} places', { n: list.length }))}${active ? ` · <button type="button" class="link" data-pf-clear>${t('Clear filters')}</button>` : ''}</p>
+  ${list.length ? `<ul class="plist rich places">${list.slice(0, art._pfMore ? 80 : 12).map(p => { const o = ohOpenAt(p.hours, now); const dl = DIETS.filter(([k]) => hasDiet(p, k)).map(([, l]) => t(l));
+    return `<li><button type="button" class="place-row" data-place="${esc(placeKey(p))}"><div><b>${esc(p.name)}</b><span>${esc([t(PLACE_CATS.find(x => x[0] === p.cat)?.[1] || ''), cuisineList(p).slice(0, 2).map(cuisineLabel).join(', '), p.price || ''].filter(Boolean).join(' · '))}</span>${dl.length || o != null ? `<span class="tags">${o === true ? `<em class="open">${t('Open now')}</em>` : o === false ? `<em class="closed">${t('Closed now')}</em>` : ''}${dl.map(x => `<em>${esc(x)}</em>`).join('')}</span>` : ''}</div><span class="dist">${esc(fmtDist(p.d, v.cc))}<small>${walkTxt(p.d)}</small></span></button></li>`; }).join('')}
+    ${list.length > 12 && !art._pfMore ? `<li class="more-li"><button type="button" class="btn sm" data-pf-more>${t('Show {n} more', { n: Math.min(80, list.length) - 12 })}</button></li>` : ''}</ul>`
+    : `<p class="muted">${t('Nothing matches these filters.')} <button type="button" class="link" data-pf-clear>${t('Clear filters')}</button></p>`}`;
+}
+function placeCardHTML(cfg, p) {
+  const v = cfg.venue; const now = venueNow(cfg); const o = ohOpenAt(p.hours, now); const tr = tripDates(cfg);
+  const dl = DIETS.filter(([k]) => hasDiet(p, k)).map(([k, l]) => `<em>${esc(t(l))}${p.diet[k] === 'only' ? ' ' + esc(t('only')) : p.diet[k] === 'limited' ? ' ' + esc(t('(some dishes)')) : ''}</em>`);
+  const facts = [p.outdoor === 'yes' ? t('Outdoor seating') : '', p.takeaway === 'yes' || p.takeaway === 'only' ? t('Takeaway') : '', p.wheelchair === 'yes' ? t('Wheelchair accessible') : p.wheelchair === 'limited' ? t('Partly wheelchair accessible') : ''].filter(Boolean);
+  const addr = [p.street, p.city || v.city].filter(Boolean).join(', ');
+  const dirURL = `https://www.google.com/maps/dir/?api=1&origin=${v.lat},${v.lon}&destination=${p.lat},${p.lon}&travelmode=walking`;
+  return `<div class="pc"><button type="button" class="x" data-pc-close aria-label="${t('Close')}">×</button>
+    <p class="lbl">${esc([t(PLACE_ONE[p.cat] || p.kind || ''), cuisineList(p).map(cuisineLabel).join(', ')].filter(Boolean).join(' · '))}</p>
+    <h2>${esc(p.name)}</h2>
+    <p class="pc-dist">${esc(t('{d} from the venue', { d: fmtDist(p.d, v.cc) }))} · ${walkTxt(p.d)}${p.price ? ' · ' + esc(p.price) : ''}</p>
+    ${dl.length ? `<p class="tags">${dl.join('')}</p>` : ''}
+    ${p.hours ? `<div class="pc-hours"><b>${o === true ? `<span class="open">${t('Open now')}</span>` : o === false ? `<span class="closed">${t('Closed now')}</span>` : t('Hours')}</b><ul>${prettyHours(p.hours).map(h => `<li>${esc(h)}</li>`).join('')}</ul></div>` : ''}
+    ${addr ? `<p class="pc-addr">${esc(addr)}</p>` : ''}
+    ${facts.length ? `<p class="muted small">${esc(facts.join(' · '))}</p>` : ''}
+    <div class="btns">${ext(dirURL, t('Directions'), 'btn primary')}${p.cat === 'restaurant' ? bookExt('restaurants', 'opentable', { name: p.name, venue: v, date: cfg.start.slice(0, 10), n: tr.guests || 2 }, t('Reserve') + ' · OpenTable', 'btn') : ''}${p.phone ? `<a class="btn" href="tel:${esc(p.phone.replace(/[^\d+]/g, ''))}">${t('Call')}</a>` : ''}${p.website ? ext(p.website, t('Website'), 'btn') : ''}</div>
+    <button type="button" class="link" data-pc-map>${t('Show on map')}</button>
+  </div>`;
+}
+function wirePlaces(cfg, art, data, setMarkers) {
+  const s = art.querySelector('[data-slot="food"]'); if (!s) return;
+  const all = allPlaces(data);
+  const byKey = new Map(all.concat((data.hotels || []).map(p => ({ ...p, cat: 'hotel' })), (data.sights || []).map(p => ({ ...p, cat: 'sight' }))).map(p => [placeKey(p), p]));
+  const render = () => { s.innerHTML = placesHTML(cfg, data, art); if (setMarkers) setMarkers(filterPlaces(cfg, all, placeFilters(cfg, art)).slice(0, 60)); };
+  art._openPlace = (key) => {
+    const p = byKey.get(key); if (!p) return;
+    let d = $('#placedlg'); if (!d) { d = document.createElement('dialog'); d.id = 'placedlg'; d.className = 'sheet place-sheet'; document.body.appendChild(d); d.addEventListener('click', (e) => { if (e.target === d) d.close(); }); }
+    d.setAttribute('style', themeStyle(cfg.theme)); d.classList.toggle('dark', cfg.theme.mode === 'dark'); d.setAttribute('lang', LANG);
+    d.innerHTML = placeCardHTML(cfg, p);
+    d.onclick = (e) => { if (e.target === d || e.target.closest('[data-pc-close]')) d.close(); if (e.target.closest('[data-pc-map]')) { d.close(); art._focusPlace && art._focusPlace(p); } };
+    if (!d.open) d.showModal();
+  };
+  if (!art._placeClicks) { art._placeClicks = true; art.addEventListener('click', (e) => { const b = e.target.closest('[data-place]'); if (b && art._openPlace) art._openPlace(b.dataset.place); }); }
+  s.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return; const f = placeFilters(cfg, art); const d = b.dataset;
+    if (d.place) return;
+    if (d.pfCat) { f.cat = d.pfCat; f.cuisine = ''; art._pfMore = false; }
+    else if (d.pfDiet) { f.diet = f.diet.includes(d.pfDiet) ? f.diet.filter(x => x !== d.pfDiet) : f.diet.concat(d.pfDiet); }
+    else if (d.pfOpen != null) f.open = !f.open;
+    else if (d.pfPrice) f.price = f.price === d.pfPrice ? '' : d.pfPrice;
+    else if (d.pfClear != null) Object.assign(f, { cuisine: '', diet: [], open: false, dist: 0, price: '' });
+    else if (d.pfMore != null) art._pfMore = true;
+    else return;
+    render();
+  });
+  s.addEventListener('change', (e) => { const i = e.target; if (!i.dataset.pf) return; const f = placeFilters(cfg, art); f[i.dataset.pf] = i.dataset.pf === 'dist' ? +i.value : i.value; render(); });
+  render();
+}
+
 // ================= trips: day-by-day itinerary builder (reuses cfg.schedule: {date, time, title, note, kind}) =================
 const PLAN_KINDS = { activity: 'Activity', reservation: 'Reservation', note: 'Note' };
 function tripDays(c) {
@@ -2212,5 +2371,5 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
