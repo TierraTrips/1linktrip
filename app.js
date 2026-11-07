@@ -134,8 +134,9 @@ async function geocode(q) {
     const city = a.city || a.town || a.village || a.municipality || a.hamlet || a.suburb || a.county || '';
     const street = [a.house_number, a.road].filter(Boolean).join(' ');
     const name = r.name || street || city;
+    if (!city && r.name && /^(state|region|province|county|island|archipelago|administrative)$/.test(r.addresstype || r.type || '')) a.city = r.name; // a region as a trip destination
     const address = [street && street !== name ? street : '', city, a.state, a.postcode].filter(Boolean).join(', ') || r.display_name;
-    return { name, address, display: r.display_name, lat: +(+r.lat).toFixed(5), lon: +(+r.lon).toFixed(5), city, region: a.state || '', country: a.country || '', cc: (a.country_code || '').toLowerCase() };
+    return { name, address, display: r.display_name, lat: +(+r.lat).toFixed(5), lon: +(+r.lon).toFixed(5), city: city || a.city || '', region: a.state || '', country: a.country || '', cc: (a.country_code || '').toLowerCase() };
   });
 }
 async function lookupTZ(lat, lon) {
@@ -295,10 +296,14 @@ const FONTS = {
   condensed: { label: 'Poster', css: "'Big Shoulders Display', 'Arial Narrow', sans-serif", gf: 'Big+Shoulders+Display:wght@600..900' },
   wide: { label: 'Wide', css: "'Unbounded', system-ui, sans-serif", gf: 'Unbounded:wght@400..800' }
 };
-const TYPES = ['Wedding', 'Conference', 'Concert', 'Race', 'Sporting event', 'Festival', 'Bachelor party', 'Bachelorette party', 'Birthday', 'Reunion', 'Retreat', 'Meetup', 'Party', 'Other'];
+const TYPES = ['Wedding', 'Conference', 'Concert', 'Race', 'Sporting event', 'Festival', 'Bachelor party', 'Bachelorette party', 'Birthday', 'Reunion', 'Retreat', 'Meetup', 'Party', 'Other', 'Trip'];
+const TYPE_LABEL = { Trip: 'Vacation / Trip' };
+// a trip has a destination instead of a venue, a day-by-day itinerary instead of a schedule, and no RSVP
+const isTrip = (cfg) => cfg && cfg.type === 'Trip';
 // ---------- type-specific details: fields appear in the editor only for that type; on the page only if filled ----------
 // field: [key, label, kind, placeholder]; kinds: text, url, date, time, datetime, place {q,lat,lon}, links [{label,url}], lines
 const TYPE_FIELDS = {
+  Trip: { name: 'Trip details', fields: [['stops', 'Other stops', 'lines', 'One place per line, e.g. Sintra'], ['companions', 'Travelling together', 'text', 'Names, optional']] },
   Wedding: { name: 'Wedding details', fields: [
     ['rsvp', 'RSVP link', 'url', 'https://…'], ['rsvpBy', 'RSVP by', 'date'], ['dress', 'Dress code', 'text', 'Beach formal'],
     ['registry', 'Registry', 'links'],
@@ -393,7 +398,7 @@ function typeInfoHTML(cfg, opt = {}) {
   if (has('headlinerAt') || has('headliner')) tl.push([d.headlinerAt || '', d.headliner || t(lab.headliner)]);
   if (tl.length) out.push(`<ol class="tl">${tl.sort((a, b) => (a[0] || '99').localeCompare(b[0] || '99')).map(([tm, n]) => `<li><time>${esc(fmtTime(tm)) || '—'}</time><div><b>${esc(n)}</b></div></li>`).join('')}</ol>`);
   for (const [k, label, kind] of sp.fields) {
-    if (['doors', 'opener', 'openerAt', 'headliner', 'headlinerAt', 'rsvpBy', 'blockHotel', 'blockUrl', 'blockCode', 'blockBy', 'packetWhen', 'badgeWhen', 'closuresUrl', 'spots', 'speakers'].includes(k) || !filled(kind, d[k])) continue;
+    if (['stops', 'doors', 'opener', 'openerAt', 'headliner', 'headlinerAt', 'rsvpBy', 'blockHotel', 'blockUrl', 'blockCode', 'blockBy', 'packetWhen', 'badgeWhen', 'closuresUrl', 'spots', 'speakers'].includes(k) || !filled(kind, d[k])) continue;
     const val = d[k];
     if (k === 'rsvp') rows.push(linkRow('RSVP', val, d.rsvpBy ? t('Reply by {d}', { d: dt(d.rsvpBy) }) : ''));
     else if (k === 'course' && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(val)) out.push(`<a class="course-img" href="${esc(val)}" target="_blank" rel="noopener noreferrer"><img src="${esc(val)}" alt="${t('Course map')}" loading="lazy" referrerpolicy="no-referrer"></a>`);
@@ -415,6 +420,7 @@ function typeInfoHTML(cfg, opt = {}) {
     out.push(`<h3 class="sub-h">${t('Room block')}</h3><ul class="links">${d.blockUrl ? linkRow(d.blockHotel || t('Book the room block'), d.blockUrl, sub || hostOf(d.blockUrl)) : noteRow(d.blockHotel || 'Room block', sub)}</ul>`);
   }
   const lines = (k) => String(d[k] || '').split('\n').map(x => x.trim()).filter(Boolean);
+  if (has('stops')) out.push(`<h3 class="sub-h">${esc(t(lab.stops))}</h3><ul class="links">${lines('stops').map(x => `<li><a href="${esc(L.place(x, v ? (v.country || '') : ''))}" target="_blank" rel="noopener noreferrer"><b>${esc(x)}</b><span>Google Maps</span>${arrow}</a></li>`).join('')}</ul>`);
   if (has('spots')) out.push(`<h3 class="sub-h">${esc(t(lab.spots))}</h3><ul class="links">${lines('spots').map(x => `<li><a href="${esc(L.place(x, v ? placeLabel(v) : ''))}" target="_blank" rel="noopener noreferrer"><b>${esc(x)}</b><span>Google Maps</span>${arrow}</a></li>`).join('')}</ul>`);
   if (has('speakers')) out.push(`<h3 class="sub-h">${esc(t(lab.speakers))}</h3><ul class="links">${lines('speakers').map(x => { const [n, ...r] = x.split(/\s+[—–-]\s+|,\s+/); return `<li class="note"><b>${esc(n)}</b>${r.length ? `<span>${esc(r.join(', '))}</span>` : ''}</li>`; }).join('')}</ul>`);
   return out.join('');
@@ -643,24 +649,21 @@ function wirePacking(cfg, art) {
 }
 
 // ---------- booking providers: every outbound booking link goes through bookingLink() ----------
-// mode: 'link' opens the provider's site; 'inapp' is reserved for a future in-app booking flow (API) per provider.
-// affiliate: partner id, empty until there is a real one; affParam is the query parameter it would ride on.
+// mode: 'link' opens the provider's site; 'inapp' is reserved for a future in-app booking flow per provider.
 const PROVIDERS = {
-  gflights: { name: 'Google Flights', kinds: ['flights'], mode: 'link', affiliate: '', affParam: '', url: (p) => L.gflights(p.to, p.from, p.d1, p.d2) },
-  kayak: { name: 'Kayak', kinds: ['flights'], mode: 'link', affiliate: '', affParam: '', url: (p) => L.kayak(p.from, p.to, p.d1, p.d2) },
-  kayakCars: { name: 'Kayak', kinds: ['cars'], mode: 'link', affiliate: '', affParam: '', url: (p) => L.kayakCars(p.iata, p.d1, p.d2) },
-  ghotels: { name: 'Google Hotels', kinds: ['hotels'], mode: 'link', affiliate: '', affParam: '', url: (p) => L.ghotels(p.q, p.d1, p.d2) },
-  booking: { name: 'Booking.com', kinds: ['hotels'], mode: 'link', affiliate: '', affParam: 'aid', url: (p) => L.booking(p.q, p.d1, p.d2, p.n) },
-  airbnb: { name: 'Airbnb', kinds: ['hotels'], mode: 'link', affiliate: '', affParam: '', url: (p) => L.airbnb(p.q, p.d1, p.d2, p.n) },
-  gyg: { name: 'GetYourGuide', kinds: ['tours'], mode: 'link', affiliate: '', affParam: '', url: (p) => L.gyg(p.q, p.d1, p.d2) },
-  airbnbExp: { name: 'Airbnb', kinds: ['tours'], mode: 'link', affiliate: '', affParam: '', url: (p) => L.airbnbExp(p.q, p.d1, p.d2) },
-  opentable: { name: 'OpenTable', kinds: ['restaurants'], mode: 'link', affiliate: '', affParam: '', url: (p) => L.opentable(p.name, p.venue, p.date, p.n) },
+  gflights: { name: 'Google Flights', kinds: ['flights'], mode: 'link', url: (p) => L.gflights(p.to, p.from, p.d1, p.d2) },
+  kayak: { name: 'Kayak', kinds: ['flights'], mode: 'link', url: (p) => L.kayak(p.from, p.to, p.d1, p.d2) },
+  kayakCars: { name: 'Kayak', kinds: ['cars'], mode: 'link', url: (p) => L.kayakCars(p.iata, p.d1, p.d2) },
+  ghotels: { name: 'Google Hotels', kinds: ['hotels'], mode: 'link', url: (p) => L.ghotels(p.q, p.d1, p.d2) },
+  booking: { name: 'Booking.com', kinds: ['hotels'], mode: 'link', url: (p) => L.booking(p.q, p.d1, p.d2, p.n) },
+  airbnb: { name: 'Airbnb', kinds: ['hotels'], mode: 'link', url: (p) => L.airbnb(p.q, p.d1, p.d2, p.n) },
+  gyg: { name: 'GetYourGuide', kinds: ['tours'], mode: 'link', url: (p) => L.gyg(p.q, p.d1, p.d2) },
+  airbnbExp: { name: 'Airbnb', kinds: ['tours'], mode: 'link', url: (p) => L.airbnbExp(p.q, p.d1, p.d2) },
+  opentable: { name: 'OpenTable', kinds: ['restaurants'], mode: 'link', url: (p) => L.opentable(p.name, p.venue, p.date, p.n) },
 };
 function bookingLink(kind, provider, params) {
   const P = PROVIDERS[provider]; if (!P || !P.kinds.includes(kind)) throw new Error(`no ${kind} provider ${provider}`);
-  let url = P.url(params);
-  if (P.affiliate && P.affParam) { const u = new URL(url); u.searchParams.set(P.affParam, P.affiliate); url = u.href; }
-  return { provider, name: P.name, mode: P.mode, url };
+  return { provider, name: P.name, mode: P.mode, url: P.url(params) };
 }
 // a booking row/button; when a provider switches to 'inapp' this is the one place that changes
 const bookExt = (kind, provider, params, label, cls = 'row-link') => { const b = bookingLink(kind, provider, params); return ext(b.url, label, cls); };
@@ -866,6 +869,7 @@ const t = (s, vars) => { let r = (I18N[LANG] && I18N[LANG][s]) || s; if (vars) r
 
 const TOOLS = [['weather', 'Weather'], ['travel', 'Travel'], ['stay', 'Stay'], ['nearby', 'Nearby'], ['tours', 'Things to do'], ['mytrip', 'My trip'], ['packing', 'Packing list']];
 const TYPE_DEFAULTS = {
+  Trip: { theme: { accent: '#1E7FA8', font: 'serif', mode: 'light' }, off: [], order: ['schedule', 'about', 'details', 'weather', 'access', 'rsvp'] },
   Wedding: { theme: { accent: '#0B7A75', font: 'serif', mode: 'light' }, off: [] },
   Race: { theme: { accent: '#2E7D32', font: 'wide', mode: 'light' }, off: ['tours'] },
   Conference: { theme: { accent: '#3048F0', font: 'grotesk', mode: 'light' }, off: ['packing'] },
@@ -875,12 +879,23 @@ const TYPE_DEFAULTS = {
 };
 const typeDefaults = (type) => TYPE_DEFAULTS[type] || { theme: { accent: '#3048F0', font: 'grotesk', mode: 'light' }, off: [] };
 const defaultTools = (type) => Object.fromEntries(TOOLS.map(([k]) => [k, !typeDefaults(type).off.includes(k)]));
+const TYPE_ICONS = {
+  Wedding: '<circle cx="9" cy="14" r="5"/><circle cx="15" cy="14" r="5"/><path d="M10 5l2-2 2 2-2 2z"/>',
+  Race: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+  Conference: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/>',
+  Concert: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
+  Festival: '<path d="M3 20L12 4l9 16z"/><path d="M12 4v16M9 20l3-6 3 6"/>',
+  'Sporting event': '<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18M5.6 5.6c3.4 3.4 3.4 9.4 0 12.8M18.4 5.6c-3.4 3.4-3.4 9.4 0 12.8"/>',
+  Trip: '<rect x="4" y="7" width="16" height="13" rx="2"/><path d="M9 7V4h6v3M4 12h16"/>',
+  Party: '<path d="M4 20l5-14 9 9z"/><path d="M14 3v2M19 8h2M17.5 4.5l-1.4 1.4"/>',
+};
 const SETUP_TYPES = [['Wedding', 'Wedding', 'RSVP, room block, dress code', '#0B7A75'], ['Race', 'Race', 'Start, finish, packet pickup', '#2E7D32'],
   ['Conference', 'Conference', 'Badges, agenda, speakers', '#3048F0'], ['Concert', 'Concert', 'Doors, set times, bag policy', '#FF6B35'],
   ['Festival', 'Festival', 'Several days, several stages', '#B8860B'], ['Sporting event', 'Game day', 'Seats, tailgating, parking', '#C2185B'],
-  ['Party', 'Something else', 'Party, reunion, retreat', '#1F2937']];
+  ['Party', 'Something else', 'Party, reunion, retreat', '#1F2937'], ['Trip', 'Vacation / Trip', 'Day by day, stays, packing', '#1E7FA8']];
 // "Add to your page" cards: [id, title, subtitle, field keys]
 const TYPE_CARDS = {
+  Trip: [['stops', 'Stops', 'Other places on the trip', ['stops']], ['companions', 'Travelling together', 'Who is coming', ['companions']]],
   Wedding: [['rsvp', 'RSVP', 'Link and reply-by date', ['rsvp', 'rsvpBy']], ['block', 'Room block', 'Hotel, code, book-by date', ['blockHotel', 'blockUrl', 'blockCode', 'blockBy']],
     ['dress', 'Dress code', 'One line guests will see', ['dress']], ['registry', 'Registry', 'One or more links', ['registry']]],
   Race: [['startfinish', 'Start and finish', 'Pinned on the map', ['startAt', 'finishAt']], ['packet', 'Packet pickup', 'Where and when', ['packet', 'packetWhen']],
@@ -890,9 +905,9 @@ const TYPE_CARDS = {
   'Sporting event': [['seating', 'Seating chart', 'Link', ['seating']], ['teams', 'Teams', 'Links', ['teams']], ['tailgate', 'Tailgating and parking', 'Lots and times', ['tailgate', 'parking']], ['bags', 'Bag policy', 'What guests can bring in', ['bags']]],
   Conference: [['badge', 'Badge pickup', 'Where and when', ['badge', 'badgeWhen']], ['speakers', 'Speakers', 'One per line', ['speakers']], ['agenda', 'Full agenda', 'Link', ['agenda']]]
 };
-const TYPE_GROUP = { Wedding: 'For weddings', Race: 'For races', Concert: 'For concerts', 'Sporting event': 'For game day', Conference: 'For conferences' };
+const TYPE_GROUP = { Trip: 'For trips', Wedding: 'For weddings', Race: 'For races', Concert: 'For concerts', 'Sporting event': 'For game day', Conference: 'For conferences' };
 const COMMON_CARDS = [['schedule', 'Schedule', 'Times and places'], ['notes', 'Notes for guests', 'Kids, parking, FAQ'], ['about', 'About', 'Host and a few words'],
-  ['look', 'Cover and colors', 'Photo, color, font'], ['bring', 'Must-bring items', 'Top of the packing list']];
+  ['bring', 'Must-bring items', 'Top of the packing list']];
 const CARD_ICONS = {
   rsvp: '<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>', block: '<path d="M3 20V9l9-5 9 5v11"/><path d="M9 20v-6h6v6"/>', dress: '<path d="M9 3l3 3 3-3 3 4-3 2v12H9V9L6 7z"/>',
   registry: '<rect x="3" y="8" width="18" height="13" rx="1"/><path d="M12 8v13M3 12h18M12 8S8 3 6 5s6 3 6 3 8-1 6-3-6 3-6 3"/>', startfinish: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
@@ -911,7 +926,7 @@ const cardIcon = (id) => `<svg viewBox="0 0 24 24" aria-hidden="true">${CARD_ICO
 function blankEvent(type) {
   const s = addDays(todayYMD(), 30); type = type || 'Party';
   return { v: 2, type, title: '', tagline: '', host: '', description: '', start: s, end: '', tz: '', venue: null, cover: '',
-    theme: { ...typeDefaults(type).theme }, tools: defaultTools(type), off: {}, schedule: [], notes: [], x: {}, bring: '' };
+    theme: { ...typeDefaults(type).theme }, tools: defaultTools(type), off: type === 'Trip' ? { rsvp: true } : {}, schedule: [], notes: [], x: {}, bring: '' };
 }
 // Old links (v1) carried a `sections` list and a generic `links` list. Map them onto tools, notes and type cards so they open as before.
 function normalize(c) {
@@ -975,16 +990,17 @@ function aboutHTML(cfg) {
 }
 // one schedule: the organizer's items, with the guest's own bookings mixed in
 function scheduleHTML(cfg) {
-  const evs = cfg.off.schedule ? [] : cfg.schedule.filter(x => x.title).map(x => ({ ev: true, start: (x.date || '') + (x.date && x.time ? 'T' + x.time : ''), name: x.title, note: x.note }));
+  const evs = cfg.off.schedule ? [] : cfg.schedule.filter(x => x.title).map(x => ({ ev: true, start: (x.date || '') + (x.date && x.time ? 'T' + x.time : ''), name: x.title, note: x.note, kind: x.kind || '' }));
   const mine = cfg.tools.mytrip ? itinLoad(cfg).map((x, i) => ({ ...x, i })) : [];
   if (!evs.length && !mine.length) return '';
   const view = mine.length ? (LS.get('schedview:' + itinKey(cfg)) || 'all') : 'all';
-  const all = (view === 'event' ? evs : evs.concat(mine)).sort((a, b) => (a.start || '9999').localeCompare(b.start || '9999'));
+  const key = (x) => x.ev && isTrip(cfg) ? (x.start || '9999').slice(0, 10) : (x.start || '9999');
+  const all = (view === 'event' ? evs : evs.concat(mine)).sort((a, b) => (a.start || '9999').slice(0, 10).localeCompare((b.start || '9999').slice(0, 10)) || key(a).localeCompare(key(b)));
   const days = {}; all.forEach(x => (days[(x.start || '').slice(0, 10)] = days[(x.start || '').slice(0, 10)] || []).push(x));
   const tm = (s) => fmtTime((s || '').slice(11, 16));
   return `${mine.length ? `<div class="seg2 sched-seg" role="group"><button type="button" data-sched="all" class="${view === 'all' ? 'on' : ''}" aria-pressed="${view === 'all'}">${t('Everything')}</button><button type="button" data-sched="event" class="${view === 'event' ? 'on' : ''}" aria-pressed="${view === 'event'}">${t('Event only')}</button></div>` : ''}
-  ${Object.entries(days).map(([d, xs]) => `<div class="day"><h3 class="day-h">${d ? esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' })) : t('Anytime')}</h3><ol class="tl">${xs.map(x => {
-    if (x.ev) return `<li><time>${esc(tm(x.start)) || '—'}</time><div><b>${esc(x.name)}</b>${x.note ? `<span>${esc(x.note)}</span>` : ''}</div></li>`;
+  ${Object.entries(days).map(([d, xs]) => `<div class="day"><h3 class="day-h">${d ? `${isTrip(cfg) && cfg.start && d >= cfg.start.slice(0, 10) ? `<span class="dayn">${esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 }))}</span> ` : ''}${esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' }))}` : t('Anytime')}</h3><ol class="tl">${xs.map(x => {
+    if (x.ev) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"><time>${esc(tm(x.start)) || (isTrip(cfg) ? '' : '—')}</time><div><b>${esc(x.name)}${x.kind && x.kind !== 'activity' ? ` <em class="kind">${esc(t(PLAN_KINDS[x.kind] || ''))}</em>` : ''}</b>${x.note ? `<span>${esc(x.note)}</span>` : ''}</div></li>`;
     const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
     const until = x.end ? (x.end.slice(0, 10) !== (x.start || '').slice(0, 10) ? t('until {d}', { d: fmt(x.end.slice(0, 10), { month: 'short', day: 'numeric' }) }) : t('until {d}', { d: tm(x.end) })) : '';
     return `<li class="mine"><time>${esc(tm(x.start)) || '—'}</time><div><b>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))} <em class="yours">${t('Yours')}</em></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), until, x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>${fl.status ? ext(fl.status, t('Flight status') + ' ↗', 'tl-link') : ''}</div></li>`;
@@ -999,7 +1015,7 @@ function ticketHTML(cfg, air) {
       <div class="stub-main">
         <div class="stub-cell"><span class="lbl">${t('Date')}</span><b>${esc(dateRange(cfg.start, cfg.end))}</b>${countdown(cfg) ? `<small class="cd">${esc(countdown(cfg))}</small>` : ''}</div>
         ${cfg.start && cfg.start.length >= 16 ? `<div class="stub-cell"><span class="lbl">${sameDay || !cfg.end ? t('Time') : t('Starts')}</span><b>${esc(sameDay ? timeRange(cfg.start, cfg.end) : fmtTime(cfg.start.slice(11, 16)))}</b></div>` : ''}
-        <div class="stub-cell wide"><span class="lbl">${t('Venue')}</span><b>${v ? esc(v.name) : t('To be announced')}</b>${v && v.address && v.address !== v.name ? `<small>${esc(v.address)}</small>` : ''}</div>
+        <div class="stub-cell wide"><span class="lbl">${t(isTrip(cfg) ? 'Destination' : 'Venue')}</span><b>${v ? esc(v.name) : t('To be announced')}</b>${v && v.address && v.address !== v.name ? `<small>${esc(v.address)}</small>` : ''}</div>
       </div>
       <div class="stub-tear" aria-hidden="true"></div>
       <div class="stub-side">
@@ -1066,13 +1082,15 @@ function myTripTabHTML(cfg) {
   return out.join('');
 }
 function eventTabHTML(cfg) {
-  const out = [];
-  out.push(sec('about', t('About'), aboutHTML(cfg)));
-  out.push(sec('details', t('Need to know'), needToKnowHTML(cfg)));
-  out.push(`<div data-slot="access-wrap">${accessHTML(cfg, null)}</div>`);
-  out.push(`<div data-slot="schedule-wrap">${sec('schedule', t('Schedule'), scheduleHTML(cfg))}</div>`);
-  if (cfg.venue && cfg.start && cfg.tools.weather) out.push(sec('weather', t('Weather'), `<div data-slot="weather"><div class="skel" role="status"><span></span><span></span><em>${t('Loading weather…')}</em></div></div>`));
-  return out.join('');
+  const parts = {
+    about: () => sec('about', t('About'), aboutHTML(cfg)),
+    details: () => sec('details', t('Need to know'), needToKnowHTML(cfg)),
+    rsvp: () => '<div data-slot="rsvp-wrap"></div>',
+    access: () => `<div data-slot="access-wrap">${accessHTML(cfg, null)}</div>`,
+    schedule: () => `<div data-slot="schedule-wrap">${sec('schedule', t(schedTitle(cfg)), scheduleHTML(cfg))}</div>`,
+    weather: () => cfg.venue && cfg.start && cfg.tools.weather ? sec('weather', t('Weather'), `<div data-slot="weather"><div class="skel" role="status"><span></span><span></span><em>${t('Loading weather…')}</em></div></div>`) : '',
+  };
+  return sectionOrder(cfg).map(id => parts[id]()).join('');
 }
 function renderEvent(cfg, root, opts = {}) {
   const seq = ++renderSeq;
@@ -1120,7 +1138,7 @@ function showTab(art, k, opts = {}) {
 function wireEvent(cfg, art, seq, air, opts) {
   const v = cfg.venue; const T = cfg.tools; const alive = () => seq === renderSeq && document.body.contains(art);
   const slot = (n) => art.querySelector(`[data-slot="${n}"]`);
-  const renderSchedule = () => { const w = slot('schedule-wrap'); if (w) w.innerHTML = sec('schedule', t('Schedule'), scheduleHTML(cfg)); };
+  const renderSchedule = () => { const w = slot('schedule-wrap'); if (w) w.innerHTML = sec('schedule', t(schedTitle(cfg)), scheduleHTML(cfg)); };
   art._renderSchedule = renderSchedule;
   art.addEventListener('click', (e) => {
     const a = e.target.closest('[data-act],[data-food],[data-tmode],[data-tab-go],[data-sched],[data-more]'); if (!a) return;
@@ -1355,7 +1373,7 @@ function cardDone(c, id) {
     access: () => !!(c.access && Object.values(c.access).some(Boolean)), replies: () => !c.off.rsvp }[id]?.() || false;
 }
 const cardBtn = (c, [id, title, sub]) => { const done = cardDone(c, id); return `<button type="button" class="acard ${done ? 'on' : ''}" data-card="${id}"><span class="aic">${cardIcon(id)}</span><b>${esc(title)}</b><span>${esc(sub)}</span><i class="plus" aria-hidden="true">${done ? '✓' : '+'}</i></button>`; };
-function allCards(c) { return { type: TYPE_CARDS[c.type] || [], common: COMMON_CARDS }; }
+function allCards(c) { return { type: TYPE_CARDS[c.type] || [], common: isTrip(c) ? COMMON_CARDS.filter(x => x[0] !== 'replies').map(x => x[0] === 'schedule' ? ['schedule', 'Day by day', 'Activities, reservations, notes'] : x) : COMMON_CARDS }; }
 function buildForm() {
   const c = B.cfg; const f = $('.b-form'); if (!f) return; const keepNote = f.querySelector('.b-note:not(.b-host)');
   const open = new Set($$('details.acc[open]', f).map(d => d.dataset.acc));
@@ -1364,13 +1382,16 @@ function buildForm() {
   const cards = allCards(c);
   f.innerHTML = `${keepNote ? keepNote.outerHTML : ''}
   <details class="acc" data-acc="basics" ${open.has('basics') ? 'open' : ''}><summary><span class="st ${basicsOk ? 'ok' : ''}" aria-hidden="true"></span><b>Basics</b><small>${esc([c.type, c.title].filter(Boolean).join(' · '))}</small></summary><div class="acc-b">
-    ${fieldWrap('Event type', `<select id="f-type" data-f="type">${TYPES.map(x => `<option ${x === c.type ? 'selected' : ''}>${x}</option>`).join('')}</select>`, 'f-type')}
+    ${fieldWrap('Event type', `<select id="f-type" data-f="type">${TYPES.map(x => `<option value="${x}" ${x === c.type ? 'selected' : ''}>${TYPE_LABEL[x] || x}</option>`).join('')}</select>`, 'f-type')}
     ${fieldWrap('Title', `<input id="f-title" data-f="title" value="${esc(c.title)}" maxlength="80">`, 'f-title')}
     ${fieldWrap('Tagline', `<input id="f-tagline" data-f="tagline" value="${esc(c.tagline)}" maxlength="140" placeholder="Optional">`, 'f-tagline')}
   </div></details>
   <details class="acc" data-acc="when" ${open.has('when') ? 'open' : ''}><summary><span class="st ${whenOk ? 'ok' : ''}" aria-hidden="true"></span><b>When and where</b><small>${esc([c.start ? fmt(c.start.slice(0, 10), { month: 'short', day: 'numeric', year: 'numeric' }) : '', c.venue ? c.venue.name : ''].filter(Boolean).join(' · '))}</small></summary><div class="acc-b">
     ${whenFieldsHTML(c, 'f')}
     ${venueFieldHTML(c)}
+  </div></details>
+  <details class="acc" data-acc="design" ${open.has('design') ? 'open' : ''}><summary><span class="st ok" aria-hidden="true" style="background:${esc(c.theme.accent)};border-color:${esc(c.theme.accent)}"></span><b>Design</b><small>${esc([FONTS[c.theme.font]?.label, c.theme.mode === 'dark' ? 'Dark' : 'Light', c.cover ? 'Cover photo' : ''].filter(Boolean).join(' · '))}</small></summary><div class="acc-b">
+    ${designHTML(c)}
   </div></details>
   <h2 class="b-h">Add to your page</h2>
   ${cards.type.length ? `<p class="grp">${TYPE_GROUP[c.type]}</p><div class="cards">${cards.type.map(x => cardBtn(c, x)).join('')}</div>` : ''}
@@ -1384,15 +1405,16 @@ function buildForm() {
 function venueFieldHTML(c) {
   return c.venue ? `<div class="venue-sel"><div><b>${esc(c.venue.name)}</b><span>${esc(c.venue.address || '')}</span></div><button type="button" class="btn sm" data-b="clear-venue">Change</button></div>
       ${fieldWrap('Venue name on the page', `<input id="f-vname" data-v="name" value="${esc(c.venue.name)}">`, 'f-vname')}`
-    : `<div class="field"><label for="vq">Venue</label><div class="search"><input id="vq" placeholder="Venue name or address" value="${esc(B.vq || '')}"><button type="button" class="btn" data-b="search">Search</button></div></div>
+    : `<div class="field"><label for="vq">${isTrip(c) ? 'Destination' : 'Venue'}</label><div class="search"><input id="vq" placeholder="${isTrip(c) ? 'City or region' : 'Venue name or address'}" value="${esc(B.vq || '')}"><button type="button" class="btn" data-b="search">Search</button></div></div>
       <ul class="vres">${B.venueResults.map((r, i) => `<li><button type="button" data-pick="${i}"><b>${esc(r.name)}</b><span>${esc(r.display)}</span></button></li>`).join('')}</ul>${B.vmsg ? `<p class="hint">${esc(B.vmsg)}</p>` : ''}`;
 }
 function openCard(id) { B.card = id; renderSheet(); const sh = $('#sheet'); if (!sh.open) sh.showModal(); }
 function renderSheet() {
   const c = B.cfg; const id = B.card; const form = $('#sheet .sheet-in'); if (!form || !id) return;
-  const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id); const cc = COMMON_CARDS.find(x => x[0] === id);
+  const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id); const cc = allCards(c).common.find(x => x[0] === id) || COMMON_CARDS.find(x => x[0] === id);
   const title = tc ? tc[1] : cc ? cc[1] : ''; let body = '';
   if (tc) { const sp = typeSpec(c); body = tc[3].map(k => xFieldHTML(c, sp.fields.find(f => f[0] === k))).join(''); }
+  else if (id === 'schedule' && isTrip(c)) body = tripPlanHTML(c);
   else if (id === 'schedule') body = `${c.schedule.map((x, i) => `<div class="rowed"><div class="two"><input type="date" data-s="${i}" data-k="date" value="${esc(x.date)}" aria-label="Date"><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time"></div><input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="What's happening" aria-label="Title"><input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Where, or a note" aria-label="Note"><button type="button" class="ic del" data-sdel="${i}" aria-label="Remove item">Remove</button></div>`).join('')}
     <div class="btns"><button type="button" class="btn sm" data-b="add-sched">+ Add item</button>${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`;
   else if (id === 'notes') body = `${c.notes.map((x, i) => `<div class="rowed"><input data-n="${i}" data-k="label" value="${esc(x.label)}" placeholder="Title" aria-label="Title"><input data-n="${i}" data-k="text" value="${esc(x.text || '')}" placeholder="Text" aria-label="Text"><input data-n="${i}" data-k="url" type="url" value="${esc(x.url || '')}" placeholder="Link (optional)" aria-label="Link"><button type="button" class="ic del" data-ndel="${i}" aria-label="Remove">Remove</button></div>`).join('')}
@@ -1413,6 +1435,7 @@ function wireInputs(root) {
   root.oninput = (e) => {
     const i = e.target; const d = i.dataset; const cfg = c();
     const xd = () => (cfg.x[cfg.type] = cfg.x[cfg.type] || {});
+    if (designInput(i, cfg)) return;
     if (d.when) { whenInput(cfg, d.when, i.value); changed(); }
     else if (d.x) { xd()[d.x] = i.value; changed(); }
     else if (d.xl) { xd()[d.xl][+d.i][d.k] = i.value; changed(); }
@@ -1430,6 +1453,7 @@ function wireInputs(root) {
   root.onkeydown = (e) => { if (e.target.id === 'vq' && e.key === 'Enter') { e.preventDefault(); venueSearch(); } if (e.target.id === 'f-site' && e.key === 'Enter') { e.preventDefault(); aboutFill(); } };
   root.onclick = (e) => {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset; const cfg = c();
+    if (designClick(b, cfg) || tripClick(b, cfg)) return;
     if (d.whenTg != null) { whenToggle(cfg); changed(true); setTimeout(() => root.querySelector(hasTime(cfg.start) ? '[data-when="st"]' : '[data-when-tg]')?.focus(), 0); }
     else if (d.card) openCard(d.card);
     else if (d.b === 'close') $('#sheet').close();
@@ -1488,15 +1512,15 @@ function suRender() {
   let h = '', body = '', cta = '';
   if (n === 0) {
     h = 'What are you planning?';
-    body = `<div class="su-types">${SETUP_TYPES.map(([type, label, sub, col]) => `<button type="button" class="su-type ${c.type === type && SU.typed ? 'on' : ''}" data-su-type="${esc(type)}"><i style="background:${col}"></i><b>${esc(label)}</b><span>${esc(sub)}</span></button>`).join('')}</div>`;
+    body = `<div class="su-types">${SETUP_TYPES.map(([type, label, sub, col]) => `<button type="button" class="su-type ${c.type === type && SU.typed ? 'on' : ''}" data-su-type="${esc(type)}"><i class="ti" aria-hidden="true"><svg viewBox="0 0 24 24">${TYPE_ICONS[type] || TYPE_ICONS.Party}</svg></i><b>${esc(label)}</b><span>${esc(sub)}</span></button>`).join('')}</div>`;
   } else if (n === 1) {
     h = 'What’s it called, and when?';
     body = `<div class="field"><label for="su-title">Name</label><input id="su-title" data-su-f="title" value="${esc(c.title)}" maxlength="80" autocomplete="off"></div>
-      ${whenFieldsHTML(c, 'su', !SU.dated)}`;
+      ${whenFieldsHTML(c, 'su', !SU.dated, true)}<p class="hint">You can add times later in the editor.</p>`;
     cta = `<button type="button" class="btn primary big" data-su="next" ${c.title.trim() && SU.dated ? '' : 'disabled'}>Continue</button>`;
   } else if (n === 2) {
-    h = 'Where is it?';
-    body = `<div class="search"><input id="su-q" placeholder="Venue name or address" value="${esc(SU.q)}" autocomplete="off"><button type="button" class="btn" data-su="search">Search</button></div>
+    h = isTrip(c) ? 'Where are you going?' : 'Where is it?';
+    body = `<div class="search"><input id="su-q" placeholder="${isTrip(c) ? 'City or region' : 'Venue name or address'}" value="${esc(SU.q)}" autocomplete="off"><button type="button" class="btn" data-su="search">Search</button></div>
       ${SU.results.length ? `<div class="su-res">${SU.results.map((r, i) => `<button type="button" data-su-pick="${i}" class="${c.venue && c.venue.lat === r.lat && c.venue.lon === r.lon ? 'on' : ''}"><b>${esc(r.name)}</b><span>${esc(r.display)}</span></button>`).join('')}</div>` : ''}${SU.msg ? `<p class="hint">${esc(SU.msg)}</p>` : ''}`;
     cta = `<button type="button" class="btn primary big" data-su="next" ${c.venue ? '' : 'disabled'}>Continue</button>`;
   } else {
@@ -1678,6 +1702,7 @@ function extraCardBody(id, c) {
   return ACCESS_FIELDS.map(([k, l]) => fieldWrap(l, `<input id="acc-${k}" data-access="${k}" value="${esc(a[k] || '')}">`, `acc-${k}`)).join('');
 }
 function accessHTML(cfg, osm) {
+  if (cfg.off.access) return '';
   const a = cfg.access || {}; const rows = ACCESS_FIELDS.filter(([k]) => a[k] && String(a[k]).trim()).map(([k, l]) => `<li class="note"><b>${esc(t(l))}</b><span>${esc(a[k])}</span></li>`);
   let st = '';
   if (osm && cfg.venue) {
@@ -1833,8 +1858,8 @@ function wireHosted(cfg, art, hosted, opts = {}) {
   body.insertAdjacentHTML('afterbegin', '<div data-slot="ann"></div>');
   if (!cfg.off.rsvp) {
     const html = sec('rsvp', t('RSVP'), `<div data-slot="rsvp">${rsvpFormHTML(cfg, hosted)}</div>`);
-    const after = body.querySelector('#sec-details') || body.querySelector('#sec-about');
-    if (after) after.insertAdjacentHTML('afterend', html); else body.querySelector('[data-slot="ann"]').insertAdjacentHTML('afterend', html);
+    const wrap = body.querySelector('[data-slot="rsvp-wrap"]');
+    if (wrap) wrap.innerHTML = html; else body.querySelector('[data-slot="ann"]').insertAdjacentHTML('afterend', html);
   }
   if (opts.preview) { art.querySelectorAll('.rsvp input, .rsvp textarea, .rsvp button').forEach(x => { x.disabled = true; }); return; }
   fetchAnnouncements(hosted.id).then(rows => {
@@ -2037,6 +2062,84 @@ async function renderMineEvent(id, shell, c, user) {
   });
 }
 
+// ================= trips: day-by-day itinerary builder (reuses cfg.schedule: {date, time, title, note, kind}) =================
+const PLAN_KINDS = { activity: 'Activity', reservation: 'Reservation', note: 'Note' };
+function tripDays(c) {
+  const s = c.start.slice(0, 10), e = (c.end || c.start).slice(0, 10); const n = Math.min(60, Math.max(0, daysBetween(s, e)));
+  const days = Array.from({ length: n + 1 }, (_, i) => addDays(s, i));
+  c.schedule.forEach(x => { if (x.date && !days.includes(x.date)) days.push(x.date); });
+  return days.sort();
+}
+function tripPlanHTML(c) {
+  return `<p class="hint">Add what’s happening each day. Times are optional; use the arrows to reorder.</p>${tripDays(c).map((d, di) => {
+    const items = c.schedule.map((x, i) => [x, i]).filter(([x]) => x.date === d);
+    return `<div class="plan-day"><h3>${d >= c.start.slice(0, 10) ? `<span class="dayn">Day ${daysBetween(c.start, d) + 1}</span> ` : ''}${esc(friendlyDate(d))}</h3>
+      ${items.map(([x, i], k) => `<div class="rowed plan-item"><div class="plan-top"><select data-s="${i}" data-k="kind" aria-label="Kind">${Object.entries(PLAN_KINDS).map(([v, l]) => `<option value="${v}" ${(x.kind || 'activity') === v ? 'selected' : ''}>${l}</option>`).join('')}</select><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time (optional)"><span class="mv"><button type="button" data-tp-mv="${i}" data-dir="-1" ${k === 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-tp-mv="${i}" data-dir="1" ${k === items.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button></span></div>
+        <input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="${(x.kind || 'activity') === 'reservation' ? 'Dinner at…, tour, tickets' : (x.kind === 'note' ? 'Something to remember' : 'What you’re doing')}" aria-label="Title"><input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Where, confirmation, or a note" aria-label="Note"><button type="button" class="ic del" data-sdel="${i}" aria-label="Remove">Remove</button></div>`).join('')}
+      <button type="button" class="btn sm" data-tp-add="${d}">+ Add to this day</button></div>`;
+  }).join('')}<div class="btns">${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`;
+}
+function tripClick(b, cfg) {
+  const d = b.dataset;
+  if (d.tpAdd) { cfg.schedule.push({ date: d.tpAdd, time: '', title: '', note: '', kind: 'activity' }); const n = cfg.schedule.length - 1; changed(true); setTimeout(() => $(`#sheet [data-s="${n}"][data-k="title"]`)?.focus(), 30); return true; }
+  if (d.tpMv != null) {
+    const i = +d.tpMv; const x = cfg.schedule[i]; const same = cfg.schedule.map((y, j) => [y, j]).filter(([y]) => y.date === x.date).map(([, j]) => j);
+    const k = same.indexOf(i) + +d.dir; if (k >= 0 && k < same.length) { const j = same[k]; [cfg.schedule[i], cfg.schedule[j]] = [cfg.schedule[j], cfg.schedule[i]]; changed(true); }
+    return true;
+  }
+  return false;
+}
+
+// ================= customization: Design section, section order, type defaults =================
+const THEME_PRESETS = [
+  ['Classic', { accent: '#3048F0', font: 'grotesk', mode: 'light' }], ['Garden', { accent: '#0B7A75', font: 'serif', mode: 'light' }],
+  ['Romance', { accent: '#C2185B', font: 'classic', mode: 'light' }], ['Sunset', { accent: '#FF6B35', font: 'wide', mode: 'light' }],
+  ['Gold', { accent: '#B8860B', font: 'classic', mode: 'dark' }], ['Night', { accent: '#6D28D9', font: 'condensed', mode: 'dark' }],
+  ['Stadium', { accent: '#C2185B', font: 'condensed', mode: 'dark' }], ['Trail', { accent: '#2E7D32', font: 'wide', mode: 'light' }],
+];
+// guest Event tab sections the organizer can reorder and hide
+const EVENT_SECTIONS = [['about', 'About'], ['details', 'Need to know'], ['rsvp', 'RSVP form'], ['access', 'Access and arrival'], ['schedule', 'Schedule'], ['weather', 'Weather']];
+const schedTitle = (cfg) => isTrip(cfg) ? 'Itinerary' : 'Schedule';
+function sectionOrder(cfg) {
+  const ids = EVENT_SECTIONS.map(x => x[0]); const o = (Array.isArray(cfg.order) ? cfg.order : (typeDefaults(cfg.type).order || [])).filter((x, i, a) => ids.includes(x) && a.indexOf(x) === i);
+  ids.forEach((x, i) => { if (!o.includes(x)) o.splice(Math.min(i, o.length), 0, x); });
+  return o;
+}
+const sectionShown = (cfg, id) => id === 'weather' ? !!cfg.tools.weather : !cfg.off[id];
+function setSectionShown(cfg, id, on) { if (id === 'weather') cfg.tools.weather = on; else cfg.off[id] = !on; }
+const sameTheme = (a, b) => a.accent.toLowerCase() === b.accent.toLowerCase() && a.font === b.font && (a.mode || 'light') === (b.mode || 'light');
+function designHTML(c) {
+  const th = c.theme; const order = sectionOrder(c);
+  const lab = Object.fromEntries(EVENT_SECTIONS);
+  lab.schedule = schedTitle(c);
+  return `<div class="field"><label>Style</label><div class="presets">${THEME_PRESETS.map(([n, p]) => `<button type="button" class="preset ${sameTheme(th, p) ? 'on' : ''} ${p.mode === 'dark' ? 'dark' : ''}" data-preset="${esc(n)}" style="--pa:${p.accent};font-family:${esc(FONTS[p.font].css)}"><i aria-hidden="true"></i><span>${esc(n)}</span></button>`).join('')}</div></div>
+    <div class="field"><label for="f-accent-hex">Color</label><div class="swatches">${SWATCHES.map(s => `<button type="button" class="sw ${s.toLowerCase() === th.accent.toLowerCase() ? 'on' : ''}" style="background:${s}" data-sw="${s}" aria-label="Color ${s}"></button>`).join('')}<label class="custom-c"><input type="color" data-t="accent" value="${esc(th.accent)}" aria-label="Pick any color"><span>Custom</span></label><input id="f-accent-hex" class="hex" data-hex value="${esc(th.accent)}" maxlength="7" spellcheck="false" aria-label="Color code"></div></div>
+    <div class="field"><label for="f-cover">Cover photo</label><div class="cover-row">${c.cover ? `<img src="${esc(c.cover)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<input id="f-cover" data-f="cover" type="url" value="${esc(c.cover)}" placeholder="Paste a photo link, https://…/photo.jpg"></div>${c.cover ? '<button type="button" class="link" data-b="cover-clear">Remove photo</button>' : ''}</div>
+    <div class="field"><label>Title font</label><div class="fonts">${Object.entries(FONTS).map(([k, x]) => `<button type="button" class="fontb ${k === th.font ? 'on' : ''}" data-font="${k}" style="font-family:${esc(x.css)}">${x.label}</button>`).join('')}</div></div>
+    <div class="field"><label>Background</label><div class="seg2"><button type="button" data-theme-mode="light" class="${th.mode !== 'dark' ? 'on' : ''}">Light</button><button type="button" data-theme-mode="dark" class="${th.mode === 'dark' ? 'on' : ''}">Dark</button></div></div>
+    <div class="field"><label>Event page layout</label><p class="hint">Order and show or hide the sections guests see first.</p>
+      <ol class="order">${order.map((id, i) => `<li class="${sectionShown(c, id) ? '' : 'off'}"><label class="chk"><input type="checkbox" data-sec-on="${id}" ${sectionShown(c, id) ? 'checked' : ''}> ${esc(lab[id])}</label><span class="mv"><button type="button" data-sec-mv="${id}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move ${esc(lab[id])} up">↑</button><button type="button" data-sec-mv="${id}" data-dir="1" ${i === order.length - 1 ? 'disabled' : ''} aria-label="Move ${esc(lab[id])} down">↓</button></span></li>`).join('')}</ol></div>
+    <div class="btns"><button type="button" class="btn sm ghost" data-b="type-defaults">Reset to ${esc(c.type)} defaults</button></div>`;
+}
+// returns true when it handled the click
+function designClick(b, cfg) {
+  const d = b.dataset;
+  if (d.preset) { const p = THEME_PRESETS.find(x => x[0] === d.preset); if (p) { cfg.theme = { ...cfg.theme, ...p[1] }; loadFont(p[1].font); changed(true); } return true; }
+  if (d.secMv) { const o = sectionOrder(cfg); const i = o.indexOf(d.secMv), j = i + +d.dir; if (j >= 0 && j < o.length) { [o[i], o[j]] = [o[j], o[i]]; cfg.order = o; changed(true); } return true; }
+  if (d.b === 'cover-clear') { cfg.cover = ''; changed(true); return true; }
+  if (d.b === 'type-defaults') { const td = typeDefaults(cfg.type); cfg.theme = { ...td.theme }; cfg.tools = defaultTools(cfg.type); delete cfg.order; ['about', 'details', 'access', 'rsvp', 'schedule'].forEach(k => { cfg.off[k] = false; }); loadFont(cfg.theme.font); changed(true); toast(`${cfg.type} defaults applied`); return true; }
+  return false;
+}
+function designInput(i, cfg) {
+  if (i.dataset.secOn) { setSectionShown(cfg, i.dataset.secOn, i.checked); changed(true); return true; }
+  if (i.dataset.hex != null) { const v = i.value.trim(); if (/^#[0-9a-f]{6}$/i.test(v)) { cfg.theme.accent = v; const cp = i.closest('.swatches')?.querySelector('[data-t="accent"]'); if (cp) cp.value = v; changed(); } return true; }
+  return false;
+}
+// friendly date text over the native picker
+const friendlyDate = (d) => d ? new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(asUTC(d)) : '';
+document.addEventListener('input', (e) => { const i = e.target; if (!i.matches || !i.matches('.datef input')) return; const s = i.parentElement.querySelector('.datef-txt'); if (s) { s.textContent = friendlyDate(i.value) || i.dataset.ph || ''; s.classList.toggle('ph', !i.value); } });
+document.addEventListener('click', (e) => { const i = e.target; if (i.matches && i.matches('.datef input') && i.showPicker) { try { i.showPicker(); } catch { /* not allowed here */ } } });
+
 // ================= dates with optional times =================
 // start/end are wall-clock in the venue's zone: 'YYYY-MM-DD' (date only, the default) or 'YYYY-MM-DDTHH:MM'.
 const hasTime = (s) => !!s && s.length > 10;
@@ -2059,13 +2162,15 @@ function countdown(cfg) {
   if (today <= e) return t('Happening now');
   return '';
 }
-function whenFieldsHTML(c, p, blankDate = false) {
-  const timed = hasTime(c.start); const sd = blankDate ? '' : c.start.slice(0, 10); const ed = (c.end || '').slice(0, 10);
-  const fld = (k, label, type, val, extra = '') => `<div class="field"><label for="${p}-${k}">${label}</label><input id="${p}-${k}" type="${type}" data-when="${k}" value="${esc(val)}"${extra}></div>`;
+function whenFieldsHTML(c, p, blankDate = false, datesOnly = false) {
+  const timed = !datesOnly && hasTime(c.start); const sd = blankDate ? '' : c.start.slice(0, 10); const ed = (c.end || '').slice(0, 10);
+  const fld = (k, label, type, val, extra = '') => type === 'date'
+    ? `<div class="field"><label for="${p}-${k}">${label}</label><div class="datef"><span class="datef-txt ${val ? '' : 'ph'}" aria-hidden="true">${esc(friendlyDate(val) || (k === 'ed' ? 'Same day' : 'Choose a date'))}</span><input id="${p}-${k}" type="date" data-when="${k}" data-ph="${k === 'ed' ? 'Same day' : 'Choose a date'}" value="${esc(val)}"${extra}></div></div>`
+    : `<div class="field"><label for="${p}-${k}">${label}</label><input id="${p}-${k}" type="${type}" data-when="${k}" value="${esc(val)}"${extra}></div>`;
   return `<div class="when ${timed ? 'timed' : ''}">
     <div class="when-row">${fld('sd', 'Starts', 'date', sd)}${timed ? fld('st', 'Time', 'time', c.start.slice(11, 16)) : ''}</div>
     <div class="when-row">${fld('ed', 'Ends <small>optional</small>', 'date', ed, sd ? ` min="${sd}"` : '')}${timed ? fld('et', 'Time', 'time', hasTime(c.end) ? c.end.slice(11, 16) : '') : ''}</div>
-    <button type="button" class="link when-tg" data-when-tg>${timed ? 'Remove times' : '+ Add time'}</button>
+    ${datesOnly ? '' : `<button type="button" class="link when-tg" data-when-tg>${timed ? 'Remove times' : '+ Add time'}</button>`}
   </div>`;
 }
 function whenInput(c, k, v) {

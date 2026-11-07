@@ -1,5 +1,6 @@
-// Eventpages service worker: app shell offline. Bump VERSION on every deploy that changes the shell.
-const VERSION = 'ep-2026-11-07m';
+// Eventpages service worker: app shell offline. Same-origin files are network-first, so deploys show up on the next open.
+// Bump VERSION on every deploy anyway: it clears old caches and triggers the in-page 'Updated' prompt.
+const VERSION = 'ep-2026-11-07o';
 const SHELL = ['./', './index.html', './app.js', './styles.css', './airports.js', './examples.js', './osm-snapshots.js', './qrcode.js', './i18n.js', './supabase-config.js',
   './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 // Static third-party libraries and fonts the page needs to render. Data APIs (weather, Overpass, geocoding, map tiles) are never cached here.
@@ -13,8 +14,9 @@ self.addEventListener('activate', (e) => {
 });
 const networkFirst = async (req) => {
   const c = await caches.open(VERSION);
-  try { const r = await fetch(req); if (r.ok) c.put(req, r.clone()); return r; }
-  catch { return (await c.match(req, { ignoreSearch: true })) || (await c.match('./index.html')) || Response.error(); }
+  // no-cache: revalidate with the server (cheap 304s) instead of trusting the browser's HTTP cache
+  try { const r = await fetch(req, { cache: 'no-cache' }); if (r.ok) c.put(req, r.clone()); return r; }
+  catch { return (await c.match(req, { ignoreSearch: true })) || (req.mode === 'navigate' ? await c.match('./index.html') : null) || Response.error(); }
 };
 const staleWhileRevalidate = async (req, ev) => {
   const c = await caches.open(VERSION); const hit = await c.match(req);
@@ -28,6 +30,8 @@ self.addEventListener('fetch', (e) => {
   if (url.origin === self.location.origin && /\/(proposal|supabase)\//.test(url.pathname)) return; // proposal and setup pages are not part of the app: never cached
   const same = url.origin === self.location.origin && url.pathname.startsWith(new URL('./', self.registration.scope).pathname);
   if (req.mode === 'navigate' || (same && /\/$|\.html$/.test(url.pathname))) { e.respondWith(networkFirst(req)); return; }
-  if (same || STATIC_HOSTS.some(re => re.test(req.url))) { e.respondWith(staleWhileRevalidate(req, e)); return; }
+  // our own files: network first so a new deploy shows up on the next open; the cache is the offline fallback
+  if (same) { e.respondWith(networkFirst(req)); return; }
+  if (STATIC_HOSTS.some(re => re.test(req.url))) { e.respondWith(staleWhileRevalidate(req, e)); return; }
   // everything else (weather, Overpass, Nominatim, tiles): straight to the network
 });

@@ -33,6 +33,19 @@
 <script src="i18n.js"></script>
 <script src="supabase-config.js"></script>
 <script src="app.js"></script>
-<script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {}));</script>
+<script>
+// Service worker: offline shell. When a new version takes over an open page, offer a one-tap reload.
+if ('serviceWorker' in navigator) addEventListener('load', () => {
+  const had = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!had || document.querySelector('.upd')) return;
+    const b = document.createElement('button'); b.className = 'upd'; b.type = 'button'; b.textContent = 'Updated · tap to reload';
+    b.onclick = () => location.reload(); document.body.appendChild(b);
+  });
+  navigator.serviceWorker.register('sw.js', { scope: './', updateViaCache: 'none' }).then(reg => {
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+  }).catch(() => {});
+});
+</script>
 </body>
 </html>
