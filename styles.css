@@ -506,3 +506,26 @@ dialog.sheet { width: min(560px, 100vw); max-height: min(88vh, 900px); }
 @media (min-width: 760px) { .ev:not(.is-preview) .ev-tabs { padding: 0 max(calc(50% - 300px), 200px); } }
 .su-tag { top: auto !important; bottom: 34px; }
 @media (min-width: 760px) { .viewer .tab-h { padding-top: 28px; } }
+
+/* phase B */
+.file-btn { position: relative; overflow: hidden; cursor: pointer; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.qr-dlg { text-align: center; }
+.qr-box { background: #fff; border-radius: 12px; padding: 8px; }
+.qr-box svg { width: 100%; max-width: 320px; height: auto; display: block; margin: 0 auto; }
+.qr-dlg .btns { justify-content: center; display: flex; flex-wrap: wrap; gap: 8px; }
+.lang-row { margin: 0 0 10px; }
+.lang-sel { font: inherit; font-size: .85rem; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; background: var(--card); color: var(--ink); }
+#print-card { display: none; }
+@media print {
+  @page { size: 4in 6in; margin: 0; }
+  body { background: #fff !important; }
+  body > *:not(#print-card) { display: none !important; }
+  #print-card { display: flex !important; width: 4in; height: 6in; box-sizing: border-box; padding: .35in; border-top: .18in solid var(--accent); font-family: 'Instrument Sans', system-ui, sans-serif; color: #12141B; }
+  .pc-in { display: flex; flex-direction: column; align-items: center; text-align: center; width: 100%; }
+  .pc-k { font: 600 8pt 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; color: #5D6372; margin: 0 0 6pt; }
+  #print-card h1 { font: 700 24pt/1.05 var(--display); margin: 0 0 8pt; }
+  .pc-when { font-size: 11pt; font-weight: 600; margin: 0; } .pc-where { font-size: 10pt; color: #5D6372; margin: 2pt 0 0; }
+  .pc-qr { margin: auto 0 6pt; width: 2.6in; } .pc-qr svg { width: 100%; height: auto; display: block; }
+  .pc-cta { font-size: 9pt; color: #5D6372; margin: 0; }
+}

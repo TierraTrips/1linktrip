@@ -61,6 +61,8 @@ ul.tight { margin: 6px 0; padding-left: 1.1em; } ul.tight li { margin: 4px 0; }
 .olap td:first-child { font-weight: 650; white-space: nowrap; }
 .note { font-size: .9rem; color: var(--muted); }
 .pill { display: inline-block; background: var(--chip); border-radius: 999px; padding: .1em .6em; font-size: .85rem; font-weight: 600; margin: 1px 2px; }
+.status { display: inline-block; font: 600 .66rem var(--mono); letter-spacing: .05em; text-transform: uppercase; padding: 2px 7px; border-radius: 6px; vertical-align: 3px; margin-left: 6px; white-space: nowrap; }
+.status.b { background: #E3F2E5; color: #1B5E20; } .status.s { background: #E8ECFF; color: #24339C; } .status.n { background: var(--chip); color: var(--muted); }
 footer { margin-top: 70px; color: var(--muted); font-size: .85rem; }
 @media (max-width: 760px) {
   .ba, .desks { grid-template-columns: 1fr; }
@@ -80,13 +82,13 @@ footer { margin-top: 70px; color: var(--muted); font-size: .85rem; }
 <section class="card top5">
   <span class="kicker">The 5 changes I'd make first</span>
   <ol>
-    <li><div><b>Replace the long form with a 4-screen setup.</b> The setup asks for event type, then name and date, then venue, and then the page is done. Theme, sections and travel tools fill in from the event type.</div></li>
-    <li><div><b>Grow pages through an "Add to your page" gallery.</b> Cards relevant to the event type come first (RSVP, Room block, Packet pickup…), and each one opens a small focused form. The gallery replaces the 14-row section list and the generic links editor.</div></li>
-    <li><div><b>Give guests four tabs instead of one 14-section scroll.</b> The tabs are Event · Travel · Nearby · My trip. The first screen answers what, when and where; everything else is one tap away.</div></li>
-    <li><div><b>Merge the overlaps.</b> One trip bar (from, dates, guests) feeds flights, cars and hotels, and there is one place for directions. A guest's own bookings show inside the schedule, and one notes list replaces both "Details" and the duplicate type fields.</div></li>
-    <li><div><b>Add hosted short links and accounts, sign-up last.</b> With a link like <span class="pill">eventpages.app/maya-theo</span>, organizers can keep editing after they share. Setup and editing work without an account; the sign-up prompt appears only at Share. This is the first small server piece and the base for a paid planner tier and an iPhone app.</div></li>
+    <li><div><b>Replace the long form with a 4-screen setup.</b><span class="status b">Built</span> The setup asks for event type, then name and date, then venue, and then the page is done. Theme, sections and travel tools fill in from the event type.</div></li>
+    <li><div><b>Grow pages through an "Add to your page" gallery.</b><span class="status b">Built</span> Cards relevant to the event type come first (RSVP, Room block, Packet pickup…), and each one opens a small focused form. The gallery replaces the 14-row section list and the generic links editor.</div></li>
+    <li><div><b>Give guests four tabs instead of one 14-section scroll.</b><span class="status b">Built</span> The tabs are Event · Travel · Nearby · My trip. The first screen answers what, when and where; everything else is one tap away.</div></li>
+    <li><div><b>Merge the overlaps.</b><span class="status b">Built</span> One trip bar (from, dates, guests) feeds flights, cars and hotels, and there is one place for directions. A guest's own bookings show inside the schedule, and one notes list replaces both "Details" and the duplicate type fields.</div></li>
+    <li><div><b>Add hosted short links and accounts, sign-up last.</b><span class="status s">Needs server</span> With a link like <span class="pill">eventpages.app/maya-theo</span>, organizers can keep editing after they share. Setup and editing work without an account; the sign-up prompt appears only at Share. This is the first small server piece and the base for a paid planner tier and an iPhone app.</div></li>
   </ol>
-  <nav class="toc"><a href="#ideas">Product ideas</a><a href="#audit">Audit</a><a href="#setup">Guided setup</a><a href="#add">Add to your page</a><a href="#guest">Guest tabs</a><a href="#merge">Consolidations</a><a href="#defaults">Defaults per type</a><a href="#editor">Editor after setup</a><a href="#accounts">Accounts</a><a href="#iphone">iPhone app</a></nav>
+  <p class="note"><b>Status, November 2026:</b> everything marked Built is live in the app. Items marked Needs server wait on the hosted database (schema ready, not yet switched on). Multilingual covers the guest interface in English, Spanish, French, Portuguese, German and Italian; organizer text stays as written.</p><nav class="toc"><a href="#ideas">Product ideas</a><a href="#audit">Audit</a><a href="#setup">Guided setup</a><a href="#add">Add to your page</a><a href="#guest">Guest tabs</a><a href="#merge">Consolidations</a><a href="#defaults">Defaults per type</a><a href="#editor">Editor after setup</a><a href="#accounts">Accounts</a><a href="#iphone">iPhone app</a></nav>
 </section>
 
 <!-- ============ PART 1 ============ -->
@@ -96,17 +98,17 @@ footer { margin-top: 70px; color: var(--muted); font-size: .85rem; }
 <table>
 <thead><tr><th></th><th>Idea</th><th>Why it matters</th><th>Effort</th><th>Server / cost</th></tr></thead>
 <tbody>
-<tr><td class="n">1</td><td><b>Hosted pages with short links</b>One stable link you can keep editing, with a custom name</td><td>Today the whole event lives inside the URL, so every edit produces a new link and guests holding the old invite see stale details. The links are also thousands of characters long, which is awkward in texts and print.</td><td><span class="tag m">M</span></td><td><span class="tag srv">Server</span> A small key-value store and API. Low cost at early scale.</td></tr>
-<tr><td class="n">2</td><td><b>Affiliate IDs on the existing deep links</b>Hotels, flights, rental cars and tours</td><td>Guests already click Booking.com, Expedia, Kayak, GetYourGuide and Viator from every page. Adding partner IDs where those programs accept the site turns current traffic into revenue with no UI change.</td><td><span class="tag s">S</span></td><td>None. Needs program approvals.</td></tr>
-<tr><td class="n">3</td><td><b>QR code and printable insert card</b></td><td>Invitations, race packets and conference badges are still paper. A QR code that opens the page, on a small printable card, is how most guests will arrive.</td><td><span class="tag s">S</span></td><td>None. Works in the browser.</td></tr>
-<tr><td class="n">4</td><td><b>Import a schedule from .ics or CSV</b></td><td>Race directors and conference teams already have the agenda in a calendar or spreadsheet. Retyping it is the most tedious part of setup.</td><td><span class="tag s">S</span></td><td>None</td></tr>
-<tr><td class="n">5</td><td><b>Built-in RSVP and registration</b>Name, count, meal or shirt size; export to CSV</td><td>Collecting replies is a planner's main job; today Eventpages can only link out to another tool. Built-in replies also give organizers a reason to return.</td><td><span class="tag m">M</span></td><td><span class="tag srv">Server</span> Storage plus privacy handling for guest data.</td></tr>
-<tr><td class="n">6</td><td><b>Live updates</b>Pinned announcements plus a calendar feed guests subscribe to</td><td>Weather moves, venues change and start times shift. One update reaches every guest's page and calendar without a new link. Depends on idea 1.</td><td><span class="tag m">M</span></td><td><span class="tag srv">Server</span> Small</td></tr>
-<tr><td class="n">7</td><td><b>Organizer insights</b>Views, room-block and RSVP clicks, where guests are flying from (in aggregate)</td><td>Helps a planner decide whether to extend a room block or add a shuttle. This is the clearest reason to pay.</td><td><span class="tag m">M</span></td><td><span class="tag srv">Server</span> Event counts, no personal data</td></tr>
-<tr><td class="n">8</td><td><b>Planner tier</b>Multi-event dashboard, client handoff, logo, custom domain, no Eventpages footer</td><td>The paid product for wedding planners and event agencies that run many events a year.</td><td><span class="tag l">L</span></td><td><span class="tag srv">Server</span> Accounts and billing</td></tr>
-<tr><td class="n">9</td><td><b>Accessibility and arrival block</b>Step-free entrance, accessible parking, nearest accessible station</td><td>Questions guests ask organizers again and again. OpenStreetMap already has wheelchair tags for many stations and venues.</td><td><span class="tag s">S</span></td><td>None</td></tr>
-<tr><td class="n">10</td><td><b>Multilingual guest view</b></td><td>Destination weddings and international races have guests in two or three languages. Translating the interface is cheap; translations of the organizer's own text would be optional.</td><td><span class="tag m">M</span></td><td>None</td></tr>
-<tr><td class="n">11</td><td><b>Guest ride-share and transfer board</b></td><td>Splitting airport transfers is valuable for remote venues, but it needs moderation and contact-sharing rules.</td><td><span class="tag l">L</span></td><td><span class="tag srv">Server</span> Moderation</td></tr>
+<tr><td class="n">1</td><td><b>Hosted pages with short links<span class="status s">Needs server</span></b>One stable link you can keep editing, with a custom name</td><td>Today the whole event lives inside the URL, so every edit produces a new link and guests holding the old invite see stale details. The links are also thousands of characters long, which is awkward in texts and print.</td><td><span class="tag m">M</span></td><td><span class="tag srv">Server</span> A small key-value store and API. Low cost at early scale.</td></tr>
+<tr><td class="n">2</td><td><b>Affiliate IDs on the existing deep links<span class="status n">Needs program sign-ups</span></b>Hotels, flights, rental cars and tours</td><td>Guests already click Booking.com, Expedia, Kayak, GetYourGuide and Viator from every page. Adding partner IDs where those programs accept the site turns current traffic into revenue with no UI change.</td><td><span class="tag s">S</span></td><td>None. Needs program approvals.</td></tr>
+<tr><td class="n">3</td><td><b>QR code and printable insert card<span class="status b">Built</span></b></td><td>Invitations, race packets and conference badges are still paper. A QR code that opens the page, on a small printable card, is how most guests will arrive.</td><td><span class="tag s">S</span></td><td>None. Works in the browser.</td></tr>
+<tr><td class="n">4</td><td><b>Import a schedule from .ics or CSV<span class="status b">Built</span></b></td><td>Race directors and conference teams already have the agenda in a calendar or spreadsheet. Retyping it is the most tedious part of setup.</td><td><span class="tag s">S</span></td><td>None</td></tr>
+<tr><td class="n">5</td><td><b>Built-in RSVP and registration<span class="status s">Needs server</span></b>Name, count, meal or shirt size; export to CSV</td><td>Collecting replies is a planner's main job; today Eventpages can only link out to another tool. Built-in replies also give organizers a reason to return.</td><td><span class="tag m">M</span></td><td><span class="tag srv">Server</span> Storage plus privacy handling for guest data.</td></tr>
+<tr><td class="n">6</td><td><b>Live updates<span class="status s">Needs server</span></b>Pinned announcements plus a calendar feed guests subscribe to</td><td>Weather moves, venues change and start times shift. One update reaches every guest's page and calendar without a new link. Depends on idea 1.</td><td><span class="tag m">M</span></td><td><span class="tag srv">Server</span> Small</td></tr>
+<tr><td class="n">7</td><td><b>Organizer insights<span class="status s">Needs server</span></b>Views, room-block and RSVP clicks, where guests are flying from (in aggregate)</td><td>Helps a planner decide whether to extend a room block or add a shuttle. This is the clearest reason to pay.</td><td><span class="tag m">M</span></td><td><span class="tag srv">Server</span> Event counts, no personal data</td></tr>
+<tr><td class="n">8</td><td><b>Planner tier<span class="status s">Needs server</span></b>Multi-event dashboard, client handoff, logo, custom domain, no Eventpages footer</td><td>The paid product for wedding planners and event agencies that run many events a year.</td><td><span class="tag l">L</span></td><td><span class="tag srv">Server</span> Accounts and billing</td></tr>
+<tr><td class="n">9</td><td><b>Accessibility and arrival block<span class="status b">Built</span></b>Step-free entrance, accessible parking, nearest accessible station</td><td>Questions guests ask organizers again and again. OpenStreetMap already has wheelchair tags for many stations and venues.</td><td><span class="tag s">S</span></td><td>None</td></tr>
+<tr><td class="n">10</td><td><b>Multilingual guest view<span class="status b">Built</span></b></td><td>Destination weddings and international races have guests in two or three languages. Translating the interface is cheap; translations of the organizer's own text would be optional.</td><td><span class="tag m">M</span></td><td>None</td></tr>
+<tr><td class="n">11</td><td><b>Guest ride-share and transfer board<span class="status s">Needs server</span></b></td><td>Splitting airport transfers is valuable for remote venues, but it needs moderation and contact-sharing rules.</td><td><span class="tag l">L</span></td><td><span class="tag srv">Server</span> Moderation</td></tr>
 </tbody>
 </table>
 </div>
@@ -178,7 +180,7 @@ footer { margin-top: 70px; color: var(--muted); font-size: .85rem; }
 </div>
 
 <!-- ============ PROPOSALS ============ -->
-<h2 id="setup">3 · Guided setup: four screens, then done</h2>
+<h2 id="setup">3 · Guided setup: four screens, then done <span class="status b">Built</span></h2>
 <p>Like setting up a new phone: one question per screen, a progress bar, Back and Skip. It asks only what a page can't work without. Everything else gets a sensible default and can be added later from the gallery (section 4). A ticket preview on the phone, and a live page preview on desktop, fills in as the organizer answers.</p>
 <div class="card">
 <ol class="tight" style="margin-top:0">
@@ -212,7 +214,7 @@ footer { margin-top: 70px; color: var(--muted); font-size: .85rem; }
   <div class="after"><span class="kicker">After · first screen</span><img class="shot" src="img/setup-1-mob.jpg" alt="Proposed first setup screen"></div>
 </div>
 
-<h2 id="add">4 · "Add to your page": grow the page one card at a time</h2>
+<h2 id="add">4 · "Add to your page": grow the page one card at a time <span class="status b">Built</span></h2>
 <p>After setup, organizers add things the same way they add widgets on a phone. A gallery of cards puts the ones for this event type first. Each card opens a short form of two to four fields in a bottom sheet (phone) or dialog (desktop), and the card shows a check once it's on the page. Automatic guest tools are simple on/off switches, with no ordering to manage.</p>
 <p>This one pattern replaces three things in today's editor: the 14-row Sections list, the "Details and links" editor, and the always-visible type fields.</p>
 <div class="phones">
@@ -239,7 +241,7 @@ footer { margin-top: 70px; color: var(--muted); font-size: .85rem; }
 </tbody></table></div>
 </div>
 
-<h2 id="guest">5 · Guest side: what you see first, and what's one tap away</h2>
+<h2 id="guest">5 · Guest side: what you see first, and what's one tap away <span class="status b">Built</span></h2>
 <p>The same principle applies to guests. The first screen answers <i>what, when, where</i> and gives the three actions guests take most: add to calendar, directions, RSVP. Everything else sits in four tabs (a bottom bar on phones, a top bar on desktop), each short enough to scan.</p>
 <div class="card">
 <div class="scroll"><table>
@@ -264,7 +266,7 @@ footer { margin-top: 70px; color: var(--muted); font-size: .85rem; }
   <div class="after"><span class="kicker">After · My trip tab</span><img class="shot" src="img/after-m3-mytrip.jpg" alt="Proposed My trip tab"></div>
 </div>
 
-<h2 id="merge">6 · Consolidations</h2>
+<h2 id="merge">6 · Consolidations <span class="status b">Built</span></h2>
 <div class="card scroll">
 <table class="olap">
 <thead><tr><th>Area</th><th>Change</th></tr></thead>
@@ -281,7 +283,7 @@ footer { margin-top: 70px; color: var(--muted); font-size: .85rem; }
 </table>
 </div>
 
-<h2 id="defaults">7 · Smart defaults per event type</h2>
+<h2 id="defaults">7 · Smart defaults per event type <span class="status b">Built</span></h2>
 <p>Setup chooses these so an organizer who answers four screens still gets a page that fits the event.</p>
 <div class="card scroll">
 <table>
@@ -296,14 +298,14 @@ footer { margin-top: 70px; color: var(--muted); font-size: .85rem; }
 </table>
 </div>
 
-<h2 id="editor">8 · The editor after setup</h2>
+<h2 id="editor">8 · The editor after setup <span class="status b">Built</span></h2>
 <p>Returning organizers get a short checklist instead of the long form. Each group is collapsed and shows its status (done, partly done, empty) and a one-line summary, and only one group is open at a time. Guest tools appear as a single "Automatic" row. The live preview stays on the right on desktop; on phones it is one tap away.</p>
 <div class="ba">
   <div class="before"><span class="kicker">Before</span><img class="shot" src="img/before-editor-desktop.jpg" alt="Current editor on desktop"></div>
   <div class="after"><span class="kicker">After</span><img class="shot" src="img/after-m5-editor.jpg" alt="Proposed checklist editor"></div>
 </div>
 
-<h2 id="accounts">9 · Accounts: build first, sign up later</h2>
+<h2 id="accounts">9 · Accounts: build first, sign up later <span class="status s">Needs server</span></h2>
 <p>No account is needed to try Eventpages. Setup, the gallery and the editor all work with the draft saved on the device, as they do today. The prompt appears only when it gives something back:</p>
 <ul class="tight">
   <li><b>At Share or Publish:</b> "Keep your page. Edit it from any device and keep the same link." The options are Apple, Google or email, plus "Not now, copy the link", which keeps today's link-only behavior.</li>
@@ -312,7 +314,7 @@ footer { margin-top: 70px; color: var(--muted); font-size: .85rem; }
 </ul>
 <p>This needs the server from idea 1. The same server also enables editing from several devices, the organizer dashboard, the paid tier and the iPhone app.</p>
 
-<h2 id="iphone">10 · Path to an iPhone app</h2>
+<h2 id="iphone">10 · Path to an iPhone app <span class="status n">Not started</span></h2>
 <div class="card">
 <b>Two routes</b>
 <div class="scroll"><table style="margin-top:8px">

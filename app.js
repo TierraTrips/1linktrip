@@ -25,17 +25,19 @@ function toast(msg) {
 
 // ---------- dates (all event times are wall-clock in the venue's time zone) ----------
 const asUTC = (s) => new Date((s.length === 10 ? s + 'T00:00' : s) + ':00Z');
-const fmt = (s, o) => new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', ...o }).format(asUTC(s));
+const LOCALES = { en: 'en-US', es: 'es-ES', fr: 'fr-FR', pt: 'pt-BR', de: 'de-DE', it: 'it-IT' };
+const fmt = (s, o) => new Intl.DateTimeFormat(LOCALES[LANG] || 'en-US', { timeZone: 'UTC', ...o }).format(asUTC(s));
 const ymd = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 const addDays = (s, n) => { const d = asUTC(s.slice(0, 10)); d.setUTCDate(d.getUTCDate() + n); return ymd(d); };
 const todayYMD = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const daysBetween = (a, b) => Math.round((asUTC(b.slice(0, 10)) - asUTC(a.slice(0, 10))) / 864e5);
-const fmtTime = (hm) => { if (!hm) return ''; const [h, m] = hm.split(':').map(Number); return `${((h + 11) % 12) + 1}:${pad(m)} ${h < 12 ? 'AM' : 'PM'}`; };
+const fmtTime = (hm) => { if (!hm) return ''; const [h, m] = hm.split(':').map(Number); return LANG === 'en' ? `${((h + 11) % 12) + 1}:${pad(m)} ${h < 12 ? 'AM' : 'PM'}` : `${pad(h)}:${pad(m)}`; };
 
 function dateRange(start, end) {
-  if (!start) return 'Date to be announced';
+  if (!start) return t('Date to be announced');
   const s = start.slice(0, 10), e = (end || start).slice(0, 10);
   if (s === e) return fmt(s, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  if (LANG !== 'en') { try { return new Intl.DateTimeFormat(LOCALES[LANG], { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' }).formatRange(asUTC(s), asUTC(e)); } catch { /* fall through */ } }
   const sy = s.slice(0, 4), ey = e.slice(0, 4), sm = s.slice(5, 7), em = e.slice(5, 7);
   if (sy === ey && sm === em) return `${fmt(s, { month: 'short', day: 'numeric' })}–${fmt(e, { day: 'numeric' })}, ${sy}`;
   if (sy === ey) return `${fmt(s, { month: 'short', day: 'numeric' })} – ${fmt(e, { month: 'short', day: 'numeric' })}, ${sy}`;
@@ -76,6 +78,7 @@ function fmtDist(m, cc) {
   return m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`;
 }
 const walkMin = (m) => Math.max(1, Math.round(m * 1.25 / 80)); // straight-line x1.25 detour, 80 m/min
+const walkTxt = (m) => t('{n} min walk', { n: walkMin(m) });
 
 function nearestAirports(lat, lon) {
   const all = (window.AIRPORTS || []).map(a => ({ iata: a[0], name: a[1], city: a[2], cc: a[3], lat: a[4], lon: a[5], large: !!a[6], d: distM(lat, lon, a[4], a[5]) }));
@@ -117,7 +120,7 @@ async function getJSON(url, { ttl = 3600e3, init, timeout = 20000, key } = {}) {
   p.catch(() => memo.delete(key));
   return p;
 }
-function cacheSet(key, d) { LS.set('c2:' + key, { t: Date.now(), d }); }
+function cacheSet(key, d) { LS.set('c3:' + key, { t: Date.now(), d }); }
 
 // ---------- external integrations ----------
 let lastNominatim = 0;
@@ -206,7 +209,7 @@ const osmKey = (lat, lon) => `osm:${(+lat).toFixed(4)},${(+lon).toFixed(4)}`;
 async function nearby(lat, lon) {
   const key = osmKey(lat, lon);
   const snap = window.OSM_SNAPSHOTS && window.OSM_SNAPSHOTS[key]; if (snap) return snap;
-  const c = LS.get('c2:' + key); if (c && Date.now() - c.t < 864e5) return c.d;
+  const c = LS.get('c3:' + key); if (c && Date.now() - c.t < 864e5) return c.d;
   if (memo.has(key)) return memo.get(key);
   const q = osmQuery(lat, lon);
   const p = (async () => {
@@ -227,7 +230,7 @@ function classify(els, lat, lon) {
   for (const el of els) {
     const t = el.tags || {}; const la = el.lat ?? el.center?.lat, lo = el.lon ?? el.center?.lon; if (la == null) continue;
     const d = distM(lat, lon, la, lo);
-    const base = { name: t.name || '', lat: la, lon: lo, d, website: t.website || t['contact:website'] || '', street: [t['addr:housenumber'], t['addr:street']].filter(Boolean).join(' ') };
+    const base = { name: t.name || '', wheelchair: t.wheelchair || '', lat: la, lon: lo, d, website: t.website || t['contact:website'] || '', street: [t['addr:housenumber'], t['addr:street']].filter(Boolean).join(' ') };
     if (/^(restaurant|cafe|bar|pub)$/.test(t.amenity)) {
       food.push({ ...base, kind: t.amenity === 'pub' ? 'bar' : t.amenity, cuisine: (t.cuisine || '').split(';').map(x => x.replace(/_/g, ' ')).slice(0, 2).join(', ') });
     } else if (/^(attraction|museum|gallery|viewpoint|zoo|aquarium|theme_park)$/.test(t.tourism)) {
@@ -369,7 +372,7 @@ const arrow = '<svg class="arr" viewBox="0 0 16 16" aria-hidden="true"><path d="
 let renderSeq = 0;
 const maps = new Set();
 
-const loading = (what) => `<div class="skel" role="status"><span></span><span></span><span></span><em>Loading ${what} from OpenStreetMap…</em><em class="slow">The map servers are busy. This can take up to a minute.</em></div>`;
+const loading = (what) => `<div class="skel" role="status"><span></span><span></span><span></span><em>${t('Loading {w} from OpenStreetMap…', { w: what })}</em><em class="slow">${t('The map servers are busy. This can take up to a minute.')}</em></div>`;
 
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
 
@@ -378,41 +381,41 @@ function typeInfoHTML(cfg, opt = {}) {
   const v = cfg.venue; const lab = Object.fromEntries(sp.fields.map(([k, l]) => [k, l]));
   const has = (k) => { const f = sp.fields.find(x => x[0] === k); return f && filled(f[2], d[k]); };
   const dt = (s) => s ? (s.length > 10 ? `${fmt(s.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' })}, ${fmtTime(s.slice(11, 16))}` : fmt(s, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })) : '';
-  const linkRow = (label, url, sub) => `<li><a href="${esc(url)}" target="_blank" rel="noopener"><b>${esc(label)}</b><span>${esc(sub || hostOf(url))}</span>${arrow}</a></li>`;
-  const noteRow = (label, text) => `<li class="note"><b>${esc(label)}</b><span>${esc(text)}</span></li>`;
+  const linkRow = (label, url, sub) => `<li><a href="${esc(url)}" target="_blank" rel="noopener"><b>${esc(t(label))}</b><span>${esc(sub || hostOf(url))}</span>${arrow}</a></li>`;
+  const noteRow = (label, text) => `<li class="note"><b>${esc(t(label))}</b><span>${esc(text)}</span></li>`;
   const placeURL = (p) => p.lat != null ? `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lon}` : L.place(p.q, v ? placeLabel(v) : '');
   const rows = []; const out = [];
   // time-line style rows (concert running order)
   const tl = [];
-  if (has('doors')) tl.push([d.doors, 'Doors']);
-  if (has('openerAt') || has('opener')) tl.push([d.openerAt || '', d.opener || lab.opener]);
-  if (has('headlinerAt') || has('headliner')) tl.push([d.headlinerAt || '', d.headliner || lab.headliner]);
-  if (tl.length) out.push(`<ol class="tl">${tl.sort((a, b) => (a[0] || '99').localeCompare(b[0] || '99')).map(([t, n]) => `<li><time>${esc(fmtTime(t)) || '—'}</time><div><b>${esc(n)}</b></div></li>`).join('')}</ol>`);
+  if (has('doors')) tl.push([d.doors, t('Doors')]);
+  if (has('openerAt') || has('opener')) tl.push([d.openerAt || '', d.opener || t(lab.opener)]);
+  if (has('headlinerAt') || has('headliner')) tl.push([d.headlinerAt || '', d.headliner || t(lab.headliner)]);
+  if (tl.length) out.push(`<ol class="tl">${tl.sort((a, b) => (a[0] || '99').localeCompare(b[0] || '99')).map(([tm, n]) => `<li><time>${esc(fmtTime(tm)) || '—'}</time><div><b>${esc(n)}</b></div></li>`).join('')}</ol>`);
   for (const [k, label, kind] of sp.fields) {
     if (['doors', 'opener', 'openerAt', 'headliner', 'headlinerAt', 'rsvpBy', 'blockHotel', 'blockUrl', 'blockCode', 'blockBy', 'packetWhen', 'badgeWhen', 'closuresUrl', 'spots', 'speakers'].includes(k) || !filled(kind, d[k])) continue;
     const val = d[k];
-    if (k === 'rsvp') rows.push(linkRow('RSVP', val, d.rsvpBy ? `Reply by ${dt(d.rsvpBy)}` : ''));
-    else if (k === 'course' && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(val)) out.push(`<a class="course-img" href="${esc(val)}" target="_blank" rel="noopener"><img src="${esc(val)}" alt="Course map" loading="lazy" referrerpolicy="no-referrer"></a>`);
-    else if (k === 'course') rows.push(linkRow('Course map', val, /\.gpx(\?|$)/i.test(val) ? 'GPX file' : ''));
+    if (k === 'rsvp') rows.push(linkRow('RSVP', val, d.rsvpBy ? t('Reply by {d}', { d: dt(d.rsvpBy) }) : ''));
+    else if (k === 'course' && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(val)) out.push(`<a class="course-img" href="${esc(val)}" target="_blank" rel="noopener"><img src="${esc(val)}" alt="${t('Course map')}" loading="lazy" referrerpolicy="no-referrer"></a>`);
+    else if (k === 'course') rows.push(linkRow('Course map', val, /\.gpx(\?|$)/i.test(val) ? t('GPX file') : ''));
     else if (k === 'closures') rows.push(d.closuresUrl ? linkRow('Road closures', d.closuresUrl, val) : noteRow('Road closures', val));
-    else if (k === 'packet' || k === 'badge') { const w = d[k + 'When']; rows.push(`<li><a href="${esc(L.place(val, v ? placeLabel(v) : ''))}" target="_blank" rel="noopener"><b>${esc(label)}</b><span>${esc([val, dt(w)].filter(Boolean).join(' · '))}</span>${arrow}</a></li>`); }
-    else if (kind === 'place') rows.push(`<li><a href="${esc(placeURL(val))}" target="_blank" rel="noopener"><b>${esc(label)}</b><span>${esc(val.q)}</span>${arrow}</a></li>`);
+    else if (k === 'packet' || k === 'badge') { const w = d[k + 'When']; rows.push(`<li><a href="${esc(L.place(val, v ? placeLabel(v) : ''))}" target="_blank" rel="noopener"><b>${esc(t(label))}</b><span>${esc([val, dt(w)].filter(Boolean).join(' · '))}</span>${arrow}</a></li>`); }
+    else if (kind === 'place') rows.push(`<li><a href="${esc(placeURL(val))}" target="_blank" rel="noopener"><b>${esc(t(label))}</b><span>${esc(val.q)}</span>${arrow}</a></li>`);
     else if (kind === 'links') val.filter(l => l.label && l.url).forEach(l => rows.push(linkRow(label === 'Teams' || l.label.toLowerCase() === label.toLowerCase() ? l.label : `${label} · ${l.label}`, l.url)));
     else if (kind === 'url') rows.push(linkRow(label, val));
     else rows.push(noteRow(label, val));
   }
   if (!has('packet') && has('packetWhen')) rows.push(noteRow('Packet pickup', dt(d.packetWhen)));
   if (!has('badge') && has('badgeWhen')) rows.push(noteRow('Badge pickup', dt(d.badgeWhen)));
-  if (!has('rsvp') && has('rsvpBy')) rows.push(noteRow('RSVP', `Reply by ${dt(d.rsvpBy)}`));
+  if (!has('rsvp') && has('rsvpBy')) rows.push(noteRow('RSVP', t('Reply by {d}', { d: dt(d.rsvpBy) })));
   if (!has('closures') && has('closuresUrl')) rows.push(linkRow('Road closures', d.closuresUrl));
   if (rows.length) out.push(`<ul class="links">${rows.join('')}</ul>`);
   if (!opt.skipBlock && ['blockHotel', 'blockUrl', 'blockCode', 'blockBy'].some(has)) {
-    const sub = [d.blockCode ? `Code ${d.blockCode}` : '', d.blockBy ? `Book by ${dt(d.blockBy)}` : ''].filter(Boolean).join(' · ');
-    out.push(`<h3 class="sub-h">Room block</h3><ul class="links">${d.blockUrl ? linkRow(d.blockHotel || 'Book the room block', d.blockUrl, sub || hostOf(d.blockUrl)) : noteRow(d.blockHotel || 'Room block', sub)}</ul>`);
+    const sub = [d.blockCode ? t('Code {c}', { c: d.blockCode }) : '', d.blockBy ? t('Book by {d}', { d: dt(d.blockBy) }) : ''].filter(Boolean).join(' · ');
+    out.push(`<h3 class="sub-h">${t('Room block')}</h3><ul class="links">${d.blockUrl ? linkRow(d.blockHotel || t('Book the room block'), d.blockUrl, sub || hostOf(d.blockUrl)) : noteRow(d.blockHotel || 'Room block', sub)}</ul>`);
   }
   const lines = (k) => String(d[k] || '').split('\n').map(x => x.trim()).filter(Boolean);
-  if (has('spots')) out.push(`<h3 class="sub-h">${esc(lab.spots)}</h3><ul class="links">${lines('spots').map(x => `<li><a href="${esc(L.place(x, v ? placeLabel(v) : ''))}" target="_blank" rel="noopener"><b>${esc(x)}</b><span>Google Maps</span>${arrow}</a></li>`).join('')}</ul>`);
-  if (has('speakers')) out.push(`<h3 class="sub-h">${esc(lab.speakers)}</h3><ul class="links">${lines('speakers').map(x => { const [n, ...r] = x.split(/\s+[—–-]\s+|,\s+/); return `<li class="note"><b>${esc(n)}</b>${r.length ? `<span>${esc(r.join(', '))}</span>` : ''}</li>`; }).join('')}</ul>`);
+  if (has('spots')) out.push(`<h3 class="sub-h">${esc(t(lab.spots))}</h3><ul class="links">${lines('spots').map(x => `<li><a href="${esc(L.place(x, v ? placeLabel(v) : ''))}" target="_blank" rel="noopener"><b>${esc(x)}</b><span>Google Maps</span>${arrow}</a></li>`).join('')}</ul>`);
+  if (has('speakers')) out.push(`<h3 class="sub-h">${esc(t(lab.speakers))}</h3><ul class="links">${lines('speakers').map(x => { const [n, ...r] = x.split(/\s+[—–-]\s+|,\s+/); return `<li class="note"><b>${esc(n)}</b>${r.length ? `<span>${esc(r.join(', '))}</span>` : ''}</li>`; }).join('')}</ul>`);
   return out.join('');
 }
 // ---------- my itinerary (guest-side, stays in this browser) ----------
@@ -512,19 +515,19 @@ const itinLoad = (cfg) => LS.get(itinKey(cfg), []) || [];
 const flightLinks = (f) => { const code = (f || '').replace(/\s+/g, '').toUpperCase(); if (!/^[A-Z0-9]{2}\d{1,4}$/.test(code)) return {}; const a = AIRLINES[code.slice(0, 2)]; return { status: `https://www.flightaware.com/live/flight/${code}`, manage: a && a[1] ? a[1] : '' }; };
 function itinFormHTML(x, i) {
   const k = x.kind || '';
-  const f = (key, label, type = 'text', ph = '', cls = '') => `<div class="field ${cls}"><label for="it-${key}">${label}</label><input id="it-${key}" type="${type}" data-it="${key}" value="${esc(x[key] || '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}></div>`;
+  const f = (key, label, type = 'text', ph = '', cls = '') => `<div class="field ${cls}"><label for="it-${key}">${t(label)}</label><input id="it-${key}" type="${type}" data-it="${key}" value="${esc(x[key] || '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}></div>`;
   return `<form class="itin-form" onsubmit="return false">
-    ${i == null ? `<div class="field wide"><label for="it-paste">Confirmation</label><textarea id="it-paste" rows="3" placeholder="Paste a confirmation email or link"></textarea></div>` : ''}
+    ${i == null ? `<div class="field wide"><label for="it-paste">${t('Confirmation')}</label><textarea id="it-paste" rows="3" placeholder="${t('Paste a confirmation email or link')}"></textarea></div>` : ''}
     <div class="trip">
-      <div class="field"><label for="it-kind">Type</label><select id="it-kind" data-it="kind"><option value="">Choose</option>${Object.entries(ITIN_KINDS).map(([v, l]) => `<option value="${v}" ${v === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div class="field"><label for="it-kind">${t('Type')}</label><select id="it-kind" data-it="kind"><option value="">${t('Choose')}</option>${Object.entries(ITIN_KINDS).map(([v, l]) => `<option value="${v}" ${v === k ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></div>
       ${f('flight', 'Flight number', 'text', 'UA 1234').replace('<div class="field', `<div${k === 'flight' ? '' : ' hidden'} class="field`)}
       ${f('name', 'Name')}
       ${f('start', k === 'flight' ? 'Departs' : 'Starts', 'datetime-local')}${f('end', k === 'flight' ? 'Arrives' : 'Ends', 'datetime-local')}
       ${f('address', 'Address', 'text', '', 'wide')}
       ${f('confNo', 'Confirmation')}${f('link', 'Link', 'url', 'https://…')}
-      ${f('note', 'Note', 'text', k === 'flight' ? 'Confirmation code, last name' : '', 'wide')}
+      ${f('note', 'Note', 'text', k === 'flight' ? t('Confirmation code, last name') : '', 'wide')}
     </div>
-    <div class="btns"><button type="button" class="btn primary" data-itin-save="${i == null ? '' : i}">Save</button><button type="button" class="btn ghost" data-itin-cancel>Cancel</button>${i != null ? `<button type="button" class="btn ghost" data-itin-del="${i}">Remove</button>` : ''}</div>
+    <div class="btns"><button type="button" class="btn primary" data-itin-save="${i == null ? '' : i}">${t('Save')}</button><button type="button" class="btn ghost" data-itin-cancel>${t('Cancel')}</button>${i != null ? `<button type="button" class="btn ghost" data-itin-del="${i}">${t('Remove')}</button>` : ''}</div>
   </form>`;
 }
 function itinICS(cfg) {
@@ -551,12 +554,12 @@ function itinICS(cfg) {
 // One table of rules. Each: [id, label (text or ctx => text), when(ctx) => bool]. Extend here.
 const isT = (...ts) => (c) => ts.includes(c.type);
 const PACK_RULES = [
-  ['clothes', c => `Clothes for ${c.days} days`, c => c.days > 1],
+  ['clothes', c => t('Clothes for {n} days', { n: c.days }), c => c.days > 1],
   ['toiletries', 'Toiletries', c => c.days > 1],
   ['charger', 'Phone charger', () => true],
   ['meds', 'Medications', () => true],
   ['passport', 'Passport', c => c.intl],
-  ['adapter', c => `Plug adapter${c.plugs ? ', type ' + c.plugs : ''}`, c => c.adapter],
+  ['adapter', c => c.plugs ? t('Plug adapter, type {p}', { p: c.plugs }) : t('Plug adapter'), c => c.adapter],
   ['photoid', 'Photo ID', c => c.mode.fly && !c.intl],
   ['boarding', 'Boarding pass', c => c.mode.fly],
   ['liquids', 'Liquids bag', c => c.mode.fly],
@@ -570,7 +573,7 @@ const PACK_RULES = [
   ['sunscreen', 'Sunscreen', c => c.wx.hot || c.beach],
   ['sunglasses', 'Sunglasses', c => c.wx.hot || c.beach],
   ['swimsuit', 'Swimsuit', c => c.beach],
-  ['outfit', c => c.td.dress ? `Outfit: ${c.td.dress.split(/[.;]/)[0].trim()}` : 'Wedding outfit', isT('Wedding')],
+  ['outfit', c => c.td.dress ? t('Outfit: {d}', { d: c.td.dress.split(/[.;]/)[0].trim() }) : t('Wedding outfit'), isT('Wedding')],
   ['gift', 'Card or gift', isT('Wedding')],
   ['runshoes', 'Running shoes', isT('Race')],
   ['racekit', 'Race-day kit', isT('Race')],
@@ -609,14 +612,14 @@ function packContext(cfg, art) {
 function packItems(cfg, art) {
   const st = LS.get(packKey(cfg), {}) || {}; const removed = st.removed || {}; const ctx = packContext(cfg, art);
   const host = String(cfg.bring || '').split('\n').map(s => s.trim()).filter(Boolean).map((text, i) => ({ id: 'h:' + text.toLowerCase(), text, host: true }));
-  const auto = PACK_RULES.filter(([, , when]) => { try { return when(ctx); } catch { return false; } }).map(([id, label]) => ({ id, text: typeof label === 'function' ? label(ctx) : label }));
+  const auto = PACK_RULES.filter(([, , when]) => { try { return when(ctx); } catch { return false; } }).map(([id, label]) => ({ id, text: typeof label === 'function' ? label(ctx) : t(label) }));
   const own = (st.custom || []).map(x => ({ id: x.id, text: x.text }));
   return { st, host: host.filter(x => !removed[x.id]), rest: auto.concat(own).filter(x => !removed[x.id]) };
 }
 function packListHTML(cfg, art) {
   const { st, host, rest } = packItems(cfg, art); const done = st.done || {};
-  const li = (x) => `<li class="${done[x.id] ? 'done' : ''}"><label><input type="checkbox" data-pack="${esc(x.id)}" ${done[x.id] ? 'checked' : ''}><span>${esc(x.text)}</span></label><button type="button" class="pack-x" data-pack-del="${esc(x.id)}" aria-label="Remove ${esc(x.text)}">×</button></li>`;
-  return `${host.length ? `<h3 class="sub-h">From the host</h3><ul class="pack">${host.map(li).join('')}</ul>${rest.length ? '<h3 class="sub-h">Also pack</h3>' : ''}` : ''}<ul class="pack">${rest.map(li).join('')}</ul>`;
+  const li = (x) => `<li class="${done[x.id] ? 'done' : ''}"><label><input type="checkbox" data-pack="${esc(x.id)}" ${done[x.id] ? 'checked' : ''}><span>${esc(x.text)}</span></label><button type="button" class="pack-x" data-pack-del="${esc(x.id)}" aria-label="${t('Remove')} ${esc(x.text)}">×</button></li>`;
+  return `${host.length ? `<h3 class="sub-h">${t('From the host')}</h3><ul class="pack">${host.map(li).join('')}</ul>${rest.length ? `<h3 class="sub-h">${t('Also pack')}</h3>` : ''}` : ''}<ul class="pack">${rest.map(li).join('')}</ul>`;
 }
 function wirePacking(cfg, art) {
   const sec = art.querySelector('#sec-packing'); if (!sec) return;
@@ -657,96 +660,96 @@ function modeBarHTML(cfg, air) {
 }
 function flightsHTML(cfg, air) {
   const tr = tripDates(cfg); const o = LS.get('origin'); const v = cfg.venue;
-  if (!air.length) return `<p class="muted">No airports with scheduled flights within 220 km of the venue.</p>`;
-  return `<h3 class="sub-h">Nearest airports</h3><ul class="airports">${air.map(a => `<li>
+  if (!air.length) return `<p class="muted">${t('No airports with scheduled flights within 220 km of the venue.')}</p>`;
+  return `<h3 class="sub-h">${t('Nearest airports')}</h3><ul class="airports">${air.map(a => `<li>
     <div class="ap-code">${esc(a.iata)}</div>
-    <div class="ap-info"><b>${esc(a.name)}</b><span>${esc(fmtDist(a.d, v.cc))} from the venue${a.large ? '' : ' · regional'}</span></div>
+    <div class="ap-info"><b>${esc(a.name)}</b><span>${esc(t('{d} from the venue', { d: fmtDist(a.d, v.cc) }))}${a.large ? '' : ' · ' + t('regional')}</span></div>
     <div class="btns">
-      ${o === a.iata ? '<span class="muted small">That is your home airport.</span>' : `${ext(L.gflights(a.iata, o, tr.arrive, tr.leave), 'Google Flights')}
+      ${o === a.iata ? `<span class="muted small">${t('That is your home airport.')}</span>` : `${ext(L.gflights(a.iata, o, tr.arrive, tr.leave), 'Google Flights')}
       ${o ? ext(L.kayak(o, a.iata, tr.arrive, tr.leave), 'Kayak') + ext(L.skyscanner(o, a.iata, tr.arrive, tr.leave), 'Skyscanner') : ''}`}
     </div></li>`).join('')}</ul>
-    ${o ? '' : '<p class="muted small">Add the airport you are flying from to compare fares on Kayak and Skyscanner too.</p>'}`;
+    ${o ? '' : `<p class="muted small">${t('Add the airport you are flying from to compare fares on Kayak and Skyscanner too.')}</p>`}`;
 }
 function trainsHTML(cfg) {
   const v = cfg.venue; const o = LS.get('origin'); const oa = o && airportByCode(o);
   const from = oa ? (oa[2] || oa[1]) : '';
   const to = v.city || v.name;
   const items = [];
-  if (from) items.push(ext(L.rome2rio(from, to), `Every way from ${esc(from)} to ${esc(to)} <small>Rome2Rio</small>`, 'row-link'));
-  if (v.cc === 'us') items.push(ext('https://www.amtrak.com/home', 'Trains across the US <small>Amtrak</small>', 'row-link'));
-  if (TRAINLINE_CC.has(v.cc)) items.push(ext('https://www.thetrainline.com/', 'Trains and coaches in Europe <small>Trainline</small>', 'row-link'));
-  return `<h3 class="sub-h">Train and bus</h3><div class="row-links">${items.join('')}</div>${from ? '' : '<p class="muted small">Add where you are coming from to see train and bus routes on Rome2Rio.</p>'}`;
+  if (from) items.push(ext(L.rome2rio(from, to), `${esc(t('Every way from {a} to {b}', { a: from, b: to }))} <small>Rome2Rio</small>`, 'row-link'));
+  if (v.cc === 'us') items.push(ext('https://www.amtrak.com/home', `${t('Trains across the US')} <small>Amtrak</small>`, 'row-link'));
+  if (TRAINLINE_CC.has(v.cc)) items.push(ext('https://www.thetrainline.com/', `${t('Trains and coaches in Europe')} <small>Trainline</small>`, 'row-link'));
+  return `<h3 class="sub-h">${t('Train and bus')}</h3><div class="row-links">${items.join('')}</div>${from ? '' : `<p class="muted small">${t('Add where you are coming from to see train and bus routes on Rome2Rio.')}</p>`}`;
 }
 function rentalHTML(cfg, air) {
   const tr = tripDates(cfg); const v = cfg.venue;
-  const items = air.slice(0, 2).map(a => ext(L.kayakCars(a.iata, tr.arrive, tr.leave), `Rental cars at ${esc(a.iata)} <small>Kayak</small>`, 'row-link'));
-  items.push(ext(L.place('car rental', placeLabel(v) || v.name), `Rental desks in ${esc(v.city || v.name)} <small>Google Maps</small>`, 'row-link'));
-  return `<h3 class="sub-h">Rental car</h3><div class="row-links">${items.join('')}</div>`;
+  const items = air.slice(0, 2).map(a => ext(L.kayakCars(a.iata, tr.arrive, tr.leave), `${esc(t('Rental cars at {c}', { c: a.iata }))} <small>Kayak</small>`, 'row-link'));
+  items.push(ext(L.place('car rental', placeLabel(v) || v.name), `${esc(t('Rental desks in {c}', { c: v.city || v.name }))} <small>Google Maps</small>`, 'row-link'));
+  return `<h3 class="sub-h">${t('Rental car')}</h3><div class="row-links">${items.join('')}</div>`;
 }
 function stayLinks(cfg) {
   const tr = tripDates(cfg); const v = cfg.venue; const q = placeLabel(v) || v.name; const n = tr.guests || 2;
-  return [ext(L.booking(q, tr.arrive, tr.leave, n), `Hotels in ${esc(v.city || q)} <small>Booking.com</small>`, 'row-link'),
-    ext(L.airbnb(q, tr.arrive, tr.leave, n), `Homes and apartments <small>Airbnb</small>`, 'row-link'),
-    ext(L.expedia(q, tr.arrive, tr.leave, n), `Hotels and packages <small>Expedia</small>`, 'row-link')].join('');
+  return [ext(L.booking(q, tr.arrive, tr.leave, n), `${esc(t('Hotels in {c}', { c: v.city || q }))} <small>Booking.com</small>`, 'row-link'),
+    ext(L.airbnb(q, tr.arrive, tr.leave, n), `${t('Homes and apartments')} <small>Airbnb</small>`, 'row-link'),
+    ext(L.expedia(q, tr.arrive, tr.leave, n), `${t('Hotels and packages')} <small>Expedia</small>`, 'row-link')].join('');
 }
 function toursHTML(cfg) {
   return `<div class="row-links" data-slot="tour-links">${tourLinks(cfg)}</div>
-    <h3 class="sub-h">Sights near the venue</h3>
-    <div data-slot="sights">${loading('sights')}</div>`;
+    <h3 class="sub-h">${t('Sights near the venue')}</h3>
+    <div data-slot="sights">${loading(t('sights'))}</div>`;
 }
 function tourLinks(cfg) {
   const tr = tripDates(cfg); const v = cfg.venue; const q = v.city || placeLabel(v) || v.name; const qa = placeLabel(v) || q;
-  return [ext(L.gyg(q, tr.arrive, tr.leave), `Tours in ${esc(q)} <small>GetYourGuide</small>`, 'row-link'),
-    ext(L.viator(q), `Tours and day trips <small>Viator</small>`, 'row-link'),
-    ext(L.airbnbExp(qa, tr.arrive, tr.leave), `Experiences with locals <small>Airbnb</small>`, 'row-link')].join('');
+  return [ext(L.gyg(q, tr.arrive, tr.leave), `${esc(t('Tours in {c}', { c: q }))} <small>GetYourGuide</small>`, 'row-link'),
+    ext(L.viator(q), `${t('Tours and day trips')} <small>Viator</small>`, 'row-link'),
+    ext(L.airbnbExp(qa, tr.arrive, tr.leave), `${t('Experiences with locals')} <small>Airbnb</small>`, 'row-link')].join('');
 }
 function sightsHTML(cfg, data) {
   const v = cfg.venue; const xs = data.sights || [];
-  if (!xs.length) return `<p class="muted">No museums, viewpoints or attractions are mapped within 3 km of the venue.</p>${ext(L.place('things to do', placeLabel(v)), 'Search things to do on Google Maps', 'btn')}`;
+  if (!xs.length) return `<p class="muted">${t('No museums, viewpoints or attractions are mapped within 3 km of the venue.')}</p>${ext(L.place('things to do', placeLabel(v)), t('Search on Google Maps'), 'btn')}`;
   return `<ul class="plist rich">${xs.slice(0, 8).map(x => `<li>
-    <div><b>${esc(x.name)}</b><span>${esc(x.kind)}</span>
-      <div class="mini">${ext(L.place(x.name, placeLabel(v)), 'Google Maps', 'mini-b')}${x.website ? ext(x.website, 'Website', 'mini-b') : ''}</div></div>
-    <span class="dist">${esc(fmtDist(x.d, v.cc))}<small>${x.d < 2000 ? walkMin(x.d) + ' min walk' : 'from venue'}</small></span></li>`).join('')}</ul>`;
+    <div><b>${esc(x.name)}</b><span>${esc(t(x.kind))}</span>
+      <div class="mini">${ext(L.place(x.name, placeLabel(v)), 'Google Maps', 'mini-b')}${x.website ? ext(x.website, t('Website'), 'mini-b') : ''}</div></div>
+    <span class="dist">${esc(fmtDist(x.d, v.cc))}<small>${x.d < 2000 ? walkTxt(x.d) : t('from the venue')}</small></span></li>`).join('')}</ul>`;
 }
 const TRANSIT_LABELS = { subway: 'Subway & metro', rail: 'Rail', tram: 'Light rail & tram', bus: 'Bus stops', bike: 'Bike share & rental', ferry: 'Ferry' };
 function transitHTML(cfg, data) {
   const v = cfg.venue; const groups = Object.entries(data.transit).filter(([, xs]) => xs.length);
-  if (!groups.length) return `<p class="muted">No mapped stations or stops within walking distance. Rideshare or driving is the way in.</p>`;
-  return `<div class="tgroups">${groups.map(([k, xs]) => `<div class="tgroup"><h3 class="sub-h">${TRANSIT_LABELS[k]}</h3><ul class="plist">${xs.map(x => `<li>
+  if (!groups.length) return `<p class="muted">${t('No mapped stations or stops within walking distance. Rideshare or driving is the way in.')}</p>`;
+  return `<div class="tgroups">${groups.map(([k, xs]) => `<div class="tgroup"><h3 class="sub-h">${t(TRANSIT_LABELS[k])}</h3><ul class="plist">${xs.map(x => `<li>
     <div><b>${esc(x.name)}</b>${x.line ? `<span>${esc(x.line.split(';').join(' · '))}</span>` : ''}</div>
-    <a class="dist" href="${esc(`https://www.google.com/maps/dir/?api=1&origin=${x.lat},${x.lon}&destination=${v.lat},${v.lon}&travelmode=walking`)}" target="_blank" rel="noopener" title="Walking directions to the venue">${esc(fmtDist(x.d, v.cc))}<small>${walkMin(x.d)} min walk</small></a></li>`).join('')}</ul></div>`).join('')}</div>`;
+    <a class="dist" href="${esc(`https://www.google.com/maps/dir/?api=1&origin=${x.lat},${x.lon}&destination=${v.lat},${v.lon}&travelmode=walking`)}" target="_blank" rel="noopener" title="${t('Walking directions to the venue')}">${esc(fmtDist(x.d, v.cc))}<small>${walkTxt(x.d)}</small></a></li>`).join('')}</ul></div>`).join('')}</div>`;
 }
 function foodHTML(cfg, data, filter = 'all') {
   const v = cfg.venue; const tr = tripDates(cfg); const date = cfg.start.slice(0, 10);
   const counts = { all: data.food.length }; data.food.forEach(f => counts[f.kind] = (counts[f.kind] || 0) + 1);
-  if (!data.food.length) return `<p class="muted">No restaurants, cafés or bars are mapped within 900 m of the venue.</p>${ext(L.place('restaurants', placeLabel(v)), 'Search restaurants on Google Maps', 'btn')}`;
+  if (!data.food.length) return `<p class="muted">${t('No restaurants, cafés or bars are mapped within 900 m of the venue.')}</p>${ext(L.place('restaurants', placeLabel(v)), t('Search on Google Maps'), 'btn')}`;
   const list = data.food.filter(f => filter === 'all' || f.kind === filter).slice(0, 12);
   const chip = (k, l) => counts[k] ? `<button class="chip ${filter === k ? 'on' : ''}" data-food="${k}">${l} <span>${counts[k]}</span></button>` : '';
-  return `<div class="chips">${chip('all', 'All')}${chip('restaurant', 'Restaurants')}${chip('cafe', 'Cafés')}${chip('bar', 'Bars')}</div>
+  return `<div class="chips">${chip('all', t('All'))}${chip('restaurant', t('Restaurants'))}${chip('cafe', t('Cafés'))}${chip('bar', t('Bars'))}</div>
   <ul class="plist rich">${list.map((f, i) => `<li${i >= 5 ? ' class="more"' : ''}>
-    <div><b>${esc(f.name)}</b><span>${esc([f.kind === 'cafe' ? 'café' : f.kind, f.cuisine].filter(Boolean).join(' · '))}</span>
-      <div class="mini">${f.kind !== 'cafe' ? ext(L.opentable(f.name, v, date, tr.guests || 2), 'Reserve · OpenTable', 'mini-b') : ''}${ext(L.place(f.name, f.street ? `${f.street}, ${v.city}` : placeLabel(v)), 'Google Maps', 'mini-b')}${f.website ? ext(f.website, 'Website', 'mini-b') : ''}</div></div>
-    <span class="dist">${esc(fmtDist(f.d, v.cc))}<small>${walkMin(f.d)} min walk</small></span></li>`).join('')}${list.length > 5 ? `<li class="more-li"><button type="button" class="btn sm" data-more>${t('Show {n} more', { n: list.length - 5 })}</button></li>` : ''}</ul>`;
+    <div><b>${esc(f.name)}</b><span>${esc([t(f.kind === 'cafe' ? 'café' : f.kind), f.cuisine].filter(Boolean).join(' · '))}</span>
+      <div class="mini">${f.kind !== 'cafe' ? ext(L.opentable(f.name, v, date, tr.guests || 2), t('Reserve') + ' · OpenTable', 'mini-b') : ''}${ext(L.place(f.name, f.street ? `${f.street}, ${v.city}` : placeLabel(v)), 'Google Maps', 'mini-b')}${f.website ? ext(f.website, t('Website'), 'mini-b') : ''}</div></div>
+    <span class="dist">${esc(fmtDist(f.d, v.cc))}<small>${walkTxt(f.d)}</small></span></li>`).join('')}${list.length > 5 ? `<li class="more-li"><button type="button" class="btn sm" data-more>${t('Show {n} more', { n: list.length - 5 })}</button></li>` : ''}</ul>`;
 }
 function hotelsHTML(cfg, data) {
   const v = cfg.venue; const tr = tripDates(cfg);
-  if (!data.hotels.length) return `<p class="muted">No hotels are mapped within 3 km of the venue. Try the searches above.</p>`;
+  if (!data.hotels.length) return `<p class="muted">${t('No hotels are mapped within 3 km of the venue. Try the searches above.')}</p>`;
   const hs = data.hotels.slice(0, 8);
   return `<ul class="plist rich">${hs.map((h, i) => `<li${i >= 3 ? ' class="more"' : ''}>
-    <div><b>${esc(h.name)}</b><span>${esc([h.kind, h.stars ? `${h.stars}★` : ''].filter(Boolean).join(' · '))}</span>
-      <div class="mini">${ext(L.booking(`${h.name}, ${v.city || placeLabel(v)}`, tr.arrive, tr.leave, tr.guests || 2), 'Check rates · Booking.com', 'mini-b')}${ext(L.place(h.name, h.street ? `${h.street}, ${v.city}` : placeLabel(v)), 'Google Maps', 'mini-b')}${h.website ? ext(h.website, 'Website', 'mini-b') : ''}</div></div>
-    <span class="dist">${esc(fmtDist(h.d, v.cc))}<small>${h.d < 2000 ? walkMin(h.d) + ' min walk' : 'from venue'}</small></span></li>`).join('')}${hs.length > 3 ? `<li class="more-li"><button type="button" class="btn sm" data-more>${t('All {n} hotels', { n: hs.length })}</button></li>` : ''}</ul>`;
+    <div><b>${esc(h.name)}</b><span>${esc([t(h.kind), h.stars ? `${h.stars}★` : ''].filter(Boolean).join(' · '))}</span>
+      <div class="mini">${ext(L.booking(`${h.name}, ${v.city || placeLabel(v)}`, tr.arrive, tr.leave, tr.guests || 2), t('Check rates') + ' · Booking.com', 'mini-b')}${ext(L.place(h.name, h.street ? `${h.street}, ${v.city}` : placeLabel(v)), 'Google Maps', 'mini-b')}${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
+    <span class="dist">${esc(fmtDist(h.d, v.cc))}<small>${h.d < 2000 ? walkTxt(h.d) : t('from the venue')}</small></span></li>`).join('')}${hs.length > 3 ? `<li class="more-li"><button type="button" class="btn sm" data-more>${t('All {n} hotels', { n: hs.length })}</button></li>` : ''}</ul>`;
 }
 function weatherHTML(w, cfg) {
-  const heads = { forecast: 'Forecast', recent: 'Recent weather', past: 'What the weather was', typical: `Typical for these dates · ${w.from}–${w.to} average` };
+  const heads = { forecast: t('Forecast'), recent: t('Recent weather'), past: t('What the weather was'), typical: t('Typical for these dates · {a}–{b} average', { a: w.from, b: w.to }) };
   const r = Math.round;
-  return `<p class="wx-head"><span class="lbl">${esc(heads[w.kind])}</span>${w.partial ? '<span class="muted small">Later days appear as they come into the 16-day forecast.</span>' : ''}</p>
+  return `<p class="wx-head"><span class="lbl">${esc(heads[w.kind])}</span>${w.partial ? `<span class="muted small">${t('Later days appear as they come into the 16-day forecast.')}</span>` : ''}</p>
   <div class="wx">${w.days.map(d => {
     const [label, ic] = w.kind === 'typical' ? (d.wet / (d.of || 1) >= 0.5 ? ['Often wet', 'rain'] : d.wet ? ['Mostly dry', 'part'] : ['Usually dry', 'sun']) : WMO(d.code);
     return `<div class="wx-d"><span class="wx-date">${esc(fmt(d.date, { weekday: 'short' }))}<small>${esc(fmt(d.date, { month: 'short', day: 'numeric' }))}</small></span>${icon(ic)}
       <span class="wx-t"><b>${r(d.hi)}°</b><span>${r(d.lo)}°F</span></span>
-      <span class="wx-x">${w.kind === 'typical' ? `Rain ${d.wet} of ${d.of} yrs` : w.kind === 'past' ? `${d.precip ? d.precip.toFixed(2) + ' in' : 'Dry'}` : d.pop != null ? `${d.pop}% rain` : esc(label)}</span>
-      <span class="wx-l">${esc(label)}</span></div>`;
+      <span class="wx-x">${w.kind === 'typical' ? t('Rain {n} of {m} yrs', { n: d.wet, m: d.of }) : w.kind === 'past' ? `${d.precip ? d.precip.toFixed(2) + ' in' : t('Dry')}` : d.pop != null ? t('{n}% rain', { n: d.pop }) : esc(t(label))}</span>
+      <span class="wx-l">${esc(t(label))}</span></div>`;
   }).join('')}</div>`;
 }
 
@@ -762,6 +765,7 @@ async function copy(text) {
 
 // ---------- landing ----------
 function renderLanding() {
+  LANG = 'en'; document.documentElement.lang = 'en';
   document.title = 'Eventpages — give every guest the whole trip in one link';
   const ex = window.EXAMPLES; const draft = LS.get('draft');
   $('#app').innerHTML = `
@@ -827,7 +831,7 @@ function renderBroken() {
 // ================= v2: defaults, guest tabs, editor gallery, setup flow =================
 // guest-interface strings go through t(); host content never does
 let LANG = 'en';
-const I18N = {};
+const I18N = window.EP_I18N || {};
 const t = (s, vars) => { let r = (I18N[LANG] && I18N[LANG][s]) || s; if (vars) r = r.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? ''); return r; };
 
 const TOOLS = [['weather', 'Weather'], ['travel', 'Travel'], ['stay', 'Stay'], ['nearby', 'Nearby'], ['tours', 'Things to do'], ['mytrip', 'My trip'], ['packing', 'Packing list']];
@@ -1035,6 +1039,7 @@ function eventTabHTML(cfg) {
   const out = [];
   out.push(sec('about', t('About'), aboutHTML(cfg)));
   out.push(sec('details', t('Need to know'), needToKnowHTML(cfg)));
+  out.push(`<div data-slot="access-wrap">${accessHTML(cfg, null)}</div>`);
   out.push(`<div data-slot="schedule-wrap">${sec('schedule', t('Schedule'), scheduleHTML(cfg))}</div>`);
   if (cfg.venue && cfg.start && cfg.tools.weather) out.push(sec('weather', t('Weather'), `<div data-slot="weather"><div class="skel" role="status"><span></span><span></span><em>${t('Loading weather…')}</em></div></div>`));
   return out.join('');
@@ -1066,7 +1071,7 @@ function renderEvent(cfg, root, opts = {}) {
     ${tabs.some(x => x[0] === 'nearby') ? panel('nearby', nearbyTabHTML(cfg), tabHead('nearby')) : ''}
     ${tabs.some(x => x[0] === 'mytrip') ? panel('mytrip', myTripTabHTML(cfg), tabHead('mytrip')) : ''}
     <footer class="ev-foot">
-      ${opts.preview ? '' : `<a href="#edit=${packEvent(cfg)}">${t('Edit a copy of this page')}</a> · <a href="#">${t('Make your own')}</a>`}
+      ${opts.preview ? '' : `<p class="lang-row"><select class="lang-sel" data-lang aria-label="Language">${LANGS.map(([k, l]) => `<option value="${k}" ${k === LANG ? 'selected' : ''}>${l}</option>`).join('')}</select></p><a href="#edit=${packEvent(cfg)}">${t('Edit a copy of this page')}</a> · <a href="#">${t('Make your own')}</a>`}
       <p>Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> · Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a></p>
     </footer>
   </article>`;
@@ -1100,6 +1105,7 @@ function wireEvent(cfg, art, seq, air, opts) {
   art.addEventListener('toggle', (e) => { if (e.target.matches('details.menu') && e.target.open) $$('details.menu[open]', art).forEach(d => { if (d !== e.target) d.open = false; }); }, true);
   if (!document._menuCloser) { document._menuCloser = true; document.addEventListener('click', (e) => { if (!e.target.closest('details.menu')) $$('details.menu[open]').forEach(d => { d.open = false; }); }); }
   wireItin(cfg, art); wirePacking(cfg, art);
+  art.querySelector('[data-lang]')?.addEventListener('change', (e) => { LS.set('lang', e.target.value); route(); });
   if (!v) return;
 
   const applyModes = () => {
@@ -1172,6 +1178,7 @@ function wireEvent(cfg, art, seq, air, opts) {
       if (slot('hotels')) slot('hotels').innerHTML = hotelsHTML(cfg, d);
       if (slot('sights')) slot('sights').innerHTML = sightsHTML(cfg, d);
       if (slot('transit')) slot('transit').innerHTML = transitHTML(cfg, d);
+      if (slot('access-wrap')) slot('access-wrap').innerHTML = accessHTML(cfg, d);
       if (!Object.values(d.transit).some(xs => xs.length)) { const tb = art.querySelector('[data-tmode="transit"]'); if (tb) { tb.hidden = true; const bar = tb.parentElement; if ($$('[data-tmode]:not([hidden])', bar).length < 3) bar.hidden = true; } }
       applyModes();
       if (map) {
@@ -1230,6 +1237,7 @@ function wireItin(cfg, art) {
 }
 
 function renderViewer(cfg, { exampleId, tab } = {}) {
+  LANG = pickLang(); document.documentElement.lang = LANG;
   document.title = (cfg.title || 'Event') + ' · Eventpages';
   const packed = location.hash.split('&t=')[0].slice(3);
   const editHref = exampleId ? `#edit-ex=${exampleId}` : `#edit=${packed}`;
@@ -1242,6 +1250,7 @@ function renderViewer(cfg, { exampleId, tab } = {}) {
 // ---------- editor ----------
 let B = null; // builder state
 function renderBuilder(cfg, source) {
+  LANG = 'en'; document.documentElement.lang = 'en';
   document.title = 'Edit your page · Eventpages';
   B = { cfg: normalize(cfg), venueResults: [], tab: 'edit', card: null };
   $('#app').innerHTML = `
@@ -1258,7 +1267,7 @@ function renderBuilder(cfg, source) {
   <dialog id="pub"><form method="dialog" class="pub">
     <h2>Your page is ready to share</h2>
     <textarea id="pub-url" readonly rows="4"></textarea>
-    <div class="btns"><button type="button" class="btn primary" data-act="copy">Copy link</button><button type="button" class="btn" data-act="native-share" hidden>Share…</button><a class="btn" id="pub-open" href="#" target="_blank" rel="noopener">Open page</a><button class="btn ghost">Close</button></div>
+    <div class="btns"><button type="button" class="btn primary" data-act="copy">Copy link</button><button type="button" class="btn" data-act="native-share" hidden>Share…</button><button type="button" class="btn" data-act="qr">QR code</button><a class="btn" id="pub-open" href="#" target="_blank" rel="noopener">Open page</a><button class="btn ghost">Close</button></div>
   </form></dialog>`;
   buildForm();
   const bl = $('.builder');
@@ -1271,6 +1280,7 @@ function renderBuilder(cfg, source) {
     const a = e.target.closest('[data-act]'); if (!a) return;
     if (a.dataset.act === 'copy') copy($('#pub-url').value);
     if (a.dataset.act === 'native-share') navigator.share({ title: B.cfg.title, url: $('#pub-url').value }).catch(() => {});
+    if (a.dataset.act === 'qr') openQR(B.cfg);
   });
   const sh = $('#sheet');
   sh.addEventListener('close', () => { B.card = null; buildForm(); });
@@ -1357,7 +1367,7 @@ function renderSheet() {
     <div class="field"><label>Background</label><div class="seg2"><button type="button" data-theme-mode="light" class="${c.theme.mode !== 'dark' ? 'on' : ''}">Light</button><button type="button" data-theme-mode="dark" class="${c.theme.mode === 'dark' ? 'on' : ''}">Dark</button></div></div>`;
   else if (id === 'bring') body = fieldWrap('Guests must bring', `<textarea id="f-bring" data-f="bring" rows="5" placeholder="One per line">${esc(c.bring)}</textarea>`, 'f-bring');
   else if (typeof extraCardBody === 'function') body = extraCardBody(id, c);
-  const head = id === 'access' ? 'Accessibility' : title;
+  const head = title;
   form.innerHTML = `<div class="grab" aria-hidden="true"></div><h2>${esc(head)}<button type="button" class="x" data-b="close" aria-label="Close">×</button></h2><div class="sheet-b">${body}</div><button type="button" class="btn primary big" data-b="close">Done</button>`;
 }
 // one input handler for the form and the card sheet
@@ -1417,6 +1427,7 @@ async function pickVenue(r) {
 // ---------- guided setup: type → name and date → venue → done ----------
 let SU = null;
 function renderSetup() {
+  LANG = 'en'; document.documentElement.lang = 'en';
   document.title = 'Create a page · Eventpages';
   SU = { step: 0, cfg: blankEvent('Party'), results: [], q: '', msg: '' };
   B = { cfg: SU.cfg, venueResults: [] };
@@ -1508,6 +1519,136 @@ async function suSearch() {
   catch { SU.results = []; SU.msg = 'Search is unavailable right now. Try again in a moment.'; }
   suRender();
 }
+
+// ================= phase B: QR + print card, schedule import, access and arrival, guest languages =================
+const LANGS = [['en', 'English'], ['es', 'Español'], ['fr', 'Français'], ['pt', 'Português'], ['de', 'Deutsch'], ['it', 'Italiano']];
+function pickLang() {
+  const saved = LS.get('lang'); if (saved && LOCALES[saved]) return saved;
+  const nav = (navigator.languages || [navigator.language || 'en']).map(x => String(x).slice(0, 2).toLowerCase()).find(x => LOCALES[x]);
+  return nav || 'en';
+}
+
+// ---- QR code and printable card ----
+function qrSVG(text, cell = 4) {
+  if (typeof qrcode !== 'function') return null;
+  for (const ecl of ['M', 'L']) {
+    try { const q = qrcode(0, ecl); q.addData(text, 'Byte'); q.make(); return { svg: q.createSvgTag({ cellSize: cell, margin: cell * 2, scalable: true }), n: q.getModuleCount() }; } catch { /* too long for this level */ }
+  }
+  return null;
+}
+const qrButtonHTML = () => `<button type="button" class="btn" data-su="qr">QR code and print card</button>`;
+function openQR(cfg) {
+  const url = shareURL(cfg); const q = qrSVG(url);
+  if (!q) { toast('This page has too much text for a QR code. Shorten the description or notes.'); return; }
+  let d = $('#qrdlg');
+  if (!d) { d = document.createElement('dialog'); d.id = 'qrdlg'; document.body.appendChild(d); d.addEventListener('click', (e) => { if (e.target === d) d.close(); }); }
+  d.innerHTML = `<div class="pub qr-dlg"><h2>${esc(cfg.title || 'Your page')}</h2><div class="qr-box">${q.svg}</div>
+    <div class="btns"><button type="button" class="btn primary" data-qr="print">Print card</button><button type="button" class="btn" data-qr="svg">Download</button><button type="button" class="btn ghost" data-qr="close">Close</button></div></div>`;
+  d.onclick = (e) => {
+    const b = e.target.closest('[data-qr]'); if (!b) { if (e.target === d) d.close(); return; }
+    if (b.dataset.qr === 'close') d.close();
+    if (b.dataset.qr === 'svg') { const blob = new Blob([q.svg.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ')], { type: 'image/svg+xml' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (cfg.title || 'event').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() + '-qr.svg'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
+    if (b.dataset.qr === 'print') printCard(cfg, q.svg);
+  };
+  if (!d.open) d.showModal();
+}
+function printCard(cfg, svg) {
+  let c = $('#print-card'); if (!c) { c = document.createElement('div'); c.id = 'print-card'; document.body.appendChild(c); }
+  const v = cfg.venue; loadFont(cfg.theme.font);
+  c.setAttribute('style', themeStyle(cfg.theme));
+  c.innerHTML = `<div class="pc-in"><p class="pc-k">${esc(cfg.type)}${v && v.city ? ' · ' + esc(v.city) : ''}</p><h1>${esc(cfg.title)}</h1>
+    <p class="pc-when">${esc(dateRange(cfg.start, cfg.end))}${cfg.start && cfg.start.length > 10 ? ' · ' + esc(fmtTime(cfg.start.slice(11, 16))) : ''}</p>${v ? `<p class="pc-where">${esc(v.name)}</p>` : ''}
+    <div class="pc-qr">${svg}</div><p class="pc-cta">Scan for the schedule, travel and more</p></div>`;
+  setTimeout(() => window.print(), 300);
+}
+
+// ---- import a schedule from .ics or CSV ----
+const importButtonHTML = () => `<label class="btn sm file-btn">Import .ics or CSV<input type="file" data-import accept=".ics,.csv,text/calendar,text/csv"></label>`;
+function utcToWall(date, tz) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date).map(p => [p.type, p.value]));
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+function parseICS(text, tz) {
+  const lines = text.replace(/\r?\n[ \t]/g, '').split(/\r?\n/); const out = []; let ev = null;
+  const unesc = (s) => s.replace(/\\n/gi, ' ').replace(/\\([,;\\])/g, '$1').trim();
+  for (const ln of lines) {
+    if (/^BEGIN:VEVENT/i.test(ln)) { ev = {}; continue; }
+    if (/^END:VEVENT/i.test(ln)) { if (ev && ev.title && ev.date) out.push(ev); ev = null; continue; }
+    if (!ev) continue;
+    const m = ln.match(/^([A-Z-]+)((?:;[^:]*)?):(.*)$/i); if (!m) continue;
+    const [, key, params, val] = m; const K = key.toUpperCase();
+    if (K === 'SUMMARY') ev.title = unesc(val);
+    else if (K === 'LOCATION') ev.note = unesc(val);
+    else if (K === 'DESCRIPTION' && !ev.note) ev.note = unesc(val).slice(0, 120);
+    else if (K === 'DTSTART') {
+      const d = val.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})\d{2}(Z?))?/); if (!d) continue;
+      const day = `${d[1]}-${d[2]}-${d[3]}`;
+      if (!d[4]) { ev.date = day; ev.time = ''; continue; }
+      let wall = `${day}T${d[4]}:${d[5]}`;
+      const tzid = (params.match(/TZID=([^;:]+)/i) || [])[1];
+      if (d[6] === 'Z') wall = utcToWall(new Date(wall + ':00Z'), tz);
+      else if (tzid && tz && tzid !== tz) { try { wall = utcToWall(wallToUTC(wall, tzid), tz); } catch { /* keep as written */ } }
+      ev.date = wall.slice(0, 10); ev.time = wall.slice(11, 16);
+    }
+  }
+  return out;
+}
+function parseCSV(text) {
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"') q = true; else if (ch === ',' || ch === ';' || ch === '\t') { row.push(cur); cur = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cur); rows.push(row); row = []; cur = ''; }
+    else cur += ch;
+  }
+  if (cur || row.length) { row.push(cur); rows.push(row); }
+  const clean = rows.map(r => r.map(c => c.trim())).filter(r => r.some(Boolean)); if (!clean.length) return [];
+  const head = clean[0].map(h => h.toLowerCase());
+  const find = (...names) => head.findIndex(h => names.some(n => h === n || h.includes(n)));
+  let idx = { date: find('date', 'day'), time: find('time', 'start'), title: find('title', 'name', 'event', 'session', 'what'), note: find('note', 'location', 'room', 'where', 'description', 'place') };
+  let body = clean.slice(1);
+  if (idx.title < 0) { idx = { date: 0, time: 1, title: 2, note: 3 }; body = clean; }
+  const toDate = (s) => { let m; if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return `${m[1]}-${pad(+m[2])}-${pad(+m[3])}`; if ((m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/))) return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${pad(+m[1])}-${pad(+m[2])}`; return ''; };
+  const toTime = (s) => { const m = (s || '').match(/^(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*([ap])?\.?m?\.?$/i); if (!m) return ''; let h = +m[1]; if (m[3]) { h %= 12; if (/p/i.test(m[3])) h += 12; } return h < 24 ? `${pad(h)}:${m[2] || '00'}` : ''; };
+  return body.map(r => ({ date: toDate(r[idx.date] || ''), time: toTime(r[idx.time] || ''), title: r[idx.title] || '', note: idx.note >= 0 ? (r[idx.note] || '') : '' })).filter(x => x.title);
+}
+function extraInput(i, cfg) {
+  if (i.dataset.import != null && i.files && i.files[0]) {
+    const f = i.files[0];
+    f.text().then(text => {
+      const items = /\.ics$/i.test(f.name) || /BEGIN:VCALENDAR/.test(text) ? parseICS(text, cfg.tz) : parseCSV(text);
+      if (!items.length) { toast('No schedule items found in that file'); return; }
+      cfg.schedule = cfg.schedule.filter(x => x.title).concat(items.map(x => ({ date: x.date || cfg.start.slice(0, 10), time: x.time || '', title: x.title, note: x.note || '' })))
+        .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
+      changed(true); toast(`Added ${items.length} item${items.length > 1 ? 's' : ''}`);
+    });
+    return;
+  }
+  if (i.dataset.access) { cfg.access = cfg.access || {}; cfg.access[i.dataset.access] = i.value; changed(); }
+}
+
+// ---- access and arrival ----
+const ACCESS_FIELDS = [['dropoff', 'Drop-off point'], ['entrance', 'Step-free entrance'], ['parking', 'Accessible parking'], ['restrooms', 'Accessible restrooms'], ['notes', 'Other access notes']];
+COMMON_CARDS.splice(3, 0, ['access', 'Access and arrival', 'Drop-off, step-free entrance']);
+function extraCardBody(id, c) {
+  if (id !== 'access') return '';
+  const a = c.access || {};
+  return ACCESS_FIELDS.map(([k, l]) => fieldWrap(l, `<input id="acc-${k}" data-access="${k}" value="${esc(a[k] || '')}">`, `acc-${k}`)).join('');
+}
+function accessHTML(cfg, osm) {
+  const a = cfg.access || {}; const rows = ACCESS_FIELDS.filter(([k]) => a[k] && String(a[k]).trim()).map(([k, l]) => `<li class="note"><b>${esc(t(l))}</b><span>${esc(a[k])}</span></li>`);
+  let st = '';
+  if (osm && cfg.venue) {
+    const v = cfg.venue; const sts = ['subway', 'rail', 'tram', 'ferry', 'bus'].flatMap(k => osm.transit[k] || []).filter(x => x.wheelchair === 'yes' || x.wheelchair === 'limited').sort((x, y) => x.d - y.d).slice(0, 3);
+    if (sts.length) st = `<h3 class="sub-h">${t('Step-free stations nearby')}</h3><ul class="plist">${sts.map(x => `<li><div><b>${esc(x.name)}</b><span>${esc(t(x.wheelchair === 'yes' ? 'Step-free' : 'Partly step-free'))}${x.line ? ' · ' + esc(x.line.split(';').join(' · ')) : ''}</span></div><span class="dist">${esc(fmtDist(x.d, v.cc))}<small>${walkTxt(x.d)}</small></span></li>`).join('')}</ul>`;
+  }
+  if (!rows.length && !st) return '';
+  return sec('access', t('Access and arrival'), `${rows.length ? `<ul class="links">${rows.join('')}</ul>` : ''}${st}`);
+}
+
+function extraClick(b, cfg) { if (b.dataset.act === 'qr') openQR(cfg); }
+function suExtraClick(b, cfg) { if (b.dataset.su === 'qr') openQR(cfg); }
 
 // ---------- router ----------
 function route() {
