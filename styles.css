@@ -305,3 +305,7 @@ dialog::backdrop { background: rgba(18,20,27,.5); }
 
 @media (max-width: 380px) { .vbar-note { display: none; } }
 .stub-side .big-day { font: 600 1.5rem/1 var(--mono); color: var(--ink); }
+
+/* travel mode filter */
+.mode-bar { margin-bottom: 14px; }
+.ev [hidden] { display: none !important; }

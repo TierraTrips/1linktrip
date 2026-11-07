@@ -17,7 +17,7 @@ window.EXAMPLES = {
     },
     cover: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Javits_Center_November_2022.jpg/1280px-Javits_Center_November_2022.jpg',
     theme: { accent: '#3048F0', font: 'grotesk', mode: 'light' },
-    sections: ['about', 'schedule', 'weather', 'map', 'travel', 'stay', 'food', 'around', 'links', 'calendar'].map(id => ({ id, on: true })),
+    sections: ['about', 'schedule', 'weather', 'map', 'travel', 'stay', 'food', 'tours', 'around', 'links', 'calendar'].map(id => ({ id, on: true })),
     schedule: [
       { date: '2026-11-18', time: '08:00', title: 'Badge pickup and coffee', note: 'North Concourse' },
       { date: '2026-11-18', time: '09:30', title: 'Opening keynote', note: 'Main stage, Hall 1A' },
@@ -50,7 +50,7 @@ window.EXAMPLES = {
     },
     cover: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/ff/Mexico_-_beach_by_Tulum%2C_2022.jpg/1280px-Mexico_-_beach_by_Tulum%2C_2022.jpg',
     theme: { accent: '#0B7A75', font: 'serif', mode: 'light' },
-    sections: ['about', 'schedule', 'links', 'weather', 'travel', 'stay', 'food', 'around', 'map', 'calendar'].map(id => ({ id, on: true })),
+    sections: ['about', 'schedule', 'links', 'weather', 'travel', 'stay', 'food', 'tours', 'around', 'map', 'calendar'].map(id => ({ id, on: true })),
     schedule: [
       { date: '2027-03-12', time: '19:00', title: 'Welcome drinks', note: 'Casual. Sandals encouraged.' },
       { date: '2027-03-13', time: '16:30', title: 'Ceremony', note: 'On the beach. Please arrive by 4:15.' },
@@ -82,7 +82,7 @@ window.EXAMPLES = {
     },
     cover: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Hardly_Strictly_Crowd_%28cropped%29.jpg/1280px-Hardly_Strictly_Crowd_%28cropped%29.jpg',
     theme: { accent: '#FF6B35', font: 'condensed', mode: 'dark' },
-    sections: ['about', 'schedule', 'around', 'map', 'weather', 'links', 'travel', 'stay', 'food', 'calendar'].map(id => ({ id, on: true })),
+    sections: ['about', 'schedule', 'around', 'map', 'weather', 'links', 'travel', 'stay', 'food', 'tours', 'calendar'].map(id => ({ id, on: true })),
     schedule: [
       { date: '2027-08-06', time: '11:00', title: 'Gates open', note: 'All three days' },
       { date: '2027-08-06', time: '20:15', title: 'Friday headliner', note: 'Meadow Stage' },

@@ -117,7 +117,7 @@ async function getJSON(url, { ttl = 3600e3, init, timeout = 20000, key } = {}) {
   p.catch(() => memo.delete(key));
   return p;
 }
-function cacheSet(key, d) { LS.set('c:' + key, { t: Date.now(), d }); }
+function cacheSet(key, d) { LS.set('c2:' + key, { t: Date.now(), d }); }
 
 // ---------- external integrations ----------
 let lastNominatim = 0;
@@ -199,13 +199,14 @@ node["public_transport"="station"]${A(1500)};
 node["highway"="bus_stop"]${A(400)};
 nwr["amenity"="bicycle_rental"]${A(700)};
 nwr["amenity"="ferry_terminal"]${A(2000)};
+nwr["tourism"~"^(attraction|museum|gallery|viewpoint|zoo|aquarium|theme_park)$"]["name"]${A(3000)};
 );out center tags;`;
 }
 const osmKey = (lat, lon) => `osm:${(+lat).toFixed(4)},${(+lon).toFixed(4)}`;
 async function nearby(lat, lon) {
   const key = osmKey(lat, lon);
   const snap = window.OSM_SNAPSHOTS && window.OSM_SNAPSHOTS[key]; if (snap) return snap;
-  const c = LS.get('c:' + key); if (c && Date.now() - c.t < 864e5) return c.d;
+  const c = LS.get('c2:' + key); if (c && Date.now() - c.t < 864e5) return c.d;
   if (memo.has(key)) return memo.get(key);
   const q = osmQuery(lat, lon);
   const p = (async () => {
@@ -222,13 +223,15 @@ async function nearby(lat, lon) {
   return p;
 }
 function classify(els, lat, lon) {
-  const food = [], hotels = [], transit = { subway: [], rail: [], tram: [], bus: [], bike: [], ferry: [] };
+  const food = [], hotels = [], sights = [], transit = { subway: [], rail: [], tram: [], bus: [], bike: [], ferry: [] };
   for (const el of els) {
     const t = el.tags || {}; const la = el.lat ?? el.center?.lat, lo = el.lon ?? el.center?.lon; if (la == null) continue;
     const d = distM(lat, lon, la, lo);
     const base = { name: t.name || '', lat: la, lon: lo, d, website: t.website || t['contact:website'] || '', street: [t['addr:housenumber'], t['addr:street']].filter(Boolean).join(' ') };
     if (/^(restaurant|cafe|bar|pub)$/.test(t.amenity)) {
       food.push({ ...base, kind: t.amenity === 'pub' ? 'bar' : t.amenity, cuisine: (t.cuisine || '').split(';').map(x => x.replace(/_/g, ' ')).slice(0, 2).join(', ') });
+    } else if (/^(attraction|museum|gallery|viewpoint|zoo|aquarium|theme_park)$/.test(t.tourism)) {
+      sights.push({ ...base, kind: t.tourism.replace('_', ' ') });
     } else if (t.tourism) {
       hotels.push({ ...base, kind: t.tourism.replace('_', ' '), stars: t.stars || '' });
     } else if (t.amenity === 'bicycle_rental') {
@@ -247,7 +250,7 @@ function classify(els, lat, lon) {
     }
   }
   const dedupe = (arr, n) => { const seen = new Set(); return arr.sort((a, b) => a.d - b.d).filter(x => { const k = x.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, n); };
-  const r = { food: dedupe(food, 60), hotels: dedupe(hotels, 30), transit: {} };
+  const r = { food: dedupe(food, 60), hotels: dedupe(hotels, 30), sights: dedupe(sights, 12), transit: {} };
   for (const k in transit) r.transit[k] = dedupe(transit[k], k === 'bus' ? 4 : 3);
   return r;
 }
@@ -260,6 +263,10 @@ const L = {
   booking: (q, d1, d2, n) => `https://www.booking.com/searchresults.html?ss=${enc(q)}&checkin=${d1}&checkout=${d2}&group_adults=${n}&no_rooms=1`,
   airbnb: (q, d1, d2, n) => `https://www.airbnb.com/s/${enc(q.replace(/, /g, '--').replace(/ /g, '-'))}/homes?checkin=${d1}&checkout=${d2}&adults=${n}`,
   expedia: (q, d1, d2, n) => `https://www.expedia.com/Hotel-Search?destination=${enc(q)}&startDate=${d1}&endDate=${d2}&adults=${n}`,
+  gyg: (q, d1, d2) => `https://www.getyourguide.com/s/?q=${enc(q)}&date_from=${d1}&date_to=${d2}`,
+  viator: (q) => `https://www.viator.com/searchResults/all?text=${enc(q)}`,
+  airbnbExp: (q, d1, d2) => `https://www.airbnb.com/s/${enc(q.replace(/, /g, '--').replace(/ /g, '-'))}/experiences?checkin=${d1}&checkout=${d2}`,
+  kayakCars: (iata, d1, d2) => `https://www.kayak.com/cars/${iata}/${d1}/${d2}`,
   rome2rio: (from, to) => `https://www.rome2rio.com/map/${enc(from.replace(/ /g, '-'))}/${enc(to.replace(/ /g, '-'))}`,
   dir: (v, mode) => `https://www.google.com/maps/dir/?api=1&destination=${v.lat},${v.lon}&travelmode=${mode}`,
   place: (name, extra) => `https://www.google.com/maps/search/?api=1&query=${enc([name, extra].filter(Boolean).join(', '))}`,
@@ -279,9 +286,9 @@ const placeLabel = (v) => [v.city, v.cc === 'us' ? v.region : v.country].filter(
 // ---------- event model ----------
 const SECTION_NAMES = {
   about: 'About', schedule: 'Schedule', links: 'Details', weather: 'Weather', map: 'Map',
-  travel: 'Getting there', stay: 'Where to stay', food: 'Eat & drink', around: 'Getting around', calendar: 'Save the date'
+  travel: 'Getting there', stay: 'Where to stay', food: 'Eat & drink', tours: 'Tours & things to do', around: 'Getting around', calendar: 'Save the date'
 };
-const DEFAULT_ORDER = ['about', 'schedule', 'links', 'weather', 'map', 'travel', 'stay', 'food', 'around', 'calendar'];
+const DEFAULT_ORDER = ['about', 'schedule', 'links', 'weather', 'map', 'travel', 'stay', 'food', 'tours', 'around', 'calendar'];
 const FONTS = {
   grotesk: { label: 'Grotesk', css: "'Bricolage Grotesque', system-ui, sans-serif", gf: null },
   serif: { label: 'Editorial serif', css: "'Fraunces', Georgia, serif", gf: 'Fraunces:opsz,wght@9..144,400..800' },
@@ -396,7 +403,7 @@ function renderEvent(cfg, root, opts = {}) {
 }
 
 function sectionAvailable(id, cfg) {
-  if (['weather', 'map', 'travel', 'stay', 'food', 'around'].includes(id)) return !!cfg.venue;
+  if (['weather', 'map', 'travel', 'stay', 'food', 'tours', 'around'].includes(id)) return !!cfg.venue;
   if (id === 'schedule') return cfg.schedule.some(x => x.title);
   if (id === 'links') return cfg.links.some(x => x.label && (x.url || x.note));
   if (id === 'about') return !!(cfg.description || cfg.host);
@@ -424,6 +431,7 @@ function sectionHTML(id, cfg, air) {
     case 'travel': return travelHTML(cfg, air);
     case 'stay': return stayHTML(cfg);
     case 'food': return `<div data-slot="food">${loading('places to eat')}</div>`;
+    case 'tours': return toursHTML(cfg);
     case 'around': return aroundHTML(cfg);
     case 'calendar': return `<div class="cal"><p><b>${esc(cfg.title)}</b><br>${esc(dateRange(cfg.start, cfg.end))}${cfg.start.length >= 16 ? ' · ' + esc(timeRange(cfg.start, cfg.end)) : ''}${cfg.tz ? ` <span class="muted">(${esc(cfg.tz.replace(/_/g, ' '))} time)</span>` : ''}</p><div class="btns"><button class="btn primary" data-act="ics">Download .ics</button>${ext(L.gcal(cfg, location.href), 'Google Calendar')}</div>${cfg.schedule.some(x => x.date && x.time && x.title) ? '<p class="muted small">The .ics file includes every timed schedule item.</p>' : ''}</div>`;
   }
@@ -436,17 +444,32 @@ function tripDates(cfg) {
   const st = LS.get('trip:' + s + ':' + e);
   return st || { arrive: addDays(s, -1), leave: addDays(e, 1), guests: 2 };
 }
+// ---------- travel mode filter (multi-select; nothing picked = everything) ----------
+const TRAVEL_MODES = [['fly', 'Flying'], ['train', 'Train'], ['rental', 'Rental car'], ['drive', 'Driving'], ['transit', 'Transit']];
+const eventKey = (cfg) => 'modes:' + Math.abs([...(cfg.title || '') + (cfg.start || '') + (cfg.venue ? cfg.venue.name : '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)).toString(36);
+const hasTrains = (v) => v.cc === 'us' || TRAINLINE_CC.has(v.cc);
+function travelModes(cfg, air) {
+  const v = cfg.venue; const around = cfg.sections.some(s => s.id === 'around' && s.on);
+  return TRAVEL_MODES.filter(([k]) => k === 'fly' ? air.length > 0 : k === 'train' ? hasTrains(v) : k === 'transit' ? around : true);
+}
+function modeBarHTML(cfg, air) {
+  const ms = travelModes(cfg, air); if (ms.length < 2) return '';
+  return `<div class="chips mode-bar" role="group" aria-label="How are you getting there?"><button type="button" class="chip on" data-tmode="all" aria-pressed="true">All</button>${ms.map(([k, l]) => `<button type="button" class="chip" data-tmode="${k}" aria-pressed="false">${l}</button>`).join('')}</div>`;
+}
 function travelHTML(cfg, air) {
   const t = tripDates(cfg); const o = LS.get('origin');
   const oa = o && airportByCode(o);
-  return `<div class="trip">
-    <div class="field origin"><label for="ep-origin">Flying from</label>
+  return `${modeBarHTML(cfg, air)}<div class="trip">
+    <div class="field origin" data-mode="fly train"><label for="ep-origin">Flying from</label>
       <div class="ac"><input id="ep-origin" autocomplete="off" placeholder="City or airport code" value="${oa ? esc(`${oa[2] || oa[1]} (${oa[0]})`) : ''}" data-code="${oa ? oa[0] : ''}"><ul class="ac-list" hidden></ul></div></div>
     <div class="field"><label for="ep-arrive">Arrive</label><input type="date" id="ep-arrive" value="${t.arrive}"></div>
     <div class="field"><label for="ep-leave">Leave</label><input type="date" id="ep-leave" value="${t.leave}"></div>
   </div>
-  <div data-slot="flights"></div>
-  <div data-slot="trains"></div>`;
+  <div data-slot="flights" data-mode="fly"></div>
+  ${hasTrains(cfg.venue) ? '<div data-slot="trains" data-mode="train"></div>' : ''}
+  <div data-slot="rental" data-mode="rental"></div>
+  <div data-mode="drive"><h3 class="sub-h">Driving</h3><div class="row-links">${ext(L.dir(cfg.venue, 'driving'), `Directions to the venue <small>Google Maps</small>`, 'row-link')}${ext(L.place('parking near ' + cfg.venue.name, placeLabel(cfg.venue)), `Parking nearby <small>Google Maps</small>`, 'row-link')}</div></div>
+  <div data-mode="transit"><h3 class="sub-h">Transit</h3><div class="row-links">${ext(L.dir(cfg.venue, 'transit'), `Transit directions to the venue <small>Google Maps</small>`, 'row-link')}</div></div>`;
 }
 function flightsHTML(cfg, air) {
   const t = tripDates(cfg); const o = LS.get('origin'); const v = cfg.venue;
@@ -466,10 +489,15 @@ function trainsHTML(cfg) {
   const to = v.city || v.name;
   const items = [];
   if (from) items.push(ext(L.rome2rio(from, to), `Every way from ${esc(from)} to ${esc(to)} <small>Rome2Rio</small>`, 'row-link'));
-  items.push(ext(L.dir(v, 'driving'), `Drive there <small>Google Maps</small>`, 'row-link'));
   if (v.cc === 'us') items.push(ext('https://www.amtrak.com/home', 'Trains across the US <small>Amtrak</small>', 'row-link'));
   if (TRAINLINE_CC.has(v.cc)) items.push(ext('https://www.thetrainline.com/', 'Trains and coaches in Europe <small>Trainline</small>', 'row-link'));
-  return `<h3 class="sub-h">Train, bus or car</h3><div class="row-links">${items.join('')}</div>${from ? '' : '<p class="muted small">Add where you are coming from to see train and bus routes on Rome2Rio.</p>'}`;
+  return `<h3 class="sub-h">Train and bus</h3><div class="row-links">${items.join('')}</div>${from ? '' : '<p class="muted small">Add where you are coming from to see train and bus routes on Rome2Rio.</p>'}`;
+}
+function rentalHTML(cfg, air) {
+  const t = tripDates(cfg); const v = cfg.venue;
+  const items = air.slice(0, 2).map(a => ext(L.kayakCars(a.iata, t.arrive, t.leave), `Rental cars at ${esc(a.iata)} <small>Kayak</small>`, 'row-link'));
+  items.push(ext(L.place('car rental', placeLabel(v) || v.name), `Rental desks in ${esc(v.city || v.name)} <small>Google Maps</small>`, 'row-link'));
+  return `<h3 class="sub-h">Rental car</h3><div class="row-links">${items.join('')}</div>`;
 }
 function stayHTML(cfg) {
   const t = tripDates(cfg); const v = cfg.venue; const q = placeLabel(v) || v.name;
@@ -488,13 +516,33 @@ function stayLinks(cfg) {
     ext(L.airbnb(q, t.arrive, t.leave, n), `Homes and apartments <small>Airbnb</small>`, 'row-link'),
     ext(L.expedia(q, t.arrive, t.leave, n), `Hotels and packages <small>Expedia</small>`, 'row-link')].join('');
 }
+function toursHTML(cfg) {
+  return `<div class="row-links" data-slot="tour-links">${tourLinks(cfg)}</div>
+    <h3 class="sub-h">Sights near the venue</h3>
+    <div data-slot="sights">${loading('sights')}</div>`;
+}
+function tourLinks(cfg) {
+  const t = tripDates(cfg); const v = cfg.venue; const q = v.city || placeLabel(v) || v.name; const qa = placeLabel(v) || q;
+  return [ext(L.gyg(q, t.arrive, t.leave), `Tours in ${esc(q)} <small>GetYourGuide</small>`, 'row-link'),
+    ext(L.viator(q), `Tours and day trips <small>Viator</small>`, 'row-link'),
+    ext(L.airbnbExp(qa, t.arrive, t.leave), `Experiences with locals <small>Airbnb</small>`, 'row-link')].join('');
+}
+function sightsHTML(cfg, data) {
+  const v = cfg.venue; const xs = data.sights || [];
+  if (!xs.length) return `<p class="muted">No museums, viewpoints or attractions are mapped within 3 km of the venue.</p>${ext(L.place('things to do', placeLabel(v)), 'Search things to do on Google Maps', 'btn')}`;
+  return `<ul class="plist rich">${xs.slice(0, 8).map(x => `<li>
+    <div><b>${esc(x.name)}</b><span>${esc(x.kind)}</span>
+      <div class="mini">${ext(L.place(x.name, placeLabel(v)), 'Google Maps', 'mini-b')}${x.website ? ext(x.website, 'Website', 'mini-b') : ''}</div></div>
+    <span class="dist">${esc(fmtDist(x.d, v.cc))}<small>${x.d < 2000 ? walkMin(x.d) + ' min walk' : 'from venue'}</small></span></li>`).join('')}</ul>`;
+}
 function aroundHTML(cfg) {
   const v = cfg.venue; const name = v.name;
-  const modes = [['transit', 'Transit'], ['walking', 'Walk'], ['bicycling', 'Bike'], ['driving', 'Drive']];
-  return `<div class="modes">${modes.map(([m, l]) => ext(L.dir(v, m), `<span>${l}</span><small>Google Maps</small>`, 'mode')).join('')}
+  const modes = [['transit', 'Transit', 'transit'], ['walking', 'Walk', ''], ['bicycling', 'Bike', ''], ['driving', 'Drive', 'drive rental']];
+  const tag = (m) => m ? ` data-mode="${m}"` : '';
+  return `<div class="modes">${modes.map(([m, l, k]) => ext(L.dir(v, m), `<span>${l}</span><small>Google Maps</small>`, 'mode').replace('<a ', `<a${tag(k)} `)).join('')}
     ${ext(L.uber(v, name), '<span>Uber</span><small>Drop-off set</small>', 'mode')}
     ${LYFT_CC.has(v.cc) ? ext(L.lyft(v), '<span>Lyft</span><small>Drop-off set</small>', 'mode') : ''}</div>
-    <div data-slot="transit">${loading('nearby stations')}</div>`;
+    <div data-slot="transit" data-mode="transit">${loading('nearby stations')}</div>`;
 }
 
 const TRANSIT_LABELS = { subway: 'Subway & metro', rail: 'Rail', tram: 'Light rail & tram', bus: 'Bus stops', bike: 'Bike share & rental', ferry: 'Ferry' };
@@ -542,19 +590,32 @@ function wireEvent(cfg, art, seq, air, opts) {
   const v = cfg.venue; const alive = () => seq === renderSeq && document.body.contains(art);
   const slot = (n) => art.querySelector(`[data-slot="${n}"]`);
   art.addEventListener('click', (e) => {
-    const a = e.target.closest('[data-act],[data-jump],[data-food]'); if (!a) return;
-    if (a.dataset.act === 'ics') downloadICS(cfg);
+    const a = e.target.closest('[data-act],[data-jump],[data-food],[data-tmode]'); if (!a) return;
+    if (a.dataset.tmode) { const k = a.dataset.tmode; const sel = new Set(LS.get(eventKey(cfg), [])); k === 'all' ? sel.clear() : sel.has(k) ? sel.delete(k) : sel.add(k); LS.set(eventKey(cfg), [...sel]); applyModes(); }
+    else if (a.dataset.act === 'ics') downloadICS(cfg);
     else if (a.dataset.act === 'share') shareEvent(cfg, opts);
     else if (a.dataset.jump) { e.preventDefault(); art.querySelector('#sec-' + a.dataset.jump)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }
     else if (a.dataset.food) { const s = slot('food'); s.innerHTML = foodHTML(cfg, art._osm, a.dataset.food); }
   });
   if (!v) return;
 
+  // travel mode filter: show content for every picked mode; nothing picked = all
+  const applyModes = () => {
+    const bar = art.querySelector('.mode-bar');
+    const avail = bar && !bar.hidden ? $$('[data-tmode]', bar).filter(b => !b.hidden).map(b => b.dataset.tmode) : [];
+    const sel = new Set((LS.get(eventKey(cfg), []) || []).filter(k => avail.includes(k)));
+    if (bar) $$('[data-tmode]', bar).forEach(b => { const on = b.dataset.tmode === 'all' ? !sel.size : sel.has(b.dataset.tmode); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+    $$('[data-mode]', art).forEach(el => { el.hidden = !!sel.size && !el.dataset.mode.split(' ').some(k => sel.has(k)); });
+  };
+  art._applyModes = applyModes;
+
   // trip date + origin inputs drive the deep links
   const refreshTrip = () => {
     if (slot('flights')) slot('flights').innerHTML = flightsHTML(cfg, air);
     if (slot('trains')) slot('trains').innerHTML = trainsHTML(cfg);
+    if (slot('rental')) slot('rental').innerHTML = rentalHTML(cfg, air);
     if (slot('stay-links')) slot('stay-links').innerHTML = stayLinks(cfg);
+    if (slot('tour-links')) slot('tour-links').innerHTML = tourLinks(cfg);
     if (art._osm && slot('hotels')) slot('hotels').innerHTML = hotelsHTML(cfg, art._osm);
     $$('[data-k], #ep-arrive, #ep-leave', art).forEach(i => { const t = tripDates(cfg); const k = i.dataset.k || (i.id === 'ep-arrive' ? 'arrive' : 'leave'); if (document.activeElement !== i) i.value = t[k]; });
   };
@@ -580,7 +641,7 @@ function wireEvent(cfg, art, seq, air, opts) {
     oi.addEventListener('keydown', (e) => { if (e.key === 'Enter' && list._res && list._res[0] && !list.hidden) { e.preventDefault(); pick(list._res[0]); } if (e.key === 'Escape') list.hidden = true; });
     oi.addEventListener('blur', () => setTimeout(() => { list.hidden = true; }, 200));
   }
-  refreshTrip();
+  refreshTrip(); applyModes();
 
   if (slot('weather') && cfg.start) {
     weatherFor(cfg).then(w => { if (alive()) slot('weather').innerHTML = weatherHTML(w, cfg); })
@@ -595,19 +656,23 @@ function wireEvent(cfg, art, seq, air, opts) {
     window.L.marker([v.lat, v.lon], { icon: pin, title: v.name, zIndexOffset: 1000 }).addTo(map).bindPopup(`<b>${esc(v.name)}</b><br>${esc(v.address || '')}`);
     setTimeout(() => map.invalidateSize(), 120);
   }
-  const needOSM = ['food', 'stay', 'around', 'map'].some(id => cfg.sections.find(s => s.id === id && s.on));
+  const needOSM = ['food', 'stay', 'tours', 'around', 'map'].some(id => cfg.sections.find(s => s.id === id && s.on));
   if (needOSM) {
     nearby(v.lat, v.lon).then(d => {
       if (!alive()) return; art._osm = d;
       const ft = art.querySelector('.ev-foot p'); if (ft && d.snapshot) ft.insertAdjacentHTML('beforeend', ` · Nearby places as mapped on ${esc(d.snapshot)}`);
       if (slot('food')) slot('food').innerHTML = foodHTML(cfg, d);
       if (slot('hotels')) slot('hotels').innerHTML = hotelsHTML(cfg, d);
+      if (slot('sights')) slot('sights').innerHTML = sightsHTML(cfg, d);
       if (slot('transit')) slot('transit').innerHTML = transitHTML(cfg, d);
+      if (!Object.values(d.transit).some(xs => xs.length)) { const tb = art.querySelector('[data-tmode="transit"]'); if (tb) { tb.hidden = true; const bar = tb.parentElement; if ($$('[data-tmode]:not([hidden])', bar).length < 3) bar.hidden = true; } }
+      applyModes();
       if (map) {
         const mk = (color) => ({ radius: 6, color: '#fff', weight: 1.5, fillColor: color, fillOpacity: .95 });
         const add = (key, items, color, label) => { if (!items.length) return; layers[key] = { label, color, layer: window.L.layerGroup(items.map(x => window.L.circleMarker([x.lat, x.lon], mk(color)).bindPopup(`<b>${esc(x.name)}</b><br>${esc(fmtDist(x.d, v.cc))} from venue`))).addTo(map) }; };
         add('food', d.food.slice(0, 25), '#E4572E', 'Food & drink');
         add('hotels', d.hotels.slice(0, 15), '#7B4FD6', 'Hotels');
+        if (cfg.sections.some(s => s.id === 'tours' && s.on)) add('sights', (d.sights || []).slice(0, 12), '#0B9A6D', 'Sights');
         add('transit', [].concat(...Object.values(d.transit)), '#1D8FD8', 'Transit');
         const lg = slot('legend');
         lg.innerHTML = Object.entries(layers).map(([k, x]) => `<button class="chip on" data-layer="${k}" aria-pressed="true"><i style="background:${x.color}"></i>${x.label}</button>`).join('');
@@ -618,6 +683,7 @@ function wireEvent(cfg, art, seq, air, opts) {
       const msg = (what, q) => `<p class="muted">Nearby ${what} could not be loaded from OpenStreetMap right now.</p>${ext(L.place(q, placeLabel(v)), `Search ${what} on Google Maps`, 'btn')}`;
       if (slot('food')) slot('food').innerHTML = msg('restaurants', 'restaurants near ' + v.name);
       if (slot('hotels')) slot('hotels').innerHTML = msg('hotels', 'hotels near ' + v.name);
+      if (slot('sights')) slot('sights').innerHTML = msg('sights', 'things to do near ' + v.name);
       if (slot('transit')) slot('transit').innerHTML = `<p class="muted">Nearby stations could not be loaded right now. The Transit button above has live directions.</p>`;
     });
   }
