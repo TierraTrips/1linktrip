@@ -653,3 +653,17 @@ dialog.place-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .pc-photo figcaption { font-size: .7rem; color: var(--muted, var(--slate)); padding: 4px 8px; }
 .g-attr { margin-top: 6px; }
 .oauth { display: grid; gap: 8px; margin-bottom: 4px; } .oauth .btn { width: 100%; justify-content: center; } .or { text-align: center; margin: 4px 0 8px; }
+
+/* home: My pages and samples */
+.ex-card { position: relative; color: inherit; }
+.ex-hit { position: absolute; inset: 0; border-radius: inherit; z-index: 0; }
+.ex-acts { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+@media (min-width: 760px) { .ex-acts { grid-column: 1 / -1; justify-content: flex-start; padding-left: 6px; } }
+@media (max-width: 759px) { .ex-card { grid-template-columns: 76px 1fr; } .ex-img { width: 76px; height: 76px; } .ex-acts { grid-column: 1 / -1; justify-content: flex-start; } }
+.land-mine { margin: 10px 0 40px; } .land-mine h2 { font: 700 1.5rem var(--brand); letter-spacing: -.02em; margin: 0 0 14px; } .land-mine h2 small { font: 500 .9rem var(--sans, inherit); }
+.mp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.mp-list li { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: center; background: var(--paper); border-radius: var(--r); padding: 12px 14px; }
+.mp-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
+.mp-t { display: grid; gap: 2px; min-width: 0; } .mp-t b { font: 700 1.05rem/1.2 var(--display); } .mp-t span { color: var(--slate); font-size: .86rem; }
+.mp-b { grid-column: 2; display: flex; flex-wrap: wrap; gap: 6px; }
+@media (min-width: 760px) { .mp-list li { grid-template-columns: auto 1fr auto; } .mp-b { grid-column: auto; } }

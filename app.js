@@ -816,40 +816,34 @@ function renderLanding() {
   const ex = window.EXAMPLES; const draft = LS.get('draft');
   $('#app').innerHTML = `
   <main class="land">
-    <header class="land-top"><a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>Eventpages</a><span class="land-nav">${LS.get('signedIn') ? '<a class="link" href="#mine">My pages</a>' : ''}<a class="btn primary" href="#new">Create a page</a></span></header>
+    <header class="land-top"><a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>Eventpages</a><span class="land-nav">${LS.get('signedIn') ? '<a class="link" href="#mine">My pages</a>' : ''}<a class="btn primary" href="#setup">Create a page</a></span></header>
     <section class="land-hero">
       <div class="land-copy">
         <h1>Give every guest the whole trip <em>in one link</em>.</h1>
         <p class="lede">For wedding planners, race directors and conference teams. One page carries your schedule and event details, plus live weather, the map, flights, places to stay, tables to book and the train to the door.</p>
-        <div class="btns"><a class="btn primary big" href="#new">${draft && draft.title ? 'Continue your draft' : 'Create a page'}</a><a class="btn big" href="#ex=tulum-wedding">See an example</a></div>
+        <div class="btns"><a class="btn primary big" href="#setup">Create a page</a><a class="btn big" href="#samples">Try a sample</a></div>
         <p class="muted small">Free, no account. The whole page lives in the link you share.</p>
       </div>
       <div class="land-stack" aria-hidden="true">${Object.entries(ex).slice(0, 3).map(([id, e], i) => miniTicket(id, e, i)).join('')}</div>
     </section>
-    <section class="land-ex">
-      <h2>Open an example</h2>
-      <div class="ex-grid">${Object.entries(ex).map(([id, e]) => `
-        <a class="ex-card" href="#ex=${id}" style="${themeStyle(e.theme)}">
-          <span class="ex-img" style="background-image:url('${esc(e.cover)}')"></span>
-          <span class="ex-body"><span class="lbl">${esc(e.type)} · ${esc(e.venue.city)}</span><b>${esc(e.title)}</b><span>${esc(dateRange(e.start, e.end))}</span></span>
-          <span class="ex-code">${esc(nearestAirports(e.venue.lat, e.venue.lon)[0]?.iata || '')}</span>
-        </a>`).join('')}</div>
-    </section>
+    ${myPagesHTML()}
+    ${samplesHTML()}
     <section class="land-what">
       <h2>What your guests get</h2>
       <dl>
         <div><dt>Weather</dt><dd>The live forecast once the event is within 16 days, and the typical weather for those dates before that.</dd></div>
         <div><dt>Map</dt><dd>The venue pinned, with restaurants, hotels and stations around it.</dd></div>
-        <div><dt>Flights</dt><dd>The nearest airports, with fares searched for their dates on Google Flights, Kayak and Skyscanner.</dd></div>
-        <div><dt>Stays</dt><dd>Hotels near the venue, plus Booking.com, Airbnb and Expedia searches with the dates filled in.</dd></div>
-        <div><dt>Tables</dt><dd>Restaurants, cafés and bars within walking distance, each with a link to reserve.</dd></div>
+        <div><dt>Flights</dt><dd>The nearest airports, with fares searched for their dates on Google Flights and Kayak.</dd></div>
+        <div><dt>Stays</dt><dd>Hotels near the venue, plus Google Hotels, Booking.com and Airbnb searches with the dates filled in.</dd></div>
+        <div><dt>Tables</dt><dd>Restaurants, cafés and bars nearby, filtered by cuisine, dietary needs, rating and what’s open now.</dd></div>
         <div><dt>Event details</dt><dd>RSVP and room blocks for weddings, packet pickup and the course for races, doors and bag policy for shows.</dd></div>
         <div><dt>Their itinerary</dt><dd>Guests paste their bookings and see them beside your schedule, ready for their calendar.</dd></div>
         <div><dt>Getting around</dt><dd>The nearest subway, rail, bus and bike-share stops, directions for every mode, and Uber or Lyft with the drop-off set.</dd></div>
       </dl>
     </section>
-    <footer class="land-foot">Built on OpenStreetMap, Open-Meteo and OurAirports data.</footer>
+    <footer class="land-foot">Built on OpenStreetMap, Open-Meteo, OurAirports and Google Maps data.</footer>
   </main>`;
+  wireLanding();
 }
 function miniTicket(id, e, i) {
   const a = nearestAirports(e.venue.lat, e.venue.lon)[0];
@@ -1284,16 +1278,17 @@ function renderViewer(cfg, { exampleId, tab } = {}) {
   $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#"><span class="brand-mark" aria-hidden="true"></span>Eventpages</a>${exampleId ? `<span class="vbar-note">${t('Example page')}</span>` : ''}<a class="btn sm" href="${editHref}">${exampleId ? t('Customize this') : t('Edit a copy')}</a></div><div id="ev-root"></div></div>`;
   renderEvent(cfg, $('#ev-root'), { tab });
   const foot = $('.ev-foot a'); if (foot && exampleId) foot.setAttribute('href', editHref);
+  if (location.search) $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
   window.scrollTo(0, 0);
 }
 
 // ---------- editor ----------
 let B = null; // builder state
-function renderBuilder(cfg, source, hosted) {
+function renderBuilder(cfg, source, hosted, pid) {
   LANG = 'en'; document.documentElement.lang = 'en';
   document.title = 'Edit your page · Eventpages';
   B = { cfg: normalize(cfg), venueResults: [], tab: 'edit', card: null, hosted: hosted && hosted.id ? hosted : null };
-  LS.set('draftHosted', B.hosted);
+  LS.set('draftHosted', B.hosted); B.pid = pid || newPid(); LS.set('draftId', B.pid); LS.set('draft', B.cfg); pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted });
   $('#app').innerHTML = `
   <div class="builder" data-tab="edit">
     <header class="b-top">
@@ -1340,11 +1335,11 @@ function publish(opts = {}) {
   const url = shareURL(c); $('#pub-url').value = url; $('#pub-open').href = url;
   $('[data-act="native-share"]').hidden = !navigator.share;
   $('#pub h2').textContent = 'Your page is ready to share'; $('#pub-url').rows = 4;
-  LS.set('published:' + Date.now(), { title: c.title, url });
+  LS.set('published:' + Date.now(), { title: c.title, url }); pageSave(B.pid, { cfg: c, url });
   if (!$('#pub').open) $('#pub').showModal();
   if (typeof renderPubHost === 'function') { B.pub = { state: 'offer' }; renderPubHost(); if (SB && (B.hosted || opts.host)) hostNow(); }
 }
-const savedraft = debounce(() => LS.set('draft', B.cfg), 300);
+const savedraft = debounce(() => { LS.set('draft', B.cfg); pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted }); }, 300);
 const preview = debounce(() => { const p = $('#preview'); if (!p) return; const sc = p.parentElement; const y = sc.scrollTop; const tab = p.querySelector('[data-tab-go][aria-selected="true"]')?.dataset.tabGo; renderEvent(B.cfg, p, { preview: true, shareUrl: shareURL(B.cfg), tab }); sc.scrollTop = y; }, 350);
 function changed(rebuild) { savedraft(); preview(); if (rebuild) { if (B.card) renderSheet(); else buildForm(); } }
 
@@ -1485,7 +1480,7 @@ let SU = null;
 function renderSetup() {
   LANG = 'en'; document.documentElement.lang = 'en';
   document.title = 'Create a page · Eventpages';
-  SU = { step: 0, cfg: blankEvent('Party'), results: [], q: '', msg: '' }; LS.del('draftHosted');
+  SU = { step: 0, cfg: blankEvent('Party'), results: [], q: '', msg: '' }; LS.del('draftHosted'); LS.set('draftId', newPid());
   B = { cfg: SU.cfg, venueResults: [] };
   $('#app').innerHTML = `<div class="setup"><div class="su-main"></div><div class="su-preview"><div class="su-tag">Preview</div><div class="b-frame" id="su-frame"></div></div></div>`;
   suRender();
@@ -1526,7 +1521,7 @@ function suRender() {
     LS.set('published:' + Date.now(), { title: c.title, url });
   }
   m.innerHTML = `${prog}${top}<h1>${h}</h1><div class="su-body">${body}</div><div class="grow"></div>${n === 1 || n === 2 ? suTicket(c) : ''}${cta}`;
-  LS.set('draft', c); suPreview();
+  LS.set('draft', c); pageSave(LS.get('draftId'), { cfg: c }); suPreview();
   const first = m.querySelector('#su-title, #su-q'); if (first && !first.value) setTimeout(() => first.focus(), 30);
 }
 document.addEventListener('click', (e) => {
@@ -1558,7 +1553,7 @@ document.addEventListener('input', (e) => {
   if (f === 'title') c.title = i.value;
   const nb = $('[data-su="next"]'); if (nb) nb.disabled = !(c.title.trim() && SU.dated);
   const tk = $('.su-ticket'); if (tk) tk.outerHTML = suTicket(c);
-  LS.set('draft', c); suPreview();
+  LS.set('draft', c); pageSave(LS.get('draftId'), { cfg: c }); suPreview();
 });
 document.addEventListener('keydown', (e) => {
   if (!SU || !e.target.closest('.setup') || e.key !== 'Enter') return;
@@ -1917,7 +1912,7 @@ async function authReturn() {
   if (!session) { LS.del('pendingPublish'); return renderMine('', 'That sign-in link has expired or was already used. Send yourself a new one.'); }
   LS.set('signedIn', true);
   const p = LS.get('pendingPublish'); LS.del('pendingPublish');
-  if (p && p.cfg) { LS.set('draft', p.cfg); LS.set('draftHosted', p.hosted || null); history.replaceState(null, '', siteBase() + '#new'); renderBuilder(p.cfg, null, p.hosted || null); publish({ host: true }); return; }
+  if (p && p.cfg) { LS.set('draft', p.cfg); LS.set('draftHosted', p.hosted || null); history.replaceState(null, '', siteBase() + '#new'); renderBuilder(p.cfg, null, p.hosted || null, LS.get('draftId') || undefined); publish({ host: true }); return; }
   const back = LS.get('afterSignIn'); LS.del('afterSignIn');
   if (back && back !== '#mine' && /^#(mine|new)/.test(back)) { history.replaceState(null, '', siteBase() + back); return route(); }
   history.replaceState(null, '', siteBase() + '#mine'); renderMine('');
@@ -1958,7 +1953,7 @@ async function hostNow() {
   if (!user) { B.pub = { state: 'signin' }; renderPubHost(); setTimeout(() => $('#si-email')?.focus(), 0); return; }
   try {
     const row = await publishHosted(B.cfg, B.hosted);
-    B.hosted = { id: row.id, slug: row.slug }; LS.set('draftHosted', B.hosted); LS.set('signedIn', true);
+    B.hosted = { id: row.id, slug: row.slug }; LS.set('draftHosted', B.hosted); LS.set('signedIn', true); pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted });
     const url = shortURL(row.slug); $('#pub-url').value = url; $('#pub-url').rows = 2; $('#pub-open').href = url;
     $('#pub h2').textContent = 'Your short link is ready';
     LS.set('published:' + Date.now(), { title: B.cfg.title, url });
@@ -2009,7 +2004,7 @@ async function renderMine(id, notice) {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.mine === 'signout') { await c.auth.signOut(); LS.del('signedIn'); LS.del('draftHosted'); location.hash = '#'; }
     if (b.dataset.mineCopy) copy(shortURL(b.dataset.mineCopy));
-    if (b.dataset.mineEdit) { const r = data.find(x => x.id === b.dataset.mineEdit); const cfg = normalize(r.config); LS.set('draft', cfg); LS.set('draftHosted', { id: r.id, slug: r.slug }); location.hash = '#new'; }
+    if (b.dataset.mineEdit) { const r = data.find(x => x.id === b.dataset.mineEdit); const cfg = normalize(r.config); const ex = pagesAll().find(x => x.hosted && x.hosted.id === r.id); LS.set('draft', cfg); LS.set('draftHosted', { id: r.id, slug: r.slug }); LS.set('draftId', ex ? ex.pid : newPid()); location.hash = '#new'; }
   });
 }
 const guestListKey = (id) => 'guests:' + id;
@@ -2066,7 +2061,7 @@ async function renderMineEvent(id, shell, c, user) {
     }
     if (d.gl === 'add') addGuests(parseGuestList($('#gl-paste').value));
     if (d.gl === 'clear' && confirm('Clear your guest list on this device?')) { LS.del(guestListKey(id)); again(); }
-    if (d.pg === 'edit') { LS.set('draft', cfg); LS.set('draftHosted', { id: r.id, slug: r.slug }); location.hash = '#new'; }
+    if (d.pg === 'edit') { const ex = pagesAll().find(x => x.hosted && x.hosted.id === r.id); LS.set('draft', cfg); LS.set('draftHosted', { id: r.id, slug: r.slug }); LS.set('draftId', ex ? ex.pid : newPid()); location.hash = '#new'; }
     if (d.pg === 'vis') { await c.from('events').update({ published: !r.published }).eq('id', id); again(); }
   });
 }
@@ -2394,6 +2389,61 @@ function wireMap(cfg, art, opts) {
   };
 }
 
+// ================= My pages on this device, samples, demo links, duplicate =================
+// Every page made here is kept in localStorage (config + its links), so starting a new page, copying a sample or duplicating
+// never loses one. Pages always render with the current code: a link or a stored config is just data.
+const DEMOS = { japan: 'japan-trip', wedding: 'tulum-wedding', race: 'chicago-10k', concert: 'redrocks-concert', conference: 'nyc-conference', festival: 'sf-festival' };
+const newPid = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const pagesLoad = () => { const xs = LS.get('pages'); return Array.isArray(xs) ? xs : null; };
+function pagesAll() {
+  let xs = pagesLoad();
+  if (!xs) { // first run: bring in the old single draft and the links published from this device
+    xs = []; const d = LS.get('draft');
+    if (d && d.title) { const pid = newPid(); xs.push({ pid, cfg: d, url: '', hosted: LS.get('draftHosted') || null, updated: Date.now() }); LS.set('draftId', pid); }
+    try { Object.keys(localStorage).filter(k => k.startsWith('ep:published:')).forEach(k => { const v = LS.get(k.slice(3)); if (!v || !v.url) return; const m = v.url.match(/#e=([^&]+)/); const cfg = m ? unpackEvent(m[1]) : null; if (!cfg || xs.some(x => x.url === v.url)) return; xs.push({ pid: newPid(), cfg, url: v.url, hosted: null, updated: +k.split(':')[2] || Date.now() }); }); } catch { /* storage blocked */ }
+    LS.set('pages', xs);
+  }
+  return xs;
+}
+function pageSave(pid, patch) {
+  if (!pid) return; const xs = pagesAll(); const i = xs.findIndex(x => x.pid === pid);
+  const e = { ...(i >= 0 ? xs[i] : { pid, url: '', hosted: null }), ...patch, updated: Date.now() };
+  if (!e.cfg || !(e.cfg.title || '').trim()) return; // untitled scratch drafts stay out of the list
+  if (i >= 0) xs[i] = e; else xs.unshift(e);
+  LS.set('pages', xs.slice(0, 60));
+}
+function pageRemove(pid) { LS.set('pages', pagesAll().filter(x => x.pid !== pid)); }
+function duplicateCfg(cfg) { const c = normalize(clone(cfg)); c.title = (c.title || 'Untitled') + ' (copy)'; return c; }
+function myPagesHTML() {
+  const xs = pagesAll().slice().sort((a, b) => b.updated - a.updated); if (!xs.length) return '';
+  const cur = LS.get('draftId');
+  return `<section class="land-mine" id="my-pages"><h2>My pages <small class="muted">on this device</small></h2><ul class="mp-list">${xs.slice(0, 12).map(x => { const c = normalize(clone(x.cfg)); const open = x.hosted ? shortURL(x.hosted.slug) : x.url;
+    return `<li style="${themeStyle(c.theme)}"><i class="mp-dot" aria-hidden="true"></i><div class="mp-t"><b>${esc(c.title || 'Untitled')}</b><span>${esc([TYPE_LABEL[c.type] || c.type, c.start ? dateRange(c.start, c.end) : '', x.hosted ? 'short link' : open ? 'shared' : 'draft', x.pid === cur ? 'open in editor' : ''].filter(Boolean).join(' · '))}</span></div>
+      <div class="mp-b">${open ? `<a class="btn sm" href="${esc(open)}">Open</a>` : ''}<a class="btn sm ${open ? '' : 'primary'}" href="#page=${esc(x.pid)}">Edit</a><a class="btn sm ghost" href="#dup=${esc(x.pid)}">Duplicate</a><button type="button" class="btn sm ghost" data-mp-del="${esc(x.pid)}" aria-label="Remove ${esc(c.title)} from this list">Remove</button></div></li>`; }).join('')}</ul>
+    <div data-slot="acct-pages"></div></section>`;
+}
+function samplesHTML() {
+  const ex = window.EXAMPLES; const order = ['japan-trip', 'tulum-wedding', 'chicago-10k', 'redrocks-concert', 'nyc-conference', 'sf-festival'].filter(id => ex[id]);
+  const demoOf = (id) => Object.keys(DEMOS).find(k => DEMOS[k] === id);
+  return `<section class="land-ex" id="samples"><h2>Try a sample</h2><p class="muted">Fully filled-in pages. Opening one never touches your own pages; <b>Make a copy</b> turns it into a page you can edit.</p>
+    <div class="ex-grid">${order.map(id => { const e = normalize(clone(ex[id])); const v = e.venue;
+      return `<div class="ex-card" style="${themeStyle(e.theme)}"><a class="ex-hit" href="?demo=${demoOf(id)}" aria-label="Open ${esc(e.title)}"></a>
+        <span class="ex-img" style="background-image:url('${esc(e.cover)}')"></span>
+        <span class="ex-body"><span class="lbl">${esc(TYPE_LABEL[e.type] || e.type)}${v ? ' · ' + esc(v.city) : ''}</span><b>${esc(e.title)}</b><span>${esc(dateRange(e.start, e.end))}</span></span>
+        <span class="ex-acts"><a class="btn sm" href="?demo=${demoOf(id)}">Open</a><a class="btn sm ghost" href="#edit-ex=${id}">Make a copy</a></span></div>`; }).join('')}</div></section>`;
+}
+function wireLanding() {
+  const m = $('.land'); if (!m) return;
+  m.addEventListener('click', (e) => { const b = e.target.closest('[data-mp-del]'); if (!b) return; const x = pagesAll().find(p => p.pid === b.dataset.mpDel); if (x && confirm(`Remove “${x.cfg.title}” from this list? Links you already shared keep working.`)) { pageRemove(x.pid); if (LS.get('draftId') === x.pid) { LS.del('draftId'); LS.del('draft'); LS.del('draftHosted'); } renderLanding(); } });
+  // pages on the account (other devices) when signed in
+  if (LS.get('signedIn') && SB) sbUser().then(async (u) => {
+    if (!u) return; const c = await sb(); const { data } = await c.from('events').select('id,slug,config,updated_at').eq('owner', u.id).order('updated_at', { ascending: false }).limit(20);
+    const local = new Set(pagesAll().filter(x => x.hosted).map(x => x.hosted.id)); const rows = (data || []).filter(r => !local.has(r.id)); const slot = $('[data-slot="acct-pages"]');
+    if (!rows.length || !slot) return;
+    slot.innerHTML = `<h3 class="sub-h">On your account</h3><ul class="mp-list">${rows.map(r => { const c = normalize(r.config); return `<li style="${themeStyle(c.theme)}"><i class="mp-dot"></i><div class="mp-t"><b>${esc(c.title)}</b><span>${esc([TYPE_LABEL[c.type] || c.type, c.start ? dateRange(c.start, c.end) : '', 'short link'].filter(Boolean).join(' · '))}</span></div><div class="mp-b"><a class="btn sm" href="${esc(shortURL(r.slug))}">Open</a><a class="btn sm" href="#mine/${esc(r.id)}">Replies</a></div></li>`; }).join('')}</ul>`;
+  }).catch(() => {});
+}
+
 // ================= trips: day-by-day itinerary builder (reuses cfg.schedule: {date, time, title, note, kind}) =================
 const PLAN_KINDS = { activity: 'Activity', reservation: 'Reservation', note: 'Note' };
 function tripDays(c) {
@@ -2528,9 +2578,10 @@ function route() {
   if (/(^|&)(access_token|error_description|error_code)=/.test(full)) return authReturn();
   const [h, tab] = full.split('&t=');
   maps.forEach(m => { try { m.remove(); } catch {} }); maps.clear();
-  const qe = new URLSearchParams(location.search).get('e');
+  const qs = new URLSearchParams(location.search); const qe = qs.get('e'), qd = qs.get('demo');
   if (qe && (h === '' || h.startsWith('t='))) { SU = null; return renderHosted(qe.toLowerCase(), h.startsWith('t=') ? h.slice(2) : tab); }
-  if (qe) history.replaceState(null, '', siteBase() + location.hash);
+  if (qd && DEMOS[qd] && (h === '' || h.startsWith('t='))) { SU = null; return renderViewer(normalize(clone(window.EXAMPLES[DEMOS[qd]])), { exampleId: DEMOS[qd], tab: h.startsWith('t=') ? h.slice(2) : tab }); }
+  if (qe || qd) history.replaceState(null, '', siteBase() + location.hash);
   if (h === 'mine' || h.startsWith('mine/')) { SU = null; return renderMine(h.slice(5)); }
   if (!h.startsWith('new') && !h.startsWith('setup')) SU = null;
   if (h.startsWith('e=')) { const c = unpackEvent(h.slice(2)); if (c) return renderViewer(c, { tab }); return renderBroken(); }
@@ -2538,11 +2589,13 @@ function route() {
   if (h.startsWith('edit=')) { const c = unpackEvent(h.slice(5)); if (c) return renderBuilder(c, 'Editing a copy. Publish to get a new link; the original link keeps showing the old version.'); return renderBroken(); }
   if (h.startsWith('edit-ex=')) { const e = window.EXAMPLES[h.slice(8)]; if (e) return renderBuilder(clone(e), 'Started from an example. Change anything, then publish your own link.'); }
   if (h === 'setup') return renderSetup();
-  if (h === 'new') { const d = LS.get('draft'); return d && d.title ? renderBuilder(d, null, LS.get('draftHosted')) : renderSetup(); }
+  if (h === 'new') { const d = LS.get('draft'); return d && d.title ? renderBuilder(d, null, LS.get('draftHosted'), LS.get('draftId') || undefined) : renderSetup(); }
+  if (h.startsWith('page=')) { const x = pagesAll().find(p => p.pid === h.slice(5)); if (x) return renderBuilder(x.cfg, null, x.hosted, x.pid); }
+  if (h.startsWith('dup=')) { const x = pagesAll().find(p => p.pid === h.slice(4)); if (x) { const pid = newPid(); history.replaceState(null, '', siteBase() + '#page=' + pid); return renderBuilder(duplicateCfg(x.cfg), 'This is a copy. Publish it to get its own link.', null, pid); } }
   SU = null; renderLanding();
 }
 
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

@@ -130,5 +130,63 @@ window.EXAMPLES = {
       { label: 'Bags', note: 'Clear bags up to 12 x 6 x 12 in, or small clutches.' },
       { label: 'Layers', note: 'August afternoons in the park can drop into the 50s °F. Bring a jacket.' }
     ]
+  },
+  'redrocks-concert': {
+    v: 2,
+    type: 'Concert',
+    title: 'Canyon Lights Live',
+    tagline: 'Two bands, one amphitheatre, the whole night sky',
+    host: 'Canyon Lights',
+    description: 'A summer night at Red Rocks with The Long Echo headlining and Paper Kites Club opening.\n\nThe venue is outdoors and about 6,400 ft up: bring a layer and water. The walk from the upper lot to the seats is steep.',
+    start: '2027-06-19T19:00',
+    end: '2027-06-19T23:00',
+    tz: 'America/Denver',
+    venue: { name: 'Red Rocks Amphitheatre', address: '18300 W Alameda Pkwy, Morrison, CO 80465', lat: 39.66528, lon: -105.20583, city: 'Morrison', region: 'Colorado', country: 'United States', cc: 'us' },
+    cover: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/RedRocksAMP.png/1280px-RedRocksAMP.png',
+    theme: { accent: '#FF6B35', font: 'condensed', mode: 'dark' },
+    tools: { weather: true, travel: true, stay: true, nearby: true, tours: true, mytrip: true, packing: true },
+    off: {},
+    schedule: [
+      { date: '2027-06-19', time: '17:30', title: 'Parking lots open', note: 'Upper North and Lower North lots' },
+      { date: '2027-06-19', time: '22:45', title: 'Shuttle back to Denver', note: 'Leaves from the lower south lot' }
+    ],
+    notes: [{ label: 'Altitude', text: 'Drink water before you climb the stairs, and take it slow.', url: '' }],
+    x: { Concert: { doors: '18:00', opener: 'Paper Kites Club', openerAt: '19:00', headliner: 'The Long Echo', headlinerAt: '20:30', bags: 'Clear bags up to 12 x 6 x 12 in, or small clutches', parking: 'Free general parking in the venue lots', pickup: 'Rideshare pickup is in the lower south lot' } },
+    bring: 'A warm layer\nRefillable water bottle (empty)'
+  },
+  'japan-trip': {
+    v: 2,
+    type: 'Trip',
+    title: 'Japan in spring',
+    tagline: 'Tokyo, Kyoto and Osaka in ten days',
+    host: '',
+    description: 'Cherry blossom season: four nights in Tokyo, three in Kyoto, two in Osaka. Shinkansen between cities.',
+    start: '2027-04-02',
+    end: '2027-04-11',
+    tz: 'Asia/Tokyo',
+    venue: { name: 'Tokyo', address: 'Shinjuku, Tokyo, Japan', lat: 35.68972, lon: 139.69222, city: 'Tokyo', region: 'Tokyo', country: 'Japan', cc: 'jp' },
+    cover: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Torii_path_with_lantern_at_Fushimi_Inari_Taisha_Shrine%2C_Kyoto%2C_Japan.jpg/1280px-Torii_path_with_lantern_at_Fushimi_Inari_Taisha_Shrine%2C_Kyoto%2C_Japan.jpg',
+    theme: { accent: '#C2185B', font: 'serif', mode: 'light' },
+    tools: { weather: true, travel: true, stay: true, nearby: true, tours: true, mytrip: true, packing: true },
+    off: { rsvp: true },
+    schedule: [
+      { date: '2027-04-02', time: '15:30', title: 'Land at Haneda', note: 'Keikyu line to Shinagawa, then JR to Shinjuku', kind: 'activity' },
+      { date: '2027-04-02', time: '', title: 'Check in, Shinjuku hotel', note: 'Sample booking, conf. SAMPLE-0001', kind: 'reservation' },
+      { date: '2027-04-03', time: '', title: 'Shinjuku Gyoen for the cherry blossoms', note: 'Opens 9:00, small entry fee', kind: 'activity' },
+      { date: '2027-04-03', time: '19:00', title: 'Dinner in Omoide Yokocho', note: '', kind: 'activity' },
+      { date: '2027-04-04', time: '', title: 'Asakusa and Senso-ji, then a river cruise', note: '', kind: 'activity' },
+      { date: '2027-04-05', time: '', title: 'Day trip to Nikko', note: 'Get the Nikko pass at Asakusa station', kind: 'activity' },
+      { date: '2027-04-06', time: '10:00', title: 'Shinkansen to Kyoto', note: 'Nozomi from Tokyo station, about 2 h 15 min. Reserved seats.', kind: 'reservation' },
+      { date: '2027-04-06', time: '', title: 'Check in, Kyoto ryokan', note: 'Sample booking, conf. SAMPLE-0002', kind: 'reservation' },
+      { date: '2027-04-07', time: '07:00', title: 'Fushimi Inari before the crowds', note: '', kind: 'activity' },
+      { date: '2027-04-08', time: '', title: 'Arashiyama bamboo grove and Tenryu-ji', note: '', kind: 'activity' },
+      { date: '2027-04-09', time: '', title: 'Train to Osaka', note: 'JR Special Rapid, about 30 min', kind: 'activity' },
+      { date: '2027-04-09', time: '19:00', title: 'Dotonbori street food', note: '', kind: 'activity' },
+      { date: '2027-04-10', time: '', title: 'Osaka Castle park', note: '', kind: 'activity' },
+      { date: '2027-04-11', time: '', title: 'Fly home from Kansai', note: 'Leave Namba by 9:00 on the Nankai Rapi:t', kind: 'note' }
+    ],
+    notes: [{ label: 'Money', text: 'Cash is still handy: get yen at a 7-Eleven ATM. Load a Suica or ICOCA card on your phone for trains.', url: '' }],
+    x: { Trip: { stops: 'Kyoto\nOsaka', companions: '' } },
+    bring: 'Passport\nPower adapter (type A)\nComfortable walking shoes'
   }
 };
