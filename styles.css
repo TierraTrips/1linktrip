@@ -706,3 +706,4 @@ dialog.place-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .route-n { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: 700; flex: none; }
 .route-ed { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 10px; }
 .stop-chips { margin-bottom: 8px; } .day-city { font: 600 .72rem var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted, var(--slate)); margin-left: 6px; }
+.inbox-note { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 10%, transparent); margin-bottom: 10px; }

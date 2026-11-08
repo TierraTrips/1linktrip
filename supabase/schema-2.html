@@ -1,0 +1,56 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eventpages database setup, part 2</title><meta name="robots" content="noindex"><style>body{font:16px -apple-system,system-ui,sans-serif;margin:0;padding:20px;background:#E7E9EE;color:#111;max-width:760px}
+ol{padding-left:1.2em} li{margin:6px 0} code{background:#fff;border-radius:6px;padding:1px 5px} h3{margin:22px 0 6px}
+button{font:600 18px -apple-system,system-ui,sans-serif;width:100%;padding:16px;border:0;border-radius:12px;background:#3048F0;color:#fff;margin:12px 0}
+textarea{width:100%;height:40vh;box-sizing:border-box;font:12px ui-monospace,Menlo,monospace;border-radius:12px;border:1px solid #ccc;padding:10px}</style></head>
+<body><h2 style="margin:0 0 4px">Database setup, part 2</h2><div>Saves each person’s itinerary to their account (so it follows them across devices) and prepares email forwarding. Tap Copy, then paste into Supabase → <b>SQL Editor</b> → <b>New query</b> → <b>Run</b>. Safe to run again; it only adds new tables.</div>
+<button data-copy="t">Copy SQL</button><textarea id="t" readonly>-- Eventpages schema, part 2: personal itineraries synced to the account, and (dormant) email forwarding.
+-- Paste into Supabase Dashboard → SQL Editor → New query → Run. Safe to run more than once. Adds new tables only.
+--
+--   trip_items      a signed-in person&#x27;s own itinerary items (bookings and saved places), per page
+--   inbound_tokens  one private forwarding token per person, used by the optional inbound-email function
+
+create extension if not exists pgcrypto;
+
+create table if not exists public.trip_items (
+  id          text not null,
+  owner       uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  page_key    text not null check (char_length(page_key) between 1 and 80),
+  kind        text not null check (kind in (&#x27;booking&#x27;, &#x27;place&#x27;)),
+  item        jsonb not null,
+  source      text not null default &#x27;app&#x27; check (source in (&#x27;app&#x27;, &#x27;email&#x27;)),
+  updated_at  timestamptz not null default now(),
+  created_at  timestamptz not null default now(),
+  primary key (owner, id)
+);
+create index if not exists trip_items_owner_page_idx on public.trip_items (owner, page_key);
+
+create table if not exists public.inbound_tokens (
+  owner       uuid primary key default auth.uid() references auth.users (id) on delete cascade,
+  token       text not null unique default encode(gen_random_bytes(9), &#x27;hex&#x27;),
+  created_at  timestamptz not null default now()
+);
+
+alter table public.trip_items     enable row level security;
+alter table public.inbound_tokens enable row level security;
+
+-- trip_items: only the owner, for everything
+drop policy if exists &quot;trip_items_own&quot; on public.trip_items;
+create policy &quot;trip_items_own&quot; on public.trip_items
+  for all to authenticated
+  using (owner = (select auth.uid()))
+  with check (owner = (select auth.uid()));
+
+-- inbound_tokens: the owner can read and create their own token (the inbound function uses the service role on the server)
+drop policy if exists &quot;inbound_tokens_select_own&quot; on public.inbound_tokens;
+create policy &quot;inbound_tokens_select_own&quot; on public.inbound_tokens
+  for select to authenticated using (owner = (select auth.uid()));
+drop policy if exists &quot;inbound_tokens_insert_own&quot; on public.inbound_tokens;
+create policy &quot;inbound_tokens_insert_own&quot; on public.inbound_tokens
+  for insert to authenticated with check (owner = (select auth.uid()));
+
+-- grants (new tables are not exposed automatically in this project)
+revoke all on public.trip_items, public.inbound_tokens from anon, authenticated;
+grant select, insert, update, delete on public.trip_items     to authenticated;
+grant select, insert                 on public.inbound_tokens to authenticated;
+</textarea><script>document.querySelectorAll('button[data-copy]').forEach(b=>b.onclick=async()=>{const t=document.getElementById(b.dataset.copy);try{await navigator.clipboard.writeText(t.value)}catch(e){t.select();document.execCommand('copy')}const o=b.textContent;b.textContent='Copied ✓';setTimeout(()=>b.textContent=o,2000)})</script></body></html>

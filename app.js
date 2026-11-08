@@ -1251,7 +1251,7 @@ function wireEvent(cfg, art, seq, air, opts) {
 function wireItin(cfg, art) {
   const s = art.querySelector('#sec-itinerary'); if (!s) return;
   const body = s.querySelector('.sec-b'); let draft = null, editing = null;
-  const rerender = () => { body.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); art._planChanged && art._planChanged(); };
+  const rerender = () => { body.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); art._planChanged && art._planChanged(); if (LS.get('signedIn')) syncPush(cfg); };
   const openForm = (x, i) => {
     draft = { ...x }; editing = i; const slot = body.querySelector('[data-slot="itin-form"]'); slot.innerHTML = itinFormHTML(draft, i);
     body.querySelector('.itin-btns')?.setAttribute('hidden', '');
@@ -2646,7 +2646,7 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
 // schedule / trip itinerary, and as gold ★ pins on the map. Tapping one opens the same place card.
 const planKey = (cfg) => 'plan:' + eventKey(cfg).slice(6);
 const planLoad = (cfg) => LS.get(planKey(cfg), []) || [];
-const planSave = (cfg, xs) => LS.set(planKey(cfg), xs);
+const planSave = (cfg, xs) => { LS.set(planKey(cfg), xs); if (typeof syncPush === 'function' && LS.get('signedIn')) syncPush(cfg); };
 function planDays(cfg) {
   if (!cfg.start) return [];
   const tr = tripDates(cfg); let s = isTrip(cfg) ? cfg.start.slice(0, 10) : tr.arrive, e = isTrip(cfg) ? (cfg.end || cfg.start).slice(0, 10) : tr.leave;
@@ -2734,6 +2734,7 @@ function wirePlan(cfg, art, mapCtl) {
   const openPlan = (x) => { if (x.src === 'g' && art._openGPlace) art._openGPlace(x.ref); else if (art._openPlace) art._openPlace(x.ref); };
   const render = () => { if (body) body.innerHTML = planHTML(cfg); art._renderSchedule && art._renderSchedule(); pins(); };
   art._planChanged = render; pins();
+  if (LS.get('signedIn') && cfg.tools.mytrip) syncPull(cfg, art).catch(() => {});
   if (!body) return;
   body.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return; const li = b.closest('[data-plan-id]'); const xs = planLoad(cfg); const i = li ? xs.findIndex(x => x.id === li.dataset.planId) : -1;
@@ -2980,6 +2981,42 @@ function routeStaysHTML(cfg) {
     return bookExt('hotels', 'ghotels', p, `${esc(t('Hotels in {c}', { c: s.name }))} <small>${esc(dateRange(s.from, s.to))} · Google Hotels</small>`) + bookExt('hotels', 'booking', p, `${esc(t('Hotels and apartments'))} · ${esc(s.name)} <small>Booking.com</small>`); }).join('')}</div>`;
 }
 
+// ================= personal itinerary ↔ account (trip_items; quiet no-op until schema-2 is installed) =================
+const syncKey = (cfg) => eventKey(cfg).slice(6);
+const syncOff = () => { const o = LS.get('syncOff'); return o && Date.now() - o < 3600e3; };
+const tableMissing = (e) => e && (e.code === 'PGRST205' || e.code === '42P01' || /does not exist|schema cache/i.test(e.message || ''));
+function withIds(cfg) { // bookings had no ids before sync existed
+  const xs = itinLoad(cfg); let ch = false; xs.forEach(x => { if (!x.id) { x.id = 'bk' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); ch = true; } }); if (ch) LS.set(itinKey(cfg), xs); return xs;
+}
+async function syncUser() { if (!SB || !LS.get('signedIn') || syncOff()) return null; try { return await sbUser(); } catch { return null; } }
+const syncPush = debounce(async (cfg) => {
+  const u = await syncUser(); if (!u) return; const c = await sb(); const key = syncKey(cfg);
+  const rows = withIds(cfg).map(x => ({ id: x.id, page_key: key, kind: 'booking', item: x, updated_at: new Date().toISOString() }))
+    .concat(planLoad(cfg).map(x => ({ id: x.id, page_key: key, kind: 'place', item: x, updated_at: new Date().toISOString() })));
+  if (rows.length) { const { error } = await c.from('trip_items').upsert(rows, { onConflict: 'owner,id' }); if (tableMissing(error)) { LS.set('syncOff', Date.now()); return; } }
+  let q = c.from('trip_items').delete().eq('page_key', key); if (rows.length) q = q.not('id', 'in', `(${rows.map(r => '"' + r.id.replace(/"/g, '') + '"').join(',')})`);
+  await q;
+}, 800);
+async function syncPull(cfg, art) {
+  const u = await syncUser(); if (!u) return; const c = await sb(); const key = syncKey(cfg);
+  const { data, error } = await c.from('trip_items').select('id,page_key,kind,item,source').in('page_key', [key, 'inbox']);
+  if (error) { if (tableMissing(error)) LS.set('syncOff', Date.now()); return; }
+  const mine = (data || []).filter(r => r.page_key === key); const inbox = (data || []).filter(r => r.page_key === 'inbox');
+  const bk = withIds(cfg), pl = planLoad(cfg); const have = new Set(bk.map(x => x.id).concat(pl.map(x => x.id))); let added = 0;
+  mine.forEach(r => { if (have.has(r.id) || !r.item) return; if (r.kind === 'place') pl.push({ ...r.item, id: r.id }); else bk.push({ ...r.item, id: r.id }); added++; });
+  if (added) { LS.set(itinKey(cfg), bk); planSave(cfg, pl); art._planChanged && art._planChanged(); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); }
+  if (added || !mine.length) syncPush(cfg); // first sync uploads what this device already had
+  const slot = art.querySelector('#sec-plan .sec-b');
+  if (inbox.length && slot) {
+    slot.insertAdjacentHTML('afterbegin', `<div class="inbox-note"><b>${esc(t('{n} forwarded bookings', { n: inbox.length }))}</b> <button type="button" class="btn sm" data-inbox-add>${t('Add to this trip')}</button></div>`);
+    slot.querySelector('[data-inbox-add]').onclick = async (e) => {
+      e.target.disabled = true; const xs = withIds(cfg); inbox.forEach(r => xs.push({ ...r.item, id: r.id }));
+      LS.set(itinKey(cfg), xs); await c.from('trip_items').update({ page_key: key }).in('id', inbox.map(r => r.id));
+      art._planChanged && art._planChanged(); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); toast(t('Added {n} bookings', { n: inbox.length }));
+    };
+  }
+}
+
 // ================= trips: day-by-day itinerary builder (reuses cfg.schedule: {date, time, title, note, kind}) =================
 const PLAN_KINDS = { activity: 'Activity', reservation: 'Reservation', note: 'Note' };
 function tripDays(c) {
@@ -3133,5 +3170,5 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
