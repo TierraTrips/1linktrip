@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mock · Eventpages — one link for your guests’ whole trip</title>
+<meta name="robots" content="noindex">
+<meta name="description" content="Make one page for your event. Guests get your schedule, plus how to get there and where to stay. Free.">
+<meta property="og:title" content="Eventpages">
+<meta property="og:description" content="One link for your guests’ whole trip.">
+<meta name="theme-color" content="#E7E9EE">
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Eventpages">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='7' width='28' height='18' rx='3' fill='%233048F0'/%3E%3Ccircle cx='2' cy='16' r='3.2' fill='%23fff'/%3E%3Ccircle cx='30' cy='16' r='3.2' fill='%23fff'/%3E%3Cpath d='M21 9v14' stroke='%23fff' stroke-width='1.5' stroke-dasharray='2 2'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Instrument+Sans:wght@400..700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="../styles.css">
+</head>
+<style>
+/* MOCK: simplified homepage — header CTA appears only once the hero CTA scrolls away */
+.land-top { position: sticky; top: 0; z-index: 20; margin: 0 -20px; padding: 14px 20px; padding-top: max(14px, env(safe-area-inset-top));
+  background: var(--fog); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border-bottom: 1px solid transparent; transition: border-color .25s ease; }
+.land-top.scrolled { border-bottom-color: color-mix(in srgb, currentColor 10%, transparent); }
+.top-cta { opacity: 0; transform: translateY(-6px) scale(.96); pointer-events: none; visibility: hidden;
+  transition: opacity .25s ease, transform .25s ease, visibility 0s linear .25s; }
+.land-top.show-cta .top-cta { opacity: 1; transform: none; pointer-events: auto; visibility: visible; transition: opacity .25s ease, transform .25s ease, visibility 0s; }
+.land-hero { grid-template-columns: 1fr !important; padding-bottom: 24px; }
+@media (min-width: 900px) { .land-hero { padding: 48px 0 40px; } .land-copy { max-width: 760px; } }
+@media (prefers-reduced-motion: reduce) { .top-cta, .land-top.show-cta .top-cta { transition: none; } }
+</style>
+<body>
+<div id="app">
+  <main class="land">
+    <header class="land-top"><a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span>Eventpages</a><span class="land-nav"><a class="btn primary top-cta" href="../#setup" aria-hidden="true" tabindex="-1">Create a page</a></span></header>
+    <section class="land-hero">
+      <div class="land-copy">
+        <h1><em>One link</em> for your guests’ whole trip.</h1>
+        <p class="lede">Add your event and the venue. Guests get your schedule, plus how to get there and where to stay.</p>
+        <div class="btns"><a class="btn primary big" id="hero-cta" href="../#setup">Create a page</a></div>
+        <p class="muted small">Free. No account needed.</p>
+      </div>
+      </section>
+    
+    <section class="land-ex" id="samples"><h2>Try a sample</h2><p class="muted">Open one to look around. <b>Make a copy</b> to edit it as your own.</p>
+    <div class="ex-grid"><div class="ex-card" style="--accent:#C2185B;--on-accent:#ffffff;--display:'Fraunces', Georgia, serif"><a class="ex-hit" href="../?demo=japan" aria-label="Open Japan in spring"></a>
+        <span class="ex-img" style="background-image:url('https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Torii_path_with_lantern_at_Fushimi_Inari_Taisha_Shrine%2C_Kyoto%2C_Japan.jpg/1280px-Torii_path_with_lantern_at_Fushimi_Inari_Taisha_Shrine%2C_Kyoto%2C_Japan.jpg')"></span>
+        <span class="ex-body"><span class="lbl">Vacation / Trip · Tokyo</span><b>Japan in spring</b><span>Apr 2–11, 2027</span></span>
+        <span class="ex-acts"><a class="btn sm" href="../?demo=japan">Open</a><a class="btn sm ghost" href="../#edit-ex=japan-trip">Make a copy</a></span></div><div class="ex-card" style="--accent:#0B7A75;--on-accent:#ffffff;--display:'Fraunces', Georgia, serif"><a class="ex-hit" href="../?demo=wedding" aria-label="Open Maya &amp; Theo"></a>
+        <span class="ex-img" style="background-image:url('https://upload.wikimedia.org/wikipedia/commons/thumb/f/ff/Mexico_-_beach_by_Tulum%2C_2022.jpg/1280px-Mexico_-_beach_by_Tulum%2C_2022.jpg')"></span>
+        <span class="ex-body"><span class="lbl">Wedding · Tulum</span><b>Maya &amp; Theo</b><span>Sat, Mar 13, 2027</span></span>
+        <span class="ex-acts"><a class="btn sm" href="../?demo=wedding">Open</a><a class="btn sm ghost" href="../#edit-ex=tulum-wedding">Make a copy</a></span></div><div class="ex-card" style="--accent:#2E7D32;--on-accent:#ffffff;--display:'Unbounded', system-ui, sans-serif"><a class="ex-hit" href="../?demo=race" aria-label="Open Lakefront 10K"></a>
+        <span class="ex-img" style="background-image:url('https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Buckingham_Fountain_%26_Chicago_skyline%2C_Aug_10.jpg/1280px-Buckingham_Fountain_%26_Chicago_skyline%2C_Aug_10.jpg')"></span>
+        <span class="ex-body"><span class="lbl">Race · Chicago</span><b>Lakefront 10K</b><span>Sun, May 16, 2027</span></span>
+        <span class="ex-acts"><a class="btn sm" href="../?demo=race">Open</a><a class="btn sm ghost" href="../#edit-ex=chicago-10k">Make a copy</a></span></div><div class="ex-card" style="--accent:#FF6B35;--on-accent:#ffffff;--display:'Big Shoulders Display', 'Arial Narrow', sans-serif"><a class="ex-hit" href="../?demo=concert" aria-label="Open Canyon Lights Live"></a>
+        <span class="ex-img" style="background-image:url('https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/RedRocksAMP.png/1280px-RedRocksAMP.png')"></span>
+        <span class="ex-body"><span class="lbl">Concert · Morrison</span><b>Canyon Lights Live</b><span>Sat, Jun 19, 2027</span></span>
+        <span class="ex-acts"><a class="btn sm" href="../?demo=concert">Open</a><a class="btn sm ghost" href="../#edit-ex=redrocks-concert">Make a copy</a></span></div><div class="ex-card" style="--accent:#3048F0;--on-accent:#ffffff;--display:'Bricolage Grotesque', system-ui, sans-serif"><a class="ex-hit" href="../?demo=conference" aria-label="Open Signal &amp; Noise 2026"></a>
+        <span class="ex-img" style="background-image:url('https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Javits_Center_November_2022.jpg/1280px-Javits_Center_November_2022.jpg')"></span>
+        <span class="ex-body"><span class="lbl">Conference · New York</span><b>Signal &amp; Noise 2026</b><span>Nov 18–19, 2026</span></span>
+        <span class="ex-acts"><a class="btn sm" href="../?demo=conference">Open</a><a class="btn sm ghost" href="../#edit-ex=nyc-conference">Make a copy</a></span></div><div class="ex-card" style="--accent:#FF6B35;--on-accent:#ffffff;--display:'Big Shoulders Display', 'Arial Narrow', sans-serif"><a class="ex-hit" href="../?demo=festival" aria-label="Open Fog City Sounds"></a>
+        <span class="ex-img" style="background-image:url('https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Hardly_Strictly_Crowd_%28cropped%29.jpg/1280px-Hardly_Strictly_Crowd_%28cropped%29.jpg')"></span>
+        <span class="ex-body"><span class="lbl">Festival · San Francisco</span><b>Fog City Sounds</b><span>Aug 6–8, 2027</span></span>
+        <span class="ex-acts"><a class="btn sm" href="../?demo=festival">Open</a><a class="btn sm ghost" href="../#edit-ex=sf-festival">Make a copy</a></span></div></div></section>
+    <section class="land-what">
+      <h2>What your guests get</h2>
+      <dl>
+        <div><dt>Weather</dt><dd>The forecast as the date gets close, typical weather before that.</dd></div>
+        <div><dt>Map</dt><dd>The venue and what’s around it.</dd></div>
+        <div><dt>Flights</dt><dd>The closest airports and fares for their dates.</dd></div>
+        <div><dt>Hotels</dt><dd>Places to stay nearby, with the dates already set.</dd></div>
+        <div><dt>Food</dt><dd>Restaurants and bars nearby. Filter by cuisine, diet or what’s open now.</dd></div>
+        <div><dt>Event details</dt><dd>What fits your event, like an RSVP for a wedding or packet pickup for a race.</dd></div>
+        <div><dt>Their plans</dt><dd>Guests paste in their bookings and see them next to your schedule.</dd></div>
+        <div><dt>Getting around</dt><dd>Nearby stops, directions, and a ride to the door.</dd></div>
+      </dl>
+    </section>
+    <footer class="land-foot">Built on Google Maps, Open-Meteo and OurAirports data.</footer>
+  </main></div>
+<script>
+// MOCK: show the header "Create a page" only while the hero one is off-screen.
+(function () {
+  var top = document.querySelector('.land-top'), cta = top.querySelector('.top-cta'), hero = document.getElementById('hero-cta');
+  function set(show) { top.classList.toggle('show-cta', show); cta.setAttribute('aria-hidden', show ? 'false' : 'true'); cta.tabIndex = show ? 0 : -1; }
+  new IntersectionObserver(function (es) { var e = es[0]; set(!e.isIntersecting); },
+    { rootMargin: '-' + top.offsetHeight + 'px 0px 0px 0px', threshold: 0 }).observe(hero);
+  var s = function () { top.classList.toggle('scrolled', scrollY > 4); }; addEventListener('scroll', s, { passive: true }); s();
+})();
+</script>
+</body>
+</html>
