@@ -38,7 +38,7 @@ async function collect(browser) {
     for (const tab of ['event', 'travel', 'nearby']) {
       await page.goto(`${BASE}#e=${packed}${tab === 'event' ? '' : '&t=' + tab}`); await page.waitForSelector('.ev');
       await page.waitForTimeout(tab === 'nearby' ? 6000 : 1500); // let OSM-driven lists fill in
-      const links = await page.$$eval('.ev a[href^="http"]', as => as.map(a => ({ href: a.href, text: a.textContent.replace(/\s+/g, ' ').trim(), rel: a.rel })));
+      const links = await page.$$eval('.ev a[href^="http"]', as => as.filter(a => !a.closest('.gm-style, .leaflet-control-container')).map(a => ({ href: a.href, text: a.textContent.replace(/\s+/g, ' ').trim(), rel: a.rel }))); // the map's own attribution links aren't ours
       links.forEach(l => out.push({ ...l, event: ev.cfg.title, place: ev.place }));
     }
   }

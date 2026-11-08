@@ -26,7 +26,7 @@ function toast(msg) {
 // ---------- dates (all event times are wall-clock in the venue's time zone) ----------
 const asUTC = (s) => new Date((s.length === 10 ? s + 'T00:00' : s) + ':00Z');
 const LOCALES = { en: 'en-US', es: 'es-ES', fr: 'fr-FR', pt: 'pt-BR', de: 'de-DE', it: 'it-IT', ja: 'ja-JP' };
-const fmt = (s, o) => new Intl.DateTimeFormat(LOCALES[LANG] || 'en-US', { timeZone: 'UTC', ...o }).format(asUTC(s));
+const fmt = (s, o) => { try { return new Intl.DateTimeFormat(LOCALES[LANG] || LANG || 'en-US', { timeZone: 'UTC', ...o }).format(asUTC(s)); } catch { return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', ...o }).format(asUTC(s)); } };
 const ymd = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 const addDays = (s, n) => { const d = asUTC(s.slice(0, 10)); d.setUTCDate(d.getUTCDate() + n); return ymd(d); };
 const todayYMD = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
@@ -814,7 +814,7 @@ async function copy(text) {
 
 // ---------- landing ----------
 function renderLanding() {
-  LANG = 'en'; document.documentElement.lang = 'en';
+  LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
   document.title = 'Eventpages — give every guest the whole trip in one link';
   const ex = window.EXAMPLES; const draft = LS.get('draft');
   $('#app').innerHTML = `
@@ -917,7 +917,7 @@ const TYPE_CARDS = {
 };
 const TYPE_GROUP = { Trip: 'For trips', Wedding: 'For weddings', Race: 'For races', Concert: 'For concerts', 'Sporting event': 'For game day', Conference: 'For conferences' };
 const COMMON_CARDS = [['schedule', 'Schedule', 'Times and places'], ['notes', 'Notes for guests', 'Kids, parking, FAQ'], ['about', 'About', 'Host and a few words'],
-  ['bring', 'Must-bring items', 'Top of the packing list']];
+  ['bring', 'Must-bring items', 'Top of the packing list'], ['langs', 'Guest languages', 'Your page in their language']];
 const CARD_ICONS = {
   rsvp: '<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>', block: '<path d="M3 20V9l9-5 9 5v11"/><path d="M9 20v-6h6v6"/>', dress: '<path d="M9 3l3 3 3-3 3 4-3 2v12H9V9L6 7z"/>',
   registry: '<rect x="3" y="8" width="18" height="13" rx="1"/><path d="M12 8v13M3 12h18M12 8S8 3 6 5s6 3 6 3 8-1 6-3-6 3-6 3"/>', startfinish: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
@@ -966,6 +966,9 @@ function normalize(c) {
   c.tools = { ...defaultTools(c.type), ...(c.tools || {}) };
   c.off = c.off || {}; c.notes = Array.isArray(c.notes) ? c.notes : []; c.schedule = Array.isArray(c.schedule) ? c.schedule : [];
   c.x = c.x && typeof c.x === 'object' ? c.x : {}; c.bring = typeof c.bring === 'string' ? c.bring : '';
+  c.lang = typeof c.lang === 'string' && /^[a-z]{2,3}$/.test(c.lang) ? c.lang : 'en';
+  c.langs = Array.isArray(c.langs) ? c.langs.filter(l => typeof l === 'string' && /^[a-z]{2,3}$/.test(l) && l !== c.lang).slice(0, 12) : [];
+  if (c.tr && typeof c.tr === 'object') { const tr = {}; for (const [l, m] of Object.entries(c.tr)) { if (!/^[a-z]{2,3}$/.test(l) || !m || typeof m !== 'object') continue; tr[l] = {}; for (const [k, e] of Object.entries(m)) if (e && typeof e.t === 'string' && typeof e.h === 'string') tr[l][k] = { h: e.h, t: e.t.slice(0, 6000), ...(e.o ? { o: true } : {}) }; } c.tr = tr; } else c.tr = {};
   c.stops = Array.isArray(c.stops) ? c.stops.filter(x => x && typeof x === 'object').slice(0, 20) : [];
   delete c.osm; // hosted pages store a nearby-places snapshot beside the config; it never travels in links or drafts
   return c;
@@ -1133,7 +1136,7 @@ function renderEvent(cfg, root, opts = {}) {
     ${tabs.some(x => x[0] === 'nearby') ? panel('nearby', nearbyTabHTML(cfg), tabHead('nearby')) : ''}
     ${tabs.some(x => x[0] === 'mytrip') ? panel('mytrip', myTripTabHTML(cfg), tabHead('mytrip')) : ''}
     <footer class="ev-foot">
-      ${opts.preview ? '' : `<p class="lang-row"><select class="lang-sel" data-lang aria-label="Language">${LANGS.map(([k, l]) => `<option value="${k}" ${k === LANG ? 'selected' : ''}>${l}</option>`).join('')}</select></p><a href="#edit=${packEvent(cfg)}">${t('Edit a copy of this page')}</a> · <a href="#">${t('Make your own')}</a>`}
+      ${opts.preview ? '' : `<p class="lang-row">${langSelectHTML(opts.src || cfg)}</p><a href="#edit=${packEvent(opts.src || cfg)}">${t('Edit a copy of this page')}</a> · <a href="#">${t('Make your own')}</a>`}
       <p>Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a> · Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a></p>
     </footer>
   </article>`;
@@ -1171,7 +1174,7 @@ function wireEvent(cfg, art, seq, air, opts) {
   if (!document._menuCloser) { document._menuCloser = true; document.addEventListener('click', (e) => { if (!e.target.closest('details.menu')) $$('details.menu[open]').forEach(d => { d.open = false; }); }); }
   wireItin(cfg, art); wirePacking(cfg, art);
   if (!v) wirePlan(cfg, art, null);
-  art.querySelector('[data-lang]')?.addEventListener('change', (e) => { LS.set('lang', e.target.value); route(); });
+  art.querySelector('[data-lang]')?.addEventListener('change', (e) => setGuestLang(e.target.value));
   if (!v) return;
 
   const applyModes = () => {
@@ -1299,12 +1302,13 @@ function wireItin(cfg, art) {
 }
 
 function renderViewer(cfg, { exampleId, tab } = {}) {
-  LANG = pickLang(); document.documentElement.lang = LANG;
+  LANG = guestLangPick(cfg); document.documentElement.lang = LANG; document.documentElement.dir = RTL.has(LANG) ? 'rtl' : 'ltr';
   document.title = (cfg.title || 'Event') + ' · Eventpages';
   const packed = location.hash.split('&t=')[0].slice(3);
   const editHref = exampleId ? `#edit-ex=${exampleId}` : `#edit=${packed}`;
   $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#"><span class="brand-mark" aria-hidden="true"></span>Eventpages</a>${exampleId ? `<span class="vbar-note">${t('Example page')}</span>` : ''}<a class="btn sm" href="${editHref}">${exampleId ? t('Customize this') : t('Edit a copy')}</a></div><div id="ev-root"></div></div>`;
-  renderEvent(cfg, $('#ev-root'), { tab });
+  $('.vbar').insertAdjacentHTML('beforeend', langSelectHTML(cfg));
+  renderEvent(translatedView(cfg, LANG), $('#ev-root'), { tab, src: cfg });
   const foot = $('.ev-foot a'); if (foot && exampleId) foot.setAttribute('href', editHref);
   if (location.search) $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
   window.scrollTo(0, 0);
@@ -1313,7 +1317,7 @@ function renderViewer(cfg, { exampleId, tab } = {}) {
 // ---------- editor ----------
 let B = null; // builder state
 function renderBuilder(cfg, source, hosted, pid) {
-  LANG = 'en'; document.documentElement.lang = 'en';
+  LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
   document.title = 'Edit your page · Eventpages';
   B = { cfg: normalize(cfg), venueResults: [], tab: 'edit', card: null, hosted: hosted && hosted.id ? hosted : null };
   LS.set('draftHosted', B.hosted); B.pid = pid || newPid(); LS.set('draftId', B.pid); LS.set('draft', B.cfg); pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted });
@@ -1338,7 +1342,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   const bl = $('.builder');
   bl.addEventListener('click', (e) => {
     const tb = e.target.closest('[data-tab]'); if (tb && tb.tagName === 'BUTTON') { bl.dataset.tab = tb.dataset.tab; $$('.seg button').forEach(b => b.setAttribute('aria-selected', String(b === tb))); if (tb.dataset.tab === 'preview') { maps.forEach(m => m.invalidateSize()); window.scrollTo(0, 0); } }
-    if (e.target.closest('[data-act="publish"]')) publish();
+    if (e.target.closest('[data-act="publish"]')) publishTranslated();
   });
   const dlg = $('#pub');
   dlg.addEventListener('click', (e) => {
@@ -1352,8 +1356,17 @@ function renderBuilder(cfg, source, hosted, pid) {
   sh.addEventListener('click', (e) => { if (e.target === sh) sh.close(); });
   wireInputs(sh.querySelector('.sheet-in'));
   if (typeof wirePubHost === 'function') wirePubHost();
+  if (LS.get('signedIn') && SB) aiModes().then(m => { if (m.includes('translate') && B && !$('[data-card="langs"]')) buildForm(); });
   preview();
   if (window.__openCard) { const id = window.__openCard; window.__openCard = null; openCard(id); }
+}
+async function publishTranslated() {
+  const c = B.cfg; const langs = (c.langs || []).filter(l => l !== srcLang(c));
+  if (langs.length && canTranslate() && langs.some(l => Object.keys(staleFields(c, l)).length)) {
+    toast(t('Translating for your guests…'));
+    try { await translateCfg(c); changed(); } catch { toast('Couldn’t translate right now; publishing in your language'); }
+  }
+  publish();
 }
 function publish(opts = {}) {
   const c = B.cfg; const problems = [];
@@ -1385,10 +1398,10 @@ function cardDone(c, id) {
   const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id);
   if (tc) { const sp = typeSpec(c), d = typeData(c); return tc[3].some(k => { const f = sp.fields.find(x => x[0] === k); return f && filled(f[2], d[k]); }); }
   return { schedule: () => c.schedule.some(x => x.title), notes: () => c.notes.some(x => x.label), about: () => !!(c.description || c.host), look: () => !!c.cover, bring: () => !!c.bring.trim(),
-    access: () => !!(c.access && Object.values(c.access).some(Boolean)), replies: () => !c.off.rsvp }[id]?.() || false;
+    access: () => !!(c.access && Object.values(c.access).some(Boolean)), replies: () => !c.off.rsvp, langs: () => (c.langs || []).length > 0 }[id]?.() || false;
 }
 const cardBtn = (c, [id, title, sub]) => { const done = cardDone(c, id); return `<button type="button" class="acard ${done ? 'on' : ''}" data-card="${id}"><span class="aic">${cardIcon(id)}</span><b>${esc(title)}</b><span>${esc(sub)}</span><i class="plus" aria-hidden="true">${done ? '✓' : '+'}</i></button>`; };
-function allCards(c) { return { type: TYPE_CARDS[c.type] || [], common: isTrip(c) ? COMMON_CARDS.filter(x => x[0] !== 'replies').map(x => x[0] === 'schedule' ? ['schedule', 'Day by day', 'Activities, reservations, notes'] : x) : COMMON_CARDS }; }
+function allCards(c) { const cc0 = COMMON_CARDS.filter(x => x[0] !== 'langs' || canTranslate() || (c.langs || []).length); return { type: TYPE_CARDS[c.type] || [], common: isTrip(c) ? cc0.filter(x => x[0] !== 'replies').map(x => x[0] === 'schedule' ? ['schedule', 'Day by day', 'Activities, reservations, notes'] : x) : cc0 }; }
 function buildForm() {
   const c = B.cfg; const f = $('.b-form'); if (!f) return; const keepNote = f.querySelector('.b-note:not(.b-host)'); const keepAI = f.querySelector('[data-ai-edit]');
   const open = new Set($$('details.acc[open]', f).map(d => d.dataset.acc));
@@ -1438,6 +1451,7 @@ function renderSheet() {
     <div class="btns"><button type="button" class="btn sm" data-b="add-sched">+ Add item</button>${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`;
   else if (id === 'notes') body = `${c.notes.map((x, i) => `<div class="rowed"><input data-n="${i}" data-k="label" value="${esc(x.label)}" placeholder="Title" aria-label="Title"><input data-n="${i}" data-k="text" value="${esc(x.text || '')}" placeholder="Text" aria-label="Text"><input data-n="${i}" data-k="url" type="url" value="${esc(x.url || '')}" placeholder="Link (optional)" aria-label="Link"><button type="button" class="ic del" data-ndel="${i}" aria-label="Remove">Remove</button></div>`).join('')}
     <button type="button" class="btn sm" data-b="add-note">+ Add note</button>`;
+  else if (id === 'langs') body = langsCardHTML(c);
   else if (id === 'about') body = `${aboutSiteHTML(c)}${fieldWrap('Hosted by', `<input id="f-host" data-f="host" value="${esc(c.host)}">`, 'f-host')}${fieldWrap('About', `<textarea id="f-desc" data-f="description" rows="6">${esc(c.description)}</textarea>`, 'f-desc')}`;
   else if (id === 'look') body = `${fieldWrap('Cover photo link', `<input id="f-cover" data-f="cover" type="url" value="${esc(c.cover)}" placeholder="https://…/photo.jpg">`, 'f-cover')}
     <div class="field"><label>Color</label><div class="swatches">${SWATCHES.map(s => `<button type="button" class="sw ${s.toLowerCase() === c.theme.accent.toLowerCase() ? 'on' : ''}" style="background:${s}" data-sw="${s}" aria-label="Color ${s}"></button>`).join('')}<input type="color" data-t="accent" value="${esc(c.theme.accent)}" aria-label="Custom color"></div></div>
@@ -1455,7 +1469,7 @@ function wireInputs(root) {
   root.oninput = (e) => {
     const i = e.target; const d = i.dataset; const cfg = c();
     const xd = () => (cfg.x[cfg.type] = cfg.x[cfg.type] || {});
-    if (designInput(i, cfg) || routeInput(i, cfg)) return;
+    if (designInput(i, cfg) || routeInput(i, cfg) || langsInput(i, cfg)) return;
     if (d.when) { whenInput(cfg, d.when, i.value); changed(); }
     else if (d.x) { xd()[d.x] = i.value; changed(); }
     else if (d.xl) { xd()[d.xl][+d.i][d.k] = i.value; changed(); }
@@ -1474,6 +1488,7 @@ function wireInputs(root) {
   root.onclick = (e) => {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset; const cfg = c();
     if (designClick(b, cfg) || tripClick(b, cfg) || routeClick(b, cfg)) return;
+    if (b.dataset.b === 'translate-now') { langsClick(b, cfg); return; }
     if (d.whenTg != null) { whenToggle(cfg); changed(true); setTimeout(() => root.querySelector(hasTime(cfg.start) ? '[data-when="st"]' : '[data-when-tg]')?.focus(), 0); }
     else if (d.card) openCard(d.card);
     else if (d.b === 'close') $('#sheet').close();
@@ -1512,7 +1527,7 @@ async function pickVenue(r) {
 // ---------- guided setup: type → name and date → venue → done ----------
 let SU = null;
 function renderSetup() {
-  LANG = 'en'; document.documentElement.lang = 'en';
+  LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
   document.title = 'Create a page · Eventpages';
   SU = { step: 0, cfg: blankEvent('Party'), results: [], q: '', msg: '' }; LS.del('draftHosted'); LS.set('draftId', newPid());
   B = { cfg: SU.cfg, venueResults: [] };
@@ -1858,8 +1873,9 @@ async function renderHosted(slug, tab) {
   const osm = row.config && row.config.osm; const cfg = normalize(row.config); const hosted = { id: row.id, slug: row.slug, url: shortURL(row.slug) };
   if (osm && cfg.venue && Array.isArray(osm.food)) memo.set(osmKey(cfg.venue.lat, cfg.venue.lon), Promise.resolve(osm));
   document.title = (cfg.title || 'Event') + ' · Eventpages';
-  $('.vbar').insertAdjacentHTML('beforeend', `<a class="btn sm" href="#edit=${packEvent(cfg)}">${t('Edit a copy')}</a>`);
-  renderEvent(cfg, $('#ev-root'), { tab, hosted, shareUrl: hosted.url });
+  LANG = guestLangPick(cfg); document.documentElement.lang = LANG; document.documentElement.dir = RTL.has(LANG) ? 'rtl' : 'ltr';
+  $('.vbar').insertAdjacentHTML('beforeend', `${langSelectHTML(cfg)}<a class="btn sm" href="#edit=${packEvent(cfg)}">${t('Edit a copy')}</a>`);
+  renderEvent(translatedView(cfg, LANG), $('#ev-root'), { tab, hosted, shareUrl: hosted.url, src: cfg });
   // '#' alone can't leave a ?e= page (the hash doesn't change), so home links point at the app itself
   $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
   window.scrollTo(0, 0);
@@ -1894,7 +1910,8 @@ function wireHosted(cfg, art, hosted, opts = {}) {
   if (opts.preview) { art.querySelectorAll('.rsvp input, .rsvp textarea, .rsvp button').forEach(x => { x.disabled = true; }); return; }
   fetchAnnouncements(hosted.id).then(rows => {
     const s = art.querySelector('[data-slot="ann"]'); if (!s || !rows || !rows.length) return;
-    s.innerHTML = `<section class="ev-sec ann" aria-label="${t('Updates from the host')}"><h2 class="sec-h">${t('Updates from the host')}</h2><ul class="ann-list">${rows.map(r => `<li><time>${esc(fmtStamp(r.created_at))}</time><p>${esc(r.body)}</p></li>`).join('')}</ul></section>`;
+    const tr = (cfg.tr && cfg.tr[LANG]) || {}; const show = (r) => { const e = tr['ann.' + r.id]; return e && e.h === hashStr(r.body) ? e.t : r.body; };
+    s.innerHTML = `<section class="ev-sec ann" aria-label="${t('Updates from the host')}"><h2 class="sec-h">${t('Updates from the host')}</h2><ul class="ann-list">${rows.map(r => `<li><time>${esc(fmtStamp(r.created_at))}</time><p>${esc(show(r))}</p></li>`).join('')}</ul></section>`;
   }).catch(() => {});
   art.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-rsvp],[data-rsvp-att]'); if (!b) return;
@@ -2023,7 +2040,7 @@ function renderHostNote() {
 
 // ---------- organizer: My pages, replies, updates ----------
 async function renderMine(id, notice) {
-  LANG = 'en'; document.documentElement.lang = 'en'; document.title = 'My pages · Eventpages';
+  LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr'; document.title = 'My pages · Eventpages';
   const shell = (inner) => { $('#app').innerHTML = `<main class="mine"><header class="land-top"><a class="brand" href="#"><span class="brand-mark"></span>Eventpages</a><nav class="mine-nav"><a href="#mine">My pages</a><a class="btn sm primary" href="#setup">New page</a></nav></header><div class="mine-in">${notice ? `<p class="b-note">${esc(notice)}</p>` : ''}${inner}</div></main>`; };
   if (!SB) return shell('<h1>Hosting isn’t set up</h1>');
   shell('<p class="muted">Loading…</p>');
@@ -2080,7 +2097,7 @@ async function renderMineEvent(id, shell, c, user) {
       <ul class="ann-list own">${(an.data || []).map(a => `<li><time>${esc(fmtStamp(a.created_at))}</time><p>${esc(a.body)}</p><button type="button" class="link" data-an-del="${esc(a.id)}">Delete</button></li>`).join('')}</ul></section>
     <section class="mine-sec"><h2>Replies</h2>
       <p class="rs-sum"><b>${yes.reduce((n, x) => n + (x.guests || 1), 0)}</b> coming <span class="muted">(${yes.length} ${yes.length === 1 ? 'reply' : 'replies'})</span> · <b>${no.length}</b> can’t make it${guests.length ? ` · <b>${waiting.length}</b> of ${guests.length} on your list haven’t replied` : ''}</p>
-      ${replies.length ? `<div class="tbl-wrap"><table class="rs-tbl"><thead><tr><th>Name</th><th>Reply</th><th>Party</th><th>Email</th><th>Note</th></tr></thead><tbody>${replies.map(x => `<tr><td>${esc(x.name)}</td><td>${x.attending ? 'Coming' : 'Can’t make it'}</td><td>${x.attending ? esc(x.guests) : '–'}</td><td>${esc(x.email || '')}</td><td>${esc(x.note || '')}</td></tr>`).join('')}</tbody></table></div><div class="btns"><button type="button" class="btn sm" data-rs="csv">Download CSV</button></div>` : '<p class="muted">No replies yet. Share your short link and they’ll show up here.</p>'}
+      ${replies.length ? `<div class="tbl-wrap"><table class="rs-tbl"><thead><tr><th>Name</th><th>Reply</th><th>Party</th><th>Email</th><th>Note</th></tr></thead><tbody>${replies.map(x => `<tr><td>${esc(x.name)}</td><td>${x.attending ? 'Coming' : 'Can’t make it'}</td><td>${x.attending ? esc(x.guests) : '–'}</td><td>${esc(x.email || '')}</td><td data-note-id="${esc(x.id)}">${esc(x.note || '')}</td></tr>`).join('')}</tbody></table></div><div class="btns"><button type="button" class="btn sm" data-rs="csv">Download CSV</button></div>` : '<p class="muted">No replies yet. Share your short link and they’ll show up here.</p>'}
       <h3 class="sub-h">Guest list</h3><p class="muted small">Import a CSV or paste names (one per line, optional email) to see who hasn’t replied. Your list stays on this device.</p>
       <div class="btns"><label class="btn sm file-btn">Import CSV<input type="file" data-gl-file accept=".csv,.txt,text/csv,text/plain"></label>${guests.length ? '<button type="button" class="btn sm ghost" data-gl="clear">Clear list</button>' : ''}</div>
       <textarea id="gl-paste" rows="3" placeholder="Ana Ruiz, ana@example.com&#10;Ben Okafor"></textarea><div class="btns"><button type="button" class="btn sm" data-gl="add">Add to list</button></div>
@@ -2088,13 +2105,20 @@ async function renderMineEvent(id, shell, c, user) {
     </section>
     <section class="mine-sec"><h2>Page</h2><div class="btns"><button type="button" class="btn sm" data-pg="edit">Edit page</button><button type="button" class="btn sm ghost" data-pg="vis">${r.published ? 'Hide page' : 'Show page again'}</button></div><p class="muted small">${r.published ? 'Anyone with the link can see it.' : 'Hidden: guests see “This page isn’t available”.'}</p></section>`);
   const m = $('.mine'); const again = () => renderMine(id);
+  const notes = Object.fromEntries(replies.filter(x => x.note && x.note.trim().length > 1).map(x => [x.id, x.note]));
+  if (Object.keys(notes).length && canTranslate()) translateForHost(notes).then(tr => { for (const [k, v] of Object.entries(tr)) { const td = m.querySelector(`[data-note-id="${CSS.escape(k)}"]`); if (td && v && v.trim() !== notes[k].trim()) td.insertAdjacentHTML('beforeend', `<div class="tr-note">↳ ${esc(v)}</div>`); } }).catch(() => {});
   const addGuests = (list) => { if (!list.length) { toast('No names found'); return; } const cur = LS.get(guestListKey(id), []) || []; const seen = new Set(cur.map(g => g.email || normName(g.name))); list.forEach(g => { const k = g.email || normName(g.name); if (!seen.has(k)) { seen.add(k); cur.push(g); } }); LS.set(guestListKey(id), cur); toast(`${cur.length} on your guest list`); again(); };
   m.addEventListener('change', (e) => { const i = e.target; if (i.dataset.glFile != null && i.files && i.files[0]) i.files[0].text().then(tx => addGuests(parseGuestList(tx))); });
   m.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
     if (d.an === 'post') {
       const body = $('#an-body').value.trim().slice(0, 2000); const hint = $('.ann-form .hint'); if (!body) { hint.textContent = 'Write something first.'; return; }
-      b.disabled = true; const { error } = await c.from('announcements').insert({ event_id: id, body }); if (error) { b.disabled = false; hint.textContent = 'Couldn’t post: ' + error.message; return; } again();
+      b.disabled = true; const { data: an0, error } = await c.from('announcements').insert({ event_id: id, body }).select('id').single(); if (error) { b.disabled = false; hint.textContent = 'Couldn’t post: ' + error.message; return; }
+      const langs = (cfg.langs || []).filter(l => l !== srcLang(cfg));
+      if (langs.length && canTranslate() && an0) { hint.textContent = 'Translating for your guests…'; const raw = clone(r.config); raw.tr = raw.tr || {};
+        for (const l of langs) { try { const j = await aiImport({ mode: 'translate', fields: { ['ann.' + an0.id]: body }, target: l, source: srcLang(cfg) }); const x = ((j.data && j.data.translations) || [])[0]; if (x) { raw.tr[l] = raw.tr[l] || {}; raw.tr[l]['ann.' + an0.id] = { h: hashStr(body), t: x.text }; } } catch { /* post stays in the original language */ } }
+        await c.from('events').update({ config: raw }).eq('id', id); }
+      again();
     }
     if (d.anDel && confirm('Delete this update?')) { await c.from('announcements').delete().eq('id', d.anDel); again(); }
     if (d.rs === 'csv') {
@@ -3118,8 +3142,9 @@ function airlinePickHTML(cfg, air) {
 const CAR_BRANDS = [['avis', 'Avis', /\bavis\b/i], ['budget', 'Budget', /\bbudget\b/i], ['hertz', 'Hertz', /\bhertz\b/i], ['enterprise', 'Enterprise', /enterprise/i], ['national', 'National', /\bnational\b/i], ['alamo', 'Alamo', /\balamo\b/i], ['sixt', 'Sixt', /\bsixt\b/i], ['thrifty', 'Thrifty', /thrifty/i], ['dollar', 'Dollar', /\bdollar\b/i], ['europcar', 'Europcar', /europcar/i]];
 const CAR_HOME = { avis: 'https://www.avis.com/', budget: 'https://www.budget.com/', hertz: 'https://www.hertz.com/', enterprise: 'https://www.enterprise.com/', national: 'https://www.nationalcar.com/', alamo: 'https://www.alamo.com/', sixt: 'https://www.sixt.com/', thrifty: 'https://www.thrifty.com/', dollar: 'https://www.dollar.com/', europcar: 'https://www.europcar.com/' };
 function carBrandURL(brand, ap) { // Avis and Budget airport pages prefill the pickup location
-  const city = ap && ap.city ? slug(ap.city) : ''; const cc = ap && ap.cc ? ap.cc : '';
-  if ((brand === 'avis' || brand === 'budget') && city && cc && ap.iata) return `https://www.${brand}.com/en/locations/${cc}/${city}/${ap.iata.toLowerCase()}`;
+  const city = ap && ap.city ? slug(ap.city) : ''; const cc = ap && ap.cc ? String(ap.cc).toLowerCase() : '';
+  // verified for airports outside the US (US location pages use a different path), so US airports get the homepage
+  if ((brand === 'avis' || brand === 'budget') && city && cc && cc !== 'us' && ap.iata) return `https://www.${brand}.com/en/locations/${cc}/${city}/${ap.iata.toLowerCase()}`;
   return CAR_HOME[brand];
 }
 function gpCars(cfg, ap) {
@@ -3227,6 +3252,104 @@ function wireAIEdit() {
     }
     if ('aiEditUndo' in b.dataset && box._undo) { B.cfg = box._undo; box._undo = null; changed(true); msg.textContent = 'Undone.'; prev.innerHTML = ''; }
   });
+}
+
+// ================= guest languages: the organizer's own text, translated (ai-import mode:"translate") =================
+// cfg.lang = the language the organizer writes in; cfg.langs = guest languages; cfg.tr[lang][path] = { h: hash of the source text, t: translation, o: organizer override }.
+// Only fields whose source text changed (hash) are sent again. Names, places, dates, codes and links are left alone by the function.
+const GUEST_LANGS = [['en', 'English'], ['es', 'Español'], ['fr', 'Français'], ['pt', 'Português'], ['de', 'Deutsch'], ['it', 'Italiano'], ['nl', 'Nederlands'], ['pl', 'Polski'], ['sv', 'Svenska'], ['el', 'Ελληνικά'],
+  ['ru', 'Русский'], ['uk', 'Українська'], ['tr', 'Türkçe'], ['ar', 'العربية'], ['he', 'עברית'], ['hi', 'हिन्दी'], ['ja', '日本語'], ['zh', '中文'], ['ko', '한국어'], ['vi', 'Tiếng Việt'], ['th', 'ไทย'], ['id', 'Bahasa Indonesia'], ['tl', 'Tagalog']];
+const langName = (k) => (GUEST_LANGS.find(x => x[0] === k) || [k, k])[1];
+const RTL = new Set(['ar', 'he']);
+const srcLang = (cfg) => cfg.lang || 'en';
+const hashStr = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
+// every piece of organizer-written text, by path
+function textFields(cfg) {
+  const out = {}; const put = (k, v) => { if (typeof v === 'string' && v.trim()) out[k] = v; };
+  ['title', 'tagline', 'description', 'bring'].forEach(k => put(k, cfg[k]));
+  (cfg.schedule || []).forEach((x, i) => { put(`schedule[${i}].title`, x.title); put(`schedule[${i}].note`, x.note); });
+  (cfg.notes || []).forEach((x, i) => { put(`notes[${i}].label`, x.label); put(`notes[${i}].text`, x.text); });
+  const sp = typeSpec(cfg), td = typeData(cfg);
+  if (sp) sp.fields.filter(f => f[2] === 'text' || f[2] === 'lines').forEach(([k]) => put(`x.${cfg.type}.${k}`, td[k]));
+  Object.entries(cfg.access || {}).forEach(([k, v]) => put(`access.${k}`, v));
+  return out;
+}
+function staleFields(cfg, lang) {
+  const tr = (cfg.tr && cfg.tr[lang]) || {}; const out = {};
+  for (const [k, v] of Object.entries(textFields(cfg))) { const e = tr[k]; if (!e || e.h !== hashStr(v)) out[k] = v; }
+  return out;
+}
+async function translateCfg(cfg, say) {
+  const langs = (cfg.langs || []).filter(l => l !== srcLang(cfg)); let n = 0;
+  cfg.tr = cfg.tr && typeof cfg.tr === 'object' ? cfg.tr : {};
+  const live = textFields(cfg);
+  for (const lang of langs) {
+    const tr = (cfg.tr[lang] = cfg.tr[lang] || {});
+    Object.keys(tr).forEach(k => { if (!(k in live) && !k.startsWith('ann.')) delete tr[k]; }); // fields that no longer exist
+    const todo = Object.entries(staleFields(cfg, lang)); if (!todo.length) continue;
+    if (say) say(t('Translating into {l}…', { l: langName(lang) }));
+    for (let i = 0; i < todo.length; i += 120) {
+      const part = Object.fromEntries(todo.slice(i, i + 120));
+      const j = await aiImport({ mode: 'translate', fields: part, target: lang, source: srcLang(cfg) });
+      ((j.data && j.data.translations) || []).forEach(x => { if (x.key in part && typeof x.text === 'string') { tr[x.key] = { h: hashStr(part[x.key]), t: String(x.text).slice(0, 6000) }; n++; } });
+    }
+  }
+  return n;
+}
+// the page as guests in `lang` see it
+function translatedView(cfg, lang) {
+  const tr = cfg.tr && cfg.tr[lang]; if (!tr || lang === srcLang(cfg)) return cfg;
+  const c = clone(cfg);
+  for (const [k, v] of Object.entries(textFields(cfg))) { const e = tr[k]; if (e && e.h === hashStr(v) && typeof e.t === 'string') setPath(c, k, e.t); }
+  return c;
+}
+// languages a guest can pick: the page's own, its guest languages, and the interface languages
+const pageLangs = (cfg) => [...new Set([srcLang(cfg), ...(cfg.langs || []), ...LANGS.map(x => x[0])])];
+function guestLangPick(cfg) {
+  const avail = pageLangs(cfg); const ok = (l) => l && avail.includes(l);
+  const q = (new URLSearchParams(location.search).get('lang') || '').slice(0, 2).toLowerCase(); if (ok(q)) return q;
+  const saved = LS.get('lang'); if (ok(saved)) return saved;
+  const nav = (navigator.languages || [navigator.language || 'en']).map(x => String(x).slice(0, 2).toLowerCase());
+  return nav.find(l => (cfg.langs || []).includes(l) || l === srcLang(cfg)) || nav.find(ok) || srcLang(cfg);
+}
+const langSelectHTML = (cfg) => `<select class="lang-sel" data-lang aria-label="Language">${pageLangs(cfg).map(k => `<option value="${k}" ${k === LANG ? 'selected' : ''}>${esc(langName(k))}${(cfg.langs || []).includes(k) || k === srcLang(cfg) ? '' : ' ·'}</option>`).join('')}</select>`;
+// choosing a language also rewrites a ?lang= in the address, so the choice wins over the link it came from
+function setGuestLang(v) { LS.set('lang', v); const q = new URLSearchParams(location.search); if (q.has('lang')) { q.set('lang', v); history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash); } route(); }
+document.addEventListener('change', (e) => { const s0 = e.target.closest && e.target.closest('.vbar [data-lang]'); if (!s0) return; setGuestLang(s0.value); });
+// editor card
+function langsCardHTML(c) {
+  const src = srcLang(c); const sel = new Set(c.langs || []);
+  const reviews = [...sel].filter(l => l !== src).map(l => { const tr = (c.tr && c.tr[l]) || {}; const f = textFields(c);
+    const rows = Object.entries(f).map(([k, v]) => { const e = tr[k]; const fresh = e && e.h === hashStr(v); return `<div class="tr-row"><span class="tr-src">${esc(v.length > 140 ? v.slice(0, 140) + '…' : v)}</span><textarea data-tr-lang="${l}" data-tr-key="${esc(k)}" rows="${v.length > 80 ? 3 : 1}" placeholder="${fresh ? '' : 'Not translated yet'}">${esc(fresh ? e.t : '')}</textarea></div>`; }).join('');
+    const missing = Object.keys(staleFields(c, l)).length;
+    return `<details class="tr-review"><summary><b>${esc(langName(l))}</b> <small class="muted">${missing ? `${missing} to translate` : 'up to date'}</small></summary>${rows || '<p class="hint">Nothing to translate yet.</p>'}</details>`; }).join('');
+  return `<p class="hint">Guests see your page in their own language. Your text is translated when you publish; names, places, dates and links stay as you wrote them. You can correct any translation below.</p>
+    <div class="field"><label for="f-lang">You write in</label><select id="f-lang" data-src-lang>${GUEST_LANGS.map(([k, n]) => `<option value="${k}" ${k === src ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
+    <div class="field"><label>Guest languages</label><div class="chips tr-langs">${GUEST_LANGS.filter(([k]) => k !== src).map(([k, n]) => `<label class="chip ${sel.has(k) ? 'on' : ''}"><input type="checkbox" data-guest-lang="${k}" ${sel.has(k) ? 'checked' : ''} hidden>${esc(n)}</label>`).join('')}</div></div>
+    <div class="btns"><button type="button" class="btn" data-b="translate-now" ${sel.size ? '' : 'disabled'}>Translate now</button></div><p class="hint" data-tr-msg role="status" aria-live="polite"></p>
+    ${reviews}`;
+}
+function langsInput(i, cfg) {
+  if (i.dataset.guestLang) { const s0 = new Set(cfg.langs || []); i.checked ? s0.add(i.dataset.guestLang) : s0.delete(i.dataset.guestLang); cfg.langs = [...s0]; changed(true); return true; }
+  if (i.dataset.srcLang != null) { cfg.lang = i.value; cfg.langs = (cfg.langs || []).filter(l => l !== i.value); changed(true); return true; }
+  if (i.dataset.trLang) { const l = i.dataset.trLang, k = i.dataset.trKey; const v = textFields(cfg)[k]; if (v == null) return true; cfg.tr = cfg.tr || {}; cfg.tr[l] = cfg.tr[l] || {};
+    if (i.value.trim()) cfg.tr[l][k] = { h: hashStr(v), t: i.value, o: true }; else delete cfg.tr[l][k]; changed(); return true; }
+  return false;
+}
+async function langsClick(b, cfg) {
+  if (b.dataset.b !== 'translate-now') return false;
+  const msg = $('[data-tr-msg]'); b.disabled = true;
+  try { const n = await translateCfg(cfg, (m) => { if (msg) msg.textContent = m; }); changed(true); toast(n ? `Translated ${n} pieces of text` : 'Already up to date'); }
+  catch (e) { if (msg) msg.textContent = e.signin ? 'Sign in (My pages) to translate.' : (e.message || 'Translation failed'); b.disabled = false; }
+  return true;
+}
+const canTranslate = () => { const c = LS.get('aiModes'); return !!(c && c.m && c.m.includes('translate')) && !!LS.get('signedIn'); };
+// translate a few strings for the host (guest notes) into the host's language, cached
+async function translateForHost(map) {
+  const host = (navigator.language || 'en').slice(0, 2).toLowerCase(); const out = {}; const todo = {};
+  for (const [k, v] of Object.entries(map)) { const c = LS.get('htr:' + host + ':' + hashStr(v)); if (c) out[k] = c; else todo[k] = v; }
+  if (Object.keys(todo).length) { const j = await aiImport({ mode: 'translate', fields: todo, target: host }); ((j.data && j.data.translations) || []).forEach(x => { if (todo[x.key] != null) { out[x.key] = x.text; LS.set('htr:' + host + ':' + hashStr(todo[x.key]), x.text); } }); }
+  return out;
 }
 
 // ================= trips: day-by-day itinerary builder (reuses cfg.schedule: {date, time, title, note, kind}) =================
@@ -3382,5 +3505,5 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
