@@ -695,3 +695,6 @@ dialog.place-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .ac-ic { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; color: var(--muted, var(--slate)); }
 .ac-t { display: grid; gap: 1px; min-width: 0; } .ac-t b, .ac-t span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ac-by { text-align: right; font-size: .68rem; color: var(--muted, var(--slate)); padding: 2px 8px 0; }
+.su-ai { margin: -6px 0 16px; } .su-ai-form { display: grid; gap: 8px; margin-top: 8px; padding: 14px; background: var(--paper, #fff); border-radius: 14px; }
+.su-ai-form .search input { flex: 1; min-width: 0; }
+.ai-read { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px; }

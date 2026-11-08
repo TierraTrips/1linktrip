@@ -537,7 +537,7 @@ function itinFormHTML(x, i) {
   const k = x.kind || '';
   const f = (key, label, type = 'text', ph = '', cls = '') => `<div class="field ${cls}"><label for="it-${key}">${t(label)}</label><input id="it-${key}" type="${type}" data-it="${key}" value="${esc(x[key] || '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}></div>`;
   return `<form class="itin-form" onsubmit="return false">
-    ${i == null ? `<div class="field wide"><label for="it-paste">${t('Confirmation')}</label><textarea id="it-paste" rows="3" placeholder="${t('Paste a confirmation email or link')}"></textarea></div>` : ''}
+    ${i == null ? `<div class="field wide"><label for="it-paste">${t('Confirmation')}</label><textarea id="it-paste" rows="3" placeholder="${t('Paste a confirmation email or link')}"></textarea><div class="ai-read" data-ai-read hidden><button type="button" class="btn sm" data-itin-ai>✦ ${t('Read with AI')}</button><span class="hint" data-ai-msg role="status" aria-live="polite"></span></div></div>` : ''}
     <div class="trip">
       <div class="field"><label for="it-kind">${t('Type')}</label><select id="it-kind" data-it="kind"><option value="">${t('Choose')}</option>${Object.entries(ITIN_KINDS).map(([v, l]) => `<option value="${v}" ${v === k ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></div>
       ${f('flight', 'Flight number', 'text', 'UA 1234').replace('<div class="field', `<div${k === 'flight' ? '' : ' hidden'} class="field`)}
@@ -1216,7 +1216,9 @@ function wireEvent(cfg, art, seq, air, opts) {
   }
   const mapCtl = wireMap(cfg, art, opts);
   wirePlan(cfg, art, mapCtl);
-  const gmode = wireGPlaces(cfg, art, mapCtl, () => { if (mapCtl) mapCtl.osmMode(); if (art._osm && slot('food')) wirePlaces(cfg, art, art._osm, mapCtl ? mapCtl.setFood : null); });
+  // Google Places first; if it is refused (quota, key) the OpenStreetMap list takes over, now or when its data arrives
+  let gmode = false;
+  gmode = wireGPlaces(cfg, art, mapCtl, () => { gmode = false; if (mapCtl) mapCtl.osmMode(); const s0 = slot('food'); if (s0) s0.innerHTML = loading(t('places to eat')); if (art._osm && s0) wirePlaces(cfg, art, art._osm, mapCtl ? mapCtl.setFood : null); });
   if (T.nearby || T.stay || T.travel || T.tours) {
     nearby(v.lat, v.lon).then(d => {
       if (!alive()) return; art._osm = d;
@@ -1249,6 +1251,7 @@ function wireItin(cfg, art) {
     draft = { ...x }; editing = i; const slot = body.querySelector('[data-slot="itin-form"]'); slot.innerHTML = itinFormHTML(draft, i);
     body.querySelector('.itin-btns')?.setAttribute('hidden', '');
     (slot.querySelector('#it-paste') || slot.querySelector('#it-name')).focus();
+    aiReady().then(ok => { const el = slot.querySelector('[data-ai-read]'); if (el && ok) el.hidden = false; });
     placeAutocomplete(slot.querySelector('#it-address'), { bias: () => cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(r => { draft.address = r.address; if (!draft.name) draft.name = r.name; fill(); }).catch(() => {}) });
   };
   const fill = () => { const slot = body.querySelector('[data-slot="itin-form"]'); slot.querySelectorAll('[data-it]').forEach(el => { el.value = draft[el.dataset.it] || ''; });
@@ -1267,6 +1270,15 @@ function wireItin(cfg, art) {
       const xs = itinLoad(cfg); editing == null ? xs.push(draft) : (xs[editing] = draft); LS.set(itinKey(cfg), xs); rerender();
     }
     else if ('itinIcs' in d) itinICS(cfg);
+    else if ('itinAi' in d) {
+      const txt = (body.querySelector('#it-paste') || {}).value || ''; const msg = body.querySelector('[data-ai-msg]');
+      if (txt.trim().length < 20) { msg.textContent = t('Paste the whole confirmation first.'); return; }
+      b.disabled = true; msg.textContent = t('Reading…');
+      aiImport({ text: txt, kind: 'confirmation' }).then(j => {
+        const add = aiItemsToBookings(j.data && j.data.items); if (!add.length) { b.disabled = false; msg.textContent = t('No reservations found. Fill it in below.'); return; }
+        const xs = itinLoad(cfg).concat(add); LS.set(itinKey(cfg), xs); rerender(); toast(t('Added {n} bookings', { n: add.length }));
+      }).catch(e => { b.disabled = false; msg.textContent = e.signin ? t('Sign in (My pages) to use AI import. The quick reader below still works.') : (e.message || t('Couldn’t read it.')); });
+    }
   });
   body.addEventListener('input', (e) => {
     const x = e.target; if (!draft) return;
@@ -1504,7 +1516,7 @@ function suRender() {
   let h = '', body = '', cta = '';
   if (n === 0) {
     h = 'What are you planning?';
-    body = `<div class="su-types">${SETUP_TYPES.map(([type, label, sub, col]) => `<button type="button" class="su-type ${c.type === type && SU.typed ? 'on' : ''}" data-su-type="${esc(type)}"><i class="ti" aria-hidden="true"><svg viewBox="0 0 24 24">${TYPE_ICONS[type] || TYPE_ICONS.Party}</svg></i><b>${esc(label)}</b><span>${esc(sub)}</span></button>`).join('')}</div>`;
+    body = `${suAIHTML()}<div class="su-types">${SETUP_TYPES.map(([type, label, sub, col]) => `<button type="button" class="su-type ${c.type === type && SU.typed ? 'on' : ''}" data-su-type="${esc(type)}"><i class="ti" aria-hidden="true"><svg viewBox="0 0 24 24">${TYPE_ICONS[type] || TYPE_ICONS.Party}</svg></i><b>${esc(label)}</b><span>${esc(sub)}</span></button>`).join('')}</div>`;
   } else if (n === 1) {
     h = 'What’s it called, and when?';
     body = `<div class="field"><label for="su-title">Name</label><input id="su-title" data-su-f="title" value="${esc(c.title)}" maxlength="80" autocomplete="off"></div>
@@ -1528,6 +1540,7 @@ function suRender() {
   }
   m.innerHTML = `${prog}${top}<h1>${h}</h1><div class="su-body">${body}</div><div class="grow"></div>${n === 1 || n === 2 ? suTicket(c) : ''}${cta}`;
   LS.set('draft', c); pageSave(LS.get('draftId'), { cfg: c }); suPreview();
+  if (n === 0) aiReady().then(ok => { const el = $('[data-su-ai]'); if (el && ok) el.hidden = false; const pend = LS.get('pendingAiUrl'); if (ok && pend && el) { LS.del('pendingAiUrl'); sbUser().then(u => { if (!u) return; el.querySelector('.su-ai-form').hidden = false; $('#su-ai-url').value = pend; suAIGo(); }).catch(() => {}); } });
   placeAutocomplete($('#su-q'), { bias: () => null, onPick: (id, tok) => gpVenue(id, tok).then(r => {
     if (!SU) return; const cc = SU.cfg; cc.venue = { name: r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc }; SU.q = r.name; SU.results = []; SU.msg = '';
     suRender(); lookupTZ(r.lat, r.lon).then(tz => { cc.tz = tz; LS.set('draft', cc); }).catch(() => {});
@@ -1541,6 +1554,9 @@ document.addEventListener('click', (e) => {
     const type = d.suType; const keep = { title: c.title, start: c.start, end: c.end, venue: c.venue, tz: c.tz };
     SU.cfg = Object.assign(blankEvent(type), keep); SU.typed = true; B.cfg = SU.cfg; SU.step = 1; suRender();
   } else if (d.whenTg != null) { whenToggle(c); suRender(); const f = $(hasTime(c.start) ? '#su-st' : '#su-sd'); if (f) f.focus(); }
+  else if (d.su === 'ai-open') { const f = $('.su-ai-form'); f.hidden = !f.hidden; if (!f.hidden) $('#su-ai-url').focus(); }
+  else if (d.su === 'ai-go') suAIGo();
+  else if (d.si === 'send') signInSubmit($('.setup'));
   else if (d.su === 'back') { SU.step = Math.max(0, SU.step - 1); suRender(); }
   else if (d.su === 'skip') { c.venue = null; SU.step = 3; suRender(); }
   else if (d.su === 'next') { if (!b.disabled) { SU.step++; suRender(); } }
@@ -1568,6 +1584,7 @@ document.addEventListener('input', (e) => {
 document.addEventListener('keydown', (e) => {
   if (!SU || !e.target.closest('.setup') || e.key !== 'Enter') return;
   if (e.target.id === 'su-q') { e.preventDefault(); suSearch(); }
+  else if (e.target.id === 'su-ai-url') { e.preventDefault(); suAIGo(); }
   else if (SU.step === 1) { const nb = $('[data-su="next"]'); if (nb && !nb.disabled) nb.click(); }
 });
 async function suSearch() {
@@ -1924,7 +1941,7 @@ async function authReturn() {
   const p = LS.get('pendingPublish'); LS.del('pendingPublish');
   if (p && p.cfg) { LS.set('draft', p.cfg); LS.set('draftHosted', p.hosted || null); history.replaceState(null, '', siteBase() + '#new'); renderBuilder(p.cfg, null, p.hosted || null, LS.get('draftId') || undefined); publish({ host: true }); return; }
   const back = LS.get('afterSignIn'); LS.del('afterSignIn');
-  if (back && back !== '#mine' && /^#(mine|new)/.test(back)) { history.replaceState(null, '', siteBase() + back); return route(); }
+  if (back && back !== '#mine' && /^#(mine|new|setup)/.test(back)) { history.replaceState(null, '', siteBase() + back); return route(); }
   history.replaceState(null, '', siteBase() + '#mine'); renderMine('');
 }
 
@@ -2794,6 +2811,99 @@ function gpVenue(id, session) {
   });
 }
 
+// ================= AI import (Supabase Edge Function 'ai-import'; hidden until it answers) =================
+let aiReadyP = null;
+function aiReady() {
+  if (!SB) return Promise.resolve(false);
+  const c = LS.get('aiReady'); if (c && Date.now() - c.t < (c.ok ? 3600e3 : 300e3)) return Promise.resolve(c.ok);
+  // a plain GET (no preflight): 200 or 401 (deployed, sign-in required) means it exists; 404 means not deployed yet
+  return aiReadyP || (aiReadyP = fetchTimeout(`${SB.url}/functions/v1/ai-import`, {}, 8000)
+    .then(r => r.status === 200 || r.status === 401).catch(() => false).then(ok => { LS.set('aiReady', { t: Date.now(), ok }); return ok; }));
+}
+async function aiImport(body) {
+  const c = await sb(); const { data } = await c.auth.getSession(); const tok = data && data.session && data.session.access_token;
+  if (!tok) { const e = new Error('signin'); e.signin = true; throw e; }
+  const r = await fetchTimeout(`${SB.url}/functions/v1/ai-import`, { method: 'POST', headers: { Authorization: 'Bearer ' + tok, apikey: SB.key, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 90000);
+  let j = null; try { j = await r.json(); } catch { /* not JSON */ }
+  if (!r.ok || !j || !j.ok) throw new Error((j && j.error) || 'Import failed (' + r.status + ')');
+  return j;
+}
+const isoDay = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '') ? s : '';
+const isoTime = (s) => /^\d{2}:\d{2}$/.test(s || '') ? s : '';
+const httpsUrl = (u) => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ''; } catch { return ''; } };
+// the function's event JSON → an Eventpages config (venue resolved separately)
+function aiEventToCfg(d) {
+  const type = TYPES.includes(d.type) ? d.type : 'Party'; const c = blankEvent(type);
+  c.title = cleanText(d.title, 80); c.tagline = cleanText(d.tagline, 140); c.host = cleanText(d.host, 120);
+  c.description = String(d.description || '').replace(/<[^>]*>/g, '').slice(0, 3000).trim();
+  const sd = isoDay(d.start_date); if (sd) c.start = sd + (isoTime(d.start_time) ? 'T' + d.start_time : '');
+  const ed = isoDay(d.end_date); if (ed && ed >= c.start.slice(0, 10)) c.end = ed + (isoTime(d.end_time) && hasTime(c.start) ? 'T' + d.end_time : '');
+  c.schedule = (d.schedule || []).slice(0, 80).map(x => ({ date: isoDay(x.date) || c.start.slice(0, 10), time: isoTime(x.time), title: cleanText(x.title, 120), note: cleanText(x.note, 200) })).filter(x => x.title);
+  c.notes = (d.faqs || []).slice(0, 30).map(x => ({ label: cleanText(x.question, 120), text: cleanText(x.answer, 600), url: '' })).filter(x => x.label)
+    .concat((d.links || []).slice(0, 20).map(x => ({ label: cleanText(x.label, 80), text: '', url: httpsUrl(x.url) })).filter(x => x.label && x.url));
+  const w = {}; const hb = (d.hotel_blocks || [])[0];
+  if (type === 'Wedding') {
+    if (httpsUrl(d.rsvp_url)) w.rsvp = httpsUrl(d.rsvp_url); if (isoDay(d.rsvp_by)) w.rsvpBy = d.rsvp_by; if (d.dress_code) w.dress = cleanText(d.dress_code, 140);
+    if (hb) { w.blockHotel = cleanText(hb.hotel, 120); if (httpsUrl(hb.url)) w.blockUrl = httpsUrl(hb.url); if (hb.code) w.blockCode = cleanText(hb.code, 40); if (isoDay(hb.book_by)) w.blockBy = hb.book_by; }
+    c.x.Wedding = w;
+  } else {
+    if (hb) c.notes.unshift({ label: 'Room block: ' + cleanText(hb.hotel, 100), text: [hb.code ? 'Code ' + cleanText(hb.code, 40) : '', isoDay(hb.book_by) ? 'Book by ' + hb.book_by : ''].filter(Boolean).join(' · '), url: httpsUrl(hb.url) });
+    if (d.dress_code) c.notes.push({ label: 'Dress code', text: cleanText(d.dress_code, 140), url: '' });
+    if (httpsUrl(d.rsvp_url)) c.notes.push({ label: 'RSVP', text: isoDay(d.rsvp_by) ? 'Reply by ' + d.rsvp_by : '', url: httpsUrl(d.rsvp_url) });
+  }
+  return c;
+}
+async function aiResolveVenue(name, address) {
+  const q = [name, address].filter(Boolean).join(', '); if (!q) return null;
+  if (GKEY && !gpBroken) {
+    try {
+      const j = await gFetch('https://places.googleapis.com/v1/places:searchText', { textQuery: q, maxResultCount: 1 }, 'places.id');
+      const id = j.places && j.places[0] && j.places[0].id; if (id) { const v = await gpVenue(id); if (name) v.name = cleanText(name, 120) || v.name; return v; }
+    } catch { /* fall back to OpenStreetMap */ }
+  }
+  try { const r = (await geocode(q))[0]; return r ? { name: cleanText(name, 120) || r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc } : null; } catch { return null; }
+}
+async function startFromWebsite(url, msgEl) {
+  const say = (t2) => { if (msgEl) msgEl.textContent = t2; };
+  say('Reading the site and filling in your page…');
+  const j = await aiImport({ url });
+  const cfg = aiEventToCfg(j.data || {});
+  if (!cfg.title) cfg.title = hostOf(url);
+  say('Finding the venue…');
+  const v = await aiResolveVenue(j.data.venue_name, j.data.venue_address);
+  if (v) { cfg.venue = { name: v.name, address: v.address, lat: v.lat, lon: v.lon, city: v.city, region: v.region, country: v.country, cc: v.cc }; try { cfg.tz = await lookupTZ(v.lat, v.lon); } catch { /* floating */ } }
+  const pid = newPid(); LS.set('draft', cfg); LS.set('draftHosted', null); LS.set('draftId', pid); pageSave(pid, { cfg });
+  SU = null; history.replaceState(null, '', siteBase() + '#page=' + pid);
+  renderBuilder(cfg, `Filled in from ${hostOf(url)}. Check every detail before you publish.`, null, pid);
+}
+function suAIHTML() {
+  return `<div class="su-ai" data-su-ai hidden><button type="button" class="link strong" data-su="ai-open">✦ Start from a website</button>
+    <div class="su-ai-form" hidden><p class="hint">Paste your event’s website. We’ll read it and fill in your page for you to check.</p>
+      <div class="search"><input id="su-ai-url" type="url" inputmode="url" placeholder="https://yourwedding.com" autocomplete="off"><button type="button" class="btn primary" data-su="ai-go">Fill in</button></div>
+      <p class="hint" data-su-ai-msg role="status" aria-live="polite"></p><div data-su-ai-signin></div></div></div>`;
+}
+async function suAIGo() {
+  const inp = $('#su-ai-url'); const msg = $('[data-su-ai-msg]'); const url = normSite(inp ? inp.value : '');
+  if (!url) { msg.textContent = 'That doesn’t look like a website link.'; return; }
+  const btn = $('[data-su="ai-go"]'); btn.disabled = true;
+  try { await startFromWebsite(url, msg); }
+  catch (e) {
+    btn.disabled = false;
+    if (e.signin) { LS.set('pendingAiUrl', url); LS.set('afterSignIn', '#setup'); msg.textContent = 'Sign in first, so imports stay yours.'; $('[data-su-ai-signin]').innerHTML = signInFormHTML(''); return; }
+    msg.textContent = e.message || 'Couldn’t read that site.';
+  }
+}
+// "Read with AI" in the guest booking form: every reservation in a pasted confirmation becomes a booking
+const AI_KIND = { flight: 'flight', hotel: 'hotel', stay: 'stay', car: 'car', train: 'train', food: 'food', tour: 'other', other: 'other' };
+function aiItemsToBookings(items) {
+  return (items || []).slice(0, 40).map(x => {
+    const st = String(x.start || ''), en = String(x.end || '');
+    const okDT = (s) => /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(s) ? s : '';
+    return { kind: AI_KIND[x.type] || 'other', name: cleanText(x.name || x.provider, 120), start: okDT(st), end: okDT(en), address: cleanText(x.address, 200), confNo: cleanText(x.confirmation, 60),
+      link: httpsUrl(x.link), flight: cleanText(x.flight_number, 12), note: cleanText([x.from && x.to ? `${x.from} → ${x.to}` : '', x.note].filter(Boolean).join(' · '), 300) };
+  }).filter(x => x.name || x.start);
+}
+
 // ================= trips: day-by-day itinerary builder (reuses cfg.schedule: {date, time, title, note, kind}) =================
 const PLAN_KINDS = { activity: 'Activity', reservation: 'Reservation', note: 'Note' };
 function tripDays(c) {
@@ -2947,5 +3057,5 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
