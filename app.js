@@ -123,8 +123,16 @@ async function getJSON(url, { ttl = 3600e3, init, timeout = 20000, key } = {}) {
 function cacheSet(key, d) { LS.set('c4:' + key, { t: Date.now(), d }); }
 
 // ---------- external integrations ----------
-let lastNominatim = 0;
+// Address and venue search: Google Places (Text Search) first; Nominatim only when Google has no key or refuses it.
 async function geocode(q) {
+  if (GKEY && !gpBroken) {
+    try { return await gGeocode(q); }
+    catch (e) { if (/places 4(00|03|29)/.test(e.message)) gpBroken = true; }
+  }
+  return osmGeocode(q);
+}
+let lastNominatim = 0;
+async function osmGeocode(q) {
   const wait = 1100 - (Date.now() - lastNominatim); if (wait > 0) await sleep(wait); // Nominatim: max 1 req/s
   lastNominatim = Date.now();
   const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&accept-language=en&q=${enc(q)}`;
@@ -209,7 +217,15 @@ nwr["tourism"~"^(attraction|museum|gallery|viewpoint|zoo|aquarium|theme_park)$"]
 );out center tags;`;
 }
 const osmKey = (lat, lon) => `osm:${(+lat).toFixed(4)},${(+lon).toFixed(4)}`;
+// Hotels, sights and stations around the venue: Google Places first; the OpenStreetMap servers only when Google has no key or refuses it.
 async function nearby(lat, lon) {
+  if (GKEY && !gpBroken) {
+    try { return await gNearbyAll(lat, lon); }
+    catch (e) { if (/places 4(00|03|29)/.test(e.message)) gpBroken = true; }
+  }
+  return osmNearby(lat, lon);
+}
+async function osmNearby(lat, lon) {
   const key = osmKey(lat, lon);
   const snap = window.OSM_SNAPSHOTS && window.OSM_SNAPSHOTS[key]; if (snap) return snap;
   const c = LS.get('c4:' + key); if (c && Date.now() - c.t < 864e5) return c.d;
@@ -401,7 +417,7 @@ const arrow = '<svg class="arr" viewBox="0 0 16 16" aria-hidden="true"><path d="
 let renderSeq = 0;
 const maps = new Set();
 
-const loading = (what) => `<div class="skel" role="status"><span></span><span></span><span></span><em>${t('Loading {w} from OpenStreetMap…', { w: what })}</em><em class="slow">${t('The map servers are busy. This can take up to a minute.')}</em></div>`;
+const loading = (what) => `<div class="skel" role="status"><span></span><span></span><span></span><em>${t('Loading {w}…', { w: what })}</em><em class="slow">${t('The map servers are busy. This can take up to a minute.')}</em></div>`;
 
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
 
@@ -777,7 +793,7 @@ function sightsHTML(cfg, data) {
   if (!xs.length) return `<p class="muted">${t('No museums, viewpoints or attractions are mapped within 3 km of the venue.')}</p>${ext(L.place('things to do', placeLabel(v)), t('Search on Google Maps'), 'btn')}`;
   return `<ul class="plist rich">${xs.slice(0, 8).map(x => `<li>
     <div><b>${esc(x.name)}</b><span>${esc(t(x.kind))}</span>
-      <div class="mini"><button type="button" class="mini-b" data-place="${esc(placeKey(x))}">${t('Details')}</button>${x.website ? ext(x.website, t('Website'), 'mini-b') : ''}</div></div>
+      <div class="mini"><button type="button" class="mini-b" ${x.g && x.g.gid ? `data-gpid="${esc(x.g.gid)}"` : `data-place="${esc(placeKey(x))}"`}>${t('Details')}</button>${x.website ? ext(x.website, t('Website'), 'mini-b') : ''}</div></div>
     <span class="dist">${esc(fmtDist(x.d, v.cc))}<small>${x.d < 2000 ? walkTxt(x.d) : t('from the venue')}</small></span></li>`).join('')}</ul>`;
 }
 const TRANSIT_LABELS = { subway: 'Subway & metro', rail: 'Rail', tram: 'Light rail & tram', bus: 'Bus stops', bike: 'Bike share & rental', ferry: 'Ferry' };
@@ -806,7 +822,7 @@ function hotelsHTML(cfg, data) {
   const hs = data.hotels.slice(0, 8);
   return `<ul class="plist rich">${hs.map((h, i) => `<li${i >= 3 ? ' class="more"' : ''}>
     <div><b>${esc(h.name)}</b><span>${esc([t(h.kind), h.stars ? `${h.stars}★` : ''].filter(Boolean).join(' · '))}</span>
-      <div class="mini">${(() => { const a = hotelBookAction(cfg, h); return ext(a.url, a.label, 'mini-b'); })()}}<button type="button" class="mini-b" data-place="${esc(placeKey(h))}">${t('Details')}</button>${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
+      <div class="mini">${(() => { const a = hotelBookAction(cfg, h); return ext(a.url, a.label, 'mini-b'); })()}<button type="button" class="mini-b" ${h.g && h.g.gid ? `data-gpid="${esc(h.g.gid)}"` : `data-place="${esc(placeKey(h))}"`}>${t('Details')}</button>${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
     <span class="dist">${esc(fmtDist(h.d, v.cc))}<small>${h.d < 2000 ? walkTxt(h.d) : t('from the venue')}</small></span></li>`).join('')}${hs.length > 3 ? `<li class="more-li"><button type="button" class="btn sm" data-more>${t('All {n} hotels', { n: hs.length })}</button></li>` : ''}</ul>`;
 }
 function weatherHTML(w, cfg) {
@@ -864,7 +880,7 @@ function renderLanding() {
         <div><dt>Getting around</dt><dd>The nearest subway, rail, bus and bike-share stops, directions for every mode, and Uber or Lyft with the drop-off set.</dd></div>
       </dl>
     </section>
-    <footer class="land-foot">Built on OpenStreetMap, Open-Meteo, OurAirports and Google Maps data.</footer>
+    <footer class="land-foot">Built on Google Maps, Open-Meteo and OurAirports data.</footer>
   </main>`;
   wireLanding();
 }
@@ -1171,10 +1187,14 @@ function renderEvent(cfg, root, opts = {}) {
     ${tabs.some(x => x[0] === 'mytrip') ? panel('mytrip', myTripTabHTML(cfg), tabHead('mytrip')) : ''}
     <footer class="ev-foot">
       ${opts.preview ? '' : `<p class="lang-row">${langSelectHTML(opts.src || cfg)}</p><a href="#edit=${packEvent(opts.src || cfg)}">${t('Edit a copy of this page')}</a> · <a href="#">${t('Make your own')}</a>`}
-      <p>Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a> · Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a></p>
+      <p data-slot="attrib">${attribHTML(new Set())}</p>
     </footer>
   </article>`;
   const art = root.querySelector('.ev');
+  art._srcs = new Set();
+  // a source is credited once it actually supplies the map or places (OpenStreetMap only when Google is unavailable)
+  art._useSrc = (k) => { art._srcs.add(k); const el = art.querySelector('[data-slot="attrib"]'); if (el) el.innerHTML = attribHTML(art._srcs); };
+  art.addEventListener('click', (e) => { const b = e.target.closest('[data-gpid]'); if (b && art._openGPlace) art._openGPlace(b.dataset.gpid); });
   wireEvent(cfg, art, seq, air, opts);
   if (opts.hosted && typeof wireHosted === 'function') wireHosted(cfg, art, opts.hosted, opts);
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-route-stop]'); if (!b) return; showTab(art, 'nearby', opts); const c2 = art.querySelector(`[data-gp-stop="${b.dataset.routeStop}"]`); if (c2) c2.click(); });
@@ -1266,10 +1286,16 @@ function wireEvent(cfg, art, seq, air, opts) {
   wirePlan(cfg, art, mapCtl);
   // Google Places first; if it is refused (quota, key) the OpenStreetMap list takes over, now or when its data arrives
   let gmode = false;
-  gmode = wireGPlaces(cfg, art, mapCtl, () => { gmode = false; if (mapCtl) mapCtl.osmMode(); const s0 = slot('food'); if (s0) s0.innerHTML = loading(t('places to eat')); if (art._osm && s0) wirePlaces(cfg, art, art._osm, mapCtl ? mapCtl.setFood : null); });
+  const osmFood = (d) => { const s0 = slot('food'); if (!s0 || !alive()) return; art._useSrc('osm'); if (mapCtl) mapCtl.setData(d); wirePlaces(cfg, art, d, mapCtl ? mapCtl.setFood : null); };
+  gmode = wireGPlaces(cfg, art, mapCtl, () => {
+    gmode = false; if (mapCtl) mapCtl.osmMode(); const s0 = slot('food'); if (s0) s0.innerHTML = loading(t('places to eat'));
+    // Google's nearby data has no restaurants list (the Google list handled that), so fetch the OpenStreetMap one
+    if (art._osm && art._osm.src === 'google') osmNearby(v.lat, v.lon).then(osmFood).catch(() => { if (alive() && slot('food')) slot('food').innerHTML = `<p class="muted">${t('Nearby places could not be loaded right now.')}</p>${ext(L.place('restaurants near ' + v.name, placeLabel(v)), t('Search on Google Maps'), 'btn')}`; });
+    else if (art._osm && s0) osmFood(art._osm);
+  });
   if (T.nearby || T.stay || T.travel || T.tours) {
     nearby(v.lat, v.lon).then(d => {
-      if (!alive()) return; art._osm = d;
+      if (!alive()) return; art._osm = d; art._useSrc(d.src === 'google' ? 'google' : 'osm');
       const ft = art.querySelector('.ev-foot p'); if (ft && d.snapshot) ft.insertAdjacentHTML('beforeend', ` · ${esc(t('Nearby places as mapped on {d}', { d: d.snapshot }))}`);
       if (slot('hotels')) slot('hotels').innerHTML = hotelsHTML(cfg, d);
       if (slot('sights')) slot('sights').innerHTML = sightsHTML(cfg, d);
@@ -1279,10 +1305,10 @@ function wireEvent(cfg, art, seq, air, opts) {
       applyModes();
       if (mapCtl) mapCtl.setData(d);
       art._focusPlace = (p) => mapCtl && mapCtl.focus(p);
-      if (slot('food') && !gmode) wirePlaces(cfg, art, d, mapCtl ? mapCtl.setFood : null);
+      if (slot('food') && !gmode) { if (d.src === 'google') osmNearby(v.lat, v.lon).then(osmFood).catch(() => {}); else wirePlaces(cfg, art, d, mapCtl ? mapCtl.setFood : null); }
     }).catch(() => {
       if (!alive()) return;
-      const msg = (what, q) => `<p class="muted">${t('Nearby places could not be loaded from OpenStreetMap right now.')}</p>${ext(L.place(q, placeLabel(v)), t('Search on Google Maps'), 'btn')}`;
+      const msg = (what, q) => `<p class="muted">${t('Nearby places could not be loaded right now.')}</p>${ext(L.place(q, placeLabel(v)), t('Search on Google Maps'), 'btn')}`;
       if (slot('food')) slot('food').innerHTML = msg('restaurants', 'restaurants near ' + v.name);
       if (slot('hotels')) slot('hotels').innerHTML = msg('hotels', 'hotels near ' + v.name);
       if (slot('sights')) slot('sights').innerHTML = msg('sights', 'things to do near ' + v.name);
@@ -2028,7 +2054,7 @@ async function publishHosted(cfg, hosted) {
   const c = await sb(); const config = normalize(clone(cfg));
   if (config.venue) { // guests then skip the slow public Overpass servers
     const v = config.venue; const cached = LS.get('c4:' + osmKey(v.lat, v.lon)); const snap = window.OSM_SNAPSHOTS && window.OSM_SNAPSHOTS[osmKey(v.lat, v.lon)];
-    const osm = snap || (cached && cached.d) || await Promise.race([nearby(v.lat, v.lon).catch(() => null), sleep(15000).then(() => null)]);
+    const osm = snap || (cached && cached.d) || await Promise.race([osmNearby(v.lat, v.lon).catch(() => null), sleep(15000).then(() => null)]);
     if (osm) config.osm = { ...osm, snapshot: osm.snapshot || todayYMD() };
   }
   if (hosted && hosted.id) {
@@ -2353,6 +2379,9 @@ function wirePlaces(cfg, art, data, setMarkers) {
 // Calls are few and cached: one Nearby Search per category when the guest first looks at it (≤20 places, ratings only),
 // and one Place Details when a place card is opened (photo + hours). Nothing is fetched on filter changes.
 const GKEY = window.EP_GOOGLE && window.EP_GOOGLE.key ? window.EP_GOOGLE.key : '';
+// footer credits for the sources that actually supplied the page's map and places
+const attribHTML = (srcs) => [srcs.has('google') && !(gpBroken && gmapsBroken) ? 'Maps and places © Google' : '', srcs.has('osm') ? 'Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>' : '',
+  'Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a>'].filter(Boolean).join(' · ');
 const G_TYPES = { restaurant: ['restaurant'], cafe: ['cafe', 'coffee_shop'], bar: ['bar', 'pub'], fast_food: ['fast_food_restaurant'] };
 const G_PRICE = { PRICE_LEVEL_INEXPENSIVE: '$', PRICE_LEVEL_MODERATE: '$$', PRICE_LEVEL_EXPENSIVE: '$$$', PRICE_LEVEL_VERY_EXPENSIVE: '$$$$' };
 const G_TTL = 3 * 864e5;
@@ -2490,14 +2519,14 @@ function wireMap(cfg, art, opts) {
   const fallback = () => {
     if (st.adapter && st.adapter.kind === 'leaflet') return; gmapsFails.delete(fallback);
     if (st.adapter) { maps.delete(st.adapter); try { st.adapter.remove(); } catch {} st.adapter = null; }
-    if (window.L && document.body.contains(el)) { const fresh = el.cloneNode(false); el.replaceWith(fresh); el = fresh; el.dataset.engine = 'leaflet'; draw(leafletAdapter(el, v)); }
+    if (window.L && document.body.contains(el)) { const fresh = el.cloneNode(false); el.replaceWith(fresh); el = fresh; el.dataset.engine = 'leaflet'; draw(leafletAdapter(el, v)); if (art._useSrc) art._useSrc('osm'); }
   };
   const build = () => {
     if (st.adapter || st.building) return; st.building = true;
     loadGoogleMaps().then(g => {
       if (!document.body.contains(el)) return;
       if (gmapsBroken) throw new Error('key refused');
-      draw(googleAdapter(g, el, v)); el.dataset.engine = 'google'; gmapsFails.add(fallback);
+      draw(googleAdapter(g, el, v)); el.dataset.engine = 'google'; gmapsFails.add(fallback); if (art._useSrc) art._useSrc('google');
       setTimeout(() => { if (gmapsBroken) fallback(); }, 0); // a refusal can land while the map is being drawn
     })
       .catch(() => { if (document.body.contains(el)) fallback(); });
@@ -2687,7 +2716,7 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
   const render = () => { bodyEl.innerHTML = gpHTML(cfg, art, rows); pins(); };
   const load = () => {
     const my = ++seq; rows = null; render();
-    gpSearch(cfg, art._gp, art._center).then(d => { if (my !== seq) return; rows = d; render(); })
+    gpSearch(cfg, art._gp, art._center).then(d => { if (my !== seq) return; rows = d; if (art._useSrc) art._useSrc('google'); render(); })
       .catch(e => { if (my !== seq) return; if (/places 4(03|29)|places 400/.test(e.message)) { gpBroken = true; onFail && onFail(); return; } rows = []; render(); });
   };
   art._openGPlace = (id) => {
@@ -2892,12 +2921,48 @@ function placeAutocomplete(input, opts) {
 }
 // a Google place as an Eventpages venue
 function gpVenue(id, session) {
-  return gFetch(`https://places.googleapis.com/v1/places/${enc(id)}${session ? '?sessionToken=' + enc(session) : ''}`, null, 'id,displayName,formattedAddress,location,addressComponents,types').then(x => {
+  return gFetch(`https://places.googleapis.com/v1/places/${enc(id)}${session ? '?sessionToken=' + enc(session) : ''}`, null, 'id,displayName,formattedAddress,location,addressComponents,types').then(gpToVenue);
+}
+// free-text address / venue search → the same shape the OpenStreetMap geocoder returns
+function gGeocode(q) {
+  const key = 'gg1:' + q.trim().toLowerCase(); if (memo.has(key)) return memo.get(key);
+  const p = gFetch('https://places.googleapis.com/v1/places:searchText', { textQuery: q, pageSize: 6 }, 'places.id,places.displayName,places.formattedAddress,places.location,places.addressComponents,places.types')
+    .then(j => (j.places || []).filter(x => x.location).map(x => { const r = gpToVenue(x); r.display = r.address && r.address !== r.name ? `${r.name}, ${r.address}` : r.address; return r; }));
+  memo.set(key, p); p.catch(() => memo.delete(key)); return p;
+}
+// hotels, sights and stations near a point, in the shape osmNearby returns (no restaurants: the Google list covers food)
+const GN_MASK = 'places.id,places.displayName,places.location,places.types,places.accessibilityOptions,places.rating,places.userRatingCount,places.googleMapsUri';
+const GN_SIGHT = [['museum', 'museum'], ['art_gallery', 'gallery'], ['zoo', 'zoo'], ['aquarium', 'aquarium'], ['amusement_park', 'theme park']];
+function gNearbyAll(lat, lon) {
+  const key = 'gn1:' + osmKey(lat, lon); const c = LS.get(key); if (c && Date.now() - c.t < G_TTL) return Promise.resolve(c.d);
+  if (memo.has(key)) return memo.get(key);
+  const q = (types, radius, near) => gFetch('https://places.googleapis.com/v1/places:searchNearby', { includedTypes: types, maxResultCount: 20, ...(near ? { rankPreference: 'DISTANCE' } : {}), locationRestriction: { circle: { center: { latitude: lat, longitude: lon }, radius } } }, GN_MASK)
+    .then(j => (j.places || []).filter(x => x.location && x.displayName && x.displayName.text).map(x => {
+      const la = x.location.latitude, lo = x.location.longitude, name = x.displayName.text, ac = x.accessibilityOptions || {};
+      return { name, lat: la, lon: lo, d: distM(lat, lon, la, lo), types: x.types || [], website: '', street: '', city: '', wheelchair: ac.wheelchairAccessibleEntrance ? 'yes' : '',
+        g: { gid: x.id, name, lat: la, lon: lo, rating: x.rating || 0, count: x.userRatingCount || 0, price: '', url: x.googleMapsUri || '' } };
+    }));
+  const dedupe = (arr, n) => { const seen = new Set(); return arr.filter(x => { const k = x.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, n); };
+  const has = (x, ty) => x.types.includes(ty);
+  const p = Promise.all([q(['lodging'], 2500), q(['tourist_attraction', 'museum', 'art_gallery', 'zoo', 'aquarium', 'amusement_park'], 3000), q(['subway_station', 'train_station', 'light_rail_station', 'ferry_terminal'], 1500, true), q(['bus_stop', 'bus_station'], 400, true)])
+    .then(([ho, si, ra, bu]) => {
+      const hotels = dedupe(ho.map(x => ({ ...x, kind: has(x, 'hostel') ? 'hostel' : has(x, 'motel') ? 'motel' : has(x, 'bed_and_breakfast') || has(x, 'guest_house') ? 'guest house' : 'hotel', stars: '' })).sort((a, b) => a.d - b.d), 30);
+      const known = si.filter(x => x.g.count >= 20);
+      const sights = dedupe((known.length >= 4 ? known : si).map(x => ({ ...x, kind: (GN_SIGHT.find(([ty]) => has(x, ty)) || [, 'attraction'])[1] })), 12);
+      const near = (arr) => arr.sort((a, b) => a.d - b.d);
+      const transit = { subway: [], rail: [], tram: [], bus: [], bike: [], ferry: [] };
+      near(ra).forEach(x => transit[has(x, 'subway_station') ? 'subway' : has(x, 'light_rail_station') ? 'tram' : has(x, 'ferry_terminal') ? 'ferry' : 'rail'].push({ ...x, line: '' }));
+      near(bu).forEach(x => transit.bus.push({ ...x, line: '' }));
+      for (const k in transit) transit[k] = dedupe(transit[k], k === 'bus' ? 4 : 3);
+      const d = { food: [], places: [], hotels, sights, transit, src: 'google' }; LS.set(key, { t: Date.now(), d }); return d;
+    });
+  memo.set(key, p); p.catch(() => memo.delete(key)); return p;
+}
+function gpToVenue(x) {
     const ac = x.addressComponents || []; const get = (ty, short) => { const c = ac.find(a => (a.types || []).includes(ty)); return c ? (short ? c.shortText : c.longText) : ''; };
     const name = (x.displayName && x.displayName.text) || '';
     const city = get('locality') || get('postal_town') || get('administrative_area_level_2') || get('sublocality') || ((x.types || []).some(t => /locality|administrative_area/.test(t)) ? name : '');
     return { name, address: x.formattedAddress || name, lat: +(+x.location.latitude).toFixed(5), lon: +(+x.location.longitude).toFixed(5), city, region: get('administrative_area_level_1'), country: get('country'), cc: (get('country', true) || '').toLowerCase(), gid: x.id };
-  });
 }
 
 // ================= AI import (Supabase Edge Function 'ai-import'; hidden until it answers) =================
@@ -2997,7 +3062,7 @@ async function aiResolveVenue(name, address) {
       const id = j.places && j.places[0] && j.places[0].id; if (id) { const v = await gpVenue(id); if (name) v.name = cleanText(name, 120) || v.name; return v; }
     } catch { /* fall back to OpenStreetMap */ }
   }
-  try { const r = (await geocode(q))[0]; return r ? { name: cleanText(name, 120) || r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc } : null; } catch { return null; }
+  try { const r = (await osmGeocode(q))[0]; return r ? { name: cleanText(name, 120) || r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc } : null; } catch { return null; }
 }
 async function startFromWebsite(url, msgEl, type) {
   const say = (t2) => { if (msgEl) msgEl.textContent = t2; };
