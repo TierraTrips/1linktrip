@@ -3135,7 +3135,7 @@ function carCountersHTML(cfg, ap, rows) {
 
 // ================= "Ask AI to edit" (ai-import mode:"edit"; shown only when the deployed function lists it) =================
 async function aiModes() {
-  const c = LS.get('aiModes'); if (c && Date.now() - c.t < 3600e3) return c.m;
+  const c = LS.get('aiModes'); if (c && c.m && c.m.length && Date.now() - c.t < 3600e3) return c.m; // only cache a non-empty answer, so a fresh redeploy shows up on reload
   if (!SB || !LS.get('signedIn')) return [];
   try {
     const cl = await sb(); const { data } = await cl.auth.getSession(); const tok = data && data.session && data.session.access_token; if (!tok) return [];
