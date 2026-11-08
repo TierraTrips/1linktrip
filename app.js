@@ -332,7 +332,7 @@ const isTrip = (cfg) => cfg && cfg.type === 'Trip';
 // ---------- type-specific details: fields appear in the editor only for that type; on the page only if filled ----------
 // field: [key, label, kind, placeholder]; kinds: text, url, date, time, datetime, place {q,lat,lon}, links [{label,url}], lines
 const TYPE_FIELDS = {
-  Trip: { name: 'Trip details', fields: [['stops', 'Other stops', 'lines', 'One place per line, e.g. Sintra'], ['companions', 'Travelling together', 'text', 'Names, optional']] },
+  Trip: { name: 'Trip details', fields: [['stops', 'Other stops', 'lines', 'One place per line, e.g. Sintra'], ['companions', 'Travelling together', 'text', 'Names']] },
   Wedding: { name: 'Wedding details', fields: [
     ['rsvp', 'RSVP link', 'url', 'https://…'], ['rsvpBy', 'RSVP by', 'date'], ['dress', 'Dress code', 'text', 'Beach formal'],
     ['registry', 'Registry', 'links'],
@@ -349,14 +349,14 @@ const TYPE_FIELDS = {
     ['setlist', 'Setlist', 'url', 'https://…'], ['bags', 'Bag policy', 'text', 'Clear bags only'],
     ['parking', 'Parking', 'text'], ['pickup', 'Rideshare pickup spot', 'text']] },
   Performance: { name: 'Show info', fields: [
-    ['performer', 'Performer', 'text', 'Who you are there to see'], ['doors', 'Doors', 'time'], ['showtime', 'Showtime', 'time'],
-    ['callTime', 'Performer call time', 'time'], ['slot', 'Performer\'s slot', 'text', 'e.g. Act 2, number 14'], ['program', 'Program or run order', 'url', 'https://…'],
-    ['tickets', 'Tickets', 'url', 'https://…'], ['flowers', 'Flowers and gifts', 'text', 'e.g. Flowers welcome after the show'],
-    ['photo', 'Photo and video policy', 'text', 'e.g. No flash, no video'], ['parking', 'Parking', 'text']] },
+    ['performer', 'Performer', 'text', 'Name'], ['doors', 'Doors', 'time'], ['showtime', 'Showtime', 'time'],
+    ['callTime', 'Performer call time', 'time'], ['slot', 'Performer\'s slot', 'text', 'Act 2, no. 14'], ['program', 'Program or run order', 'url', 'https://…'],
+    ['tickets', 'Tickets', 'url', 'https://…'], ['flowers', 'Flowers and gifts', 'text', 'Welcome after the show'],
+    ['photo', 'Photo and video policy', 'text', 'No flash, no video'], ['parking', 'Parking', 'text']] },
   Hyrox: { name: 'Race day', fields: [
     ['division', 'Division', 'text', 'Open, Pro, Doubles or Relay'], ['wave', 'Wave start', 'time'],
     ['checkin', 'Check-in and wristband pickup', 'text', 'Where'], ['checkinWhen', 'Check-in time', 'datetime'],
-    ['bagdrop', 'Bag drop', 'text', 'Where, and what you can leave'], ['spectators', 'Spectator info', 'text', 'Tickets, where to watch'],
+    ['bagdrop', 'Bag drop', 'text', 'Where, what to leave'], ['spectators', 'Spectator info', 'text', 'Tickets, where to watch'],
     ['results', 'Live results', 'url', 'https://…'], ['parking', 'Parking', 'text']] },
   'Sporting event': { name: 'Game day', fields: [
     ['seating', 'Seating chart', 'url', 'https://…'], ['teams', 'Teams', 'links'],
@@ -941,28 +941,28 @@ const TYPE_ICONS = {
 };
 const SETUP_TYPES = [['Wedding', 'Wedding', 'RSVP, room block, dress code', '#0B7A75'], ['Race', 'Race', 'Start, finish, packet pickup', '#2E7D32'],
   ['Conference', 'Conference', 'Badges, agenda, speakers', '#3048F0'], ['Concert', 'Concert', 'Doors, set times, bag policy', '#FF6B35'],
-  ['Festival', 'Festival', 'Several days, several stages', '#B8860B'], ['Sporting event', 'Game day', 'Seats, tailgating, parking', '#C2185B'],
+  ['Festival', 'Festival', 'Stages, multi-day', '#B8860B'], ['Sporting event', 'Game day', 'Seats, tailgating, parking', '#C2185B'],
   ['Performance', 'Performance', 'Recital, show, call time', '#6D28D9'], ['Hyrox', 'Hyrox', 'Wave, check-in, bag drop', '#FFD100'],
   ['Party', 'Something else', 'Party, reunion, retreat', '#1F2937'], ['Trip', 'Vacation / Trip', 'Day by day, stays, packing', '#1E7FA8']];
 // "Add to your page" cards: [id, title, subtitle, field keys]
 const TYPE_CARDS = {
   Trip: [['route', 'Route', 'Cities and dates', []], ['companions', 'Travelling together', 'Who is coming', ['companions']]],
-  Wedding: [['rsvp', 'RSVP', 'Link and reply-by date', ['rsvp', 'rsvpBy']], ['block', 'Room block', 'Hotel, code, book-by date', ['blockHotel', 'blockUrl', 'blockCode', 'blockBy']],
-    ['dress', 'Dress code', 'One line guests will see', ['dress']], ['registry', 'Registry', 'One or more links', ['registry']]],
-  Race: [['startfinish', 'Start and finish', 'Pinned on the map', ['startAt', 'finishAt']], ['packet', 'Packet pickup', 'Where and when', ['packet', 'packetWhen']],
-    ['course', 'Course map', 'Link, GPX or image', ['course']], ['spots', 'Spectator spots', 'Good places to cheer', ['spots']], ['closures', 'Road closures', 'Which roads, and when', ['closures', 'closuresUrl']]],
-  Concert: [['settimes', 'Set times', 'Doors, opener, headliner', ['doors', 'opener', 'openerAt', 'headliner', 'headlinerAt']], ['bags', 'Bag policy', 'What guests can bring in', ['bags']],
-    ['parking', 'Parking and pickup', 'Lots and rideshare spot', ['parking', 'pickup']], ['setlist', 'Setlist', 'Link', ['setlist']]],
-  'Sporting event': [['seating', 'Seating chart', 'Link', ['seating']], ['teams', 'Teams', 'Links', ['teams']], ['tailgate', 'Tailgating and parking', 'Lots and times', ['tailgate', 'parking']], ['bags', 'Bag policy', 'What guests can bring in', ['bags']]],
-  Performance: [['showtimes', 'Show times', 'Call time, doors, showtime', ['performer', 'callTime', 'doors', 'showtime', 'slot']], ['program', 'Program and tickets', 'Run order and ticket links', ['program', 'tickets']],
-    ['etiquette', 'Flowers and photos', 'Gifts, photo and video rules', ['flowers', 'photo']], ['parking', 'Parking', 'Where to park', ['parking']]],
-  Hyrox: [['wave', 'Wave and division', 'Start time, division', ['wave', 'division']], ['checkin', 'Check-in', 'Wristband pickup, where and when', ['checkin', 'checkinWhen']],
-    ['bagdrop', 'Bag drop', 'Where, and what you can leave', ['bagdrop']], ['spectators', 'Spectators', 'Tickets, where to watch, parking', ['spectators', 'parking']], ['results', 'Live results', 'Link', ['results']]],
+  Wedding: [['rsvp', 'RSVP', 'Link, reply-by', ['rsvp', 'rsvpBy']], ['block', 'Room block', 'Hotel, code, deadline', ['blockHotel', 'blockUrl', 'blockCode', 'blockBy']],
+    ['dress', 'Dress code', 'Attire', ['dress']], ['registry', 'Registry', 'Links', ['registry']]],
+  Race: [['startfinish', 'Start and finish', 'Map pins', ['startAt', 'finishAt']], ['packet', 'Packet pickup', 'Where and when', ['packet', 'packetWhen']],
+    ['course', 'Course map', 'Link, GPX or image', ['course']], ['spots', 'Spectator spots', 'Where to cheer', ['spots']], ['closures', 'Road closures', 'Roads, times', ['closures', 'closuresUrl']]],
+  Concert: [['settimes', 'Set times', 'Doors, opener, headliner', ['doors', 'opener', 'openerAt', 'headliner', 'headlinerAt']], ['bags', 'Bag policy', 'What’s allowed', ['bags']],
+    ['parking', 'Parking and pickup', 'Lots, rideshare', ['parking', 'pickup']], ['setlist', 'Setlist', 'Link', ['setlist']]],
+  'Sporting event': [['seating', 'Seating chart', 'Link', ['seating']], ['teams', 'Teams', 'Links', ['teams']], ['tailgate', 'Tailgating and parking', 'Lots and times', ['tailgate', 'parking']], ['bags', 'Bag policy', 'What’s allowed', ['bags']]],
+  Performance: [['showtimes', 'Show times', 'Call time, doors, showtime', ['performer', 'callTime', 'doors', 'showtime', 'slot']], ['program', 'Program and tickets', 'Run order, tickets', ['program', 'tickets']],
+    ['etiquette', 'Flowers and photos', 'Gifts, photo rules', ['flowers', 'photo']], ['parking', 'Parking', 'Where to park', ['parking']]],
+  Hyrox: [['wave', 'Wave and division', 'Start time, division', ['wave', 'division']], ['checkin', 'Check-in', 'Wristband pickup', ['checkin', 'checkinWhen']],
+    ['bagdrop', 'Bag drop', 'Where, what to leave', ['bagdrop']], ['spectators', 'Spectators', 'Tickets, parking', ['spectators', 'parking']], ['results', 'Live results', 'Link', ['results']]],
   Conference: [['badge', 'Badge pickup', 'Where and when', ['badge', 'badgeWhen']], ['speakers', 'Speakers', 'One per line', ['speakers']], ['agenda', 'Full agenda', 'Link', ['agenda']]]
 };
 const TYPE_GROUP = { Trip: 'For trips', Wedding: 'For weddings', Race: 'For races', Hyrox: 'For Hyrox', Concert: 'For concerts', Performance: 'For performances', 'Sporting event': 'For game day', Conference: 'For conferences' };
-const COMMON_CARDS = [['schedule', 'Schedule', 'Times and places'], ['notes', 'Notes for guests', 'Kids, parking, FAQ'], ['about', 'About', 'Host and a few words'],
-  ['bring', 'Must-bring items', 'Top of the packing list'], ['langs', 'Guest languages', 'Your page in their language']];
+const COMMON_CARDS = [['schedule', 'Schedule', 'Times and places'], ['notes', 'Notes for guests', 'Kids, parking, FAQ'], ['about', 'About', 'Host, description'],
+  ['bring', 'Must-bring items', 'Required items'], ['langs', 'Guest languages', 'Translations']];
 const CARD_ICONS = {
   rsvp: '<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>', block: '<path d="M3 20V9l9-5 9 5v11"/><path d="M9 20v-6h6v6"/>', dress: '<path d="M9 3l3 3 3-3 3 4-3 2v12H9V9L6 7z"/>',
   registry: '<rect x="3" y="8" width="18" height="13" rx="1"/><path d="M12 8v13M3 12h18M12 8S8 3 6 5s6 3 6 3 8-1 6-3-6 3-6 3"/>', startfinish: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
@@ -1445,8 +1445,19 @@ const preview = debounce(() => { const p = $('#preview'); if (!p) return; const 
 function changed(rebuild) { savedraft(); preview(); if (rebuild) { if (B.card) renderSheet(); else buildForm(); } }
 
 const fieldWrap = (label, html, id) => `<div class="field"><label${id ? ` for="${id}"` : ''}>${esc(label)}</label>${html}</div>`;
-function xFieldHTML(c, [k, label, kind, ph = '']) {
+// shorter labels inside a card sheet, where the card title already gives context (the page keeps the full labels)
+const EDIT_LABEL = { rsvp: 'Link', rsvpBy: 'Reply by', blockHotel: 'Hotel', blockUrl: 'Booking link', blockCode: 'Code', blockBy: 'Book by',
+  packet: 'Where', packetWhen: 'When', badge: 'Where', badgeWhen: 'When', checkin: 'Where', checkinWhen: 'When', closures: 'Details', closuresUrl: 'Link',
+  openerAt: 'Opener time', headlinerAt: 'Headliner time', callTime: 'Call time', slot: 'Slot', program: 'Program', photo: 'Photo and video',
+  spectators: 'Info', pickup: 'Rideshare pickup' };
+function xFieldHTML(c, [k, label, kind, ph = ''], solo) {
   const d = typeData(c); const id = `x-${k}`; const val = d[k];
+  label = EDIT_LABEL[k] || label; if (ph === label) ph = '';
+  if (solo && kind !== 'links' && kind !== 'place') { // the sheet title is the label
+    const type = { url: 'url', date: 'date', time: 'time', datetime: 'datetime-local' }[kind] || 'text'; const a = `aria-label="${esc(label)}" placeholder="${esc(ph || label)}"`;
+    return `<div class="field">${kind === 'lines' ? `<textarea id="${id}" data-x="${k}" rows="4" ${a}>${esc(val || '')}</textarea>` : `<input id="${id}" type="${type}" data-x="${k}" value="${esc(val || '')}" ${a}>`}</div>`;
+  }
+  if (solo && kind === 'links') return `<div class="field">${(val || []).map((l, i) => `<div class="rowed"><input data-xl="${k}" data-i="${i}" data-k="label" value="${esc(l.label)}" placeholder="Name" aria-label="${esc(label)} name"><input data-xl="${k}" data-i="${i}" data-k="url" type="url" value="${esc(l.url)}" placeholder="https://…" aria-label="${esc(label)} link"><button type="button" class="ic del" data-xdel="${k}" data-i="${i}" aria-label="Remove">Remove</button></div>`).join('')}<button type="button" class="btn sm" data-xadd="${k}">+ Add</button></div>`;
   if (kind === 'links') return `<div class="field"><label>${esc(label)}</label>${(val || []).map((l, i) => `<div class="rowed"><input data-xl="${k}" data-i="${i}" data-k="label" value="${esc(l.label)}" placeholder="Name" aria-label="${esc(label)} name"><input data-xl="${k}" data-i="${i}" data-k="url" type="url" value="${esc(l.url)}" placeholder="https://…" aria-label="${esc(label)} link"><button type="button" class="ic del" data-xdel="${k}" data-i="${i}" aria-label="Remove">Remove</button></div>`).join('')}<button type="button" class="btn sm" data-xadd="${k}">+ Add</button></div>`;
   if (kind === 'place') return `<div class="field"><label for="${id}">${esc(label)}</label><div class="search"><input id="${id}" data-xp="${k}" value="${esc(val ? val.q : '')}" placeholder="${esc(ph)}"><button type="button" class="btn" data-xfind="${k}">${val && val.lat != null ? 'Pinned' : 'Pin on map'}</button></div></div>`;
   if (kind === 'lines') return fieldWrap(label, `<textarea id="${id}" data-x="${k}" rows="4" placeholder="${esc(ph)}">${esc(val || '')}</textarea>`, id);
@@ -1461,10 +1472,10 @@ function cardDone(c, id) {
     access: () => !!(c.access && Object.values(c.access).some(Boolean)), replies: () => !c.off.rsvp, langs: () => (c.langs || []).length > 0 }[id]?.() || false;
 }
 const cardBtn = (c, [id, title, sub]) => { const done = cardDone(c, id); return `<button type="button" class="acard ${done ? 'on' : ''}" data-card="${id}"><span class="aic">${cardIcon(id)}</span><b>${esc(title)}</b><span>${esc(sub)}</span><i class="plus" aria-hidden="true">${done ? '✓' : '+'}</i></button>`; };
-function allCards(c) { const cc0 = COMMON_CARDS.filter(x => x[0] !== 'langs' || canTranslate() || (c.langs || []).length); return { type: TYPE_CARDS[c.type] || [], common: isTrip(c) ? cc0.filter(x => x[0] !== 'replies').map(x => x[0] === 'schedule' ? ['schedule', 'Day by day', 'Activities, reservations, notes'] : x) : cc0 }; }
+function allCards(c) { const cc0 = COMMON_CARDS.filter(x => x[0] !== 'langs' || canTranslate() || (c.langs || []).length); return { type: TYPE_CARDS[c.type] || [], common: isTrip(c) ? cc0.filter(x => x[0] !== 'replies').map(x => x[0] === 'schedule' ? ['schedule', 'Day by day', 'Plans, bookings'] : x) : cc0 }; }
 function buildForm() {
   const c = B.cfg; const f = $('.b-form'); if (!f) return; const keepNote = f.querySelector('.b-note:not(.b-host)'); const keepAI = f.querySelector('[data-ai-edit]');
-  const open = new Set($$('details.acc[open]', f).map(d => d.dataset.acc));
+  const open = new Set($$('details[data-acc][open]', f).map(d => d.dataset.acc)); B.moreOpen = open.has('design-more');
   if (!f.dataset.init) { f.dataset.init = '1'; if (!c.title) open.add('basics'); }
   const basicsOk = !!c.title.trim(); const whenOk = !!(c.start && c.venue);
   const cards = allCards(c);
@@ -1505,7 +1516,7 @@ function renderSheet() {
   const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id); const cc = allCards(c).common.find(x => x[0] === id) || COMMON_CARDS.find(x => x[0] === id);
   const title = tc ? tc[1] : cc ? cc[1] : ''; let body = '';
   if (id === 'route') body = routeHTML(c);
-  else if (tc) { const sp = typeSpec(c); body = tc[3].map(k => xFieldHTML(c, sp.fields.find(f => f[0] === k))).join(''); }
+  else if (tc) { const sp = typeSpec(c); body = tc[3].map(k => xFieldHTML(c, sp.fields.find(f => f[0] === k), tc[3].length === 1)).join(''); }
   else if (id === 'schedule' && isTrip(c)) body = tripPlanHTML(c);
   else if (id === 'schedule') body = `${c.schedule.map((x, i) => `<div class="rowed"><div class="two"><input type="date" data-s="${i}" data-k="date" value="${esc(x.date)}" aria-label="Date"><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time"></div><input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="What's happening" aria-label="Title"><input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Where, or a note" aria-label="Note"><button type="button" class="ic del" data-sdel="${i}" aria-label="Remove item">Remove</button></div>`).join('')}
     <div class="btns"><button type="button" class="btn sm" data-b="add-sched">+ Add item</button>${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`;
@@ -1612,7 +1623,7 @@ function suRender() {
   } else if (n === 1) {
     h = 'What’s it called, and when?';
     body = `<div class="field"><label for="su-title">Name</label><input id="su-title" data-su-f="title" value="${esc(c.title)}" maxlength="80" autocomplete="off"></div>
-      ${whenFieldsHTML(c, 'su', !SU.dated, true)}<p class="hint">You can add times later in the editor.</p>`;
+      ${whenFieldsHTML(c, 'su', !SU.dated, true)}`;
     cta = `<button type="button" class="btn primary big" data-su="next" ${c.title.trim() && SU.dated ? '' : 'disabled'}>Continue</button>`;
   } else if (n === 2) {
     h = isTrip(c) ? 'Where are you going?' : 'Where is it?';
@@ -1713,7 +1724,7 @@ function qrSVG(text, cell = 4) {
   }
   return null;
 }
-const qrButtonHTML = () => `<button type="button" class="btn" data-su="qr">QR code and print card</button>`;
+const qrButtonHTML = () => `<button type="button" class="btn" data-su="qr">QR code</button>`;
 function openQR(cfg, url) {
   url = url || shareURL(cfg); const q = qrSVG(url);
   if (!q) { toast('This page has too much text for a QR code. Shorten the description or notes.'); return; }
@@ -1808,10 +1819,10 @@ function extraInput(i, cfg) {
 
 // ---- access and arrival ----
 const ACCESS_FIELDS = [['dropoff', 'Drop-off point'], ['entrance', 'Step-free entrance'], ['parking', 'Accessible parking'], ['restrooms', 'Accessible restrooms'], ['notes', 'Other access notes']];
-COMMON_CARDS.splice(3, 0, ['access', 'Access and arrival', 'Drop-off, step-free entrance']);
-COMMON_CARDS.splice(1, 0, ['replies', 'RSVP form', 'Guests reply on your short link']);
+COMMON_CARDS.splice(3, 0, ['access', 'Access and arrival', 'Drop-off, step-free']);
+COMMON_CARDS.splice(1, 0, ['replies', 'RSVP form', 'Collect replies']);
 function extraCardBody(id, c) {
-  if (id === 'replies') return `<label class="chk"><input type="checkbox" data-rsvp-on ${c.off.rsvp ? '' : 'checked'}> Show an RSVP form on your short link</label><p class="hint">Guests reply on the page. Only you see the replies, in My pages. Pages shared as a long link (no account) don’t have an RSVP form.</p>`;
+  if (id === 'replies') return `<label class="chk"><input type="checkbox" data-rsvp-on ${c.off.rsvp ? '' : 'checked'}> RSVP form on your short link</label><p class="hint">Replies show in My pages. Short links only.</p>`;
   if (id !== 'access') return '';
   const a = c.access || {};
   return ACCESS_FIELDS.map(([k, l]) => fieldWrap(l, `<input id="acc-${k}" data-access="${k}" value="${esc(a[k] || '')}">`, `acc-${k}`)).join('');
@@ -1866,7 +1877,7 @@ async function readSite(url) {
   }
   return null;
 }
-const aboutSiteHTML = (c) => `<div class="field"><label for="f-site">Website</label><div class="search"><input id="f-site" type="url" inputmode="url" placeholder="Paste a link, e.g. yourwedding.com" value="${esc(B.site || '')}" autocomplete="off"><button type="button" class="btn" data-b="site-fill" ${B.siteBusy ? 'disabled' : ''}>${B.siteBusy ? 'Reading…' : 'Fill in'}</button></div><p class="hint" id="site-msg" role="status" aria-live="polite">${esc(B.siteMsg || 'We’ll copy the title, description and photo. You can edit everything after.')}</p></div>`;
+const aboutSiteHTML = (c) => `<div class="field"><label for="f-site">Website</label><div class="search"><input id="f-site" type="url" inputmode="url" placeholder="yourwedding.com" value="${esc(B.site || '')}" autocomplete="off"><button type="button" class="btn" data-b="site-fill" ${B.siteBusy ? 'disabled' : ''}>${B.siteBusy ? 'Reading…' : 'Fill in'}</button></div><p class="hint" id="site-msg" role="status" aria-live="polite">${esc(B.siteMsg || 'Copies the description and photo.')}</p></div>`;
 async function aboutFill() {
   const c = B.cfg; const url = normSite(B.site);
   if (!url) { B.siteMsg = 'That doesn’t look like a website link.'; renderSheet(); return; }
@@ -2072,9 +2083,9 @@ function pubHostHTML() {
   const P = B.pub || {};
   if (!SB) return '';
   if (P.state === 'busy') return `<div class="pub-host"><p><b>Publishing your short link…</b></p></div>`;
-  if (P.state === 'done') return `<div class="pub-host ok"><p><b>Short link is live.</b> Publish again any time to update it. Guests can RSVP on it. <a href="#mine">See replies in My pages</a></p></div>`;
-  if (P.state === 'signin') return `<div class="pub-host"><p><b>Sign in to get a short link.</b> Your page is saved here and publishes when you come back from the email.</p>${signInFormHTML(P.msg, LS.get('signinEmail') || '')}</div>`;
-  return `<div class="pub-host"><p><b>Want a short link?</b> Like <span class="mono">…/eventpages/?e=${esc(makeSlug(B.cfg.title).replace(/-[a-z0-9]{5}$/, ''))}</span>. You can keep editing after you share it, and guests can RSVP.</p>${P.msg ? `<p class="hint">${esc(P.msg)}</p>` : ''}<button type="button" class="btn" data-ph="go">Get a short link</button></div>`;
+  if (P.state === 'done') return `<div class="pub-host ok"><p><b>Short link is live.</b> Publish again to update it. <a href="#mine">Replies in My pages</a></p></div>`;
+  if (P.state === 'signin') return `<div class="pub-host"><p><b>Sign in to get a short link.</b> Your page is saved.</p>${signInFormHTML(P.msg, LS.get('signinEmail') || '')}</div>`;
+  return `<div class="pub-host"><p><b>Short link with RSVP</b> <span class="mono">…/eventpages/?e=${esc(makeSlug(B.cfg.title).replace(/-[a-z0-9]{5}$/, ''))}</span></p>${P.msg ? `<p class="hint">${esc(P.msg)}</p>` : ''}<button type="button" class="btn" data-ph="go">Get a short link</button></div>`;
 }
 function renderPubHost() { const box = $('#pub-host'); if (box) box.innerHTML = pubHostHTML(); }
 async function hostNow() {
@@ -2807,7 +2818,7 @@ function itineraryEntries(cfg) {
 }
 function planHTML(cfg) {
   const all = itineraryEntries(cfg);
-  if (!all.length) return `<p class="muted">${t('Tap a place on the Nearby tab and choose Add to itinerary. It shows up here, by day.')}</p>`;
+  if (!all.length) return `<p class="muted">${t('Add places from the Nearby tab.')}</p>`;
   const k = eventKey(cfg).slice(6); const view = LS.get('planview:' + k) || 'day'; const on = LS.get('plantypes:' + k) || [];
   const counts = {}; all.forEach(x => { counts[x.type] = (counts[x.type] || 0) + 1; });
   const xs = on.length ? all.filter(x => on.includes(x.type)) : all;
@@ -3082,14 +3093,14 @@ async function startFromWebsite(url, msgEl, type) {
 }
 function suAIHTML() {
   return `<div class="su-ai" data-su-ai hidden><button type="button" class="link strong" data-su="ai-open">✦ Start from a website</button>
-    <div class="su-ai-form" hidden><p class="hint">Paste your event’s website. We’ll read it and fill in your page for you to check.</p><p class="hint" data-su-ai-type></p>
+    <div class="su-ai-form" hidden><p class="hint" data-su-ai-type></p>
       <div class="search"><input id="su-ai-url" type="url" inputmode="url" placeholder="https://yourwedding.com" autocomplete="off"><button type="button" class="btn primary" data-su="ai-go">Fill in</button></div>
       <p class="hint" data-su-ai-msg role="status" aria-live="polite"></p><div data-su-ai-signin></div></div></div>`;
 }
 function suAIHint() {
   const el = $('[data-su-ai-type]'); if (!el) return;
   const t = SU && SU.aiType && (SETUP_TYPES.find(x => x[0] === SU.aiType) || [])[1];
-  el.innerHTML = t ? `Category: <b>${esc(t)}</b>` : 'Optional: tap a category below so we know what kind of event it is.';
+  el.innerHTML = t ? `Category: <b>${esc(t)}</b>` : '';
 }
 async function suAIGo() {
   const inp = $('#su-ai-url'); const msg = $('[data-su-ai-msg]'); const url = normSite(inp ? inp.value : '');
@@ -3123,8 +3134,7 @@ const CUR = { jp: '¥', gb: '£', ie: '€', fr: '€', de: '€', it: '€', es
 const priceSym = (cfg, p) => { const cc = (cfg.venue && cfg.venue.cc) || ''; const sym = CUR[cc]; return p && sym && sym !== '$' ? p.replace(/\$/g, sym.trim()) : p; };
 function routeHTML(c) {
   const ss = Array.isArray(c.stops) ? c.stops : [];
-  return `<p class="hint">Add each city in order, with the nights you’re there. Guests see the route, and Nearby and stays follow each stop.</p>
-    <ol class="route-ed">${ss.map((s, i) => `<li class="rowed">
+  return `<ol class="route-ed">${ss.map((s, i) => `<li class="rowed">
       ${s.name ? `<div class="venue-sel"><div><b>${esc(s.name)}</b><span>${esc([s.region, s.country].filter(Boolean).join(', '))}</span></div><button type="button" class="btn sm" data-st-clear="${i}">Change</button></div>`
         : `<div class="field"><label for="st-q-${i}">City or place</label><div class="search"><input id="st-q-${i}" data-st-q="${i}" placeholder="Kyoto" autocomplete="off"><button type="button" class="btn" data-st-find="${i}">Find</button></div></div>`}
       <div class="two"><div class="field"><label for="st-from-${i}">Arrive</label><input id="st-from-${i}" type="date" data-st="${i}" data-k="from" value="${esc(s.from || '')}"></div><div class="field"><label for="st-to-${i}">Leave</label><input id="st-to-${i}" type="date" data-st="${i}" data-k="to" value="${esc(s.to || '')}"></div></div>
@@ -3353,7 +3363,7 @@ function planEdits(cfg, changes) {
 }
 function aiEditHTML() {
   return `<div class="ai-edit" data-ai-edit hidden><label for="ai-edit-q">✦ Ask AI to edit</label>
-    <div class="search"><textarea id="ai-edit-q" rows="2" maxlength="1000" placeholder="e.g. change the names to Maya &amp; Theo, move the ceremony to 5pm, add a shuttle at 4"></textarea><button type="button" class="btn primary" data-ai-edit-go>Preview</button></div>
+    <div class="search"><textarea id="ai-edit-q" rows="2" maxlength="1000" placeholder="e.g. move the ceremony to 5pm"></textarea><button type="button" class="btn primary" data-ai-edit-go>Preview</button></div>
     <p class="hint" data-ai-edit-msg role="status" aria-live="polite"></p><div data-ai-edit-preview></div></div>`;
 }
 function wireAIEdit() {
@@ -3453,7 +3463,7 @@ function langsCardHTML(c) {
     const rows = Object.entries(f).map(([k, v]) => { const e = tr[k]; const fresh = e && e.h === hashStr(v); return `<div class="tr-row"><span class="tr-src">${esc(v.length > 140 ? v.slice(0, 140) + '…' : v)}</span><textarea data-tr-lang="${l}" data-tr-key="${esc(k)}" rows="${v.length > 80 ? 3 : 1}" placeholder="${fresh ? '' : 'Not translated yet'}">${esc(fresh ? e.t : '')}</textarea></div>`; }).join('');
     const missing = Object.keys(staleFields(c, l)).length;
     return `<details class="tr-review"><summary><b>${esc(langName(l))}</b> <small class="muted">${missing ? `${missing} to translate` : 'up to date'}</small></summary>${rows || '<p class="hint">Nothing to translate yet.</p>'}</details>`; }).join('');
-  return `<p class="hint">Guests see your page in their own language. Your text is translated when you publish; names, places, dates and links stay as you wrote them. You can correct any translation below.</p>
+  return `<p class="hint">Translated when you publish. Edit any line below.</p>
     <div class="field"><label for="f-lang">You write in</label><select id="f-lang" data-src-lang>${GUEST_LANGS.map(([k, n]) => `<option value="${k}" ${k === src ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
     <div class="field"><label>Guest languages</label><div class="chips tr-langs">${GUEST_LANGS.filter(([k]) => k !== src).map(([k, n]) => `<label class="chip ${sel.has(k) ? 'on' : ''}"><input type="checkbox" data-guest-lang="${k}" ${sel.has(k) ? 'checked' : ''} hidden>${esc(n)}</label>`).join('')}</div></div>
     <div class="btns"><button type="button" class="btn" data-b="translate-now" ${sel.size ? '' : 'disabled'}>Translate now</button></div><p class="hint" data-tr-msg role="status" aria-live="polite"></p>
@@ -3491,7 +3501,7 @@ function tripDays(c) {
   return days.sort();
 }
 function tripPlanHTML(c) {
-  return `<p class="hint">Add what’s happening each day. Times are optional; use the arrows to reorder.</p>${tripDays(c).map((d, di) => {
+  return `${tripDays(c).map((d, di) => {
     const items = c.schedule.map((x, i) => [x, i]).filter(([x]) => x.date === d);
     return `<div class="plan-day"><h3>${d >= c.start.slice(0, 10) ? `<span class="dayn">Day ${daysBetween(c.start, d) + 1}</span> ` : ''}${esc(friendlyDate(d))}</h3>
       ${items.map(([x, i], k) => `<div class="rowed plan-item"><div class="plan-top"><select data-s="${i}" data-k="kind" aria-label="Kind">${Object.entries(PLAN_KINDS).map(([v, l]) => `<option value="${v}" ${(x.kind || 'activity') === v ? 'selected' : ''}>${l}</option>`).join('')}</select><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time (optional)"><span class="mv"><button type="button" data-tp-mv="${i}" data-dir="-1" ${k === 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-tp-mv="${i}" data-dir="1" ${k === items.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button></span></div>
@@ -3534,12 +3544,13 @@ function designHTML(c) {
   lab.schedule = schedTitle(c);
   return `<div class="field"><label>Style</label><div class="presets">${THEME_PRESETS.map(([n, p]) => `<button type="button" class="preset ${sameTheme(th, p) ? 'on' : ''} ${p.mode === 'dark' ? 'dark' : ''}" data-preset="${esc(n)}" style="--pa:${p.accent};font-family:${esc(FONTS[p.font].css)}"><i aria-hidden="true"></i><span>${esc(n)}</span></button>`).join('')}</div></div>
     <div class="field"><label for="f-accent-hex">Color</label><div class="swatches">${SWATCHES.map(s => `<button type="button" class="sw ${s.toLowerCase() === th.accent.toLowerCase() ? 'on' : ''}" style="background:${s}" data-sw="${s}" aria-label="Color ${s}"></button>`).join('')}<label class="custom-c"><input type="color" data-t="accent" value="${esc(th.accent)}" aria-label="Pick any color"><span>Custom</span></label><input id="f-accent-hex" class="hex" data-hex value="${esc(th.accent)}" maxlength="7" spellcheck="false" aria-label="Color code"></div></div>
-    <div class="field"><label for="f-cover">Cover photo</label><div class="cover-row">${c.cover ? `<img src="${esc(c.cover)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<input id="f-cover" data-f="cover" type="url" value="${esc(c.cover)}" placeholder="Paste a photo link, https://…/photo.jpg"></div>${c.cover ? '<button type="button" class="link" data-b="cover-clear">Remove photo</button>' : ''}</div>
+    <div class="field"><label for="f-cover">Cover photo</label><div class="cover-row">${c.cover ? `<img src="${esc(c.cover)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<input id="f-cover" data-f="cover" type="url" value="${esc(c.cover)}" placeholder="Photo link, https://…"></div>${c.cover ? '<button type="button" class="link" data-b="cover-clear">Remove photo</button>' : ''}</div>
+    <details class="tr-review" data-acc="design-more" ${B && B.moreOpen ? 'open' : ''}><summary><b>More options</b> <small class="muted">Font, background, sections</small></summary><div class="acc-b" style="padding:12px 0 0">
     <div class="field"><label>Title font</label><div class="fonts">${Object.entries(FONTS).map(([k, x]) => `<button type="button" class="fontb ${k === th.font ? 'on' : ''}" data-font="${k}" style="font-family:${esc(x.css)}">${x.label}</button>`).join('')}</div></div>
     <div class="field"><label>Background</label><div class="seg2"><button type="button" data-theme-mode="light" class="${th.mode !== 'dark' ? 'on' : ''}">Light</button><button type="button" data-theme-mode="dark" class="${th.mode === 'dark' ? 'on' : ''}">Dark</button></div></div>
-    <div class="field"><label>Event page layout</label><p class="hint">Order and show or hide the sections guests see first.</p>
+    <div class="field"><label>Sections</label>
       <ol class="order">${order.map((id, i) => `<li class="${sectionShown(c, id) ? '' : 'off'}"><label class="chk"><input type="checkbox" data-sec-on="${id}" ${sectionShown(c, id) ? 'checked' : ''}> ${esc(lab[id])}</label><span class="mv"><button type="button" data-sec-mv="${id}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move ${esc(lab[id])} up">↑</button><button type="button" data-sec-mv="${id}" data-dir="1" ${i === order.length - 1 ? 'disabled' : ''} aria-label="Move ${esc(lab[id])} down">↓</button></span></li>`).join('')}</ol></div>
-    <div class="btns"><button type="button" class="btn sm ghost" data-b="type-defaults">Reset to ${esc(c.type)} defaults</button></div>`;
+    <div class="btns"><button type="button" class="btn sm ghost" data-b="type-defaults">Reset to ${esc(c.type)} defaults</button></div></div></details>`;
 }
 // returns true when it handled the click
 function designClick(b, cfg) {
@@ -3589,7 +3600,7 @@ function whenFieldsHTML(c, p, blankDate = false, datesOnly = false) {
     : `<div class="field"><label for="${p}-${k}">${label}</label><input id="${p}-${k}" type="${type}" data-when="${k}" value="${esc(val)}"${extra}></div>`;
   return `<div class="when ${timed ? 'timed' : ''}">
     <div class="when-row">${fld('sd', 'Starts', 'date', sd)}${timed ? fld('st', 'Time', 'time', c.start.slice(11, 16)) : ''}</div>
-    <div class="when-row">${fld('ed', 'Ends <small>optional</small>', 'date', ed, sd ? ` min="${sd}"` : '')}${timed ? fld('et', 'Time', 'time', hasTime(c.end) ? c.end.slice(11, 16) : '') : ''}</div>
+    <div class="when-row">${fld('ed', 'Ends', 'date', ed, sd ? ` min="${sd}"` : '')}${timed ? fld('et', 'Time', 'time', hasTime(c.end) ? c.end.slice(11, 16) : '') : ''}</div>
     ${datesOnly ? '' : `<button type="button" class="link when-tg" data-when-tg>${timed ? 'Remove times' : '+ Add time'}</button>`}
   </div>`;
 }
@@ -3624,12 +3635,12 @@ function route() {
   if (!h.startsWith('new') && !h.startsWith('setup')) SU = null;
   if (h.startsWith('e=')) { const c = unpackEvent(h.slice(2)); if (c) return renderViewer(c, { tab }); return renderBroken(); }
   if (h.startsWith('ex=')) { const e = window.EXAMPLES[h.slice(3)]; if (e) return renderViewer(normalize(clone(e)), { exampleId: h.slice(3), tab }); return renderBroken(); }
-  if (h.startsWith('edit=')) { const c = unpackEvent(h.slice(5)); if (c) return renderBuilder(c, 'Editing a copy. Publish to get a new link; the original link keeps showing the old version.'); return renderBroken(); }
-  if (h.startsWith('edit-ex=')) { const e = window.EXAMPLES[h.slice(8)]; if (e) return renderBuilder(clone(e), 'Started from an example. Change anything, then publish your own link.'); }
+  if (h.startsWith('edit=')) { const c = unpackEvent(h.slice(5)); if (c) return renderBuilder(c, 'Editing a copy. The original link won’t change.'); return renderBroken(); }
+  if (h.startsWith('edit-ex=')) { const e = window.EXAMPLES[h.slice(8)]; if (e) return renderBuilder(clone(e), 'Copy of an example. Publish to get your own link.'); }
   if (h === 'setup') return renderSetup();
   if (h === 'new') { const d = LS.get('draft'); return d && d.title ? renderBuilder(d, null, LS.get('draftHosted'), LS.get('draftId') || undefined) : renderSetup(); }
   if (h.startsWith('page=')) { const x = pagesAll().find(p => p.pid === h.slice(5)); if (x) return renderBuilder(x.cfg, null, x.hosted, x.pid); }
-  if (h.startsWith('dup=')) { const x = pagesAll().find(p => p.pid === h.slice(4)); if (x) { const pid = newPid(); history.replaceState(null, '', siteBase() + '#page=' + pid); return renderBuilder(duplicateCfg(x.cfg), 'This is a copy. Publish it to get its own link.', null, pid); } }
+  if (h.startsWith('dup=')) { const x = pagesAll().find(p => p.pid === h.slice(4)); if (x) { const pid = newPid(); history.replaceState(null, '', siteBase() + '#page=' + pid); return renderBuilder(duplicateCfg(x.cfg), 'This is a copy. Publish to get its own link.', null, pid); } }
   SU = null; renderLanding();
 }
 
