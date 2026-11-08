@@ -186,7 +186,12 @@ window.EXAMPLES = {
       { date: '2027-04-11', time: '', title: 'Fly home from Kansai', note: 'Leave Namba by 9:00 on the Nankai Rapi:t', kind: 'note' }
     ],
     notes: [{ label: 'Money', text: 'Cash is still handy: get yen at a 7-Eleven ATM. Load a Suica or ICOCA card on your phone for trains.', url: '' }],
-    x: { Trip: { stops: 'Kyoto\nOsaka', companions: '' } },
+    stops: [
+      { name: 'Tokyo', address: 'Tokyo, Japan', lat: 35.68972, lon: 139.69222, city: 'Tokyo', region: 'Tokyo', country: 'Japan', cc: 'jp', from: '2027-04-02', to: '2027-04-06' },
+      { name: 'Kyoto', address: 'Kyoto, Japan', lat: 35.01164, lon: 135.76803, city: 'Kyoto', region: 'Kyoto', country: 'Japan', cc: 'jp', from: '2027-04-06', to: '2027-04-09' },
+      { name: 'Osaka', address: 'Osaka, Japan', lat: 34.69374, lon: 135.50218, city: 'Osaka', region: 'Osaka', country: 'Japan', cc: 'jp', from: '2027-04-09', to: '2027-04-11' }
+    ],
+    x: { Trip: { companions: '' } },
     bring: 'Passport\nPower adapter (type A)\nComfortable walking shoes'
   }
 };

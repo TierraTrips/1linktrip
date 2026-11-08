@@ -25,7 +25,7 @@ function toast(msg) {
 
 // ---------- dates (all event times are wall-clock in the venue's time zone) ----------
 const asUTC = (s) => new Date((s.length === 10 ? s + 'T00:00' : s) + ':00Z');
-const LOCALES = { en: 'en-US', es: 'es-ES', fr: 'fr-FR', pt: 'pt-BR', de: 'de-DE', it: 'it-IT' };
+const LOCALES = { en: 'en-US', es: 'es-ES', fr: 'fr-FR', pt: 'pt-BR', de: 'de-DE', it: 'it-IT', ja: 'ja-JP' };
 const fmt = (s, o) => new Intl.DateTimeFormat(LOCALES[LANG] || 'en-US', { timeZone: 'UTC', ...o }).format(asUTC(s));
 const ymd = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 const addDays = (s, n) => { const d = asUTC(s.slice(0, 10)); d.setUTCDate(d.getUTCDate() + n); return ymd(d); };
@@ -693,10 +693,11 @@ function tripDates(cfg) {
 // ---------- travel mode filter (multi-select; nothing picked = everything) ----------
 const TRAVEL_MODES = [['fly', 'Flying'], ['train', 'Train'], ['rental', 'Rental car'], ['drive', 'Driving'], ['transit', 'Transit']];
 const eventKey = (cfg) => 'modes:' + Math.abs([...(cfg.title || '') + (cfg.start || '') + (cfg.venue ? cfg.venue.name : '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)).toString(36);
-const hasTrains = (v) => v.cc === 'us' || TRAINLINE_CC.has(v.cc);
+const RAIL_CC = new Set(['jp', 'kr', 'cn', 'tw', 'in', 'ca', 'au']);
+const hasTrains = (v, cfg) => v.cc === 'us' || TRAINLINE_CC.has(v.cc) || RAIL_CC.has(v.cc) || (cfg && stopsOf(cfg).length > 1);
 function travelModes(cfg, air) {
   const v = cfg.venue;
-  return TRAVEL_MODES.filter(([k]) => k === 'fly' ? air.length > 0 : k === 'train' ? hasTrains(v) : true);
+  return TRAVEL_MODES.filter(([k]) => k === 'fly' ? air.length > 0 : k === 'train' ? hasTrains(v, cfg) : true);
 }
 function modeBarHTML(cfg, air) {
   const ms = travelModes(cfg, air); if (ms.length < 2) return '';
@@ -723,7 +724,7 @@ function trainsHTML(cfg) {
   if (from) items.push(ext(L.rome2rio(from, to), `${esc(t('Every way from {a} to {b}', { a: from, b: to }))} <small>Rome2Rio</small>`, 'row-link'));
   if (v.cc === 'us') items.push(ext('https://www.amtrak.com/home', `${t('Trains across the US')} <small>Amtrak</small>`, 'row-link'));
   if (TRAINLINE_CC.has(v.cc)) items.push(ext('https://www.thetrainline.com/', `${t('Trains and coaches in Europe')} <small>Trainline</small>`, 'row-link'));
-  return `<h3 class="sub-h">${t('Train and bus')}</h3><div class="row-links">${items.join('')}</div>${from ? '' : `<p class="muted small">${t('Add where you are coming from to see train and bus routes on Rome2Rio.')}</p>`}`;
+  return `${routeTrainsHTML(cfg)}<h3 class="sub-h">${t('Train and bus')}</h3><div class="row-links">${items.join('')}</div>${from ? '' : `<p class="muted small">${t('Add where you are coming from to see train and bus routes on Rome2Rio.')}</p>`}`;
 }
 function rentalHTML(cfg, air) {
   const tr = tripDates(cfg); const v = cfg.venue;
@@ -733,6 +734,7 @@ function rentalHTML(cfg, air) {
   return `<h3 class="sub-h">${t('Rental car')}</h3><p class="muted small">${esc(t('Pick up {a} (arrival) · return {b} (departure)', { a: d(tr.arrive), b: d(tr.leave) }))}</p><div class="row-links">${items.join('')}</div>`;
 }
 function stayLinks(cfg) {
+  if (stopsOf(cfg).length > 1) return routeStaysHTML(cfg);
   const tr = tripDates(cfg); const v = cfg.venue; const q = placeLabel(v) || v.name; const n = tr.guests || 2;
   const p = { q, d1: tr.arrive, d2: tr.leave, n };
   return [bookExt('hotels', 'ghotels', p, `${esc(t('Hotels in {c}', { c: v.city || q }))} <small>Google Hotels</small>`),
@@ -876,7 +878,7 @@ const t = (s, vars) => { let r = (I18N[LANG] && I18N[LANG][s]) || s; if (vars) r
 
 const TOOLS = [['weather', 'Weather'], ['travel', 'Travel'], ['stay', 'Stay'], ['nearby', 'Nearby'], ['tours', 'Things to do'], ['mytrip', 'My trip'], ['packing', 'Packing list']];
 const TYPE_DEFAULTS = {
-  Trip: { theme: { accent: '#1E7FA8', font: 'serif', mode: 'light' }, off: [], order: ['schedule', 'about', 'details', 'weather', 'access', 'rsvp'] },
+  Trip: { theme: { accent: '#1E7FA8', font: 'serif', mode: 'light' }, off: [], order: ['route', 'schedule', 'about', 'details', 'weather', 'access', 'rsvp'] },
   Wedding: { theme: { accent: '#0B7A75', font: 'serif', mode: 'light' }, off: [] },
   Race: { theme: { accent: '#2E7D32', font: 'wide', mode: 'light' }, off: ['tours'] },
   Conference: { theme: { accent: '#3048F0', font: 'grotesk', mode: 'light' }, off: ['packing'] },
@@ -902,7 +904,7 @@ const SETUP_TYPES = [['Wedding', 'Wedding', 'RSVP, room block, dress code', '#0B
   ['Party', 'Something else', 'Party, reunion, retreat', '#1F2937'], ['Trip', 'Vacation / Trip', 'Day by day, stays, packing', '#1E7FA8']];
 // "Add to your page" cards: [id, title, subtitle, field keys]
 const TYPE_CARDS = {
-  Trip: [['stops', 'Stops', 'Other places on the trip', ['stops']], ['companions', 'Travelling together', 'Who is coming', ['companions']]],
+  Trip: [['route', 'Route', 'Cities and dates', []], ['companions', 'Travelling together', 'Who is coming', ['companions']]],
   Wedding: [['rsvp', 'RSVP', 'Link and reply-by date', ['rsvp', 'rsvpBy']], ['block', 'Room block', 'Hotel, code, book-by date', ['blockHotel', 'blockUrl', 'blockCode', 'blockBy']],
     ['dress', 'Dress code', 'One line guests will see', ['dress']], ['registry', 'Registry', 'One or more links', ['registry']]],
   Race: [['startfinish', 'Start and finish', 'Pinned on the map', ['startAt', 'finishAt']], ['packet', 'Packet pickup', 'Where and when', ['packet', 'packetWhen']],
@@ -963,6 +965,7 @@ function normalize(c) {
   c.tools = { ...defaultTools(c.type), ...(c.tools || {}) };
   c.off = c.off || {}; c.notes = Array.isArray(c.notes) ? c.notes : []; c.schedule = Array.isArray(c.schedule) ? c.schedule : [];
   c.x = c.x && typeof c.x === 'object' ? c.x : {}; c.bring = typeof c.bring === 'string' ? c.bring : '';
+  c.stops = Array.isArray(c.stops) ? c.stops.filter(x => x && typeof x === 'object').slice(0, 20) : [];
   delete c.osm; // hosted pages store a nearby-places snapshot beside the config; it never travels in links or drafts
   return c;
 }
@@ -1007,7 +1010,7 @@ function scheduleHTML(cfg) {
   const days = {}; all.forEach(x => (days[(x.start || '').slice(0, 10)] = days[(x.start || '').slice(0, 10)] || []).push(x));
   const tm = (s) => fmtTime((s || '').slice(11, 16));
   return `${mine.length ? `<div class="seg2 sched-seg" role="group"><button type="button" data-sched="all" class="${view === 'all' ? 'on' : ''}" aria-pressed="${view === 'all'}">${t('Everything')}</button><button type="button" data-sched="event" class="${view === 'event' ? 'on' : ''}" aria-pressed="${view === 'event'}">${t('Event only')}</button></div>` : ''}
-  ${Object.entries(days).map(([d, xs]) => `<div class="day"><h3 class="day-h">${d ? `${isTrip(cfg) && cfg.start && d >= cfg.start.slice(0, 10) ? `<span class="dayn">${esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 }))}</span> ` : ''}${esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' }))}` : t('Anytime')}</h3><ol class="tl">${xs.map(x => {
+  ${Object.entries(days).map(([d, xs]) => `<div class="day"><h3 class="day-h">${d ? `${isTrip(cfg) && cfg.start && d >= cfg.start.slice(0, 10) ? `<span class="dayn">${esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 }))}</span> ` : ''}${esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' }))}${stopsOf(cfg).length > 1 && stopFor(cfg, d) ? ` <span class="day-city">${esc(stopFor(cfg, d).name)}</span>` : ''}` : t('Anytime')}</h3><ol class="tl">${xs.map(x => {
     if (x.ev) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"><time>${esc(tm(x.start)) || (isTrip(cfg) ? '' : '—')}</time><div><b>${esc(x.name)}${x.kind && x.kind !== 'activity' ? ` <em class="kind">${esc(t(PLAN_KINDS[x.kind] || ''))}</em>` : ''}</b>${x.note ? `<span>${esc(x.note)}</span>` : ''}</div></li>`;
     const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
     const until = x.end ? (x.end.slice(0, 10) !== (x.start || '').slice(0, 10) ? t('until {d}', { d: fmt(x.end.slice(0, 10), { month: 'short', day: 'numeric' }) }) : t('until {d}', { d: tm(x.end) })) : '';
@@ -1051,7 +1054,7 @@ function travelTabHTML(cfg, air) {
   out.push(`<div class="ev-sec trip-sec">${tripBarHTML(cfg)}${T.travel ? modeBarHTML(cfg, air) : ''}</div>`);
   if (T.travel) out.push(sec('travel', t('Getting there'), `
     <div data-slot="flights" data-mode="fly"></div>
-    ${hasTrains(v) ? '<div data-slot="trains" data-mode="train"></div>' : ''}
+    ${hasTrains(v, cfg) ? '<div data-slot="trains" data-mode="train"></div>' : ''}
     <div data-slot="rental" data-mode="rental"></div>
     <div data-mode="drive"><h3 class="sub-h">${t('Driving')}</h3><div class="row-links">${ext(L.place('parking near ' + v.name, placeLabel(v)), `${t('Parking near the venue')} <small>Google Maps</small>`, 'row-link')}</div></div>
     <div data-mode="transit"><h3 class="sub-h">${t('Transit')}</h3><div data-slot="transit">${loading(t('nearby stations'))}</div></div>`));
@@ -1092,6 +1095,7 @@ function myTripTabHTML(cfg) {
 }
 function eventTabHTML(cfg) {
   const parts = {
+    route: () => sec('route', t('Route'), routeGuestHTML(cfg)),
     about: () => sec('about', t('About'), aboutHTML(cfg)),
     details: () => sec('details', t('Need to know'), needToKnowHTML(cfg)),
     rsvp: () => '<div data-slot="rsvp-wrap"></div>',
@@ -1135,6 +1139,7 @@ function renderEvent(cfg, root, opts = {}) {
   const art = root.querySelector('.ev');
   wireEvent(cfg, art, seq, air, opts);
   if (opts.hosted && typeof wireHosted === 'function') wireHosted(cfg, art, opts.hosted, opts);
+  art.addEventListener('click', (e) => { const b = e.target.closest('[data-route-stop]'); if (!b) return; showTab(art, 'nearby', opts); const c2 = art.querySelector(`[data-gp-stop="${b.dataset.routeStop}"]`); if (c2) c2.click(); });
 }
 function showTab(art, k, opts = {}) {
   $$('.ev-panel', art).forEach(p => { p.hidden = p.dataset.panel !== k; });
@@ -1370,6 +1375,7 @@ function xFieldHTML(c, [k, label, kind, ph = '']) {
   return fieldWrap(label, `<input id="${id}" type="${type}" data-x="${k}" value="${esc(val || '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}>`, id);
 }
 function cardDone(c, id) {
+  if (id === 'route') return stopsOf(c).length > 0;
   const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id);
   if (tc) { const sp = typeSpec(c), d = typeData(c); return tc[3].some(k => { const f = sp.fields.find(x => x[0] === k); return f && filled(f[2], d[k]); }); }
   return { schedule: () => c.schedule.some(x => x.title), notes: () => c.notes.some(x => x.label), about: () => !!(c.description || c.host), look: () => !!c.cover, bring: () => !!c.bring.trim(),
@@ -1417,7 +1423,8 @@ function renderSheet() {
   const c = B.cfg; const id = B.card; const form = $('#sheet .sheet-in'); if (!form || !id) return;
   const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id); const cc = allCards(c).common.find(x => x[0] === id) || COMMON_CARDS.find(x => x[0] === id);
   const title = tc ? tc[1] : cc ? cc[1] : ''; let body = '';
-  if (tc) { const sp = typeSpec(c); body = tc[3].map(k => xFieldHTML(c, sp.fields.find(f => f[0] === k))).join(''); }
+  if (id === 'route') body = routeHTML(c);
+  else if (tc) { const sp = typeSpec(c); body = tc[3].map(k => xFieldHTML(c, sp.fields.find(f => f[0] === k))).join(''); }
   else if (id === 'schedule' && isTrip(c)) body = tripPlanHTML(c);
   else if (id === 'schedule') body = `${c.schedule.map((x, i) => `<div class="rowed"><div class="two"><input type="date" data-s="${i}" data-k="date" value="${esc(x.date)}" aria-label="Date"><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time"></div><input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="What's happening" aria-label="Title"><input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Where, or a note" aria-label="Note"><button type="button" class="ic del" data-sdel="${i}" aria-label="Remove item">Remove</button></div>`).join('')}
     <div class="btns"><button type="button" class="btn sm" data-b="add-sched">+ Add item</button>${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`;
@@ -1431,6 +1438,7 @@ function renderSheet() {
   else if (id === 'bring') body = fieldWrap('Guests must bring', `<textarea id="f-bring" data-f="bring" rows="5" placeholder="One per line">${esc(c.bring)}</textarea>`, 'f-bring');
   else if (typeof extraCardBody === 'function') body = extraCardBody(id, c);
   const head = title;
+  setTimeout(() => { if (id === 'route') wireRouteAC(c); }, 0);
   form.innerHTML = `<div class="grab" aria-hidden="true"></div><h2>${esc(head)}<button type="button" class="x" data-b="close" aria-label="Close">×</button></h2><div class="sheet-b">${body}</div><button type="button" class="btn primary big" data-b="close">Done</button>`;
 }
 // one input handler for the form and the card sheet
@@ -1439,7 +1447,7 @@ function wireInputs(root) {
   root.oninput = (e) => {
     const i = e.target; const d = i.dataset; const cfg = c();
     const xd = () => (cfg.x[cfg.type] = cfg.x[cfg.type] || {});
-    if (designInput(i, cfg)) return;
+    if (designInput(i, cfg) || routeInput(i, cfg)) return;
     if (d.when) { whenInput(cfg, d.when, i.value); changed(); }
     else if (d.x) { xd()[d.x] = i.value; changed(); }
     else if (d.xl) { xd()[d.xl][+d.i][d.k] = i.value; changed(); }
@@ -1457,7 +1465,7 @@ function wireInputs(root) {
   root.onkeydown = (e) => { if (e.target.id === 'vq' && e.key === 'Enter') { e.preventDefault(); venueSearch(); } if (e.target.id === 'f-site' && e.key === 'Enter') { e.preventDefault(); aboutFill(); } };
   root.onclick = (e) => {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset; const cfg = c();
-    if (designClick(b, cfg) || tripClick(b, cfg)) return;
+    if (designClick(b, cfg) || tripClick(b, cfg) || routeClick(b, cfg)) return;
     if (d.whenTg != null) { whenToggle(cfg); changed(true); setTimeout(() => root.querySelector(hasTime(cfg.start) ? '[data-when="st"]' : '[data-when-tg]')?.focus(), 0); }
     else if (d.card) openCard(d.card);
     else if (d.b === 'close') $('#sheet').close();
@@ -1596,7 +1604,7 @@ async function suSearch() {
 }
 
 // ================= phase B: QR + print card, schedule import, access and arrival, guest languages =================
-const LANGS = [['en', 'English'], ['es', 'Español'], ['fr', 'Français'], ['pt', 'Português'], ['de', 'Deutsch'], ['it', 'Italiano']];
+const LANGS = [['en', 'English'], ['es', 'Español'], ['fr', 'Français'], ['pt', 'Português'], ['de', 'Deutsch'], ['it', 'Italiano'], ['ja', '日本語']];
 function pickLang() {
   const saved = LS.get('lang'); if (saved && LOCALES[saved]) return saved;
   const nav = (navigator.languages || [navigator.language || 'en']).map(x => String(x).slice(0, 2).toLowerCase()).find(x => LOCALES[x]);
@@ -2427,6 +2435,7 @@ function wireMap(cfg, art, opts) {
     onPoi: (fn) => { st.poi = fn; if (st.adapter) st.adapter.onPoi(fn); },
     setSaved: (items) => { st.saved = items; if (st.adapter && st.adapter.savedPins) st.adapter.savedPins(items); },
     setFood: (items) => { st.food = items; const g = st.groups.food; if (g) g.g.set(items.map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)) }))); },
+    center: (lat, lon) => { const go = () => st.adapter && st.adapter.center(lat, lon, 14); st.adapter ? go() : setTimeout(go, 1500); },
     focus: (p) => { if (p.lat == null) return; showTab(art, 'nearby', opts); const go = () => { if (st.adapter) st.adapter.center(p.lat, p.lon, 17); }; st.adapter ? go() : setTimeout(go, 1500); el.scrollIntoView({ block: 'center' }); },
   };
 }
@@ -2502,8 +2511,8 @@ const gpRow = (x, v) => ({ id: x.id, name: (x.displayName && x.displayName.text)
   open: x.currentOpeningHours ? !!x.currentOpeningHours.openNow : null, addr: x.shortFormattedAddress || x.formattedAddress || '',
   d: x.location ? distM(v.lat, v.lon, x.location.latitude, x.location.longitude) : 0 });
 function gpQueryKey(f) { if (f.q) return `q:${f.q.toLowerCase()}:${f.diet}`; return f.diet ? `diet:${f.cat}:${f.diet}` : f.cuisine && f.cat === 'restaurant' ? `cuisine:${f.cuisine}` : `cat:${f.cat}`; }
-function gpSearch(cfg, f) {
-  const v = cfg.venue; const qk = gpQueryKey(f); const key = `gq1:${osmKey(v.lat, v.lon)}:${qk}`;
+function gpSearch(cfg, f, center) {
+  const v = center || cfg.venue; const qk = gpQueryKey(f); const key = `gq1:${osmKey(v.lat, v.lon)}:${qk}`;
   const c = LS.get(key); if (c && Date.now() - c.t < G_TTL) return Promise.resolve(c.d);
   if (memo.has(key)) return memo.get(key);
   const cat = GP_CATS.find(x => x[0] === f.cat) || GP_CATS[0]; const circle = { center: { latitude: v.lat, longitude: v.lon }, radius: cat[3] };
@@ -2543,7 +2552,7 @@ function gpHTML(cfg, art, rows) {
     <div class="chips pf-diet">
       <button type="button" class="chip ${f.open ? 'on' : ''}" data-gp-open aria-pressed="${f.open}">${t('Open now')}</button>
       ${[4, 4.5].map(n => `<button type="button" class="chip ${f.stars === n ? 'on' : ''}" data-gp-stars="${n}" aria-pressed="${f.stars === n}">★ ${n.toFixed(1)}+</button>`).join('')}
-      ${f.cat !== 'todo' ? prices.map(pr => `<button type="button" class="chip ${f.price === pr ? 'on' : ''}" data-gp-price="${pr}" aria-pressed="${f.price === pr}">${pr}</button>`).join('') : ''}
+      ${f.cat !== 'todo' ? prices.map(pr => `<button type="button" class="chip ${f.price === pr ? 'on' : ''}" data-gp-price="${pr}" aria-pressed="${f.price === pr}">${esc(priceSym(cfg, pr))}</button>`).join('') : ''}
     </div>
     ${isFood ? `<div class="pf-row">
       ${f.cat === 'restaurant' ? `<label class="pf-sel"><span class="sr">${t('Cuisine')}</span><select data-gp="cuisine" ${f.diet ? 'disabled' : ''}><option value="">${t('Any cuisine')}</option>${GP_CUISINES.map(c => `<option value="${c}" ${f.cuisine === c ? 'selected' : ''}>${esc(cuisineLabel(c))}</option>`).join('')}</select></label>` : ''}
@@ -2553,7 +2562,7 @@ function gpHTML(cfg, art, rows) {
   ${rows == null ? `<div class="skel" role="status"><span></span><span></span><em>${t('Loading places…')}</em></div>` : `
   ${f.q ? `<p class="gp-q"><span>${esc(t('Results for “{q}”', { q: f.q }))}</span> <button type="button" class="link" data-gp-q-clear>${t('Clear search')}</button></p>` : ''}
   <p class="pf-count muted small" role="status" aria-live="polite">${esc(list.length === 1 ? t('1 place') : t('{n} places', { n: list.length }))}${active ? ` · <button type="button" class="link" data-gp-clear>${t('Clear filters')}</button>` : ''}</p>
-  ${list.length ? `<ul class="plist rich places">${list.map(r => `<li><button type="button" class="place-row" data-gplace="${esc(r.id)}"><div><b>${esc(r.name)}</b>${r.rating ? `<span class="rt">${gRatingHTML(r)}</span>` : ''}<span>${esc([r.type, r.price].filter(Boolean).join(' · '))}</span>${r.open != null ? `<span class="tags">${r.open ? `<em class="open">${t('Open now')}</em>` : `<em class="closed">${t('Closed now')}</em>`}</span>` : ''}</div><span class="dist">${esc(fmtDist(r.d, v.cc))}<small>${r.d < 2500 ? walkTxt(r.d) : t('from the venue')}</small></span></button></li>`).join('')}</ul>`
+  ${list.length ? `<ul class="plist rich places">${list.map(r => `<li><button type="button" class="place-row" data-gplace="${esc(r.id)}"><div><b>${esc(r.name)}</b>${r.rating ? `<span class="rt">${gRatingHTML(r)}</span>` : ''}<span>${esc([r.type, priceSym(cfg, r.price)].filter(Boolean).join(' · '))}</span>${r.open != null ? `<span class="tags">${r.open ? `<em class="open">${t('Open now')}</em>` : `<em class="closed">${t('Closed now')}</em>`}</span>` : ''}</div><span class="dist">${esc(fmtDist(r.d, v.cc))}<small>${r.d < 2500 ? walkTxt(r.d) : t('from the venue')}</small></span></button></li>`).join('')}</ul>`
     : `<p class="muted">${t('Nothing matches these filters.')} ${active ? `<button type="button" class="link" data-gp-clear>${t('Clear filters')}</button>` : ''}</p>`}
   <p class="muted small g-attr">${t('Places and ratings from Google')}</p>`}`;
 }
@@ -2567,7 +2576,7 @@ function gpCardHTML(cfg, d) {
     ${d.type ? `<p class="lbl">${esc(d.type)}</p>` : ''}
     <h2>${esc(d.name)}</h2>
     ${d.rating ? `<p class="rt">${gRatingHTML(d)} <small class="muted">${t('on Google')}</small></p>` : ''}
-    <p class="pc-dist">${esc(t('{d} from the venue', { d: fmtDist(dist, v.cc) }))}${dist < 2500 ? ' · ' + walkTxt(dist) : ''}${d.price ? ' · ' + esc(d.price) : ''}</p>
+    <p class="pc-dist">${esc(t('{d} from the venue', { d: fmtDist(dist, v.cc) }))}${dist < 2500 ? ' · ' + walkTxt(dist) : ''}${d.price ? ' · ' + esc(priceSym(cfg, d.price)) : ''}</p>
     ${d.veg ? `<p class="tags"><em>${t('Vegetarian options')}</em></p>` : ''}
     ${d.hours.length ? `<div class="pc-hours"><b>${d.open === true ? `<span class="open">${t('Open now')}</span>` : d.open === false ? `<span class="closed">${t('Closed now')}</span>` : t('Hours')}</b><ul>${d.hours.map(h => `<li>${esc(h)}</li>`).join('')}</ul></div>` : ''}
     ${d.addr ? `<p class="pc-addr">${esc(d.addr)}</p>` : ''}
@@ -2587,7 +2596,8 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
   const s = art.querySelector('[data-slot="food"]'); if (!s || !GKEY || gpBroken || !cfg.venue) return false;
   art._gp = art._gp || { cat: 'restaurant', cuisine: '', diet: '', open: false, stars: 0, price: '', q: '' };
   let rows = null, seq = 0, started = false;
-  s.innerHTML = `<form class="gp-search" role="search" onsubmit="return false"><input type="search" data-gp-q placeholder="${t('Search places, e.g. ramen')}" aria-label="${t('Search places')}" autocomplete="off" enterkeyhint="search"><button type="submit" class="btn sm" data-gp-go>${t('Search')}</button></form><div data-gp-body></div>`;
+  const ss = stopsOf(cfg);
+  s.innerHTML = `${ss.length > 1 ? `<div class="chips stop-chips" role="group" aria-label="${t('Route')}">${ss.map((x, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-gp-stop="${i}" aria-pressed="${i === 0}">${esc(x.name)}</button>`).join('')}</div>` : ''}<form class="gp-search" role="search" onsubmit="return false"><input type="search" data-gp-q placeholder="${t('Search places, e.g. ramen')}" aria-label="${t('Search places')}" autocomplete="off" enterkeyhint="search"><button type="submit" class="btn sm" data-gp-go>${t('Search')}</button></form><div data-gp-body></div>`;
   const bodyEl = s.querySelector('[data-gp-body]'); const qIn = s.querySelector('[data-gp-q]');
   const v0 = cfg.venue;
   const pickPlace = (id, tok) => gpDetails(id, tok).then(pl => {
@@ -2600,7 +2610,7 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
   const render = () => { bodyEl.innerHTML = gpHTML(cfg, art, rows); pins(); };
   const load = () => {
     const my = ++seq; rows = null; render();
-    gpSearch(cfg, art._gp).then(d => { if (my !== seq) return; rows = d; render(); })
+    gpSearch(cfg, art._gp, art._center).then(d => { if (my !== seq) return; rows = d; render(); })
       .catch(e => { if (my !== seq) return; if (/places 4(03|29)|places 400/.test(e.message)) { gpBroken = true; onFail && onFail(); return; } rows = []; render(); });
   };
   art._openGPlace = (id) => {
@@ -2615,6 +2625,7 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
   s.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return; const f = art._gp; const d = b.dataset;
     if (d.gplace) { art._openGPlace(d.gplace); return; }
+    if (d.gpStop != null) { const st = ss[+d.gpStop]; art._center = st; $$('[data-gp-stop]', s).forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); }); if (mapCtl) mapCtl.center(st.lat, st.lon); return load(); }
     if ('gpGo' in d) { textSearch(qIn.value.trim()); return; }
     if ('gpQClear' in d) { f.q = ''; qIn.value = ''; return load(); }
     if (d.gpCat) { if (f.cat === d.gpCat && !f.q) return; f.cat = d.gpCat; f.cuisine = ''; f.price = ''; f.q = ''; qIn.value = ''; return load(); }
@@ -2641,7 +2652,7 @@ function planDays(cfg) {
   const tr = tripDates(cfg); let s = isTrip(cfg) ? cfg.start.slice(0, 10) : tr.arrive, e = isTrip(cfg) ? (cfg.end || cfg.start).slice(0, 10) : tr.leave;
   if (e < s) e = s; const n = Math.min(45, daysBetween(s, e)); return Array.from({ length: n + 1 }, (_, i) => addDays(s, i));
 }
-const dayLabel = (cfg, d) => `${isTrip(cfg) && cfg.start && d >= cfg.start.slice(0, 10) ? t('Day {n}', { n: daysBetween(cfg.start, d) + 1 }) + ' · ' : ''}${fmt(d, { weekday: 'short', month: 'short', day: 'numeric' })}`;
+const dayLabel = (cfg, d) => { const st = stopsOf(cfg).length > 1 ? stopFor(cfg, d) : null; return `${isTrip(cfg) && cfg.start && d >= cfg.start.slice(0, 10) ? t('Day {n}', { n: daysBetween(cfg.start, d) + 1 }) + ' · ' : ''}${fmt(d, { weekday: 'short', month: 'short', day: 'numeric' })}${st ? ' · ' + st.name : ''}`; };
 function planAddHTML(cfg, place) {
   const have = planLoad(cfg).find(x => x.ref === place.ref);
   const days = planDays(cfg);
@@ -2904,6 +2915,71 @@ function aiItemsToBookings(items) {
   }).filter(x => x.name || x.start);
 }
 
+// ================= multi-city trips: a route of stops with dates =================
+// cfg.stops = [{ name, address, lat, lon, city, region, country, cc, from, to }]. The first stop doubles as the venue
+// when none is set. Old pages kept stops as plain lines in x.Trip.stops; those still render.
+const stopsOf = (cfg) => Array.isArray(cfg.stops) ? cfg.stops.filter(s => s && s.name) : [];
+const stopFor = (cfg, d) => stopsOf(cfg).find(s => s.from && s.to && d >= s.from && d < s.to) || stopsOf(cfg).filter(s => s.from && d >= s.from).slice(-1)[0] || null;
+const stopRange = (s) => s.from ? (s.to && s.to !== s.from ? dateRange(s.from, s.to) : dateRange(s.from, s.from)) : '';
+const CUR = { jp: '¥', gb: '£', ie: '€', fr: '€', de: '€', it: '€', es: '€', pt: '€', nl: '€', be: '€', at: '€', fi: '€', gr: '€', kr: '₩', in: '₹', cn: '¥', th: '฿', ch: 'CHF ', mx: '$' };
+const priceSym = (cfg, p) => { const cc = (cfg.venue && cfg.venue.cc) || ''; const sym = CUR[cc]; return p && sym && sym !== '$' ? p.replace(/\$/g, sym.trim()) : p; };
+function routeHTML(c) {
+  const ss = Array.isArray(c.stops) ? c.stops : [];
+  return `<p class="hint">Add each city in order, with the nights you’re there. Guests see the route, and Nearby and stays follow each stop.</p>
+    <ol class="route-ed">${ss.map((s, i) => `<li class="rowed">
+      ${s.name ? `<div class="venue-sel"><div><b>${esc(s.name)}</b><span>${esc([s.region, s.country].filter(Boolean).join(', '))}</span></div><button type="button" class="btn sm" data-st-clear="${i}">Change</button></div>`
+        : `<div class="field"><label for="st-q-${i}">City or place</label><div class="search"><input id="st-q-${i}" data-st-q="${i}" placeholder="Kyoto" autocomplete="off"><button type="button" class="btn" data-st-find="${i}">Find</button></div></div>`}
+      <div class="two"><div class="field"><label for="st-from-${i}">Arrive</label><input id="st-from-${i}" type="date" data-st="${i}" data-k="from" value="${esc(s.from || '')}"></div><div class="field"><label for="st-to-${i}">Leave</label><input id="st-to-${i}" type="date" data-st="${i}" data-k="to" value="${esc(s.to || '')}"></div></div>
+      <div class="plan-ctl"><span class="mv"><button type="button" data-st-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-st-mv="${i}" data-dir="1" ${i === ss.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button></span><button type="button" class="link" data-st-del="${i}">Remove</button></div>
+    </li>`).join('')}</ol>
+    <button type="button" class="btn sm" data-st-add>+ Add a stop</button>`;
+}
+function setStop(cfg, i, v) {
+  const prev = cfg.stops[i] || {};
+  cfg.stops[i] = { name: v.name, address: v.address, lat: v.lat, lon: v.lon, city: v.city || v.name, region: v.region, country: v.country, cc: v.cc, from: prev.from || '', to: prev.to || '' };
+  if (!cfg.venue && i === 0) { cfg.venue = { name: v.name, address: v.address, lat: v.lat, lon: v.lon, city: v.city || v.name, region: v.region, country: v.country, cc: v.cc }; lookupTZ(v.lat, v.lon).then(tz => { cfg.tz = tz; changed(); }).catch(() => {}); }
+  changed(true);
+}
+function routeClick(b, cfg) {
+  const d = b.dataset; if (!('stAdd' in d || d.stDel || d.stMv || d.stClear || d.stFind)) return false;
+  cfg.stops = Array.isArray(cfg.stops) ? cfg.stops : [];
+  if ('stAdd' in d) { const last = cfg.stops[cfg.stops.length - 1]; const from = last && last.to ? last.to : cfg.start.slice(0, 10); cfg.stops.push({ name: '', from, to: '' }); changed(true); setTimeout(() => $(`#st-q-${cfg.stops.length - 1}`)?.focus(), 40); }
+  if (d.stDel) { cfg.stops.splice(+d.stDel, 1); changed(true); }
+  if (d.stMv) { const i = +d.stMv, j = i + +d.dir; if (j >= 0 && j < cfg.stops.length) { [cfg.stops[i], cfg.stops[j]] = [cfg.stops[j], cfg.stops[i]]; changed(true); } }
+  if (d.stClear) { const s = cfg.stops[+d.stClear]; cfg.stops[+d.stClear] = { name: '', from: s.from, to: s.to }; changed(true); }
+  if (d.stFind) { const i = +d.stFind; const q = ($(`#st-q-${i}`) || {}).value || ''; if (q.trim().length < 2) return true;
+    geocode(q.trim()).then(rs => { const r = rs[0]; if (!r) { toast('No match. Try adding the country.'); return; } setStop(cfg, i, r); }).catch(() => toast('Search is unavailable right now')); }
+  return true;
+}
+function routeInput(i, cfg) {
+  if (i.dataset.st == null) return false;
+  const s = cfg.stops[+i.dataset.st]; if (!s) return true; s[i.dataset.k] = i.value;
+  if (i.dataset.k === 'from' && s.to && s.to < s.from) s.to = '';
+  changed(); return true;
+}
+function wireRouteAC(cfg) {
+  $$('#sheet [data-st-q]').forEach(inp => placeAutocomplete(inp, { bias: () => cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(v => setStop(cfg, +inp.dataset.stQ, v)).catch(() => toast('Couldn’t load that place')) }));
+}
+// guest page: the route
+function routeGuestHTML(cfg) {
+  const ss = stopsOf(cfg);
+  if (ss.length < 2) { const lines = String((typeData(cfg) || {}).stops || '').split('\n').map(x => x.trim()).filter(Boolean); return lines.length && !ss.length ? '' : ''; }
+  return `<ol class="route">${ss.map((s, i) => `<li><button type="button" class="route-stop" data-route-stop="${i}"><span class="route-n">${i + 1}</span><span><b>${esc(s.name)}</b><small>${esc(stopRange(s))}</small></span></button></li>`).join('')}</ol>`;
+}
+function routeTrainsHTML(cfg) {
+  const ss = stopsOf(cfg); if (ss.length < 2) return '';
+  const jp = ss.some(s => s.cc === 'jp');
+  const legs = ss.slice(1).map((s, i) => [ss[i], s]);
+  return `<h3 class="sub-h">${t('Between stops')}</h3><div class="row-links">${legs.map(([a, b]) => ext(`https://www.google.com/maps/dir/?api=1&origin=${a.lat},${a.lon}&destination=${b.lat},${b.lon}&travelmode=transit`, `${esc(a.name)} → ${esc(b.name)}${b.from ? ` <small>${esc(fmt(b.from, { month: 'short', day: 'numeric' }))} · Google Maps</small>` : ' <small>Google Maps</small>'}`, 'row-link')).join('')}
+    ${jp ? `${ext('https://smart-ex.jp/en/', `${t('Shinkansen tickets (Tokaido, Sanyo, Kyushu)')} <small>SmartEX</small>`, 'row-link')}${ext('https://japanrailpass.net/en/', `${t('Japan Rail Pass')} <small>JR Group</small>`, 'row-link')}` : ''}</div>`;
+}
+function routeStaysHTML(cfg) {
+  const ss = stopsOf(cfg); if (ss.length < 2) return '';
+  const n = tripDates(cfg).guests || 2;
+  return `<h3 class="sub-h">${t('Stays along the route')}</h3><div class="row-links">${ss.filter(s => s.from && s.to && s.to > s.from).map(s => { const q = [s.city || s.name, s.country].filter(Boolean).join(', '); const p = { q, d1: s.from, d2: s.to, n };
+    return bookExt('hotels', 'ghotels', p, `${esc(t('Hotels in {c}', { c: s.name }))} <small>${esc(dateRange(s.from, s.to))} · Google Hotels</small>`) + bookExt('hotels', 'booking', p, `${esc(t('Hotels and apartments'))} · ${esc(s.name)} <small>Booking.com</small>`); }).join('')}</div>`;
+}
+
 // ================= trips: day-by-day itinerary builder (reuses cfg.schedule: {date, time, title, note, kind}) =================
 const PLAN_KINDS = { activity: 'Activity', reservation: 'Reservation', note: 'Note' };
 function tripDays(c) {
@@ -2940,7 +3016,7 @@ const THEME_PRESETS = [
   ['Stadium', { accent: '#C2185B', font: 'condensed', mode: 'dark' }], ['Trail', { accent: '#2E7D32', font: 'wide', mode: 'light' }],
 ];
 // guest Event tab sections the organizer can reorder and hide
-const EVENT_SECTIONS = [['about', 'About'], ['details', 'Need to know'], ['rsvp', 'RSVP form'], ['access', 'Access and arrival'], ['schedule', 'Schedule'], ['weather', 'Weather']];
+const EVENT_SECTIONS = [['route', 'Route'], ['about', 'About'], ['details', 'Need to know'], ['rsvp', 'RSVP form'], ['access', 'Access and arrival'], ['schedule', 'Schedule'], ['weather', 'Weather']];
 const schedTitle = (cfg) => isTrip(cfg) ? 'Itinerary' : 'Schedule';
 function sectionOrder(cfg) {
   const ids = EVENT_SECTIONS.map(x => x[0]); const o = (Array.isArray(cfg.order) ? cfg.order : (typeDefaults(cfg.type).order || [])).filter((x, i, a) => ids.includes(x) && a.indexOf(x) === i);
