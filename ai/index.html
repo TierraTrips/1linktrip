@@ -308,7 +308,7 @@ export async function handler(req: Request): Promise&lt;Response&gt; {
   if (!signedInUser(req)) return json(401, { ok: false, error: &quot;Sign in to use import&quot; });
   if (!key) return json(503, { ok: false, error: &quot;Import is not set up yet (missing ANTHROPIC_API_KEY)&quot; });
 
-  let body: { url?: string; text?: string; kind?: string; mode?: string; page?: unknown; instruction?: string };
+  let body: { url?: string; text?: string; kind?: string; mode?: string; page?: unknown; instruction?: string; type?: string };
   try { body = await req.json(); } catch { return json(400, { ok: false, error: &quot;Send JSON&quot; }); }
 
   if (body.mode === &quot;translate&quot;) {
@@ -382,7 +382,7 @@ export async function handler(req: Request): Promise&lt;Response&gt; {
       system: SYSTEM,
       tools: [tool],
       tool_choice: { type: &quot;tool&quot;, name: tool.name },
-      messages: [{ role: &quot;user&quot;, content: `Today is ${today}.${sourceUrl ? ` Source URL: ${sourceUrl}` : &quot;&quot;}\n\n&lt;source&gt;\n${source}\n&lt;/source&gt;` }],
+      messages: [{ role: &quot;user&quot;, content: `Today is ${today}.${sourceUrl ? ` Source URL: ${sourceUrl}` : &quot;&quot;}${EVENT_TYPES.includes(String(body.type)) ? ` The organizer says this event is a ${body.type}; use that type.` : &quot;&quot;}\n\n&lt;source&gt;\n${source}\n&lt;/source&gt;` }],
     });
     if (msg.stop_reason === &quot;refusal&quot;) return json(422, { ok: false, error: &quot;The model declined this content&quot; });
     const call = msg.content.find((b) =&gt; b.type === &quot;tool_use&quot;);

@@ -1571,7 +1571,7 @@ function suRender() {
   }
   m.innerHTML = `${prog}${top}<h1>${h}</h1><div class="su-body">${body}</div><div class="grow"></div>${n === 1 || n === 2 ? suTicket(c) : ''}${cta}`;
   LS.set('draft', c); pageSave(LS.get('draftId'), { cfg: c }); suPreview();
-  if (n === 0) aiReady().then(ok => { const el = $('[data-su-ai]'); if (el && ok) el.hidden = false; const pend = LS.get('pendingAiUrl'); if (ok && pend && el) { LS.del('pendingAiUrl'); sbUser().then(u => { if (!u) return; el.querySelector('.su-ai-form').hidden = false; $('#su-ai-url').value = pend; suAIGo(); }).catch(() => {}); } });
+  if (n === 0) aiReady().then(ok => { const el = $('[data-su-ai]'); if (el && ok) el.hidden = false; const pend = LS.get('pendingAiUrl'); if (ok && pend && el) { LS.del('pendingAiUrl'); sbUser().then(u => { if (!u) return; el.querySelector('.su-ai-form').hidden = false; $('#su-ai-url').value = pend; SU.aiType = LS.get('pendingAiType') || ''; LS.del('pendingAiType'); $$('.su-type').forEach(x => x.classList.toggle('on', x.dataset.suType === SU.aiType)); suAIHint(); suAIGo(); }).catch(() => {}); } });
   placeAutocomplete($('#su-q'), { bias: () => null, onPick: (id, tok) => gpVenue(id, tok).then(r => {
     if (!SU) return; const cc = SU.cfg; cc.venue = { name: r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc }; SU.q = r.name; SU.results = []; SU.msg = '';
     suRender(); lookupTZ(r.lat, r.lon).then(tz => { cc.tz = tz; LS.set('draft', cc); }).catch(() => {});
@@ -1581,11 +1581,14 @@ function suRender() {
 document.addEventListener('click', (e) => {
   if (!SU || !e.target.closest('.setup')) return;
   const b = e.target.closest('button'); if (!b) return; const d = b.dataset; const c = SU.cfg;
-  if (d.suType) {
+  if (d.suType && SU.step === 0 && $('.su-ai-form') && !$('.su-ai-form').hidden) {
+    SU.aiType = SU.aiType === d.suType ? '' : d.suType;
+    $$('.su-type').forEach(x => x.classList.toggle('on', x.dataset.suType === SU.aiType)); suAIHint();
+  } else if (d.suType) {
     const type = d.suType; const keep = { title: c.title, start: c.start, end: c.end, venue: c.venue, tz: c.tz };
     SU.cfg = Object.assign(blankEvent(type), keep); SU.typed = true; B.cfg = SU.cfg; SU.step = 1; suRender();
   } else if (d.whenTg != null) { whenToggle(c); suRender(); const f = $(hasTime(c.start) ? '#su-st' : '#su-sd'); if (f) f.focus(); }
-  else if (d.su === 'ai-open') { const f = $('.su-ai-form'); f.hidden = !f.hidden; if (!f.hidden) $('#su-ai-url').focus(); }
+  else if (d.su === 'ai-open') { const f = $('.su-ai-form'); f.hidden = !f.hidden; if (!f.hidden) { SU.aiType = ''; $$('.su-type').forEach(x => x.classList.remove('on')); suAIHint(); $('#su-ai-url').focus(); } }
   else if (d.su === 'ai-go') suAIGo();
   else if (d.si === 'send') signInSubmit($('.setup'));
   else if (d.su === 'back') { SU.step = Math.max(0, SU.step - 1); suRender(); }
@@ -2942,10 +2945,12 @@ async function aiResolveVenue(name, address) {
   }
   try { const r = (await geocode(q))[0]; return r ? { name: cleanText(name, 120) || r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc } : null; } catch { return null; }
 }
-async function startFromWebsite(url, msgEl) {
+async function startFromWebsite(url, msgEl, type) {
   const say = (t2) => { if (msgEl) msgEl.textContent = t2; };
   say('Reading the site and filling in your page…');
-  const j = await aiImport({ url });
+  const j = await aiImport(type ? { url, type } : { url });
+  // a category the organizer picked wins over the model's guess
+  if (type && TYPES.includes(type)) { j.data = j.data || {}; if (j.data.type !== type) { j.data.type = type; } }
   const cfg = aiEventToCfg(j.data || {});
   if (!cfg.title) cfg.title = hostOf(url);
   say('Finding the venue…');
@@ -2958,18 +2963,23 @@ async function startFromWebsite(url, msgEl) {
 }
 function suAIHTML() {
   return `<div class="su-ai" data-su-ai hidden><button type="button" class="link strong" data-su="ai-open">✦ Start from a website</button>
-    <div class="su-ai-form" hidden><p class="hint">Paste your event’s website. We’ll read it and fill in your page for you to check.</p>
+    <div class="su-ai-form" hidden><p class="hint">Paste your event’s website. We’ll read it and fill in your page for you to check.</p><p class="hint" data-su-ai-type></p>
       <div class="search"><input id="su-ai-url" type="url" inputmode="url" placeholder="https://yourwedding.com" autocomplete="off"><button type="button" class="btn primary" data-su="ai-go">Fill in</button></div>
       <p class="hint" data-su-ai-msg role="status" aria-live="polite"></p><div data-su-ai-signin></div></div></div>`;
+}
+function suAIHint() {
+  const el = $('[data-su-ai-type]'); if (!el) return;
+  const t = SU && SU.aiType && (SETUP_TYPES.find(x => x[0] === SU.aiType) || [])[1];
+  el.innerHTML = t ? `Category: <b>${esc(t)}</b>` : 'Optional: tap a category below so we know what kind of event it is.';
 }
 async function suAIGo() {
   const inp = $('#su-ai-url'); const msg = $('[data-su-ai-msg]'); const url = normSite(inp ? inp.value : '');
   if (!url) { msg.textContent = 'That doesn’t look like a website link.'; return; }
   const btn = $('[data-su="ai-go"]'); btn.disabled = true;
-  try { await startFromWebsite(url, msg); }
+  try { await startFromWebsite(url, msg, SU && SU.aiType); }
   catch (e) {
     btn.disabled = false;
-    if (e.signin) { LS.set('pendingAiUrl', url); LS.set('afterSignIn', '#setup'); msg.textContent = 'Sign in first, so imports stay yours.'; $('[data-su-ai-signin]').innerHTML = signInFormHTML(''); return; }
+    if (e.signin) { LS.set('pendingAiUrl', url); LS.set('pendingAiType', (SU && SU.aiType) || ''); LS.set('afterSignIn', '#setup'); msg.textContent = 'Sign in first, so imports stay yours.'; $('[data-su-ai-signin]').innerHTML = signInFormHTML(''); return; }
     msg.textContent = e.message || 'Couldn’t read that site.';
   }
 }

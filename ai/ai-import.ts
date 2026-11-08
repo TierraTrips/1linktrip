@@ -291,7 +291,7 @@ export async function handler(req: Request): Promise<Response> {
   if (!signedInUser(req)) return json(401, { ok: false, error: "Sign in to use import" });
   if (!key) return json(503, { ok: false, error: "Import is not set up yet (missing ANTHROPIC_API_KEY)" });
 
-  let body: { url?: string; text?: string; kind?: string; mode?: string; page?: unknown; instruction?: string };
+  let body: { url?: string; text?: string; kind?: string; mode?: string; page?: unknown; instruction?: string; type?: string };
   try { body = await req.json(); } catch { return json(400, { ok: false, error: "Send JSON" }); }
 
   if (body.mode === "translate") {
@@ -365,7 +365,7 @@ export async function handler(req: Request): Promise<Response> {
       system: SYSTEM,
       tools: [tool],
       tool_choice: { type: "tool", name: tool.name },
-      messages: [{ role: "user", content: `Today is ${today}.${sourceUrl ? ` Source URL: ${sourceUrl}` : ""}\n\n<source>\n${source}\n</source>` }],
+      messages: [{ role: "user", content: `Today is ${today}.${sourceUrl ? ` Source URL: ${sourceUrl}` : ""}${EVENT_TYPES.includes(String(body.type)) ? ` The organizer says this event is a ${body.type}; use that type.` : ""}\n\n<source>\n${source}\n</source>` }],
     });
     if (msg.stop_reason === "refusal") return json(422, { ok: false, error: "The model declined this content" });
     const call = msg.content.find((b) => b.type === "tool_use");
