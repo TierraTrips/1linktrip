@@ -713,7 +713,8 @@ function flightsHTML(cfg, air) {
       ${o === a.iata ? `<span class="muted small">${t('That is your home airport.')}</span>` : `${bookExt('flights', 'gflights', { to: a.iata, from: o, d1: tr.arrive, d2: tr.leave }, 'Google Flights', 'btn')}
       ${o ? bookExt('flights', 'kayak', { from: o, to: a.iata, d1: tr.arrive, d2: tr.leave }, 'Kayak', 'btn') : ''}`}
     </div></li>`).join('')}</ul>
-    ${o ? '' : `<p class="muted small">${t('Add the airport you are flying from to compare fares on Kayak too.')}</p>`}`;
+    ${o ? '' : `<p class="muted small">${t('Add the airport you are flying from to compare fares on Kayak too.')}</p>`}
+    ${airlinePickHTML(cfg, air)}`;
 }
 function trainsHTML(cfg) {
   const v = cfg.venue; const o = LS.get('origin'); const oa = o && airportByCode(o);
@@ -731,7 +732,7 @@ function rentalHTML(cfg, air) {
   const items = air.slice(0, 2).map(a => bookExt('cars', 'kayakCars', { iata: a.iata, d1: tr.arrive, d2: tr.leave }, `${esc(t('Rental cars near {a}', { a: `${a.name} (${a.iata})` }))} <small>Kayak</small>`));
   items.push(ext(L.place('car rental', placeLabel(v) || v.name), `${esc(t('Rental desks near the venue'))} <small>Google Maps</small>`, 'row-link'));
   const d = (x) => fmt(x, { month: 'short', day: 'numeric' });
-  return `<h3 class="sub-h">${t('Rental car')}</h3><p class="muted small">${esc(t('Pick up {a} (arrival) · return {b} (departure)', { a: d(tr.arrive), b: d(tr.leave) }))}</p><div class="row-links">${items.join('')}</div>`;
+  return `<h3 class="sub-h">${t('Rental car')}</h3><p class="muted small">${esc(t('Pick up {a} (arrival) · return {b} (departure)', { a: d(tr.arrive), b: d(tr.leave) }))}</p>${GKEY && air[0] ? `<div data-slot="car-counters"></div>` : ''}<div class="row-links">${items.join('')}</div>`;
 }
 function stayLinks(cfg) {
   if (stopsOf(cfg).length > 1) return routeStaysHTML(cfg);
@@ -785,7 +786,7 @@ function hotelsHTML(cfg, data) {
   const hs = data.hotels.slice(0, 8);
   return `<ul class="plist rich">${hs.map((h, i) => `<li${i >= 3 ? ' class="more"' : ''}>
     <div><b>${esc(h.name)}</b><span>${esc([t(h.kind), h.stars ? `${h.stars}★` : ''].filter(Boolean).join(' · '))}</span>
-      <div class="mini">${bookExt('hotels', 'booking', { q: `${h.name}, ${v.city || placeLabel(v)}`, d1: tr.arrive, d2: tr.leave, n: tr.guests || 2 }, t('Check rates') + ' · Booking.com', 'mini-b')}<button type="button" class="mini-b" data-place="${esc(placeKey(h))}">${t('Details')}</button>${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
+      <div class="mini">${(() => { const a = hotelBookAction(cfg, h); return ext(a.url, a.label, 'mini-b'); })()}}<button type="button" class="mini-b" data-place="${esc(placeKey(h))}">${t('Details')}</button>${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
     <span class="dist">${esc(fmtDist(h.d, v.cc))}<small>${h.d < 2000 ? walkTxt(h.d) : t('from the venue')}</small></span></li>`).join('')}${hs.length > 3 ? `<li class="more-li"><button type="button" class="btn sm" data-more>${t('All {n} hotels', { n: hs.length })}</button></li>` : ''}</ul>`;
 }
 function weatherHTML(w, cfg) {
@@ -1185,7 +1186,7 @@ function wireEvent(cfg, art, seq, air, opts) {
   const refreshTrip = () => {
     if (slot('flights')) slot('flights').innerHTML = flightsHTML(cfg, air);
     if (slot('trains')) slot('trains').innerHTML = trainsHTML(cfg);
-    if (slot('rental')) slot('rental').innerHTML = rentalHTML(cfg, air);
+    if (slot('rental')) { slot('rental').innerHTML = rentalHTML(cfg, air); const cs = slot('rental').querySelector('[data-slot="car-counters"]'); if (cs && air[0] && !gpBroken) gpCars(cfg, air[0]).then(rows => { if (rows.length && document.body.contains(cs)) cs.innerHTML = carCountersHTML(cfg, air[0], rows); }).catch(() => {}); }
     if (slot('stay-links')) slot('stay-links').innerHTML = stayLinks(cfg);
     if (slot('tour-links')) slot('tour-links').innerHTML = tourLinks(cfg);
     if (art._osm && slot('hotels')) slot('hotels').innerHTML = hotelsHTML(cfg, art._osm);
@@ -1193,6 +1194,7 @@ function wireEvent(cfg, art, seq, air, opts) {
     art._pack && art._pack();
   };
   const tripKey = 'trip:' + cfg.start.slice(0, 10) + ':' + (cfg.end || cfg.start).slice(0, 10);
+  art.addEventListener('change', (e) => { const sel = e.target.closest('[data-airline]'); if (!sel) return; LS.set('airline', sel.value); refreshTrip(); });
   art.addEventListener('change', (e) => {
     const i = e.target; const k = i.dataset.k; if (!k || !i.closest('.tripbar')) return;
     const tr = tripDates(cfg); tr[k] = k === 'guests' ? Math.max(1, Math.min(16, +i.value || 2)) : i.value;
@@ -2220,7 +2222,7 @@ function placeCardHTML(cfg, p) {
     ${addr ? `<p class="pc-addr">${esc(addr)}</p>` : ''}
     ${facts.length ? `<p class="muted small">${esc(facts.join(' · '))}</p>` : ''}
     ${planAddHTML(cfg, osmPlanPlace(p))}
-    <div class="btns sec-acts">${ext(dirURL, t('Directions'), 'btn')}${p.cat === 'restaurant' ? bookExt('restaurants', 'opentable', { name: p.name, venue: v, date: cfg.start.slice(0, 10), n: tr.guests || 2 }, t('Reserve') + ' · OpenTable', 'btn') : ''}${p.phone ? `<a class="btn" href="tel:${esc(p.phone.replace(/[^\d+]/g, ''))}">${t('Call')}</a>` : ''}${p.website ? ext(p.website, t('Website'), 'btn') : ''}</div>
+    <div class="btns sec-acts">${p.cat === 'hotel' ? (() => { const a = hotelBookAction(cfg, p); return ext(a.url, a.label, 'btn book'); })() : ''}${ext(dirURL, t('Directions'), 'btn')}${p.cat === 'restaurant' ? bookExt('restaurants', 'opentable', { name: p.name, venue: v, date: cfg.start.slice(0, 10), n: tr.guests || 2 }, t('Reserve') + ' · OpenTable', 'btn') : ''}${p.phone ? `<a class="btn" href="tel:${esc(p.phone.replace(/[^\d+]/g, ''))}">${t('Call')}</a>` : ''}${p.website ? ext(p.website, t('Website'), 'btn') : ''}</div>
     <button type="button" class="link" data-pc-map>${t('Show on map')}</button>
   </div>`;
 }
@@ -2581,7 +2583,7 @@ function gpCardHTML(cfg, d) {
     ${d.hours.length ? `<div class="pc-hours"><b>${d.open === true ? `<span class="open">${t('Open now')}</span>` : d.open === false ? `<span class="closed">${t('Closed now')}</span>` : t('Hours')}</b><ul>${d.hours.map(h => `<li>${esc(h)}</li>`).join('')}</ul></div>` : ''}
     ${d.addr ? `<p class="pc-addr">${esc(d.addr)}</p>` : ''}
     ${planAddHTML(cfg, gPlanPlace(d))}
-    <div class="btns sec-acts">${ext(dirURL, t('Directions'), 'btn')}${d.food ? bookExt('restaurants', 'opentable', { name: d.name, venue: v, date: cfg.start.slice(0, 10), n: tr.guests || 2 }, t('Reserve') + ' · OpenTable', 'btn') : ''}${d.phone ? `<a class="btn" href="tel:${esc(d.phone.replace(/[^\d+]/g, ''))}">${t('Call')}</a>` : ''}${d.web ? ext(d.web, t('Website'), 'btn') : ''}</div>
+    <div class="btns sec-acts">${(d.types || []).includes('lodging') ? (() => { const a = hotelBookAction(cfg, { name: d.name, web: d.web, city: '' }); return ext(a.url, a.label, 'btn book'); })() : ''}${ext(dirURL, t('Directions'), 'btn')}${d.food ? bookExt('restaurants', 'opentable', { name: d.name, venue: v, date: cfg.start.slice(0, 10), n: tr.guests || 2 }, t('Reserve') + ' · OpenTable', 'btn') : ''}${d.phone ? `<a class="btn" href="tel:${esc(d.phone.replace(/[^\d+]/g, ''))}">${t('Call')}</a>` : ''}${d.web ? ext(d.web, t('Website'), 'btn') : ''}</div>
     <button type="button" class="link" data-pc-map>${t('Show on map')}</button>
   </div>`;
 }
@@ -3053,6 +3055,78 @@ async function syncPull(cfg, art) {
   }
 }
 
+// ================= book with the company itself: hotel chains, airlines, rental-car brands =================
+// Templates verified on WebKit/iPhone (Nov 2026). Brands that only accept their homepage get the homepage.
+// Order everywhere: the brand's own deep link → the place's own website → an aggregator as the last resort.
+const slug = (s) => String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const mdy = (d) => `${d.slice(5, 7)}/${d.slice(8, 10)}/${d.slice(0, 4)}`;
+const HOTEL_BRANDS = [
+  ['marriott', 'Marriott', /marriott|westin|sheraton|ritz[- ]carlton|st\.? regis|courtyard|fairfield|residence inn|springhill|aloft|moxy|m[eé]ridien|renaissance|four points|\bac hotel|autograph collection|delta hotels|element by|tribute portfolio|luxury collection|\bedition\b|\bw (hotel|[a-z]+$)/i],
+  ['hilton', 'Hilton', /hilton|doubletree|hampton|conrad|waldorf|embassy suites|homewood|home2|curio|canopy by|tapestry|signia|\blxr\b|motto by|tempo by/i],
+  ['ihg', 'IHG', /intercontinental|holiday inn|crowne plaza|kimpton|hotel indigo|staybridge|candlewood|even hotels?|\bvoco\b|regent|six senses|vignette collection/i],
+  ['accor', 'Accor', /novotel|\bibis\b|sofitel|mercure|pullman|fairmont|swiss[oô]tel|m[oö]venpick|mgallery|raffles|adagio|mama shelter|25hours|banyan tree/i],
+  ['choice', 'Choice Hotels', /comfort inn|comfort suites|quality inn|clarion|sleep inn|econo lodge|rodeway|cambria|ascend|mainstay|suburban studios|everhome/i],
+  ['hyatt', 'Hyatt', /hyatt|andaz|alila|thompson hotel|zoetry|secrets |dreams |breathless|zilara|ziva|miraval/i],
+  ['wyndham', 'Wyndham', /wyndham|ramada|days inn|super 8|la quinta|baymont|microtel|tryp|wingate|hawthorn|trademark collection/i],
+  ['bestwestern', 'Best Western', /best western|sure hotel|aiden by/i],
+];
+const hotelBrand = (name) => (HOTEL_BRANDS.find(([, , re]) => re.test(name || '')) || [])[0] || '';
+Object.assign(PROVIDERS, {
+  marriott: { name: 'Marriott', kinds: ['hotels'], mode: 'link', url: (p) => `https://www.marriott.com/search/findHotels.mi?destinationAddress.destination=${enc(p.q)}&fromDate=${mdy(p.d1)}&toDate=${mdy(p.d2)}&roomCount=1&numAdultsPerRoom=${p.n || 2}` },
+  hilton: { name: 'Hilton', kinds: ['hotels'], mode: 'link', url: (p) => `https://www.hilton.com/en/search/?query=${enc(p.q)}&arrivalDate=${p.d1}&departureDate=${p.d2}&flexibleDates=false&numRooms=1&numAdults=${p.n || 2}&numChildren=0` },
+  // IHG months are zero-based: March 2027 is 022027
+  ihg: { name: 'IHG', kinds: ['hotels'], mode: 'link', url: (p) => { const my = (d) => pad(+d.slice(5, 7) - 1) + d.slice(0, 4); return `https://www.ihg.com/hotels/us/en/find-hotels/hotel/list?qDest=${enc(p.q)}&qCiD=${+p.d1.slice(8, 10)}&qCiMy=${my(p.d1)}&qCoD=${+p.d2.slice(8, 10)}&qCoMy=${my(p.d2)}&qAdlt=${p.n || 2}&qChld=0&qRms=1&qRtP=6CBARC&qSrt=sBR`; } },
+  accor: { name: 'Accor', kinds: ['hotels'], mode: 'link', url: (p) => `https://all.accor.com/booking/en/accor/hotels/${slug(p.city)}-${slug(p.country)}?dateIn=${p.d1}&nights=${Math.max(1, daysBetween(p.d1, p.d2))}&compositions=${p.n || 2}&stayplus=false&snu=false` },
+  choice: { name: 'Choice Hotels', kinds: ['hotels'], mode: 'link', url: (p) => `https://www.choicehotels.com/${slug(p.country)}/${slug(p.city)}/hotels?checkInDate=${p.d1}&checkOutDate=${p.d2}&adults=${p.n || 2}` },
+  hyatt: { name: 'Hyatt', kinds: ['hotels'], mode: 'link', url: () => 'https://www.hyatt.com/' },
+  wyndham: { name: 'Wyndham', kinds: ['hotels'], mode: 'link', url: () => 'https://www.wyndhamhotels.com/' },
+  bestwestern: { name: 'Best Western', kinds: ['hotels'], mode: 'link', url: () => 'https://www.bestwestern.com/' },
+});
+// the booking action for a hotel: brand deep link, else the hotel's website, else Booking.com
+function hotelBookAction(cfg, h) {
+  const tr = tripDates(cfg); const v = cfg.venue || {}; const b = hotelBrand(h.name);
+  const p = { q: [h.name, h.city || v.city || '', v.country || ''].filter(Boolean).join(', '), city: h.city || v.city || '', country: v.country || '', d1: tr.arrive, d2: tr.leave, n: tr.guests || 2 };
+  if (b && (b !== 'accor' && b !== 'choice' || (p.city && p.country))) return { url: bookingLink('hotels', b, b === 'marriott' || b === 'hilton' || b === 'ihg' ? { ...p, q: p.city ? `${p.city}${p.country ? ', ' + p.country : ''}` : p.q } : p).url, label: t('Book with {b}', { b: PROVIDERS[b].name }) };
+  if (h.web || h.website) { const w = h.web || h.website; return { url: w, label: t('Book direct · {h}', { h: hostOf(w) }) }; }
+  return { url: bookingLink('hotels', 'booking', { q: p.q, d1: p.d1, d2: p.d2, n: p.n }).url, label: t('Check rates') + ' · Booking.com' };
+}
+// airlines: route + dates where the airline's site accepts them, otherwise its booking homepage
+const AIRLINE_BOOK = {
+  UA: ['United', (o, d, a, b, n) => `https://www.united.com/en/us/fsr/choose-flights?f=${o}&t=${d}&d=${a}&r=${b}&tt=RT&sc=7,7&px=${n}&taxng=1&clm=7&st=bestmatches`],
+  AS: ['Alaska', (o, d, a, b, n) => `https://www.alaskaair.com/search/results?A=${n}&O=${o}&D=${d}&OD=${a}&DD=${b}&RT=true`],
+  BA: ['British Airways', (o, d, a, b, n) => `https://www.britishairways.com/nx/b/airselect/en/usa/book/search?trip=round&departureDate=${a}&arrivalDate=${b}&from=${o}&to=${d}&travelClass=economy&adults=${n}&children=0&infants=0&youngAdults=0`],
+  DL: ['Delta', (o, d, a, b, n) => `https://www.delta.com/flight-search/book-a-flight?tripType=ROUND_TRIP&originCity=${o}&destinationCity=${d}&departureDate=${a}&returnDate=${b}&paxCount=${n}`],
+  AA: ['American', () => 'https://www.aa.com/homePage.do'], B6: ['JetBlue', () => 'https://www.jetblue.com/'], WN: ['Southwest', () => 'https://www.southwest.com/'],
+  AC: ['Air Canada', () => 'https://www.aircanada.com/us/en/aco/home.html'], KL: ['KLM', () => 'https://www.klm.com/'], AF: ['Air France', () => 'https://wwws.airfrance.us/'],
+  LH: ['Lufthansa', () => 'https://www.lufthansa.com/us/en/homepage'], JL: ['JAL', () => 'https://www.jal.co.jp/flights/en-us/'], NH: ['ANA', () => 'https://www.ana.co.jp/en/us/'],
+  EK: ['Emirates', () => 'https://www.emirates.com/us/english/'], QF: ['Qantas', () => 'https://www.qantas.com/us/en.html'],
+};
+function airlinePickHTML(cfg, air) {
+  const o = LS.get('origin'); if (!air.length) return '';
+  const cur = LS.get('airline') || '';
+  const tr = tripDates(cfg); const n = tr.guests || 1;
+  const link = cur && AIRLINE_BOOK[cur] ? air.slice(0, 2).map(a => { const [name, fn] = AIRLINE_BOOK[cur]; return ext(fn(o || '', a.iata, tr.arrive, tr.leave, n), `${esc(t('Book with {b}', { b: name }))}${o ? ` <small>${esc(o)} → ${esc(a.iata)}</small>` : ''}`, 'row-link'); }).join('') : '';
+  return `<div class="airline-pick"><label class="pf-sel"><span>${t('Booking with a specific airline?')}</span><select data-airline><option value="">${t('Choose an airline')}</option>${Object.entries(AIRLINE_BOOK).map(([k, [name]]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></label>${link ? `<div class="row-links">${link}</div>` : ''}</div>`;
+}
+// rental counters at the arrival airport (Google), each to its own brand site
+const CAR_BRANDS = [['avis', 'Avis', /\bavis\b/i], ['budget', 'Budget', /\bbudget\b/i], ['hertz', 'Hertz', /\bhertz\b/i], ['enterprise', 'Enterprise', /enterprise/i], ['national', 'National', /\bnational\b/i], ['alamo', 'Alamo', /\balamo\b/i], ['sixt', 'Sixt', /\bsixt\b/i], ['thrifty', 'Thrifty', /thrifty/i], ['dollar', 'Dollar', /\bdollar\b/i], ['europcar', 'Europcar', /europcar/i]];
+const CAR_HOME = { avis: 'https://www.avis.com/', budget: 'https://www.budget.com/', hertz: 'https://www.hertz.com/', enterprise: 'https://www.enterprise.com/', national: 'https://www.nationalcar.com/', alamo: 'https://www.alamo.com/', sixt: 'https://www.sixt.com/', thrifty: 'https://www.thrifty.com/', dollar: 'https://www.dollar.com/', europcar: 'https://www.europcar.com/' };
+function carBrandURL(brand, ap) { // Avis and Budget airport pages prefill the pickup location
+  const city = ap && ap.city ? slug(ap.city) : ''; const cc = ap && ap.cc ? ap.cc : '';
+  if ((brand === 'avis' || brand === 'budget') && city && cc && ap.iata) return `https://www.${brand}.com/en/locations/${cc}/${city}/${ap.iata.toLowerCase()}`;
+  return CAR_HOME[brand];
+}
+function gpCars(cfg, ap) {
+  const key = `gcar1:${ap.iata}`; const c = LS.get(key); if (c && Date.now() - c.t < 7 * 864e5) return Promise.resolve(c.d);
+  return gFetch('https://places.googleapis.com/v1/places:searchNearby', { includedTypes: ['car_rental'], maxResultCount: 20, locationRestriction: { circle: { center: { latitude: ap.lat, longitude: ap.lon }, radius: 4000 } } }, 'places.id,places.displayName,places.websiteUri,places.rating,places.userRatingCount')
+    .then(j => { const seen = new Set(); const d = (j.places || []).map(x => { const name = (x.displayName && x.displayName.text) || ''; const b = (CAR_BRANDS.find(([, , re]) => re.test(name)) || [])[0] || ''; return { id: x.id, name, brand: b, web: x.websiteUri || '', rating: x.rating || 0, count: x.userRatingCount || 0 }; })
+      .filter(x => { const k = x.brand || x.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8); LS.set(key, { t: Date.now(), d }); return d; });
+}
+function carCountersHTML(cfg, ap, rows) {
+  return `<h3 class="sub-h">${esc(t('Rental counters at {a}', { a: ap.iata }))}</h3><div class="row-links">${rows.map(r => { const url = r.brand ? carBrandURL(r.brand, ap) : r.web; if (!url) return '';
+    return ext(url, `${esc(r.brand ? (CAR_BRANDS.find(b => b[0] === r.brand) || [])[1] : r.name)}${r.rating ? ` <small>★ ${r.rating.toFixed(1)}</small>` : ` <small>${esc(hostOf(url))}</small>`}`, 'row-link'); }).join('')}</div>`;
+}
+
 // ================= trips: day-by-day itinerary builder (reuses cfg.schedule: {date, time, title, note, kind}) =================
 const PLAN_KINDS = { activity: 'Activity', reservation: 'Reservation', note: 'Note' };
 function tripDays(c) {
@@ -3206,5 +3280,5 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

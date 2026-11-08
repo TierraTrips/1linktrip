@@ -25,7 +25,7 @@ const LOGIN_OK = /accounts\.google\.com|auth\.uber\.com|m\.uber\.com|lyft\.com/;
 const WALL = /access denied|you don.t have permission|request (was )?blocked|are you a (human|robot)|verify (that )?you are (a )?human|captcha|unusual traffic|pardon our interruption|press (&|and) hold|bot (detection|check)|something went wrong.*security|incapsula|perimeterx|datadome/i;
 const NOTFOUND = /\b404\b|page (was )?not found|can.t find (that|this) page|no longer available/i;
 
-const PROVIDERS = /(^|\.)(google\.com|booking\.com|airbnb\.[a-z.]+|expedia\.com|kayak\.com|skyscanner\.[a-z.]+|getyourguide\.com|viator\.com|opentable\.com|rome2rio\.com|amtrak\.com|thetrainline\.com|uber\.com|lyft\.com|flightaware\.com|rentalcars\.com|priceline\.com|tripadvisor\.com|discovercars\.com|omio\.com|trainline\.com)$/;
+const PROVIDERS = /(^|\.)(marriott\.com|hilton\.com|ihg\.com|accor\.com|choicehotels\.com|united\.com|alaskaair\.com|britishairways\.com|delta\.com|avis\.com|budget\.com|google\.com|booking\.com|airbnb\.[a-z.]+|expedia\.com|kayak\.com|skyscanner\.[a-z.]+|getyourguide\.com|viator\.com|opentable\.com|rome2rio\.com|amtrak\.com|thetrainline\.com|uber\.com|lyft\.com|flightaware\.com|rentalcars\.com|priceline\.com|tripadvisor\.com|discovercars\.com|omio\.com|trainline\.com)$/;
 let thirdParty = 0;
 async function collect(browser) {
   const ctx = await browser.newContext({ ...devices['iPhone 13'], serviceWorkers: 'block' });
@@ -42,6 +42,17 @@ async function collect(browser) {
       links.forEach(l => out.push({ ...l, event: ev.cfg.title, place: ev.place }));
     }
   }
+  // brand-direct links (hotel chains, airlines, rental brands) built by the app for sample places
+  const brand = await page.evaluate(() => { const E = window.__ep; const out = []; const d1 = new Date(Date.now() + 120 * 864e5).toISOString().slice(0, 10), d2 = new Date(Date.now() + 123 * 864e5).toISOString().slice(0, 10);
+    const cfgs = [['Cancún', 'Mexico', 'mx', 21.16, -86.85], ['Kyoto', 'Japan', 'jp', 35.01, 135.77]];
+    for (const [city, country, cc, lat, lon] of cfgs) {
+      const cfg = { title: 'x', start: d1, end: d2, venue: { name: city, city, country, cc, lat, lon }, tools: {}, off: {} };
+      for (const [name, b] of [['Courtyard ' + city, 'marriott'], ['Hilton ' + city, 'hilton'], ['Holiday Inn ' + city, 'ihg'], ['Novotel ' + city, 'accor'], ['Comfort Inn ' + city, 'choice']]) { const a = E.hotelBookAction(cfg, { name, city }); out.push({ href: a.url, text: a.label, rel: 'noopener noreferrer', event: 'Brand ' + city, placeSrc: city.normalize('NFKD').replace(/[\u0300-\u036f]/g, '') }); }
+    }
+    for (const k of ['UA', 'AS', 'BA', 'DL']) out.push({ href: E.AIRLINE_BOOK[k][1]('LAX', 'CUN', d1, d2, 1), text: 'Book with ' + E.AIRLINE_BOOK[k][0], rel: 'noopener noreferrer', event: 'Brand flights', placeSrc: 'CUN|Cancun|Cancún' });
+    for (const b of ['avis', 'budget']) out.push({ href: E.carBrandURL(b, { iata: 'CUN', city: 'Cancun', cc: 'mx' }), text: b + ' CUN', rel: 'noopener noreferrer', event: 'Brand cars', placeSrc: 'CUN|Cancun|Cancún' });
+    return out; });
+  brand.forEach(l => out.push({ ...l, place: new RegExp(l.placeSrc, 'i') }));
   await ctx.close();
   // one check per distinct URL shape per event (restaurants/hotels repeat the same provider pattern)
   const seen = new Set(); const uniq = [];
