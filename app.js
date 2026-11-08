@@ -999,7 +999,7 @@ function aboutHTML(cfg) {
 // one schedule: the organizer's items, with the guest's own bookings mixed in
 function scheduleHTML(cfg) {
   const evs = cfg.off.schedule ? [] : cfg.schedule.filter(x => x.title).map(x => ({ ev: true, start: (x.date || '') + (x.date && x.time ? 'T' + x.time : ''), name: x.title, note: x.note, kind: x.kind || '' }));
-  const mine = cfg.tools.mytrip ? itinLoad(cfg).map((x, i) => ({ ...x, i })) : [];
+  const mine = cfg.tools.mytrip ? itinLoad(cfg).map((x, i) => ({ ...x, i })).concat(planLoad(cfg).filter(x => x.day).map(x => ({ kind: '', name: x.name, start: x.day + (x.time ? 'T' + x.time : ''), confNo: x.booked ? x.conf : '', note: x.note }))) : [];
   if (!evs.length && !mine.length) return '';
   const view = mine.length ? (LS.get('schedview:' + itinKey(cfg)) || 'all') : 'all';
   const key = (x) => x.ev && isTrip(cfg) ? (x.start || '9999').slice(0, 10) : (x.start || '9999');
@@ -1085,6 +1085,7 @@ function bookingsHTML(cfg) {
 }
 function myTripTabHTML(cfg) {
   const T = cfg.tools; const out = [];
+  if (T.mytrip) out.push(sec('plan', t('Your itinerary'), planHTML(cfg)));
   if (T.mytrip) out.push(sec('itinerary', t('Your bookings'), bookingsHTML(cfg)));
   if (T.packing) out.push(`<section class="ev-sec" id="sec-packing"><details class="pack-wrap"><summary><h2 class="sec-h">${t('Packing list')}</h2><span class="pack-sum" data-slot="pack-sum"></span></summary><div data-slot="pack-list"></div><div class="pack-add"><input placeholder="${t('Add an item')}" aria-label="${t('Add an item')}" maxlength="80"><button type="button" class="btn" data-pack-add>${t('Add')}</button></div></details></section>`);
   return out.join('');
@@ -1163,6 +1164,7 @@ function wireEvent(cfg, art, seq, air, opts) {
   art.addEventListener('toggle', (e) => { if (e.target.matches('details.menu') && e.target.open) $$('details.menu[open]', art).forEach(d => { if (d !== e.target) d.open = false; }); }, true);
   if (!document._menuCloser) { document._menuCloser = true; document.addEventListener('click', (e) => { if (!e.target.closest('details.menu')) $$('details.menu[open]').forEach(d => { d.open = false; }); }); }
   wireItin(cfg, art); wirePacking(cfg, art);
+  if (!v) wirePlan(cfg, art, null);
   art.querySelector('[data-lang]')?.addEventListener('change', (e) => { LS.set('lang', e.target.value); route(); });
   if (!v) return;
 
@@ -1213,6 +1215,8 @@ function wireEvent(cfg, art, seq, air, opts) {
       .catch(() => { if (alive() && slot('weather')) slot('weather').innerHTML = `<p class="muted">${t('Weather is unavailable right now. Try reloading the page.')}</p>`; });
   }
   const mapCtl = wireMap(cfg, art, opts);
+  wirePlan(cfg, art, mapCtl);
+  const gmode = wireGPlaces(cfg, art, mapCtl, () => { if (mapCtl) mapCtl.osmMode(); if (art._osm && slot('food')) wirePlaces(cfg, art, art._osm, mapCtl ? mapCtl.setFood : null); });
   if (T.nearby || T.stay || T.travel || T.tours) {
     nearby(v.lat, v.lon).then(d => {
       if (!alive()) return; art._osm = d;
@@ -1225,7 +1229,7 @@ function wireEvent(cfg, art, seq, air, opts) {
       applyModes();
       if (mapCtl) mapCtl.setData(d);
       art._focusPlace = (p) => mapCtl && mapCtl.focus(p);
-      if (slot('food')) wirePlaces(cfg, art, d, mapCtl ? mapCtl.setFood : null);
+      if (slot('food') && !gmode) wirePlaces(cfg, art, d, mapCtl ? mapCtl.setFood : null);
     }).catch(() => {
       if (!alive()) return;
       const msg = (what, q) => `<p class="muted">${t('Nearby places could not be loaded from OpenStreetMap right now.')}</p>${ext(L.place(q, placeLabel(v)), t('Search on Google Maps'), 'btn')}`;
@@ -1240,11 +1244,12 @@ function wireEvent(cfg, art, seq, air, opts) {
 function wireItin(cfg, art) {
   const s = art.querySelector('#sec-itinerary'); if (!s) return;
   const body = s.querySelector('.sec-b'); let draft = null, editing = null;
-  const rerender = () => { body.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); };
+  const rerender = () => { body.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); art._planChanged && art._planChanged(); };
   const openForm = (x, i) => {
     draft = { ...x }; editing = i; const slot = body.querySelector('[data-slot="itin-form"]'); slot.innerHTML = itinFormHTML(draft, i);
     body.querySelector('.itin-btns')?.setAttribute('hidden', '');
     (slot.querySelector('#it-paste') || slot.querySelector('#it-name')).focus();
+    placeAutocomplete(slot.querySelector('#it-address'), { bias: () => cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(r => { draft.address = r.address; if (!draft.name) draft.name = r.name; fill(); }).catch(() => {}) });
   };
   const fill = () => { const slot = body.querySelector('[data-slot="itin-form"]'); slot.querySelectorAll('[data-it]').forEach(el => { el.value = draft[el.dataset.it] || ''; });
     const fo = slot.querySelector('[data-it="flight"]').closest('.field'); fo.hidden = draft.kind !== 'flight';
@@ -1387,6 +1392,7 @@ function buildForm() {
   <div class="b-end"><button type="button" class="btn primary" data-act="publish">Publish</button><button type="button" class="btn ghost" data-b="reset">Start over</button></div>`;
   wireInputs(f);
   if (typeof renderHostNote === 'function') renderHostNote();
+  placeAutocomplete($('#vq', f), { bias: () => null, onPick: (id, tok) => gpVenue(id, tok).then(r => { B.vq = ''; B.venueResults = []; pickVenue(r); }).catch(() => toast('Couldn’t load that place')) });
 }
 function venueFieldHTML(c) {
   return c.venue ? `<div class="venue-sel"><div><b>${esc(c.venue.name)}</b><span>${esc(c.venue.address || '')}</span></div><button type="button" class="btn sm" data-b="clear-venue">Change</button></div>
@@ -1522,6 +1528,10 @@ function suRender() {
   }
   m.innerHTML = `${prog}${top}<h1>${h}</h1><div class="su-body">${body}</div><div class="grow"></div>${n === 1 || n === 2 ? suTicket(c) : ''}${cta}`;
   LS.set('draft', c); pageSave(LS.get('draftId'), { cfg: c }); suPreview();
+  placeAutocomplete($('#su-q'), { bias: () => null, onPick: (id, tok) => gpVenue(id, tok).then(r => {
+    if (!SU) return; const cc = SU.cfg; cc.venue = { name: r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc }; SU.q = r.name; SU.results = []; SU.msg = '';
+    suRender(); lookupTZ(r.lat, r.lon).then(tz => { cc.tz = tz; LS.set('draft', cc); }).catch(() => {});
+  }).catch(() => { SU.msg = 'Couldn’t load that place. Try the Search button.'; suRender(); }) });
   const first = m.querySelector('#su-title, #su-q'); if (first && !first.value) setTimeout(() => first.focus(), 30);
 }
 document.addEventListener('click', (e) => {
@@ -2119,6 +2129,7 @@ function placesOf(data) {
   const food = (data.food || []).map(p => ({ ...p, cat: p.kind === 'bar' || p.kind === 'pub' ? 'bar' : p.kind }));
   return food.concat((data.places || []).map(p => ({ ...p, cat: p.kind })));
 }
+const osmPlanPlace = (p) => ({ src: 'osm', ref: placeKey(p), name: p.name, lat: p.lat, lon: p.lon, rating: p.g ? p.g.rating : 0, count: p.g ? p.g.count : 0, addr: [p.street, p.city].filter(Boolean).join(', '), hours: p.hours || '', type: placeType([], p.cat) });
 const placeKey = (p) => `${p.name}|${(+p.lat).toFixed(5)},${(+p.lon).toFixed(5)}`;
 const cuisineList = (p) => (p.cuisines || String(p.cuisine || '').split(',')).map(x => String(x).trim().toLowerCase()).filter(Boolean);
 const cuisineLabel = (c) => c.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
@@ -2183,7 +2194,8 @@ function placeCardHTML(cfg, p) {
     ${p.hours ? `<div class="pc-hours"><b>${o === true ? `<span class="open">${t('Open now')}</span>` : o === false ? `<span class="closed">${t('Closed now')}</span>` : t('Hours')}</b><ul>${prettyHours(p.hours).map(h => `<li>${esc(h)}</li>`).join('')}</ul></div>` : ''}
     ${addr ? `<p class="pc-addr">${esc(addr)}</p>` : ''}
     ${facts.length ? `<p class="muted small">${esc(facts.join(' · '))}</p>` : ''}
-    <div class="btns">${ext(dirURL, t('Directions'), 'btn primary')}${p.cat === 'restaurant' ? bookExt('restaurants', 'opentable', { name: p.name, venue: v, date: cfg.start.slice(0, 10), n: tr.guests || 2 }, t('Reserve') + ' · OpenTable', 'btn') : ''}${p.phone ? `<a class="btn" href="tel:${esc(p.phone.replace(/[^\d+]/g, ''))}">${t('Call')}</a>` : ''}${p.website ? ext(p.website, t('Website'), 'btn') : ''}</div>
+    ${planAddHTML(cfg, osmPlanPlace(p))}
+    <div class="btns sec-acts">${ext(dirURL, t('Directions'), 'btn')}${p.cat === 'restaurant' ? bookExt('restaurants', 'opentable', { name: p.name, venue: v, date: cfg.start.slice(0, 10), n: tr.guests || 2 }, t('Reserve') + ' · OpenTable', 'btn') : ''}${p.phone ? `<a class="btn" href="tel:${esc(p.phone.replace(/[^\d+]/g, ''))}">${t('Call')}</a>` : ''}${p.website ? ext(p.website, t('Website'), 'btn') : ''}</div>
     <button type="button" class="link" data-pc-map>${t('Show on map')}</button>
   </div>`;
 }
@@ -2205,7 +2217,7 @@ function wirePlaces(cfg, art, data, setMarkers) {
     let d = $('#placedlg'); if (!d) { d = document.createElement('dialog'); d.id = 'placedlg'; d.className = 'sheet place-sheet'; document.body.appendChild(d); d.addEventListener('click', (e) => { if (e.target === d) d.close(); }); }
     d.setAttribute('style', themeStyle(cfg.theme)); d.classList.toggle('dark', cfg.theme.mode === 'dark'); d.setAttribute('lang', LANG);
     d.innerHTML = placeCardHTML(cfg, p);
-    d.onclick = (e) => { if (e.target === d || e.target.closest('[data-pc-close]')) d.close(); if (e.target.closest('[data-pc-map]')) { d.close(); art._focusPlace && art._focusPlace(p); } };
+    d.onclick = (e) => { if (planCardClick(cfg, art, d, e, osmPlanPlace(p))) return; if (e.target === d || e.target.closest('[data-pc-close]')) d.close(); if (e.target.closest('[data-pc-map]')) { d.close(); art._focusPlace && art._focusPlace(p); } };
     if (!d.open) d.showModal();
     const gs = d.querySelector('[data-gslot]');
     if (gs) gDetails(p).then(g => {
@@ -2306,7 +2318,7 @@ function loadGoogleMaps() {
 }
 function googleAdapter(g, el, c) {
   const map = new g.Map(el, { center: { lat: c.lat, lng: c.lon }, zoom: 15, disableDefaultUI: true, zoomControl: true, gestureHandling: 'cooperative', clickableIcons: false, keyboardShortcuts: false });
-  const info = new g.InfoWindow(); const all = [];
+  const info = new g.InfoWindow(); const all = []; el._gmap = map;
   const pop = (m, html) => m.addListener('click', () => { info.setContent(html); info.open({ anchor: m, map }); });
   return {
     kind: 'google', map,
@@ -2317,6 +2329,9 @@ function googleAdapter(g, el, c) {
     group: (color) => { let ms = [], vis = true; return {
       set: (items) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map: vis ? map : null, position: { lat: x.lat, lng: x.lon }, title: x.title, icon: { path: g.SymbolPath.CIRCLE, scale: 6, fillColor: color, fillOpacity: .95, strokeColor: '#fff', strokeWeight: 1.5 } }); if (x.onClick) m.addListener('click', x.onClick); else if (x.html) pop(m, x.html); return m; }); },
       show: (on) => { vis = on; ms.forEach(m => m.setMap(on ? map : null)); }, visible: () => vis, count: () => ms.length }; },
+    pins: (() => { let ms = []; return (items, color) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map, position: { lat: x.lat, lng: x.lon }, title: x.title, zIndex: x.z || 500, optimized: false, icon: color ? { path: 'M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z', fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 1, anchor: new g.Point(12, 36) } : undefined }); m.addListener('click', () => x.onClick && x.onClick()); return m; }); }; })(),
+    savedPins: (() => { let ms = []; return (items) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map, position: { lat: x.lat, lng: x.lon }, title: x.title, zIndex: 800, optimized: false, label: { text: '★', color: '#fff', fontSize: '13px' }, icon: { path: 'M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z', fillColor: '#E8A100', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 1.1, anchor: new g.Point(12, 36), labelOrigin: new g.Point(12, 12) } }); m.addListener('click', () => x.onClick && x.onClick()); return m; }); }; })(),
+    onPoi: (fn) => { map.setOptions({ clickableIcons: true }); map.addListener('click', (e) => { if (e.placeId) { e.stop(); fn(e.placeId); } }); },
     invalidateSize: () => { g.event.trigger(map, 'resize'); },
     remove: () => { all.forEach(m => m.setMap(null)); el.innerHTML = ''; },
   };
@@ -2335,6 +2350,9 @@ function leafletAdapter(el, c) {
     group: (color) => { const lg = Lf.layerGroup().addTo(map); return {
       set: (items) => { lg.clearLayers(); items.forEach(x => { const m = Lf.circleMarker([x.lat, x.lon], { radius: 6, color: '#fff', weight: 1.5, fillColor: color, fillOpacity: .95 }); if (x.onClick) m.on('click', x.onClick); else if (x.html) m.bindPopup(x.html); m.addTo(lg); }); },
       show: (on) => { on ? lg.addTo(map) : map.removeLayer(lg); }, visible: () => map.hasLayer(lg), count: () => lg.getLayers().length }; },
+    pins: (() => { let lg = null; return (items, color) => { if (!lg) lg = Lf.layerGroup().addTo(map); lg.clearLayers(); items.forEach(x => Lf.circleMarker([x.lat, x.lon], { radius: 10, color: '#fff', weight: 2, fillColor: color || '#D93025', fillOpacity: 1 }).on('click', () => x.onClick && x.onClick()).bindTooltip(x.title || '').addTo(lg)); }; })(),
+    savedPins: (() => { let lg = null; return (items) => { if (!lg) lg = Lf.layerGroup().addTo(map); lg.clearLayers(); items.forEach(x => Lf.marker([x.lat, x.lon], { icon: Lf.divIcon({ className: 'spin', html: '<span>★</span>', iconSize: [30, 30], iconAnchor: [15, 15] }), title: x.title, zIndexOffset: 800 }).on('click', () => x.onClick && x.onClick()).addTo(lg)); }; })(),
+    onPoi: () => {},
     invalidateSize: () => map.invalidateSize(),
     remove: () => map.remove(),
   };
@@ -2342,7 +2360,8 @@ function leafletAdapter(el, c) {
 // The venue map on the Nearby tab. Built the first time the tab is shown; nearby data can arrive before or after.
 function wireMap(cfg, art, opts) {
   let el = art.querySelector('[data-slot="map"]'); const v = cfg.venue; if (!el || !v) return;
-  const T = cfg.tools; const st = { data: null, food: null, groups: {}, adapter: null, building: false };
+  const T = cfg.tools; const st = { data: null, food: null, groups: {}, adapter: null, building: false, gmode: false, pins: [], poi: null, saved: [] };
+  const drawPins = () => { const a = st.adapter; if (!a) return; a.pins(st.pins); if (st.poi) a.onPoi(st.poi); };
   const draw = (a) => {
     st.adapter = a; maps.add(a); st.groups = {};
     a.pin(v.lat, v.lon, { title: v.name, color: cfg.theme.accent, html: `<b>${esc(v.name)}</b><br>${esc(v.address || '')}` });
@@ -2351,11 +2370,12 @@ function wireMap(cfg, art, opts) {
       const p = td[k]; pts.push([p.lat, p.lon]); a.label(p.lat, p.lon, { title: `${t(label)}: ${p.q}`, text: t(label), html: `<b>${esc(t(label))}</b><br>${esc(p.q)}` });
     });
     if (pts.length > 1) a.fit(pts);
-    if (st.data) layers();
+    if (st.gmode) drawPins(); else if (st.data) layers();
+    if (st.saved.length) a.savedPins(st.saved);
   };
   const popup = (x) => `<b>${esc(x.name)}</b><br>${esc(t('{d} from the venue', { d: fmtDist(x.d, v.cc) }))}`;
   const layers = () => {
-    const a = st.adapter, d = st.data; if (!a || !d) return;
+    const a = st.adapter, d = st.data; if (!a || !d || st.gmode) return;
     const defs = [['food', '#E4572E', t('Food & drink'), (st.food || d.food.slice(0, 25)).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)), html: popup(x) }))]];
     if (T.stay) defs.push(['hotels', '#7B4FD6', t('Hotels'), d.hotels.slice(0, 15).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)), html: popup(x) }))]);
     if (T.tours) defs.push(['sights', '#0B9A6D', t('Sights'), (d.sights || []).slice(0, 12).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)), html: popup(x) }))]);
@@ -2384,8 +2404,13 @@ function wireMap(cfg, art, opts) {
   if (!art.querySelector('[data-panel="nearby"]')?.hidden) build();
   return {
     setData: (d) => { st.data = d; layers(); },
+    googleMode: () => { st.gmode = true; const lg = art.querySelector('[data-slot="legend"]'); if (lg) lg.innerHTML = ''; Object.values(st.groups).forEach(x => x.g.show(false)); },
+    osmMode: () => { st.gmode = false; st.pins = []; drawPins(); layers(); },
+    setPins: (items) => { st.pins = items; if (st.adapter && st.adapter.pins) st.adapter.pins(items); },
+    onPoi: (fn) => { st.poi = fn; if (st.adapter) st.adapter.onPoi(fn); },
+    setSaved: (items) => { st.saved = items; if (st.adapter && st.adapter.savedPins) st.adapter.savedPins(items); },
     setFood: (items) => { st.food = items; const g = st.groups.food; if (g) g.g.set(items.map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)) }))); },
-    focus: (p) => { showTab(art, 'nearby', opts); const go = () => { if (st.adapter) st.adapter.center(p.lat, p.lon, 17); }; st.adapter ? go() : setTimeout(go, 1500); el.scrollIntoView({ block: 'center' }); },
+    focus: (p) => { if (p.lat == null) return; showTab(art, 'nearby', opts); const go = () => { if (st.adapter) st.adapter.center(p.lat, p.lon, 17); }; st.adapter ? go() : setTimeout(go, 1500); el.scrollIntoView({ block: 'center' }); },
   };
 }
 
@@ -2442,6 +2467,331 @@ function wireLanding() {
     if (!rows.length || !slot) return;
     slot.innerHTML = `<h3 class="sub-h">On your account</h3><ul class="mp-list">${rows.map(r => { const c = normalize(r.config); return `<li style="${themeStyle(c.theme)}"><i class="mp-dot"></i><div class="mp-t"><b>${esc(c.title)}</b><span>${esc([TYPE_LABEL[c.type] || c.type, c.start ? dateRange(c.start, c.end) : '', 'short link'].filter(Boolean).join(' · '))}</span></div><div class="mp-b"><a class="btn sm" href="${esc(shortURL(r.slug))}">Open</a><a class="btn sm" href="#mine/${esc(r.id)}">Replies</a></div></li>`; }).join('')}</ul>`;
   }).catch(() => {});
+}
+
+// ================= Nearby from Google Places (when a key is set): list + pins + tappable map POIs → in-app card =================
+// One request per category / cuisine / dietary search, cached per event for 3 days. Open now, rating and price filter
+// the cached results in the browser, so changing them costs nothing. OpenStreetMap stays as the fallback.
+const GP_CATS = [['restaurant', 'Restaurants', ['restaurant'], 1500], ['coffee', 'Coffee', ['cafe', 'coffee_shop'], 1500], ['bar', 'Bars', ['bar', 'pub', 'wine_bar'], 1500],
+  ['todo', 'Things to do', ['tourist_attraction', 'museum', 'park', 'art_gallery'], 4000], ['hotel', 'Hotels', ['lodging'], 3000]];
+const GP_CUISINES = ['american', 'barbecue', 'brazilian', 'breakfast', 'brunch', 'chinese', 'french', 'greek', 'hamburger', 'indian', 'indonesian', 'italian', 'japanese', 'korean', 'lebanese', 'mediterranean', 'mexican', 'middle_eastern', 'pizza', 'ramen', 'seafood', 'spanish', 'steak_house', 'sushi', 'thai', 'turkish', 'vegan', 'vegetarian', 'vietnamese'];
+const gpCuisineType = (c) => c === 'steak_house' ? 'steak_house' : c + '_restaurant';
+const GP_DIETS = [['vegetarian', 'Vegetarian', 'vegetarian'], ['vegan', 'Vegan', 'vegan'], ['gluten_free', 'Gluten-free', 'gluten free'], ['halal', 'Halal', 'halal'], ['kosher', 'Kosher', 'kosher']];
+const GP_LIST_MASK = 'places.id,places.displayName,places.location,places.rating,places.userRatingCount,places.priceLevel,places.primaryTypeDisplayName,places.currentOpeningHours.openNow,places.shortFormattedAddress';
+const GP_CARD_MASK = 'id,displayName,location,formattedAddress,rating,userRatingCount,priceLevel,primaryTypeDisplayName,regularOpeningHours.weekdayDescriptions,currentOpeningHours.openNow,websiteUri,nationalPhoneNumber,internationalPhoneNumber,googleMapsUri,photos,servesVegetarianFood,reservable,types,primaryType';
+let gpBroken = false; // set when the Places API refuses (quota, key): pages fall back to OpenStreetMap
+const gpRow = (x, v) => ({ id: x.id, name: (x.displayName && x.displayName.text) || '', lat: x.location && x.location.latitude, lon: x.location && x.location.longitude,
+  rating: x.rating || 0, count: x.userRatingCount || 0, price: G_PRICE[x.priceLevel] || '', type: (x.primaryTypeDisplayName && x.primaryTypeDisplayName.text) || '',
+  open: x.currentOpeningHours ? !!x.currentOpeningHours.openNow : null, addr: x.shortFormattedAddress || x.formattedAddress || '',
+  d: x.location ? distM(v.lat, v.lon, x.location.latitude, x.location.longitude) : 0 });
+function gpQueryKey(f) { if (f.q) return `q:${f.q.toLowerCase()}:${f.diet}`; return f.diet ? `diet:${f.cat}:${f.diet}` : f.cuisine && f.cat === 'restaurant' ? `cuisine:${f.cuisine}` : `cat:${f.cat}`; }
+function gpSearch(cfg, f) {
+  const v = cfg.venue; const qk = gpQueryKey(f); const key = `gq1:${osmKey(v.lat, v.lon)}:${qk}`;
+  const c = LS.get(key); if (c && Date.now() - c.t < G_TTL) return Promise.resolve(c.d);
+  if (memo.has(key)) return memo.get(key);
+  const cat = GP_CATS.find(x => x[0] === f.cat) || GP_CATS[0]; const circle = { center: { latitude: v.lat, longitude: v.lon }, radius: cat[3] };
+  let req;
+  if (f.q) {
+    const diet = f.diet ? GP_DIETS.find(x => x[0] === f.diet)[2] + ' ' : '';
+    req = gFetch('https://places.googleapis.com/v1/places:searchText', { textQuery: diet + f.q, maxResultCount: 20, locationBias: { circle: { center: { latitude: v.lat, longitude: v.lon }, radius: 5000 } } }, GP_LIST_MASK);
+  } else if (f.diet) {
+    const noun = { restaurant: 'restaurants', coffee: 'cafes', bar: 'bars', todo: 'restaurants', hotel: 'restaurants' }[f.cat] || 'restaurants';
+    req = gFetch('https://places.googleapis.com/v1/places:searchText', { textQuery: `${GP_DIETS.find(x => x[0] === f.diet)[2]} ${noun}`, maxResultCount: 20, locationBias: { circle } }, GP_LIST_MASK);
+  } else {
+    const types = f.cuisine && f.cat === 'restaurant' ? [gpCuisineType(f.cuisine)] : cat[2];
+    req = gFetch('https://places.googleapis.com/v1/places:searchNearby', { includedTypes: types, maxResultCount: 20, locationRestriction: { circle } }, GP_LIST_MASK);
+  }
+  const p = req.then(j => { const d = (j.places || []).map(x => gpRow(x, v)).filter(x => x.lat != null && (f.q || x.d <= cat[3] * 1.8)); LS.set(key, { t: Date.now(), d }); return d; });
+  memo.set(key, p); p.catch(() => memo.delete(key)); return p;
+}
+function gpDetails(id, session) {
+  const key = 'gc3:' + id; const c = LS.get(key); if (c && Date.now() - c.t < G_TTL) return Promise.resolve(c.d);
+  return gFetch(`https://places.googleapis.com/v1/places/${enc(id)}${session ? '?sessionToken=' + enc(session) : ''}`, null, GP_CARD_MASK).then(x => {
+    const ph = (x.photos || []).slice(0, 4).map(p => ({ name: p.name, by: p.authorAttributions && p.authorAttributions[0] ? p.authorAttributions[0].displayName || '' : '' }));
+    const d = { id: x.id, name: (x.displayName && x.displayName.text) || '', lat: x.location && x.location.latitude, lon: x.location && x.location.longitude, addr: x.formattedAddress || '',
+      rating: x.rating || 0, count: x.userRatingCount || 0, price: G_PRICE[x.priceLevel] || '', type: (x.primaryTypeDisplayName && x.primaryTypeDisplayName.text) || '',
+      hours: (x.regularOpeningHours && x.regularOpeningHours.weekdayDescriptions) || [], open: x.currentOpeningHours ? !!x.currentOpeningHours.openNow : null,
+      web: x.websiteUri || '', phone: x.internationalPhoneNumber || x.nationalPhoneNumber || '', phoneLocal: x.nationalPhoneNumber || '', url: x.googleMapsUri || '', photos: ph,
+      veg: !!x.servesVegetarianFood, reservable: !!x.reservable, food: (x.types || []).some(t => /restaurant|food|meal/.test(t)), types: x.types || [], ptype: x.primaryType || '' };
+    LS.set(key, { t: Date.now(), d }); return d;
+  });
+}
+function gpFilter(rows, f) { return rows.filter(r => (!f.open || r.open === true) && (!f.stars || r.rating >= f.stars) && (!f.price || r.price === f.price)); }
+function gpHTML(cfg, art, rows) {
+  const v = cfg.venue; const f = art._gp; const list = gpFilter(rows || [], f);
+  const prices = ['$', '$$', '$$$', '$$$$']; const isFood = f.cat === 'restaurant' || f.cat === 'coffee' || f.cat === 'bar';
+  const active = (f.cuisine ? 1 : 0) + (f.diet ? 1 : 0) + (f.open ? 1 : 0) + (f.stars ? 1 : 0) + (f.price ? 1 : 0);
+  return `<div class="pf gp" role="group" aria-label="${t('Filters')}">
+    <div class="chips pf-cats">${GP_CATS.map(([k, l]) => `<button type="button" class="chip ${f.cat === k && !f.q ? 'on' : ''}" data-gp-cat="${k}" aria-pressed="${f.cat === k && !f.q}">${t(l)}</button>`).join('')}</div>
+    <div class="chips pf-diet">
+      <button type="button" class="chip ${f.open ? 'on' : ''}" data-gp-open aria-pressed="${f.open}">${t('Open now')}</button>
+      ${[4, 4.5].map(n => `<button type="button" class="chip ${f.stars === n ? 'on' : ''}" data-gp-stars="${n}" aria-pressed="${f.stars === n}">★ ${n.toFixed(1)}+</button>`).join('')}
+      ${f.cat !== 'todo' ? prices.map(pr => `<button type="button" class="chip ${f.price === pr ? 'on' : ''}" data-gp-price="${pr}" aria-pressed="${f.price === pr}">${pr}</button>`).join('') : ''}
+    </div>
+    ${isFood ? `<div class="pf-row">
+      ${f.cat === 'restaurant' ? `<label class="pf-sel"><span class="sr">${t('Cuisine')}</span><select data-gp="cuisine" ${f.diet ? 'disabled' : ''}><option value="">${t('Any cuisine')}</option>${GP_CUISINES.map(c => `<option value="${c}" ${f.cuisine === c ? 'selected' : ''}>${esc(cuisineLabel(c))}</option>`).join('')}</select></label>` : ''}
+      <label class="pf-sel"><span class="sr">${t('Dietary')}</span><select data-gp="diet"><option value="">${t('Any dietary need')}</option>${GP_DIETS.map(([k, l]) => `<option value="${k}" ${f.diet === k ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></label>
+    </div>` : ''}
+  </div>
+  ${rows == null ? `<div class="skel" role="status"><span></span><span></span><em>${t('Loading places…')}</em></div>` : `
+  ${f.q ? `<p class="gp-q"><span>${esc(t('Results for “{q}”', { q: f.q }))}</span> <button type="button" class="link" data-gp-q-clear>${t('Clear search')}</button></p>` : ''}
+  <p class="pf-count muted small" role="status" aria-live="polite">${esc(list.length === 1 ? t('1 place') : t('{n} places', { n: list.length }))}${active ? ` · <button type="button" class="link" data-gp-clear>${t('Clear filters')}</button>` : ''}</p>
+  ${list.length ? `<ul class="plist rich places">${list.map(r => `<li><button type="button" class="place-row" data-gplace="${esc(r.id)}"><div><b>${esc(r.name)}</b>${r.rating ? `<span class="rt">${gRatingHTML(r)}</span>` : ''}<span>${esc([r.type, r.price].filter(Boolean).join(' · '))}</span>${r.open != null ? `<span class="tags">${r.open ? `<em class="open">${t('Open now')}</em>` : `<em class="closed">${t('Closed now')}</em>`}</span>` : ''}</div><span class="dist">${esc(fmtDist(r.d, v.cc))}<small>${r.d < 2500 ? walkTxt(r.d) : t('from the venue')}</small></span></button></li>`).join('')}</ul>`
+    : `<p class="muted">${t('Nothing matches these filters.')} ${active ? `<button type="button" class="link" data-gp-clear>${t('Clear filters')}</button>` : ''}</p>`}
+  <p class="muted small g-attr">${t('Places and ratings from Google')}</p>`}`;
+}
+const gPlanPlace = (d) => ({ src: 'g', ref: d.id, name: d.name, lat: d.lat, lon: d.lon, rating: d.rating, count: d.count, addr: d.addr, hours: d.hours, type: d.ptype ? placeType([d.ptype], '') : placeType(d.types, '') });
+function gpCardHTML(cfg, d) {
+  const v = cfg.venue; const tr = tripDates(cfg); const dist = d.lat != null ? distM(v.lat, v.lon, d.lat, d.lon) : 0;
+  const dirURL = `https://www.google.com/maps/dir/?api=1&origin=${v.lat},${v.lon}&destination=${enc(d.name)}&destination_place_id=${enc(d.id)}&travelmode=${dist < 2500 ? 'walking' : 'transit'}`;
+  const ph = d.photos[0];
+  return `<div class="pc"><button type="button" class="x" data-pc-close aria-label="${t('Close')}">×</button>
+    ${ph ? `<figure class="pc-photo"><img src="${esc(gPhotoURL(ph.name))}" alt="${esc(d.name)}" loading="lazy" onerror="this.closest('figure').remove()">${ph.by ? `<figcaption>${esc(t('Photo: {n}', { n: ph.by }))}</figcaption>` : ''}</figure>` : ''}
+    ${d.type ? `<p class="lbl">${esc(d.type)}</p>` : ''}
+    <h2>${esc(d.name)}</h2>
+    ${d.rating ? `<p class="rt">${gRatingHTML(d)} <small class="muted">${t('on Google')}</small></p>` : ''}
+    <p class="pc-dist">${esc(t('{d} from the venue', { d: fmtDist(dist, v.cc) }))}${dist < 2500 ? ' · ' + walkTxt(dist) : ''}${d.price ? ' · ' + esc(d.price) : ''}</p>
+    ${d.veg ? `<p class="tags"><em>${t('Vegetarian options')}</em></p>` : ''}
+    ${d.hours.length ? `<div class="pc-hours"><b>${d.open === true ? `<span class="open">${t('Open now')}</span>` : d.open === false ? `<span class="closed">${t('Closed now')}</span>` : t('Hours')}</b><ul>${d.hours.map(h => `<li>${esc(h)}</li>`).join('')}</ul></div>` : ''}
+    ${d.addr ? `<p class="pc-addr">${esc(d.addr)}</p>` : ''}
+    ${planAddHTML(cfg, gPlanPlace(d))}
+    <div class="btns sec-acts">${ext(dirURL, t('Directions'), 'btn')}${d.food ? bookExt('restaurants', 'opentable', { name: d.name, venue: v, date: cfg.start.slice(0, 10), n: tr.guests || 2 }, t('Reserve') + ' · OpenTable', 'btn') : ''}${d.phone ? `<a class="btn" href="tel:${esc(d.phone.replace(/[^\d+]/g, ''))}">${t('Call')}</a>` : ''}${d.web ? ext(d.web, t('Website'), 'btn') : ''}</div>
+    <button type="button" class="link" data-pc-map>${t('Show on map')}</button>
+  </div>`;
+}
+function openPlaceDialog(cfg, html, onMap, place, art) {
+  let d = $('#placedlg'); if (!d) { d = document.createElement('dialog'); d.id = 'placedlg'; d.className = 'sheet place-sheet'; document.body.appendChild(d); d.addEventListener('click', (e) => { if (e.target === d) d.close(); }); }
+  d.setAttribute('style', themeStyle(cfg.theme)); d.classList.toggle('dark', cfg.theme.mode === 'dark'); d.setAttribute('lang', LANG);
+  d.innerHTML = html; d.onclick = (e) => { if (place && planCardClick(cfg, art, d, e, place)) return; if (e.target === d || e.target.closest('[data-pc-close]')) d.close(); if (e.target.closest('[data-pc-map]')) { d.close(); onMap && onMap(); } };
+  if (!d.open) d.showModal(); return d;
+}
+// returns false when Google can't be used (no key, refused) so the caller wires the OpenStreetMap list instead
+function wireGPlaces(cfg, art, mapCtl, onFail) {
+  const s = art.querySelector('[data-slot="food"]'); if (!s || !GKEY || gpBroken || !cfg.venue) return false;
+  art._gp = art._gp || { cat: 'restaurant', cuisine: '', diet: '', open: false, stars: 0, price: '', q: '' };
+  let rows = null, seq = 0, started = false;
+  s.innerHTML = `<form class="gp-search" role="search" onsubmit="return false"><input type="search" data-gp-q placeholder="${t('Search places, e.g. ramen')}" aria-label="${t('Search places')}" autocomplete="off" enterkeyhint="search"><button type="submit" class="btn sm" data-gp-go>${t('Search')}</button></form><div data-gp-body></div>`;
+  const bodyEl = s.querySelector('[data-gp-body]'); const qIn = s.querySelector('[data-gp-q]');
+  const v0 = cfg.venue;
+  const pickPlace = (id, tok) => gpDetails(id, tok).then(pl => {
+    if (mapCtl && pl.lat != null) { mapCtl.setPins(gpFilter(rows || [], art._gp).map(r => ({ lat: r.lat, lon: r.lon, title: r.name, onClick: () => art._openGPlace(r.id) })).concat([{ lat: pl.lat, lon: pl.lon, title: pl.name, z: 900, onClick: () => art._openGPlace(pl.id) }])); mapCtl.focus(pl); }
+    openPlaceDialog(cfg, gpCardHTML(cfg, pl), () => mapCtl && mapCtl.focus(pl), gPlanPlace(pl), art);
+  }).catch(() => toast(t('Couldn’t load this place right now.')));
+  const textSearch = (q) => { if (!q) return; art._gp.q = q.slice(0, 80); art._gp.cuisine = ''; qIn.blur(); load(); };
+  placeAutocomplete(qIn, { bias: () => cfg.venue, onPick: pickPlace, onText: textSearch });
+  const pins = () => { if (mapCtl) mapCtl.setPins(gpFilter(rows || [], art._gp).map(r => ({ lat: r.lat, lon: r.lon, title: r.name, onClick: () => art._openGPlace(r.id) }))); };
+  const render = () => { bodyEl.innerHTML = gpHTML(cfg, art, rows); pins(); };
+  const load = () => {
+    const my = ++seq; rows = null; render();
+    gpSearch(cfg, art._gp).then(d => { if (my !== seq) return; rows = d; render(); })
+      .catch(e => { if (my !== seq) return; if (/places 4(03|29)|places 400/.test(e.message)) { gpBroken = true; onFail && onFail(); return; } rows = []; render(); });
+  };
+  art._openGPlace = (id) => {
+    const dlg = openPlaceDialog(cfg, `<div class="pc"><button type="button" class="x" data-pc-close aria-label="${t('Close')}">×</button><div class="skel" role="status"><span></span><span></span><em>${t('Loading…')}</em></div></div>`);
+    gpDetails(id).then(d => { if (!dlg.open) return; openPlaceDialog(cfg, gpCardHTML(cfg, d), () => mapCtl && mapCtl.focus(d), gPlanPlace(d), art); })
+      .catch(() => { if (dlg.open) dlg.querySelector('.pc').insertAdjacentHTML('beforeend', `<p class="muted">${t('Couldn’t load this place right now.')}</p>`); });
+  };
+  if (mapCtl) { mapCtl.googleMode(); mapCtl.onPoi((placeId) => art._openGPlace(placeId)); }
+  const go = () => { if (started) return; const panel = art.querySelector('[data-panel="nearby"]'); if (panel && panel.hidden) return; started = true; load(); };
+  (art._showFns = art._showFns || []).push((k) => { if (k === 'nearby') go(); });
+  bodyEl.innerHTML = gpHTML(cfg, art, null);
+  s.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return; const f = art._gp; const d = b.dataset;
+    if (d.gplace) { art._openGPlace(d.gplace); return; }
+    if ('gpGo' in d) { textSearch(qIn.value.trim()); return; }
+    if ('gpQClear' in d) { f.q = ''; qIn.value = ''; return load(); }
+    if (d.gpCat) { if (f.cat === d.gpCat && !f.q) return; f.cat = d.gpCat; f.cuisine = ''; f.price = ''; f.q = ''; qIn.value = ''; return load(); }
+    if (d.gpOpen != null) f.open = !f.open;
+    else if (d.gpStars) f.stars = f.stars === +d.gpStars ? 0 : +d.gpStars;
+    else if (d.gpPrice) f.price = f.price === d.gpPrice ? '' : d.gpPrice;
+    else if (d.gpClear != null) { const refetch = f.cuisine || f.diet; Object.assign(f, { cuisine: '', diet: '', open: false, stars: 0, price: '' }); if (refetch) return load(); }
+    else return;
+    render();
+  });
+  s.addEventListener('change', debounce((e) => { const i = e.target; if (!i.dataset.gp) return; art._gp[i.dataset.gp] = i.value; if (i.dataset.gp === 'diet' && i.value) art._gp.cuisine = ''; load(); }, 250));
+  go();
+  return true;
+}
+
+// ================= the guest's own plan: places added from any place card, by day or saved for later =================
+// Stored per event in localStorage (account sync arrives with the itinerary table). Shown in My trip, merged into the
+// schedule / trip itinerary, and as gold ★ pins on the map. Tapping one opens the same place card.
+const planKey = (cfg) => 'plan:' + eventKey(cfg).slice(6);
+const planLoad = (cfg) => LS.get(planKey(cfg), []) || [];
+const planSave = (cfg, xs) => LS.set(planKey(cfg), xs);
+function planDays(cfg) {
+  if (!cfg.start) return [];
+  const tr = tripDates(cfg); let s = isTrip(cfg) ? cfg.start.slice(0, 10) : tr.arrive, e = isTrip(cfg) ? (cfg.end || cfg.start).slice(0, 10) : tr.leave;
+  if (e < s) e = s; const n = Math.min(45, daysBetween(s, e)); return Array.from({ length: n + 1 }, (_, i) => addDays(s, i));
+}
+const dayLabel = (cfg, d) => `${isTrip(cfg) && cfg.start && d >= cfg.start.slice(0, 10) ? t('Day {n}', { n: daysBetween(cfg.start, d) + 1 }) + ' · ' : ''}${fmt(d, { weekday: 'short', month: 'short', day: 'numeric' })}`;
+function planAddHTML(cfg, place) {
+  const have = planLoad(cfg).find(x => x.ref === place.ref);
+  const days = planDays(cfg);
+  return `<div class="plan-add" data-plan-box>
+    ${have ? `<p class="plan-have">✓ ${esc(have.day ? t('In your plan: {d}', { d: dayLabel(cfg, have.day) }) : t('Saved for later'))}</p>` : ''}
+    <div class="btns"><button type="button" class="btn primary" data-plan-open>${have ? t('Change day') : t('Add to itinerary')}</button>${have && !have.day ? '' : `<button type="button" class="btn" data-plan-later>${t('Save for later')}</button>`}</div>
+    <div class="plan-form" hidden>
+      <div class="two"><label class="field"><span>${t('Day')}</span><select data-plan-day>${days.map(d => `<option value="${d}" ${have && have.day === d ? 'selected' : ''}>${esc(dayLabel(cfg, d))}</option>`).join('')}</select></label>
+      <label class="field"><span>${t('Time (optional)')}</span><input type="time" data-plan-time value="${esc(have ? have.time : '')}"></label></div>
+      <label class="field"><span>${t('Note (optional)')}</span><input data-plan-note maxlength="200" value="${esc(have ? have.note : '')}" placeholder="${t('Book a table for 4, try the tasting menu…')}"></label>
+      <div class="btns"><button type="button" class="btn primary" data-plan-save>${t('Add to day')}</button><button type="button" class="btn ghost" data-plan-cancel>${t('Cancel')}</button></div>
+    </div></div>`;
+}
+// the place card's Add / Save handlers; place = {src:'g'|'osm', ref, name, lat, lon, rating, count, addr, open, hours}
+function planCardClick(cfg, art, dlg, e, place) {
+  const b = e.target.closest('[data-plan-open],[data-plan-later],[data-plan-save],[data-plan-cancel]'); if (!b) return false;
+  const box = dlg.querySelector('[data-plan-box]'); const form = box.querySelector('.plan-form');
+  if ('planOpen' in b.dataset) { form.hidden = false; box.querySelector('.btns').hidden = true; return true; }
+  if ('planCancel' in b.dataset) { form.hidden = true; box.querySelector('.btns').hidden = false; return true; }
+  const xs = planLoad(cfg); const i = xs.findIndex(x => x.ref === place.ref);
+  const prev = i >= 0 ? xs[i] : { id: 'pl' + Date.now().toString(36), booked: false, conf: '' };
+  const item = { ...prev, src: place.src, ref: place.ref, name: place.name, lat: place.lat, lon: place.lon, rating: place.rating || 0, count: place.count || 0, addr: place.addr || '', hours: place.hours || '',
+    type: prev.type || place.type || 'other',
+    day: 'planLater' in b.dataset ? '' : form.querySelector('[data-plan-day]').value, time: 'planLater' in b.dataset ? '' : form.querySelector('[data-plan-time]').value, note: 'planLater' in b.dataset ? (prev.note || '') : form.querySelector('[data-plan-note]').value.trim() };
+  if (i >= 0) xs.splice(i, 1); xs.push(item); planSave(cfg, xs);
+  toast(item.day ? t('Added to {d}', { d: dayLabel(cfg, item.day) }) : t('Saved for later'));
+  box.outerHTML = planAddHTML(cfg, place); art._planChanged && art._planChanged();
+  return true;
+}
+const PTYPES = [['flight', 'Flights'], ['stay', 'Hotels & stays'], ['transport', 'Transport'], ['food', 'Restaurants'], ['activity', 'Tours & activities'], ['other', 'Other']];
+const itinType = (x) => ({ flight: 'flight', hotel: 'stay', stay: 'stay', car: 'transport', train: 'transport', food: 'food' }[x.kind] || 'other');
+// type from a Google place's types or an OpenStreetMap category
+function placeType(types, cat) {
+  const ts = (types || []).join(' ') + ' ' + (cat || '');
+  if (/lodging|hotel|hostel|guest_house|motel/.test(ts)) return 'stay';
+  if (/restaurant|cafe|coffee|bar|pub|food|bakery|meal|fast_food/.test(ts)) return 'food';
+  if (/train|transit|subway|bus_station|airport|car_rental|ferry/.test(ts)) return 'transport';
+  if (/tourist|museum|park|gallery|attraction|zoo|aquarium|amusement|sight|viewpoint|stadium|theater|night_club/.test(ts)) return 'activity';
+  return 'other';
+}
+// one list: places the guest added + bookings they entered
+function itineraryEntries(cfg) {
+  const ps = planLoad(cfg).map((x, i) => ({ ...x, ent: 'plan', type: x.type || 'other', order: i }));
+  const bs = itinLoad(cfg).map((x, i) => ({ ent: 'book', id: 'bk' + i, bi: i, name: x.name || t(ITIN_KINDS[x.kind] || 'Booking'), type: itinType(x), day: (x.start || '').slice(0, 10), time: (x.start || '').slice(11, 16), addr: x.address || '', conf: x.confNo || '', booked: true, kindLabel: t(ITIN_KINDS[x.kind] || ''), order: 1000 + i }));
+  return ps.concat(bs);
+}
+function planHTML(cfg) {
+  const all = itineraryEntries(cfg);
+  if (!all.length) return `<p class="muted">${t('Tap a place on the Nearby tab and choose Add to itinerary. It shows up here, by day.')}</p>`;
+  const k = eventKey(cfg).slice(6); const view = LS.get('planview:' + k) || 'day'; const on = LS.get('plantypes:' + k) || [];
+  const counts = {}; all.forEach(x => { counts[x.type] = (counts[x.type] || 0) + 1; });
+  const xs = on.length ? all.filter(x => on.includes(x.type)) : all;
+  const days = planDays(cfg); const byTime = (a, b) => (a.time || '').localeCompare(b.time || '') || a.order - b.order;
+  const tlabel = (ty) => t((PTYPES.find(p => p[0] === ty) || PTYPES[5])[1]);
+  const row = (x) => x.ent === 'book' ? `<li class="plan-row bk"><div class="plan-main"><b>${esc(x.name)}</b><span class="muted small">${esc([x.kindLabel, x.day ? dayLabel(cfg, x.day) : '', x.time ? fmtTime(x.time) : '', x.conf ? t('Conf. {n}', { n: x.conf }) : ''].filter(Boolean).join(' · '))}</span></div><div class="plan-ctl"><button type="button" class="link" data-bk-edit="${x.bi}">${t('Edit booking')}</button></div></li>`
+    : `<li class="plan-row ${x.booked ? 'booked' : ''}" data-plan-id="${esc(x.id)}">
+      <div class="plan-main"><button type="button" class="link plan-name" data-plan-card="${esc(x.id)}">${esc(x.name)}</button>
+        <span class="muted small">${esc([view === 'type' && x.day ? dayLabel(cfg, x.day) : '', x.time ? fmtTime(x.time) : '', x.addr].filter(Boolean).join(' · '))}</span>
+        ${x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}${x.note ? `<span class="small">${esc(x.note)}</span>` : ''}
+        <div class="plan-book"><label class="chk"><input type="checkbox" data-plan-booked ${x.booked ? 'checked' : ''}> ${t('Booked')}</label>${x.booked ? `<input class="plan-conf" data-plan-conf value="${esc(x.conf || '')}" placeholder="${t('Confirmation #')}" aria-label="${t('Confirmation #')}">` : ''}</div></div>
+      <div class="plan-ctl"><select data-plan-move aria-label="${t('Move to day')}"><option value="">${t('Saved for later')}</option>${days.map(d => `<option value="${d}" ${x.day === d ? 'selected' : ''}>${esc(dayLabel(cfg, d))}</option>`).join('')}</select>
+        <select data-plan-type aria-label="${t('Type')}">${PTYPES.map(([v, l]) => `<option value="${v}" ${x.type === v ? 'selected' : ''}>${t(l)}</option>`).join('')}</select>
+        <span class="mv"><button type="button" data-plan-mv="-1" aria-label="${t('Move up')}">↑</button><button type="button" data-plan-mv="1" aria-label="${t('Move down')}">↓</button></span><button type="button" class="link" data-plan-del>${t('Remove')}</button></div></li>`;
+  let groups;
+  if (view === 'type') {
+    groups = PTYPES.map(([ty]) => [tlabel(ty), xs.filter(x => x.type === ty).sort((a, b) => (a.day || '9999').localeCompare(b.day || '9999') || byTime(a, b))]).filter(([, g]) => g.length);
+  } else {
+    const inDays = days.map(d => [dayLabel(cfg, d), xs.filter(x => x.day === d).sort(byTime)]).filter(([, g]) => g.length);
+    const other = xs.filter(x => x.day && !days.includes(x.day)).sort((a, b) => a.day.localeCompare(b.day) || byTime(a, b));
+    groups = inDays.concat(other.length ? [[t('Other days'), other]] : [], [[t('Saved for later'), xs.filter(x => !x.day).sort(byTime)]]).filter(([, g]) => g.length);
+  }
+  return `<div class="plan-tools"><div class="seg2" role="group" aria-label="${t('View')}"><button type="button" data-plan-view="day" class="${view === 'day' ? 'on' : ''}" aria-pressed="${view === 'day'}">${t('By day')}</button><button type="button" data-plan-view="type" class="${view === 'type' ? 'on' : ''}" aria-pressed="${view === 'type'}">${t('By type')}</button></div>
+      <div class="chips plan-chips">${PTYPES.filter(([ty]) => counts[ty]).map(([ty, l]) => `<button type="button" class="chip ${on.includes(ty) ? 'on' : ''}" data-plan-chip="${ty}" aria-pressed="${on.includes(ty)}">${t(l)} <span>${counts[ty]}</span></button>`).join('')}</div></div>
+    ${groups.length ? groups.map(([h, g]) => `<h3 class="sub-h">${esc(h)}</h3><ul class="plan-list">${g.map(row).join('')}</ul>`).join('') : `<p class="muted">${t('Nothing of these types yet.')}</p>`}`;
+}
+function wirePlan(cfg, art, mapCtl) {
+  const sec0 = art.querySelector('#sec-plan'); const body = sec0 && sec0.querySelector('.sec-b');
+  const pins = () => { if (mapCtl) mapCtl.setSaved(planLoad(cfg).filter(x => x.lat != null).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => openPlan(x) }))); };
+  const openPlan = (x) => { if (x.src === 'g' && art._openGPlace) art._openGPlace(x.ref); else if (art._openPlace) art._openPlace(x.ref); };
+  const render = () => { if (body) body.innerHTML = planHTML(cfg); art._renderSchedule && art._renderSchedule(); pins(); };
+  art._planChanged = render; pins();
+  if (!body) return;
+  body.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return; const li = b.closest('[data-plan-id]'); const xs = planLoad(cfg); const i = li ? xs.findIndex(x => x.id === li.dataset.planId) : -1;
+    const k = eventKey(cfg).slice(6);
+    if (b.dataset.planView) { LS.set('planview:' + k, b.dataset.planView); render(); return; }
+    if (b.dataset.planChip) { const on = LS.get('plantypes:' + k) || []; LS.set('plantypes:' + k, on.includes(b.dataset.planChip) ? on.filter(x => x !== b.dataset.planChip) : on.concat(b.dataset.planChip)); render(); return; }
+    if (b.dataset.bkEdit != null) { const s2 = art.querySelector('#sec-itinerary'); const eb = s2 && s2.querySelector(`[data-itin-edit="${b.dataset.bkEdit}"]`); if (eb) { s2.scrollIntoView({ block: 'start' }); eb.click(); } return; }
+    if (b.dataset.planCard) { const x = xs.find(y => y.id === b.dataset.planCard); if (x) openPlan(x); return; }
+    if (i < 0) return;
+    if ('planDel' in b.dataset) { xs.splice(i, 1); planSave(cfg, xs); render(); }
+    if (b.dataset.planMv) { const same = xs.map((y, j) => [y, j]).filter(([y]) => y.day === xs[i].day).map(([, j]) => j); const k = same.indexOf(i) + +b.dataset.planMv; if (k >= 0 && k < same.length) { const j = same[k]; [xs[i], xs[j]] = [xs[j], xs[i]]; planSave(cfg, xs); render(); } }
+  });
+  body.addEventListener('change', (e) => {
+    const el = e.target; const li = el.closest('[data-plan-id]'); if (!li) return; const xs = planLoad(cfg); const x = xs.find(y => y.id === li.dataset.planId); if (!x) return;
+    if (el.matches('[data-plan-move]')) { x.day = el.value; if (!x.day) x.time = ''; }
+    if (el.matches('[data-plan-booked]')) x.booked = el.checked;
+    if (el.matches('[data-plan-type]')) x.type = el.value;
+    if (el.matches('[data-plan-conf]')) x.conf = el.value.trim().slice(0, 60);
+    planSave(cfg, xs); render();
+  });
+}
+
+// ================= one as-you-type place dropdown for every place field (Google Places Autocomplete, New) =================
+// Bias only, never restrict: 'Grand Hyatt Cancun' is found from a Japan trip too. A session token ties the keystrokes
+// and the final Place Details call into one billed session.
+const AC_ICONS = {
+  stay: '<path d="M3 18V8M3 14h18v4M21 18v-5a3 3 0 0 0-3-3h-7v4"/><circle cx="7" cy="11" r="1.6"/>',
+  food: '<path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M16 3c-2 1-3 3-3 6v3h3v9"/>',
+  fly: '<path d="M2 16l20-6-2-2-7 2-5-6-2 1 3 6-5 2-2-2-1 1z"/>',
+  rail: '<rect x="6" y="3" width="12" height="13" rx="3"/><path d="M6 11h12M9 20l-2 2M15 20l2 2M9 16l-1 4M15 16l1 4"/>',
+  sight: '<path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.5 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/>',
+  city: '<path d="M3 21V9l6-4v16M9 21V3h8v18M17 21v-8h4v8M12 7h2M12 11h2M12 15h2"/>',
+  pin: '<path d="M12 21s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/>',
+};
+function acIcon(types) {
+  const s = (types || []).join(' ');
+  const k = /lodging|hotel/.test(s) ? 'stay' : /restaurant|food|cafe|bar|bakery|meal/.test(s) ? 'food' : /airport/.test(s) ? 'fly' : /train|transit|subway|station/.test(s) ? 'rail'
+    : /tourist|museum|park|attraction|gallery|landmark/.test(s) ? 'sight' : /locality|political|administrative|country|sublocality/.test(s) ? 'city' : 'pin';
+  return `<svg class="ac-ic" viewBox="0 0 24 24" aria-hidden="true">${AC_ICONS[k]}</svg>`;
+}
+const newSession = () => (crypto.randomUUID ? crypto.randomUUID() : 'ep-' + Date.now() + Math.random().toString(36).slice(2));
+// input: the text field. opts: { bias: () => ({lat, lon}) | null, onPick(placeId, session), onText?(query) }. Returns false without Google.
+function placeAutocomplete(input, opts) {
+  if (!input || !GKEY || gpBroken || input._ac) return false; input._ac = true;
+  let wrap = input.parentElement; if (!wrap.classList.contains('ac-wrap')) { wrap = document.createElement('div'); wrap.className = 'ac-wrap'; input.replaceWith(wrap); wrap.appendChild(input); }
+  const ul = document.createElement('ul'); ul.className = 'gp-sugg'; ul.setAttribute('role', 'listbox'); ul.hidden = true; ul.id = 'ac-' + Math.random().toString(36).slice(2, 8); wrap.appendChild(ul);
+  input.setAttribute('autocomplete', 'off'); input.setAttribute('role', 'combobox'); input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-controls', ul.id);
+  let session = '', seq = 0, first = null;
+  const close = () => { ul.hidden = true; input.setAttribute('aria-expanded', 'false'); };
+  const run = debounce(() => {
+    const q = input.value.trim(); const my = ++seq; if (q.length < 2 || document.activeElement !== input) { close(); return; }
+    if (!session) session = newSession();
+    const b = opts.bias && opts.bias(); const body = { input: q, sessionToken: session };
+    if (b && b.lat != null) body.locationBias = { circle: { center: { latitude: b.lat, longitude: b.lon }, radius: 50000 } };
+    gFetch('https://places.googleapis.com/v1/places:autocomplete', body, 'suggestions.placePrediction.placeId,suggestions.placePrediction.structuredFormat,suggestions.placePrediction.types')
+      .then(j => {
+        if (my !== seq || document.activeElement !== input) return;
+        const xs = (j.suggestions || []).map(x => x.placePrediction).filter(Boolean).slice(0, 6); first = xs[0] || null;
+        const main = (x) => x.structuredFormat && x.structuredFormat.mainText ? x.structuredFormat.mainText.text : '';
+        const sub = (x) => x.structuredFormat && x.structuredFormat.secondaryText ? x.structuredFormat.secondaryText.text : '';
+        ul.innerHTML = xs.map(x => `<li role="option"><button type="button" data-ac-pick="${esc(x.placeId)}">${acIcon(x.types)}<span class="ac-t"><b>${esc(main(x))}</b><span>${esc(sub(x))}</span></span></button></li>`).join('')
+          + (opts.onText ? `<li role="option"><button type="button" data-ac-text>${AC_ICONS.pin ? `<svg class="ac-ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>` : ''}<span class="ac-t"><b>${esc(t('Search for “{q}”', { q }))}</b></span></button></li>` : '')
+          + `<li class="ac-by" aria-hidden="true">Google</li>`;
+        ul.hidden = !xs.length && !opts.onText; input.setAttribute('aria-expanded', String(!ul.hidden));
+      }).catch(() => close());
+  }, 250);
+  const pick = (id) => { close(); const tok = session; session = ''; opts.onPick(id, tok); };
+  input.addEventListener('input', run);
+  input.addEventListener('focus', () => { if (input.value.trim().length >= 2) run(); });
+  input.addEventListener('blur', () => setTimeout(close, 250));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') close();
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (opts.onText) { close(); seq++; opts.onText(input.value.trim()); } else if (first && !ul.hidden) pick(first.placeId); }
+  }, true);
+  ul.addEventListener('mousedown', (e) => e.preventDefault()); // keep focus in the field while choosing
+  ul.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; e.stopPropagation(); if (b.dataset.acPick) pick(b.dataset.acPick); else if ('acText' in b.dataset) { close(); seq++; opts.onText && opts.onText(input.value.trim()); } });
+  return true;
+}
+// a Google place as an Eventpages venue
+function gpVenue(id, session) {
+  return gFetch(`https://places.googleapis.com/v1/places/${enc(id)}${session ? '?sessionToken=' + enc(session) : ''}`, null, 'id,displayName,formattedAddress,location,addressComponents,types').then(x => {
+    const ac = x.addressComponents || []; const get = (ty, short) => { const c = ac.find(a => (a.types || []).includes(ty)); return c ? (short ? c.shortText : c.longText) : ''; };
+    const name = (x.displayName && x.displayName.text) || '';
+    const city = get('locality') || get('postal_town') || get('administrative_area_level_2') || get('sublocality') || ((x.types || []).some(t => /locality|administrative_area/.test(t)) ? name : '');
+    return { name, address: x.formattedAddress || name, lat: +(+x.location.latitude).toFixed(5), lon: +(+x.location.longitude).toFixed(5), city, region: get('administrative_area_level_1'), country: get('country'), cc: (get('country', true) || '').toLowerCase(), gid: x.id };
+  });
 }
 
 // ================= trips: day-by-day itinerary builder (reuses cfg.schedule: {date, time, title, note, kind}) =================
