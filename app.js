@@ -869,17 +869,16 @@ function renderLanding() {
     <section class="land-what">
       <h2>What your guests get</h2>
       <dl>
-        <div><dt>Weather</dt><dd>The forecast as the date gets close, typical weather before that.</dd></div>
-        <div><dt>Map</dt><dd>The venue and what’s around it.</dd></div>
-        <div><dt>Flights</dt><dd>The closest airports and fares for their dates.</dd></div>
-        <div><dt>Hotels</dt><dd>Places to stay nearby, with the dates already set.</dd></div>
-        <div><dt>Food</dt><dd>Restaurants and bars nearby. Filter by cuisine, diet or what’s open now.</dd></div>
-        <div><dt>Event details</dt><dd>What fits your event, like an RSVP for a wedding or packet pickup for a race.</dd></div>
-        <div><dt>Their plans</dt><dd>Guests paste in their bookings and see them next to your schedule.</dd></div>
-        <div><dt>Getting around</dt><dd>Nearby stops, directions, and a ride to the door.</dd></div>
+        <div><dt>Weather</dt><dd>Forecast for the dates.</dd></div>
+        <div><dt>Map</dt><dd>The venue and what’s nearby.</dd></div>
+        <div><dt>Flights</dt><dd>Nearest airports and fares.</dd></div>
+        <div><dt>Hotels</dt><dd>Places to stay nearby.</dd></div>
+        <div><dt>Food</dt><dd>Restaurants and bars nearby.</dd></div>
+        <div><dt>Event details</dt><dd>RSVP, packet pickup, dress code.</dd></div>
+        <div><dt>Their plans</dt><dd>Their bookings next to your schedule.</dd></div>
+        <div><dt>Getting around</dt><dd>Transit, directions, rides.</dd></div>
       </dl>
     </section>
-    <footer class="land-foot">Built on Google Maps, Open-Meteo and OurAirports data.</footer>
   </main>`;
   wireLanding(); wireHomeHeader();
 }
@@ -2600,7 +2599,7 @@ function myPagesHTML() {
 function samplesHTML() {
   const ex = window.EXAMPLES; const order = ['japan-trip', 'tulum-wedding', 'chicago-10k', 'redrocks-concert', 'nyc-conference', 'sf-festival'].filter(id => ex[id]);
   const demoOf = (id) => Object.keys(DEMOS).find(k => DEMOS[k] === id);
-  return `<section class="land-ex" id="samples"><h2>Try a sample</h2><p class="muted">Open one to look around. <b>Make a copy</b> to edit it as your own.</p>
+  return `<section class="land-ex" id="samples"><h2>Samples</h2>
     <div class="ex-grid">${order.map(id => { const e = normalize(clone(ex[id])); const v = e.venue;
       return `<div class="ex-card" style="${themeStyle(e.theme)}"><a class="ex-hit" href="?demo=${demoOf(id)}" aria-label="Open ${esc(e.title)}"></a>
         <span class="ex-img" style="background-image:url('${esc(e.cover)}')"></span>
