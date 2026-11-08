@@ -1183,10 +1183,14 @@ function wireEvent(cfg, art, seq, air, opts) {
     art._pack && art._pack();
   };
   art._applyModes = applyModes;
+  // rental counters come from Google: fetch them only once the Travel tab is actually open
+  const loadCounters = () => { const cs = slot('rental') && slot('rental').querySelector('[data-slot="car-counters"]'); const pnl = art.querySelector('[data-panel="travel"]');
+    if (!cs || !air[0] || gpBroken || (pnl && pnl.hidden)) return; gpCars(cfg, air[0]).then(rows => { if (rows.length && document.body.contains(cs)) cs.innerHTML = carCountersHTML(cfg, air[0], rows); }).catch(() => {}); };
+  (art._showFns = art._showFns || []).push((k) => { if (k === 'travel') loadCounters(); });
   const refreshTrip = () => {
     if (slot('flights')) slot('flights').innerHTML = flightsHTML(cfg, air);
     if (slot('trains')) slot('trains').innerHTML = trainsHTML(cfg);
-    if (slot('rental')) { slot('rental').innerHTML = rentalHTML(cfg, air); const cs = slot('rental').querySelector('[data-slot="car-counters"]'); if (cs && air[0] && !gpBroken) gpCars(cfg, air[0]).then(rows => { if (rows.length && document.body.contains(cs)) cs.innerHTML = carCountersHTML(cfg, air[0], rows); }).catch(() => {}); }
+    if (slot('rental')) { slot('rental').innerHTML = rentalHTML(cfg, air); loadCounters(); }
     if (slot('stay-links')) slot('stay-links').innerHTML = stayLinks(cfg);
     if (slot('tour-links')) slot('tour-links').innerHTML = tourLinks(cfg);
     if (art._osm && slot('hotels')) slot('hotels').innerHTML = hotelsHTML(cfg, art._osm);
