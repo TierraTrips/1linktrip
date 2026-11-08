@@ -1,0 +1,33 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eventpages sign-in email setup</title><meta name="robots" content="noindex">
+<style>body{font:16px/1.45 -apple-system,system-ui,sans-serif;margin:0;padding:20px;background:#E7E9EE;color:#111}
+.card{background:#fff;border-radius:16px;padding:16px;margin:14px 0}h3{margin:0 0 8px}ol{margin:0;padding-left:20px}li{margin:6px 0}
+.row{display:flex;align-items:center;gap:8px;margin:8px 0}.row span{flex:0 0 120px;color:#555;font-size:14px}
+.row code{flex:1;font:14px ui-monospace,Menlo,monospace;background:#F1F2F5;border-radius:8px;padding:8px;overflow-wrap:anywhere}
+button{font:600 14px -apple-system,system-ui,sans-serif;padding:8px 12px;border:0;border-radius:8px;background:#3048F0;color:#fff}
+.note{font-size:14px;color:#555}a{color:#3048F0}</style></head>
+<body><h2 style="margin:0 0 4px">Sign-in emails via Resend</h2><div class="note">Removes Supabase's ~2 emails/hour limit on magic links.</div>
+
+<div class="card"><h3>1. Resend: make a key</h3><ol>
+<li>Open <a href="https://resend.com/api-keys">resend.com/api-keys</a> → <b>Create API key</b>.</li>
+<li>Name it <b>eventpages</b>, permission <b>Sending access</b> → Add.</li>
+<li>Copy the key (starts with <code>re_</code>). It's shown once.</li></ol></div>
+
+<div class="card"><h3>2. Supabase: turn on custom SMTP</h3><ol>
+<li>Supabase → your project → <b>Authentication</b> → <b>Emails</b> → <b>SMTP Settings</b>.</li>
+<li>Turn on <b>Enable custom SMTP</b> and fill in:</li></ol>
+<div class="row"><span>Sender email</span><code>onboarding@resend.dev</code><button>Copy</button></div>
+<div class="row"><span>Sender name</span><code>Eventpages</code><button>Copy</button></div>
+<div class="row"><span>Host</span><code>smtp.resend.com</code><button>Copy</button></div>
+<div class="row"><span>Port</span><code>465</code><button>Copy</button></div>
+<div class="row"><span>Username</span><code>resend</code><button>Copy</button></div>
+<div class="row"><span>Password</span><code>your re_… key from step 1</code></div>
+<ol start="3"><li>Save.</li></ol></div>
+
+<div class="card"><h3>3. Supabase: raise the limit</h3><ol>
+<li><b>Authentication</b> → <b>Rate Limits</b>.</li>
+<li>Set <b>Rate limit for sending emails</b> to <code>100</code> per hour → Save.</li></ol></div>
+
+<div class="card"><h3>Heads-up: domain</h3><div class="note">With the <code>onboarding@resend.dev</code> sender, Resend only delivers to the email on your Resend account — fine for testing yourself. To send sign-in links to anyone, add a domain you own in Resend → <b>Domains</b> (it gives you DNS records to add), then change Sender email to e.g. <code>hello@yourdomain.com</code>. Google sign-in works for everyone in the meantime.</div></div>
+
+<script>document.querySelectorAll('.row button').forEach(b=>b.onclick=async()=>{const v=b.previousElementSibling.textContent;try{await navigator.clipboard.writeText(v)}catch(e){}b.textContent='Copied ✓';setTimeout(()=>b.textContent='Copy',1500)})</script></body></html>
