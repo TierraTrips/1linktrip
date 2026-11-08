@@ -28,7 +28,7 @@ const cors = {
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
-const EVENT_TYPES = ["Wedding", "Conference", "Concert", "Race", "Sporting event", "Festival", "Bachelor party", "Bachelorette party", "Birthday", "Reunion", "Retreat", "Meetup", "Party", "Trip", "Other"];
+const EVENT_TYPES = ["Wedding", "Conference", "Concert", "Performance", "Race", "Hyrox", "Sporting event", "Festival", "Bachelor party", "Bachelorette party", "Birthday", "Reunion", "Retreat", "Meetup", "Party", "Trip", "Other"];
 const ITEM_TYPES = ["flight", "hotel", "stay", "car", "train", "food", "tour", "other"];
 const str = (description: string) => ({ type: "string", description });
 
@@ -77,20 +77,29 @@ const EVENT_TOOL: Anthropic.Tool = {
         description: "Type-specific sections. Fill the ones that match the event type; empty strings/arrays for the rest.",
         required: ["start_place", "finish_place", "packet_pickup", "packet_pickup_when", "course_map_url", "spectator_spots", "road_closures", "road_closures_url",
           "doors", "opener", "opener_at", "headliner", "headliner_at", "setlist_url", "bag_policy", "parking", "rideshare_pickup", "seating_url", "teams", "tailgate",
-          "badge_pickup", "badge_pickup_when", "agenda_url", "speakers", "registry"],
+          "badge_pickup", "badge_pickup_when", "agenda_url", "speakers", "registry",
+          "performer", "showtime", "call_time", "performer_slot", "program_url", "tickets_url", "flowers_gifts", "photo_policy",
+          "division", "wave_start", "checkin", "checkin_when", "bag_drop", "spectator_info", "results_url"],
         properties: {
           start_place: str("Race: start line location"), finish_place: str("Race: finish line location"),
           packet_pickup: str("Race: packet/bib pickup or expo location and notes"), packet_pickup_when: str("Race: first pickup time, YYYY-MM-DDTHH:MM, or empty"),
           course_map_url: str("Race: course map link (PDF, image or page) taken from LINKS FOUND or the text, or empty"),
           spectator_spots: { type: "array", items: { type: "string" }, description: "Race: good places to watch" },
           road_closures: str("Race: which roads close and when"), road_closures_url: str("Race: road closure page link or empty"),
-          doors: str("Concert: doors time HH:MM"), opener: str("Concert: opening act"), opener_at: str("HH:MM"), headliner: str("Concert: headliner"), headliner_at: str("HH:MM"),
+          doors: str("Concert or Performance: doors time HH:MM"), opener: str("Concert: opening act"), opener_at: str("HH:MM"), headliner: str("Concert: headliner"), headliner_at: str("HH:MM"),
           setlist_url: str("Concert: setlist link"), bag_policy: str("Bag policy"), parking: str("Parking"), rideshare_pickup: str("Rideshare pickup spot"),
           seating_url: str("Sporting event: seating chart link"), teams: { type: "array", items: { type: "object", additionalProperties: false, required: ["label", "url"], properties: { label: str("Team"), url: str("https URL") } } },
           tailgate: str("Sporting event: tailgating rules and lots"),
           badge_pickup: str("Conference: badge pickup location"), badge_pickup_when: str("YYYY-MM-DDTHH:MM or empty"), agenda_url: str("Conference: full agenda link"),
           speakers: { type: "array", items: { type: "string" }, description: "Conference: 'Name — role' per speaker" },
           registry: { type: "array", items: { type: "object", additionalProperties: false, required: ["label", "url"], properties: { label: str("Registry name"), url: str("https URL") } } },
+          performer: str("Performance: who guests are coming to see (a dancer, actor, student), or empty"), showtime: str("Performance: curtain time HH:MM"),
+          call_time: str("Performance: performer call time HH:MM"), performer_slot: str("Performance: the performer's slot in the run order, e.g. Act 2, number 14"),
+          program_url: str("Performance: program or run order link"), tickets_url: str("Performance: ticket link"),
+          flowers_gifts: str("Performance: whether flowers or gifts are allowed and where to hand them off"), photo_policy: str("Performance: photo and video rules"),
+          division: str("Hyrox: division (Open, Pro, Doubles, Relay)"), wave_start: str("Hyrox: wave or heat start time HH:MM"),
+          checkin: str("Hyrox: check-in and wristband pickup location and notes"), checkin_when: str("Hyrox: check-in time, YYYY-MM-DDTHH:MM, or empty"),
+          bag_drop: str("Hyrox: bag drop location and rules"), spectator_info: str("Hyrox: spectator tickets and where to watch"), results_url: str("Hyrox: live results link"),
         },
       },
       extras: {

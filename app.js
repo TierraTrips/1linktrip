@@ -309,7 +309,7 @@ const FONTS = {
   condensed: { label: 'Poster', css: "'Big Shoulders Display', 'Arial Narrow', sans-serif", gf: 'Big+Shoulders+Display:wght@600..900' },
   wide: { label: 'Wide', css: "'Unbounded', system-ui, sans-serif", gf: 'Unbounded:wght@400..800' }
 };
-const TYPES = ['Wedding', 'Conference', 'Concert', 'Race', 'Sporting event', 'Festival', 'Bachelor party', 'Bachelorette party', 'Birthday', 'Reunion', 'Retreat', 'Meetup', 'Party', 'Other', 'Trip'];
+const TYPES = ['Wedding', 'Conference', 'Concert', 'Performance', 'Race', 'Hyrox', 'Sporting event', 'Festival', 'Bachelor party', 'Bachelorette party', 'Birthday', 'Reunion', 'Retreat', 'Meetup', 'Party', 'Other', 'Trip'];
 const TYPE_LABEL = { Trip: 'Vacation / Trip' };
 // a trip has a destination instead of a venue, a day-by-day itinerary instead of a schedule, and no RSVP
 const isTrip = (cfg) => cfg && cfg.type === 'Trip';
@@ -332,6 +332,16 @@ const TYPE_FIELDS = {
     ['headliner', 'Headliner', 'text', 'Act name'], ['headlinerAt', 'Headliner on at', 'time'],
     ['setlist', 'Setlist', 'url', 'https://…'], ['bags', 'Bag policy', 'text', 'Clear bags only'],
     ['parking', 'Parking', 'text'], ['pickup', 'Rideshare pickup spot', 'text']] },
+  Performance: { name: 'Show info', fields: [
+    ['performer', 'Performer', 'text', 'Who you are there to see'], ['doors', 'Doors', 'time'], ['showtime', 'Showtime', 'time'],
+    ['callTime', 'Performer call time', 'time'], ['slot', 'Performer\'s slot', 'text', 'e.g. Act 2, number 14'], ['program', 'Program or run order', 'url', 'https://…'],
+    ['tickets', 'Tickets', 'url', 'https://…'], ['flowers', 'Flowers and gifts', 'text', 'e.g. Flowers welcome after the show'],
+    ['photo', 'Photo and video policy', 'text', 'e.g. No flash, no video'], ['parking', 'Parking', 'text']] },
+  Hyrox: { name: 'Race day', fields: [
+    ['division', 'Division', 'text', 'Open, Pro, Doubles or Relay'], ['wave', 'Wave start', 'time'],
+    ['checkin', 'Check-in and wristband pickup', 'text', 'Where'], ['checkinWhen', 'Check-in time', 'datetime'],
+    ['bagdrop', 'Bag drop', 'text', 'Where, and what you can leave'], ['spectators', 'Spectator info', 'text', 'Tickets, where to watch'],
+    ['results', 'Live results', 'url', 'https://…'], ['parking', 'Parking', 'text']] },
   'Sporting event': { name: 'Game day', fields: [
     ['seating', 'Seating chart', 'url', 'https://…'], ['teams', 'Teams', 'links'],
     ['tailgate', 'Tailgating', 'text'], ['parking', 'Parking', 'text'], ['bags', 'Bag policy', 'text', 'Clear bags only']] },
@@ -406,18 +416,21 @@ function typeInfoHTML(cfg, opt = {}) {
   const rows = []; const out = [];
   // time-line style rows (concert running order)
   const tl = [];
+  if (has('callTime')) tl.push([d.callTime, t('Performer call time')]);
   if (has('doors')) tl.push([d.doors, t('Doors')]);
+  if (has('showtime')) tl.push([d.showtime, t('Showtime')]);
+  if (has('wave')) tl.push([d.wave, t('Wave start')]);
   if (has('openerAt') || has('opener')) tl.push([d.openerAt || '', d.opener || t(lab.opener)]);
   if (has('headlinerAt') || has('headliner')) tl.push([d.headlinerAt || '', d.headliner || t(lab.headliner)]);
   if (tl.length) out.push(`<ol class="tl">${tl.sort((a, b) => (a[0] || '99').localeCompare(b[0] || '99')).map(([tm, n]) => `<li><time>${esc(fmtTime(tm)) || '—'}</time><div><b>${esc(n)}</b></div></li>`).join('')}</ol>`);
   for (const [k, label, kind] of sp.fields) {
-    if (['stops', 'doors', 'opener', 'openerAt', 'headliner', 'headlinerAt', 'rsvpBy', 'blockHotel', 'blockUrl', 'blockCode', 'blockBy', 'packetWhen', 'badgeWhen', 'closuresUrl', 'spots', 'speakers'].includes(k) || !filled(kind, d[k])) continue;
+    if (['stops', 'doors', 'opener', 'openerAt', 'headliner', 'headlinerAt', 'rsvpBy', 'blockHotel', 'blockUrl', 'blockCode', 'blockBy', 'packetWhen', 'badgeWhen', 'checkinWhen', 'callTime', 'showtime', 'wave', 'closuresUrl', 'spots', 'speakers'].includes(k) || !filled(kind, d[k])) continue;
     const val = d[k];
     if (k === 'rsvp') rows.push(linkRow('RSVP', val, d.rsvpBy ? t('Reply by {d}', { d: dt(d.rsvpBy) }) : ''));
     else if (k === 'course' && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(val)) out.push(`<a class="course-img" href="${esc(val)}" target="_blank" rel="noopener noreferrer"><img src="${esc(val)}" alt="${t('Course map')}" loading="lazy" referrerpolicy="no-referrer"></a>`);
     else if (k === 'course') rows.push(linkRow('Course map', val, /\.gpx(\?|$)/i.test(val) ? t('GPX file') : ''));
     else if (k === 'closures') rows.push(d.closuresUrl ? linkRow('Road closures', d.closuresUrl, val) : noteRow('Road closures', val));
-    else if (k === 'packet' || k === 'badge') { const w = d[k + 'When']; rows.push(`<li><a href="${esc(L.place(val, v ? placeLabel(v) : ''))}" target="_blank" rel="noopener noreferrer"><b>${esc(t(label))}</b><span>${esc([val, dt(w)].filter(Boolean).join(' · '))}</span>${arrow}</a></li>`); }
+    else if (k === 'packet' || k === 'badge' || k === 'checkin') { const w = d[k + 'When']; rows.push(`<li><a href="${esc(L.place(val, v ? placeLabel(v) : ''))}" target="_blank" rel="noopener noreferrer"><b>${esc(t(label))}</b><span>${esc([val, dt(w)].filter(Boolean).join(' · '))}</span>${arrow}</a></li>`); }
     else if (kind === 'place') rows.push(`<li><a href="${esc(placeURL(val))}" target="_blank" rel="noopener noreferrer"><b>${esc(t(label))}</b><span>${esc(val.q)}</span>${arrow}</a></li>`);
     else if (kind === 'links') val.filter(l => l.label && l.url).forEach(l => rows.push(linkRow(label === 'Teams' || l.label.toLowerCase() === label.toLowerCase() ? l.label : `${label} · ${l.label}`, l.url)));
     else if (kind === 'url') rows.push(linkRow(label, val));
@@ -425,6 +438,7 @@ function typeInfoHTML(cfg, opt = {}) {
   }
   if (!has('packet') && has('packetWhen')) rows.push(noteRow('Packet pickup', dt(d.packetWhen)));
   if (!has('badge') && has('badgeWhen')) rows.push(noteRow('Badge pickup', dt(d.badgeWhen)));
+  if (!has('checkin') && has('checkinWhen')) rows.push(noteRow('Check-in and wristband pickup', dt(d.checkinWhen)));
   if (!has('rsvp') && has('rsvpBy')) rows.push(noteRow('RSVP', t('Reply by {d}', { d: dt(d.rsvpBy) })));
   if (!has('closures') && has('closuresUrl')) rows.push(linkRow('Road closures', d.closuresUrl));
   if (rows.length) out.push(`<ul class="links">${rows.join('')}</ul>`);
@@ -599,13 +613,19 @@ const PACK_RULES = [
   ['racekit', 'Race-day kit', isT('Race')],
   ['bibpins', 'Safety pins for your bib', isT('Race')],
   ['gels', 'Energy gels', isT('Race')],
+  ['trainshoes', 'Training shoes', isT('Hyrox')],
+  ['gloves', 'Gloves', isT('Hyrox')],
+  ['towel', 'Towel', isT('Hyrox')],
+  ['waterbottle', 'Water bottle', isT('Hyrox')],
+  ['changeclothes', 'Change of clothes', isT('Hyrox')],
+  ['flowers', 'Flowers for the performer', c => c.type === 'Performance' && !/no flowers|flowers (are )?not/i.test(c.td.flowers || '')],
   ['clearbag', 'Clear bag', c => /clear/i.test(c.td.bags || '')],
-  ['tickets', 'Tickets', isT('Concert', 'Sporting event', 'Festival')],
+  ['tickets', 'Tickets', isT('Concert', 'Sporting event', 'Festival', 'Performance')],
   ['earplugs', 'Earplugs', isT('Concert', 'Festival')],
   ['teamgear', 'Team gear', isT('Sporting event')],
   ['laptop', 'Laptop and charger', isT('Conference')],
   ['bizcards', 'Business cards', isT('Conference')],
-  ['powerbank', 'Portable charger', isT('Festival', 'Concert', 'Conference', 'Race')]
+  ['powerbank', 'Portable charger', isT('Festival', 'Concert', 'Conference', 'Race', 'Hyrox')]
 ];
 // IEC plug types per country (lowercase ISO code)
 const PLUGS = { us: 'AB', ca: 'AB', mx: 'AB', jp: 'AB', co: 'AB', pe: 'ABC', th: 'ABCO', tw: 'AB', ph: 'ABC', gb: 'G', ie: 'G', mt: 'G', cy: 'G', hk: 'G', sg: 'G', my: 'G', ae: 'G',
@@ -884,6 +904,8 @@ const TYPE_DEFAULTS = {
   Race: { theme: { accent: '#2E7D32', font: 'wide', mode: 'light' }, off: ['tours'] },
   Conference: { theme: { accent: '#3048F0', font: 'grotesk', mode: 'light' }, off: ['packing'] },
   Concert: { theme: { accent: '#FF6B35', font: 'condensed', mode: 'dark' }, off: ['stay'] },
+  Performance: { theme: { accent: '#6D28D9', font: 'classic', mode: 'light' }, off: ['stay'] },
+  Hyrox: { theme: { accent: '#FFD100', font: 'condensed', mode: 'dark' }, off: ['tours'] },
   Festival: { theme: { accent: '#FF6B35', font: 'condensed', mode: 'dark' }, off: [] },
   'Sporting event': { theme: { accent: '#C2185B', font: 'condensed', mode: 'dark' }, off: ['stay', 'packing'] }
 };
@@ -894,6 +916,8 @@ const TYPE_ICONS = {
   Race: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
   Conference: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/>',
   Concert: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
+  Performance: '<path d="M3 4h18M4 4v3c0 2 2 3 4 3M20 4v3c0 2-2 3-4 3"/><path d="M12 8l-4 10h8z"/><path d="M3 21h18"/>',
+  Hyrox: '<path d="M2 12h3M19 12h3"/><rect x="5" y="7" width="3" height="10" rx="1"/><rect x="16" y="7" width="3" height="10" rx="1"/><path d="M8 12h8"/>',
   Festival: '<path d="M3 20L12 4l9 16z"/><path d="M12 4v16M9 20l3-6 3 6"/>',
   'Sporting event': '<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18M5.6 5.6c3.4 3.4 3.4 9.4 0 12.8M18.4 5.6c-3.4 3.4-3.4 9.4 0 12.8"/>',
   Trip: '<rect x="4" y="7" width="16" height="13" rx="2"/><path d="M9 7V4h6v3M4 12h16"/>',
@@ -902,6 +926,7 @@ const TYPE_ICONS = {
 const SETUP_TYPES = [['Wedding', 'Wedding', 'RSVP, room block, dress code', '#0B7A75'], ['Race', 'Race', 'Start, finish, packet pickup', '#2E7D32'],
   ['Conference', 'Conference', 'Badges, agenda, speakers', '#3048F0'], ['Concert', 'Concert', 'Doors, set times, bag policy', '#FF6B35'],
   ['Festival', 'Festival', 'Several days, several stages', '#B8860B'], ['Sporting event', 'Game day', 'Seats, tailgating, parking', '#C2185B'],
+  ['Performance', 'Performance', 'Recital, show, call time', '#6D28D9'], ['Hyrox', 'Hyrox', 'Wave, check-in, bag drop', '#FFD100'],
   ['Party', 'Something else', 'Party, reunion, retreat', '#1F2937'], ['Trip', 'Vacation / Trip', 'Day by day, stays, packing', '#1E7FA8']];
 // "Add to your page" cards: [id, title, subtitle, field keys]
 const TYPE_CARDS = {
@@ -913,9 +938,13 @@ const TYPE_CARDS = {
   Concert: [['settimes', 'Set times', 'Doors, opener, headliner', ['doors', 'opener', 'openerAt', 'headliner', 'headlinerAt']], ['bags', 'Bag policy', 'What guests can bring in', ['bags']],
     ['parking', 'Parking and pickup', 'Lots and rideshare spot', ['parking', 'pickup']], ['setlist', 'Setlist', 'Link', ['setlist']]],
   'Sporting event': [['seating', 'Seating chart', 'Link', ['seating']], ['teams', 'Teams', 'Links', ['teams']], ['tailgate', 'Tailgating and parking', 'Lots and times', ['tailgate', 'parking']], ['bags', 'Bag policy', 'What guests can bring in', ['bags']]],
+  Performance: [['showtimes', 'Show times', 'Call time, doors, showtime', ['performer', 'callTime', 'doors', 'showtime', 'slot']], ['program', 'Program and tickets', 'Run order and ticket links', ['program', 'tickets']],
+    ['etiquette', 'Flowers and photos', 'Gifts, photo and video rules', ['flowers', 'photo']], ['parking', 'Parking', 'Where to park', ['parking']]],
+  Hyrox: [['wave', 'Wave and division', 'Start time, division', ['wave', 'division']], ['checkin', 'Check-in', 'Wristband pickup, where and when', ['checkin', 'checkinWhen']],
+    ['bagdrop', 'Bag drop', 'Where, and what you can leave', ['bagdrop']], ['spectators', 'Spectators', 'Tickets, where to watch, parking', ['spectators', 'parking']], ['results', 'Live results', 'Link', ['results']]],
   Conference: [['badge', 'Badge pickup', 'Where and when', ['badge', 'badgeWhen']], ['speakers', 'Speakers', 'One per line', ['speakers']], ['agenda', 'Full agenda', 'Link', ['agenda']]]
 };
-const TYPE_GROUP = { Trip: 'For trips', Wedding: 'For weddings', Race: 'For races', Concert: 'For concerts', 'Sporting event': 'For game day', Conference: 'For conferences' };
+const TYPE_GROUP = { Trip: 'For trips', Wedding: 'For weddings', Race: 'For races', Hyrox: 'For Hyrox', Concert: 'For concerts', Performance: 'For performances', 'Sporting event': 'For game day', Conference: 'For conferences' };
 const COMMON_CARDS = [['schedule', 'Schedule', 'Times and places'], ['notes', 'Notes for guests', 'Kids, parking, FAQ'], ['about', 'About', 'Host and a few words'],
   ['bring', 'Must-bring items', 'Top of the packing list'], ['langs', 'Guest languages', 'Your page in their language']];
 const CARD_ICONS = {
@@ -927,6 +956,11 @@ const CARD_ICONS = {
   setlist: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>', seating: '<path d="M4 10h16M4 15h16M9 5v15M15 5v15"/><rect x="4" y="5" width="16" height="15" rx="2"/>',
   teams: '<circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2 20c0-3 3-5 6-5s6 2 6 5M14 15c3 0 8 1 8 5"/>', tailgate: '<path d="M3 15l2-6h14l2 6v4H3z"/><circle cx="7" cy="17" r="1.5"/><circle cx="17" cy="17" r="1.5"/>',
   badge: '<rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M8 17h8"/>', speakers: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  showtimes: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', program: '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>',
+  etiquette: '<rect x="3" y="7" width="18" height="13" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M9 7l1.5-3h3L15 7"/>',
+  wave: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>', checkin: '<rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M8 17h8"/>',
+  bagdrop: '<path d="M6 8h12l-1 12H7z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>', spectators: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  results: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   agenda: '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>', schedule: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', notes: '<path d="M5 3h14v18H5z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
   about: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>', look: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-6-5-9 8"/>',
   bring: '<path d="M6 8h12l-1 12H7z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>', access: '<circle cx="12" cy="4.5" r="1.5"/><path d="M12 7v6h5l2 6M12 10H7"/><path d="M9 13a5 5 0 1 0 6 6"/>'
@@ -2919,6 +2953,18 @@ function aiEventToCfg(d) {
     if (isoTime(D.doors)) X.doors = D.doors; if (D.opener) X.opener = tx(D.opener, 80); if (isoTime(D.opener_at)) X.openerAt = D.opener_at;
     if (D.headliner) X.headliner = tx(D.headliner, 80); if (isoTime(D.headliner_at)) X.headlinerAt = D.headliner_at; if (httpsUrl(D.setlist_url)) X.setlist = httpsUrl(D.setlist_url);
     if (D.bag_policy) X.bags = tx(D.bag_policy); if (D.parking) X.parking = tx(D.parking); if (D.rideshare_pickup) X.pickup = tx(D.rideshare_pickup, 160);
+  } else if (type === 'Performance') {
+    if (D.performer) X.performer = tx(D.performer, 120); if (isoTime(D.doors)) X.doors = D.doors; if (isoTime(D.showtime)) X.showtime = D.showtime;
+    if (isoTime(D.call_time)) X.callTime = D.call_time; if (D.performer_slot) X.slot = tx(D.performer_slot, 160);
+    if (httpsUrl(D.program_url)) X.program = httpsUrl(D.program_url); if (httpsUrl(D.tickets_url)) X.tickets = httpsUrl(D.tickets_url);
+    if (D.flowers_gifts) X.flowers = tx(D.flowers_gifts); if (D.photo_policy) X.photo = tx(D.photo_policy); if (D.parking) X.parking = tx(D.parking);
+    if (D.bag_policy) c.notes.push({ label: 'Bag policy', text: tx(D.bag_policy), url: '' });
+  } else if (type === 'Hyrox') {
+    if (D.division) X.division = tx(D.division, 120); if (isoTime(D.wave_start)) X.wave = D.wave_start;
+    if (D.checkin) X.checkin = tx(D.checkin); if (dt(D.checkin_when)) X.checkinWhen = dt(D.checkin_when);
+    if (D.bag_drop) X.bagdrop = tx(D.bag_drop); if (D.spectator_info) X.spectators = tx(D.spectator_info, 500);
+    if (httpsUrl(D.results_url)) X.results = httpsUrl(D.results_url); if (D.parking) X.parking = tx(D.parking);
+    if (D.bag_policy) c.notes.push({ label: 'Bag policy', text: tx(D.bag_policy), url: '' });
   } else if (type === 'Sporting event') {
     if (httpsUrl(D.seating_url)) X.seating = httpsUrl(D.seating_url); const tm = (D.teams || []).map(x => ({ label: tx(x.label, 60), url: httpsUrl(x.url) })).filter(x => x.label && x.url); if (tm.length) X.teams = tm;
     if (D.tailgate) X.tailgate = tx(D.tailgate); if (D.parking) X.parking = tx(D.parking); if (D.bag_policy) X.bags = tx(D.bag_policy);
@@ -2928,7 +2974,7 @@ function aiEventToCfg(d) {
   } else if (type === 'Wedding') {
     const rg = (D.registry || []).map(x => ({ label: tx(x.label, 60), url: httpsUrl(x.url) })).filter(x => x.label && x.url); if (rg.length) X.registry = rg;
   }
-  if (type !== 'Race' && type !== 'Concert' && type !== 'Sporting event' && type !== 'Conference') { // other types: parking and bag rules as notes
+  if (!['Race', 'Concert', 'Sporting event', 'Conference', 'Performance', 'Hyrox'].includes(type)) { // other types: parking and bag rules as notes
     if (D.parking) c.notes.push({ label: 'Parking', text: tx(D.parking), url: '' }); if (D.bag_policy) c.notes.push({ label: 'Bag policy', text: tx(D.bag_policy), url: '' });
   }
   (d.extras || []).slice(0, 20).forEach(x => { const label = tx(x.label, 80); if (label) c.notes.push({ label, text: tx(x.text, 600), url: httpsUrl(x.url) }); });

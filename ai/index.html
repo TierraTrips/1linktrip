@@ -45,7 +45,7 @@ const cors = {
 const json = (status: number, body: unknown) =&gt;
   new Response(JSON.stringify(body), { status, headers: { ...cors, &quot;Content-Type&quot;: &quot;application/json&quot; } });
 
-const EVENT_TYPES = [&quot;Wedding&quot;, &quot;Conference&quot;, &quot;Concert&quot;, &quot;Race&quot;, &quot;Sporting event&quot;, &quot;Festival&quot;, &quot;Bachelor party&quot;, &quot;Bachelorette party&quot;, &quot;Birthday&quot;, &quot;Reunion&quot;, &quot;Retreat&quot;, &quot;Meetup&quot;, &quot;Party&quot;, &quot;Trip&quot;, &quot;Other&quot;];
+const EVENT_TYPES = [&quot;Wedding&quot;, &quot;Conference&quot;, &quot;Concert&quot;, &quot;Performance&quot;, &quot;Race&quot;, &quot;Hyrox&quot;, &quot;Sporting event&quot;, &quot;Festival&quot;, &quot;Bachelor party&quot;, &quot;Bachelorette party&quot;, &quot;Birthday&quot;, &quot;Reunion&quot;, &quot;Retreat&quot;, &quot;Meetup&quot;, &quot;Party&quot;, &quot;Trip&quot;, &quot;Other&quot;];
 const ITEM_TYPES = [&quot;flight&quot;, &quot;hotel&quot;, &quot;stay&quot;, &quot;car&quot;, &quot;train&quot;, &quot;food&quot;, &quot;tour&quot;, &quot;other&quot;];
 const str = (description: string) =&gt; ({ type: &quot;string&quot;, description });
 
@@ -94,20 +94,29 @@ const EVENT_TOOL: Anthropic.Tool = {
         description: &quot;Type-specific sections. Fill the ones that match the event type; empty strings/arrays for the rest.&quot;,
         required: [&quot;start_place&quot;, &quot;finish_place&quot;, &quot;packet_pickup&quot;, &quot;packet_pickup_when&quot;, &quot;course_map_url&quot;, &quot;spectator_spots&quot;, &quot;road_closures&quot;, &quot;road_closures_url&quot;,
           &quot;doors&quot;, &quot;opener&quot;, &quot;opener_at&quot;, &quot;headliner&quot;, &quot;headliner_at&quot;, &quot;setlist_url&quot;, &quot;bag_policy&quot;, &quot;parking&quot;, &quot;rideshare_pickup&quot;, &quot;seating_url&quot;, &quot;teams&quot;, &quot;tailgate&quot;,
-          &quot;badge_pickup&quot;, &quot;badge_pickup_when&quot;, &quot;agenda_url&quot;, &quot;speakers&quot;, &quot;registry&quot;],
+          &quot;badge_pickup&quot;, &quot;badge_pickup_when&quot;, &quot;agenda_url&quot;, &quot;speakers&quot;, &quot;registry&quot;,
+          &quot;performer&quot;, &quot;showtime&quot;, &quot;call_time&quot;, &quot;performer_slot&quot;, &quot;program_url&quot;, &quot;tickets_url&quot;, &quot;flowers_gifts&quot;, &quot;photo_policy&quot;,
+          &quot;division&quot;, &quot;wave_start&quot;, &quot;checkin&quot;, &quot;checkin_when&quot;, &quot;bag_drop&quot;, &quot;spectator_info&quot;, &quot;results_url&quot;],
         properties: {
           start_place: str(&quot;Race: start line location&quot;), finish_place: str(&quot;Race: finish line location&quot;),
           packet_pickup: str(&quot;Race: packet/bib pickup or expo location and notes&quot;), packet_pickup_when: str(&quot;Race: first pickup time, YYYY-MM-DDTHH:MM, or empty&quot;),
           course_map_url: str(&quot;Race: course map link (PDF, image or page) taken from LINKS FOUND or the text, or empty&quot;),
           spectator_spots: { type: &quot;array&quot;, items: { type: &quot;string&quot; }, description: &quot;Race: good places to watch&quot; },
           road_closures: str(&quot;Race: which roads close and when&quot;), road_closures_url: str(&quot;Race: road closure page link or empty&quot;),
-          doors: str(&quot;Concert: doors time HH:MM&quot;), opener: str(&quot;Concert: opening act&quot;), opener_at: str(&quot;HH:MM&quot;), headliner: str(&quot;Concert: headliner&quot;), headliner_at: str(&quot;HH:MM&quot;),
+          doors: str(&quot;Concert or Performance: doors time HH:MM&quot;), opener: str(&quot;Concert: opening act&quot;), opener_at: str(&quot;HH:MM&quot;), headliner: str(&quot;Concert: headliner&quot;), headliner_at: str(&quot;HH:MM&quot;),
           setlist_url: str(&quot;Concert: setlist link&quot;), bag_policy: str(&quot;Bag policy&quot;), parking: str(&quot;Parking&quot;), rideshare_pickup: str(&quot;Rideshare pickup spot&quot;),
           seating_url: str(&quot;Sporting event: seating chart link&quot;), teams: { type: &quot;array&quot;, items: { type: &quot;object&quot;, additionalProperties: false, required: [&quot;label&quot;, &quot;url&quot;], properties: { label: str(&quot;Team&quot;), url: str(&quot;https URL&quot;) } } },
           tailgate: str(&quot;Sporting event: tailgating rules and lots&quot;),
           badge_pickup: str(&quot;Conference: badge pickup location&quot;), badge_pickup_when: str(&quot;YYYY-MM-DDTHH:MM or empty&quot;), agenda_url: str(&quot;Conference: full agenda link&quot;),
           speakers: { type: &quot;array&quot;, items: { type: &quot;string&quot; }, description: &quot;Conference: &#x27;Name — role&#x27; per speaker&quot; },
           registry: { type: &quot;array&quot;, items: { type: &quot;object&quot;, additionalProperties: false, required: [&quot;label&quot;, &quot;url&quot;], properties: { label: str(&quot;Registry name&quot;), url: str(&quot;https URL&quot;) } } },
+          performer: str(&quot;Performance: who guests are coming to see (a dancer, actor, student), or empty&quot;), showtime: str(&quot;Performance: curtain time HH:MM&quot;),
+          call_time: str(&quot;Performance: performer call time HH:MM&quot;), performer_slot: str(&quot;Performance: the performer&#x27;s slot in the run order, e.g. Act 2, number 14&quot;),
+          program_url: str(&quot;Performance: program or run order link&quot;), tickets_url: str(&quot;Performance: ticket link&quot;),
+          flowers_gifts: str(&quot;Performance: whether flowers or gifts are allowed and where to hand them off&quot;), photo_policy: str(&quot;Performance: photo and video rules&quot;),
+          division: str(&quot;Hyrox: division (Open, Pro, Doubles, Relay)&quot;), wave_start: str(&quot;Hyrox: wave or heat start time HH:MM&quot;),
+          checkin: str(&quot;Hyrox: check-in and wristband pickup location and notes&quot;), checkin_when: str(&quot;Hyrox: check-in time, YYYY-MM-DDTHH:MM, or empty&quot;),
+          bag_drop: str(&quot;Hyrox: bag drop location and rules&quot;), spectator_info: str(&quot;Hyrox: spectator tickets and where to watch&quot;), results_url: str(&quot;Hyrox: live results link&quot;),
         },
       },
       extras: {
