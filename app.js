@@ -3154,7 +3154,8 @@ function gpCars(cfg, ap) {
       .filter(x => { const k = x.brand || x.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8); LS.set(key, { t: Date.now(), d }); return d; });
 }
 function carCountersHTML(cfg, ap, rows) {
-  return `<h3 class="sub-h">${esc(t('Rental counters at {a}', { a: ap.iata }))}</h3><div class="row-links">${rows.map(r => { const url = r.brand ? carBrandURL(r.brand, ap) : r.web; if (!url) return '';
+  return `<h3 class="sub-h">${esc(t('Rental counters at {a}', { a: ap.iata }))}</h3><div class="row-links">${rows.map(r => { const deep = r.brand && carBrandURL(r.brand, ap); const own = r.web && r.brand && hostOf(r.web).replace(/^www\./, '').endsWith(r.brand + '.com') ? r.web.replace(/[?#].*$/, '') : '';
+    const url = r.brand ? (deep !== CAR_HOME[r.brand] ? deep : own || deep) : r.web; if (!url) return ''; // no prefilled page: the counter's own listing page
     return ext(url, `${esc(r.brand ? (CAR_BRANDS.find(b => b[0] === r.brand) || [])[1] : r.name)}${r.rating ? ` <small>★ ${r.rating.toFixed(1)}</small>` : ` <small>${esc(hostOf(url))}</small>`}`, 'row-link'); }).join('')}</div>`;
 }
 
