@@ -1390,7 +1390,7 @@ function cardDone(c, id) {
 const cardBtn = (c, [id, title, sub]) => { const done = cardDone(c, id); return `<button type="button" class="acard ${done ? 'on' : ''}" data-card="${id}"><span class="aic">${cardIcon(id)}</span><b>${esc(title)}</b><span>${esc(sub)}</span><i class="plus" aria-hidden="true">${done ? '✓' : '+'}</i></button>`; };
 function allCards(c) { return { type: TYPE_CARDS[c.type] || [], common: isTrip(c) ? COMMON_CARDS.filter(x => x[0] !== 'replies').map(x => x[0] === 'schedule' ? ['schedule', 'Day by day', 'Activities, reservations, notes'] : x) : COMMON_CARDS }; }
 function buildForm() {
-  const c = B.cfg; const f = $('.b-form'); if (!f) return; const keepNote = f.querySelector('.b-note:not(.b-host)');
+  const c = B.cfg; const f = $('.b-form'); if (!f) return; const keepNote = f.querySelector('.b-note:not(.b-host)'); const keepAI = f.querySelector('[data-ai-edit]');
   const open = new Set($$('details.acc[open]', f).map(d => d.dataset.acc));
   if (!f.dataset.init) { f.dataset.init = '1'; if (!c.title) open.add('basics'); }
   const basicsOk = !!c.title.trim(); const whenOk = !!(c.start && c.venue);
@@ -1416,6 +1416,8 @@ function buildForm() {
   <div class="b-end"><button type="button" class="btn primary" data-act="publish">Publish</button><button type="button" class="btn ghost" data-b="reset">Start over</button></div>`;
   wireInputs(f);
   if (typeof renderHostNote === 'function') renderHostNote();
+  // the AI edit box survives form rebuilds (its preview and Undo live in it)
+  if (keepAI) f.insertBefore(keepAI, f.firstChild); else if (SB && LS.get('signedIn')) { f.insertAdjacentHTML('afterbegin', aiEditHTML()); wireAIEdit(); }
   placeAutocomplete($('#vq', f), { bias: () => null, onPick: (id, tok) => gpVenue(id, tok).then(r => { B.vq = ''; B.venueResults = []; pickVenue(r); }).catch(() => toast('Couldn’t load that place')) });
 }
 function venueFieldHTML(c) {
@@ -3131,6 +3133,102 @@ function carCountersHTML(cfg, ap, rows) {
     return ext(url, `${esc(r.brand ? (CAR_BRANDS.find(b => b[0] === r.brand) || [])[1] : r.name)}${r.rating ? ` <small>★ ${r.rating.toFixed(1)}</small>` : ` <small>${esc(hostOf(url))}</small>`}`, 'row-link'); }).join('')}</div>`;
 }
 
+// ================= "Ask AI to edit" (ai-import mode:"edit"; shown only when the deployed function lists it) =================
+async function aiModes() {
+  const c = LS.get('aiModes'); if (c && Date.now() - c.t < 3600e3) return c.m;
+  if (!SB || !LS.get('signedIn')) return [];
+  try {
+    const cl = await sb(); const { data } = await cl.auth.getSession(); const tok = data && data.session && data.session.access_token; if (!tok) return [];
+    const r = await fetchTimeout(`${SB.url}/functions/v1/ai-import`, { headers: { Authorization: 'Bearer ' + tok, apikey: SB.key } }, 8000);
+    const j = r.ok ? await r.json() : null; const m = j && Array.isArray(j.modes) ? j.modes : [];
+    LS.set('aiModes', { t: Date.now(), m }); return m;
+  } catch { return []; }
+}
+const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v), isTime = (v) => v === '' || /^\d{2}:\d{2}$/.test(v), isWhen = (v) => /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(v);
+const strOk = (n) => (v) => typeof v === 'string' && v.length <= n;
+// allowed paths → value check (and normalizer). Anything else is rejected.
+function editRule(cfg, path) {
+  let m;
+  if ((m = path.match(/^(title|tagline|host|bring|cover)$/))) return { ok: strOk(m[1] === 'bring' ? 2000 : m[1] === 'cover' ? 800 : 140), label: m[1] };
+  if (path === 'description') return { ok: strOk(5000), label: 'About' };
+  if (path === 'start') return { ok: (v) => typeof v === 'string' && isWhen(v), label: 'Starts' };
+  if (path === 'end') return { ok: (v) => typeof v === 'string' && (v === '' || isWhen(v)), label: 'Ends' };
+  if (path === 'type') return { ok: (v) => TYPES.includes(v), label: 'Event type' };
+  if (path === 'venue.name') return { ok: (v) => !!cfg.venue && strOk(140)(v), label: 'Venue name' };
+  if (path === 'theme.accent') return { ok: (v) => /^#[0-9a-f]{6}$/i.test(v), label: 'Color' };
+  if (path === 'theme.mode') return { ok: (v) => v === 'light' || v === 'dark', label: 'Background' };
+  if (path === 'theme.font') return { ok: (v) => !!FONTS[v], label: 'Title font' };
+  if ((m = path.match(/^tools\.(\w+)$/)) && TOOLS.some(x => x[0] === m[1])) return { ok: (v) => typeof v === 'boolean', label: 'Show ' + m[1] };
+  if ((m = path.match(/^off\.(about|schedule|details|notes|rsvp|access)$/))) return { ok: (v) => typeof v === 'boolean', label: 'Hide ' + m[1] };
+  if ((m = path.match(/^schedule\[(\d+)\]\.(date|time|title|note|kind)$/)) && cfg.schedule[+m[1]]) return { ok: m[2] === 'date' ? (v) => isDate(v) : m[2] === 'time' ? (v) => typeof v === 'string' && isTime(v) : m[2] === 'kind' ? (v) => ['activity', 'reservation', 'note'].includes(v) : strOk(200), label: `${schedTitle(cfg)} · ${cfg.schedule[+m[1]].title || 'item ' + (+m[1] + 1)} · ${m[2]}` };
+  if (path === 'schedule[]') return { add: true, ok: (v) => v && typeof v === 'object' && strOk(200)(v.title || '') && !!v.title && (!v.date || isDate(v.date)) && isTime(v.time || ''), fix: (v) => ({ date: v.date || cfg.start.slice(0, 10), time: v.time || '', title: cleanText(v.title, 200), note: cleanText(v.note || '', 200) }), label: `${schedTitle(cfg)} · new item` };
+  if ((m = path.match(/^schedule\[(\d+)\]$/)) && cfg.schedule[+m[1]]) return { remove: true, label: `${schedTitle(cfg)} · ${cfg.schedule[+m[1]].title}` };
+  if ((m = path.match(/^notes\[(\d+)\]\.(label|text|url)$/)) && cfg.notes[+m[1]]) return { ok: m[2] === 'url' ? (v) => v === '' || !!httpsUrl(v) : strOk(600), label: `Notes · ${cfg.notes[+m[1]].label} · ${m[2]}` };
+  if (path === 'notes[]') return { add: true, ok: (v) => v && typeof v === 'object' && !!v.label && strOk(120)(v.label), fix: (v) => ({ label: cleanText(v.label, 120), text: cleanText(v.text || '', 600), url: httpsUrl(v.url || '') }), label: 'Notes · new' };
+  if ((m = path.match(/^notes\[(\d+)\]$/)) && cfg.notes[+m[1]]) return { remove: true, label: `Notes · ${cfg.notes[+m[1]].label}` };
+  if ((m = path.match(/^x\.([A-Za-z ]+)\.(\w+)$/)) && m[1] === cfg.type) {
+    const f = (typeSpec(cfg) || { fields: [] }).fields.find(x => x[0] === m[2]); if (!f) return null;
+    const kind = f[2]; const ok = kind === 'links' ? (v) => Array.isArray(v) && v.every(l => l && strOk(80)(l.label) && httpsUrl(l.url)) : kind === 'place' ? (v) => v && typeof v === 'object' && strOk(160)(v.q || '') : kind === 'date' ? (v) => isDate(v) : kind === 'time' ? (v) => isTime(v) : kind === 'datetime' ? (v) => isWhen(v) : kind === 'url' ? (v) => v === '' || !!httpsUrl(v) : strOk(1000);
+    return { ok, label: f[1], fix: kind === 'place' ? (v) => ({ q: cleanText(v.q, 160) }) : null };
+  }
+  if ((m = path.match(/^stops\[(\d+)\]\.(from|to)$/)) && (cfg.stops || [])[+m[1]]) return { ok: (v) => v === '' || isDate(v), label: `Route · ${cfg.stops[+m[1]].name} · ${m[2] === 'from' ? 'arrive' : 'leave'}` };
+  return null;
+}
+function getPath(o, path) { return path.split(/\.|\[|\]/).filter(Boolean).reduce((a, k) => a == null ? undefined : a[k], o); }
+function setPath(o, path, v) { const ks = path.split(/\.|\[|\]/).filter(Boolean); let a = o; ks.slice(0, -1).forEach(k => { if (a[k] == null) a[k] = {}; a = a[k]; }); a[ks[ks.length - 1]] = v; }
+// validate the model's changes against the page; returns { next, rows, rejected }
+function planEdits(cfg, changes) {
+  const next = clone(cfg); const rows = [], rejected = []; const removals = [];
+  for (const ch of (changes || []).slice(0, 40)) {
+    const rule = editRule(cfg, String(ch.path || '')); let v;
+    try { v = ch.value_json === '' || ch.value_json == null ? '' : JSON.parse(ch.value_json); } catch { rejected.push(ch.path); continue; }
+    if (!rule) { rejected.push(ch.path); continue; }
+    if (ch.op === 'remove') { if (!rule.remove) { rejected.push(ch.path); continue; } removals.push(ch.path); rows.push({ label: rule.label, before: '—', after: 'removed' }); continue; }
+    if (ch.op === 'add') { if (!rule.add || !rule.ok(v)) { rejected.push(ch.path); continue; } const val = rule.fix(v); const arr = ch.path.slice(0, -2); next[arr].push(val); rows.push({ label: rule.label, before: '—', after: Object.values(val).filter(Boolean).join(' · ') }); continue; }
+    if (rule.add || rule.remove || !rule.ok(v)) { rejected.push(ch.path); continue; }
+    const val = rule.fix ? rule.fix(v) : typeof v === 'string' ? (ch.path === 'description' || ch.path === 'bring' ? v.replace(/<[^>]*>/g, '') : cleanText(v, 1000)) : v;
+    const before = getPath(cfg, ch.path); setPath(next, ch.path, val);
+    const show = (x) => x == null || x === '' ? '—' : typeof x === 'object' ? (Array.isArray(x) ? x.map(l => l.label).join(', ') : x.q || JSON.stringify(x)) : String(x);
+    rows.push({ label: rule.label, before: show(before), after: show(val) });
+  }
+  // remove from the end so indexes stay valid
+  removals.map(p => p.match(/^(\w+)\[(\d+)\]$/)).sort((a, b) => +b[2] - +a[2]).forEach(m => next[m[1]].splice(+m[2], 1));
+  if (next.end && next.start && next.end.slice(0, 10) < next.start.slice(0, 10)) next.end = '';
+  return { next: normalize(next), rows, rejected };
+}
+function aiEditHTML() {
+  return `<div class="ai-edit" data-ai-edit hidden><label for="ai-edit-q">✦ Ask AI to edit</label>
+    <div class="search"><textarea id="ai-edit-q" rows="2" maxlength="1000" placeholder="e.g. change the names to Maya &amp; Theo, move the ceremony to 5pm, add a shuttle at 4"></textarea><button type="button" class="btn primary" data-ai-edit-go>Preview</button></div>
+    <p class="hint" data-ai-edit-msg role="status" aria-live="polite"></p><div data-ai-edit-preview></div></div>`;
+}
+function wireAIEdit() {
+  const box = $('[data-ai-edit]'); if (!box || box._wired) return; box._wired = true;
+  aiModes().then(m => { if (m.includes('edit')) box.hidden = false; });
+  const msg = box.querySelector('[data-ai-edit-msg]'), prev = box.querySelector('[data-ai-edit-preview]'); let pending = null;
+  box.addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if ('aiEditGo' in b.dataset) {
+      const q = box.querySelector('#ai-edit-q').value.trim(); if (!q) { msg.textContent = 'Say what to change.'; return; }
+      b.disabled = true; msg.textContent = 'Working out the changes…'; prev.innerHTML = '';
+      try {
+        const j = await aiImport({ mode: 'edit', page: B.cfg, instruction: q });
+        const plan = planEdits(B.cfg, j.data && j.data.changes); pending = plan;
+        if (!plan.rows.length) { msg.textContent = plan.rejected.length ? 'Those changes aren’t something the editor can apply. Try rephrasing.' : 'Nothing to change.'; return; }
+        msg.textContent = (j.data.summary ? cleanText(j.data.summary, 200) + ' ' : '') + (plan.rejected.length ? `(${plan.rejected.length} change${plan.rejected.length > 1 ? 's' : ''} skipped)` : '');
+        prev.innerHTML = `<ul class="ai-diff">${plan.rows.map(r => `<li><b>${esc(r.label)}</b><span class="was">${esc(r.before)}</span><span class="arr">→</span><span class="now">${esc(r.after)}</span></li>`).join('')}</ul><div class="btns"><button type="button" class="btn primary" data-ai-edit-apply>Apply</button><button type="button" class="btn ghost" data-ai-edit-cancel>Cancel</button></div>`;
+      } catch (err) { msg.textContent = err.signin ? 'Sign in (My pages) to use AI edits.' : (err.message || 'Couldn’t do that.'); }
+      finally { b.disabled = false; }
+    }
+    if ('aiEditCancel' in b.dataset) { pending = null; prev.innerHTML = ''; msg.textContent = ''; }
+    if ('aiEditApply' in b.dataset && pending) {
+      const before = clone(B.cfg); B.cfg = pending.next; pending = null; changed(true); renderHostNote();
+      box.querySelector('#ai-edit-q').value = ''; msg.textContent = 'Applied.'; prev.innerHTML = '<button type="button" class="btn sm" data-ai-edit-undo>Undo</button>';
+      box._undo = before;
+    }
+    if ('aiEditUndo' in b.dataset && box._undo) { B.cfg = box._undo; box._undo = null; changed(true); msg.textContent = 'Undone.'; prev.innerHTML = ''; }
+  });
+}
+
 // ================= trips: day-by-day itinerary builder (reuses cfg.schedule: {date, time, title, note, kind}) =================
 const PLAN_KINDS = { activity: 'Activity', reservation: 'Reservation', note: 'Note' };
 function tripDays(c) {
@@ -3284,5 +3382,5 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
