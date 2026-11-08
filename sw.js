@@ -27,7 +27,7 @@ const staleWhileRevalidate = async (req, ev) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request; if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  if (url.origin === self.location.origin && /\/(proposal|supabase)\//.test(url.pathname)) return; // proposal and setup pages are not part of the app: never cached
+  if (url.origin === self.location.origin && /\/(proposal|supabase|google|ai)\//.test(url.pathname)) return; // proposal and setup pages are not part of the app: never cached
   const same = url.origin === self.location.origin && url.pathname.startsWith(new URL('./', self.registration.scope).pathname);
   if (req.mode === 'navigate' || (same && /\/$|\.html$/.test(url.pathname))) { e.respondWith(networkFirst(req)); return; }
   // our own files: network first so a new deploy shows up on the next open; the cache is the offline fallback
