@@ -875,7 +875,7 @@ function renderLanding() {
         <div><dt>Food</dt><dd>Restaurants and bars nearby.</dd></div>
         <div><dt>Things to do</dt><dd>Tours, sights and activities nearby.</dd></div>
         <div><dt>Event details</dt><dd>RSVP, packet pickup, dress code.</dd></div>
-        <div><dt>Full itinerary</dt><dd>Their bookings and your schedule, day by day.</dd></div>
+        <div><dt>Full itinerary</dt><dd>Their bookings and your schedule in one place.</dd></div>
         <div><dt>Getting around</dt><dd>Transit, directions, rides.</dd></div>
       </dl>
     </section>
