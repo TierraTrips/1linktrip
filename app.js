@@ -851,17 +851,17 @@ async function copy(text) {
 // ---------- landing ----------
 function renderLanding() {
   LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
-  document.title = 'Eventpages — give every guest the whole trip in one link';
+  document.title = 'Eventpages — one link for your guests’ whole trip';
   const ex = window.EXAMPLES; const draft = LS.get('draft');
   $('#app').innerHTML = `
   <main class="land">
     <header class="land-top"><a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>Eventpages</a><span class="land-nav">${LS.get('signedIn') ? '<a class="link" href="#mine">My pages</a>' : ''}<a class="btn primary" href="#setup">Create a page</a></span></header>
     <section class="land-hero">
       <div class="land-copy">
-        <h1>Give every guest the whole trip <em>in one link</em>.</h1>
-        <p class="lede">For wedding planners, race directors and conference teams. One page carries your schedule and event details, plus live weather, the map, flights, places to stay, tables to book and the train to the door.</p>
+        <h1><em>One link</em> for your guests’ whole trip.</h1>
+        <p class="lede">Add your event and the venue. Guests get your schedule, plus how to get there and where to stay.</p>
         <div class="btns"><a class="btn primary big" href="#setup">Create a page</a><a class="btn big" href="#samples">Try a sample</a></div>
-        <p class="muted small">Free, no account. The whole page lives in the link you share.</p>
+        <p class="muted small">Free. No account needed.</p>
       </div>
       <div class="land-stack" aria-hidden="true">${Object.entries(ex).slice(0, 3).map(([id, e], i) => miniTicket(id, e, i)).join('')}</div>
     </section>
@@ -870,14 +870,14 @@ function renderLanding() {
     <section class="land-what">
       <h2>What your guests get</h2>
       <dl>
-        <div><dt>Weather</dt><dd>The live forecast once the event is within 16 days, and the typical weather for those dates before that.</dd></div>
-        <div><dt>Map</dt><dd>The venue pinned, with restaurants, hotels and stations around it.</dd></div>
-        <div><dt>Flights</dt><dd>The nearest airports, with fares searched for their dates on Google Flights and Kayak.</dd></div>
-        <div><dt>Stays</dt><dd>Hotels near the venue, plus Google Hotels, Booking.com and Airbnb searches with the dates filled in.</dd></div>
-        <div><dt>Tables</dt><dd>Restaurants, cafés and bars nearby, filtered by cuisine, dietary needs, rating and what’s open now.</dd></div>
-        <div><dt>Event details</dt><dd>RSVP and room blocks for weddings, packet pickup and the course for races, doors and bag policy for shows.</dd></div>
-        <div><dt>Their itinerary</dt><dd>Guests paste their bookings and see them beside your schedule, ready for their calendar.</dd></div>
-        <div><dt>Getting around</dt><dd>The nearest subway, rail, bus and bike-share stops, directions for every mode, and Uber or Lyft with the drop-off set.</dd></div>
+        <div><dt>Weather</dt><dd>The forecast as the date gets close, typical weather before that.</dd></div>
+        <div><dt>Map</dt><dd>The venue and what’s around it.</dd></div>
+        <div><dt>Flights</dt><dd>The closest airports and fares for their dates.</dd></div>
+        <div><dt>Hotels</dt><dd>Places to stay nearby, with the dates already set.</dd></div>
+        <div><dt>Food</dt><dd>Restaurants and bars nearby. Filter by cuisine, diet or what’s open now.</dd></div>
+        <div><dt>Event details</dt><dd>What fits your event, like an RSVP for a wedding or packet pickup for a race.</dd></div>
+        <div><dt>Their plans</dt><dd>Guests paste in their bookings and see them next to your schedule.</dd></div>
+        <div><dt>Getting around</dt><dd>Nearby stops, directions, and a ride to the door.</dd></div>
       </dl>
     </section>
     <footer class="land-foot">Built on Google Maps, Open-Meteo and OurAirports data.</footer>
@@ -2582,7 +2582,7 @@ function myPagesHTML() {
 function samplesHTML() {
   const ex = window.EXAMPLES; const order = ['japan-trip', 'tulum-wedding', 'chicago-10k', 'redrocks-concert', 'nyc-conference', 'sf-festival'].filter(id => ex[id]);
   const demoOf = (id) => Object.keys(DEMOS).find(k => DEMOS[k] === id);
-  return `<section class="land-ex" id="samples"><h2>Try a sample</h2><p class="muted">Fully filled-in pages. Opening one never touches your own pages; <b>Make a copy</b> turns it into a page you can edit.</p>
+  return `<section class="land-ex" id="samples"><h2>Try a sample</h2><p class="muted">Open one to look around. <b>Make a copy</b> to edit it as your own.</p>
     <div class="ex-grid">${order.map(id => { const e = normalize(clone(ex[id])); const v = e.venue;
       return `<div class="ex-card" style="${themeStyle(e.theme)}"><a class="ex-hit" href="?demo=${demoOf(id)}" aria-label="Open ${esc(e.title)}"></a>
         <span class="ex-img" style="background-image:url('${esc(e.cover)}')"></span>

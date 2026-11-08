@@ -1,7 +1,7 @@
 {
   "name": "Eventpages",
   "short_name": "Eventpages",
-  "description": "Give every guest the whole trip in one link.",
+  "description": "One link for your guests’ whole trip.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
