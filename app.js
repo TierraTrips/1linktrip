@@ -2863,7 +2863,42 @@ function aiEventToCfg(d) {
     if (d.dress_code) c.notes.push({ label: 'Dress code', text: cleanText(d.dress_code, 140), url: '' });
     if (httpsUrl(d.rsvp_url)) c.notes.push({ label: 'RSVP', text: isoDay(d.rsvp_by) ? 'Reply by ' + d.rsvp_by : '', url: httpsUrl(d.rsvp_url) });
   }
+  // type-specific sections (newer function versions send these; older ones don't, which is fine)
+  const D = d.details || {}; const X = (c.x[type] = c.x[type] || {}); const tx = (v, n = 300) => cleanText(v, n);
+  const dt = (v) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v || '') ? v : isoDay(v) ? v : '';
+  if (type === 'Race') {
+    if (D.start_place) X.startAt = { q: tx(D.start_place, 160) }; if (D.finish_place) X.finishAt = { q: tx(D.finish_place, 160) };
+    if (D.packet_pickup) X.packet = tx(D.packet_pickup); if (dt(D.packet_pickup_when)) X.packetWhen = dt(D.packet_pickup_when);
+    if (httpsUrl(D.course_map_url)) X.course = httpsUrl(D.course_map_url);
+    if ((D.spectator_spots || []).length) X.spots = D.spectator_spots.slice(0, 12).map(x => tx(x, 120)).filter(Boolean).join('\n');
+    if (D.road_closures) X.closures = tx(D.road_closures, 500); if (httpsUrl(D.road_closures_url)) X.closuresUrl = httpsUrl(D.road_closures_url);
+  } else if (type === 'Concert') {
+    if (isoTime(D.doors)) X.doors = D.doors; if (D.opener) X.opener = tx(D.opener, 80); if (isoTime(D.opener_at)) X.openerAt = D.opener_at;
+    if (D.headliner) X.headliner = tx(D.headliner, 80); if (isoTime(D.headliner_at)) X.headlinerAt = D.headliner_at; if (httpsUrl(D.setlist_url)) X.setlist = httpsUrl(D.setlist_url);
+    if (D.bag_policy) X.bags = tx(D.bag_policy); if (D.parking) X.parking = tx(D.parking); if (D.rideshare_pickup) X.pickup = tx(D.rideshare_pickup, 160);
+  } else if (type === 'Sporting event') {
+    if (httpsUrl(D.seating_url)) X.seating = httpsUrl(D.seating_url); const tm = (D.teams || []).map(x => ({ label: tx(x.label, 60), url: httpsUrl(x.url) })).filter(x => x.label && x.url); if (tm.length) X.teams = tm;
+    if (D.tailgate) X.tailgate = tx(D.tailgate); if (D.parking) X.parking = tx(D.parking); if (D.bag_policy) X.bags = tx(D.bag_policy);
+  } else if (type === 'Conference') {
+    if (D.badge_pickup) X.badge = tx(D.badge_pickup); if (dt(D.badge_pickup_when)) X.badgeWhen = dt(D.badge_pickup_when); if (httpsUrl(D.agenda_url)) X.agenda = httpsUrl(D.agenda_url);
+    if ((D.speakers || []).length) X.speakers = D.speakers.slice(0, 40).map(x => tx(x, 120)).filter(Boolean).join('\n');
+  } else if (type === 'Wedding') {
+    const rg = (D.registry || []).map(x => ({ label: tx(x.label, 60), url: httpsUrl(x.url) })).filter(x => x.label && x.url); if (rg.length) X.registry = rg;
+  }
+  if (type !== 'Race' && type !== 'Concert' && type !== 'Sporting event' && type !== 'Conference') { // other types: parking and bag rules as notes
+    if (D.parking) c.notes.push({ label: 'Parking', text: tx(D.parking), url: '' }); if (D.bag_policy) c.notes.push({ label: 'Bag policy', text: tx(D.bag_policy), url: '' });
+  }
+  (d.extras || []).slice(0, 20).forEach(x => { const label = tx(x.label, 80); if (label) c.notes.push({ label, text: tx(x.text, 600), url: httpsUrl(x.url) }); });
   return c;
+}
+// start/finish and pickup places get map pins when they can be found
+async function aiPinPlaces(cfg) {
+  const X = cfg.x[cfg.type] || {}; const v = cfg.venue; const near = v ? [v.city, v.country].filter(Boolean).join(', ') : '';
+  for (const k of ['startAt', 'finishAt']) {
+    if (!X[k] || !X[k].q || X[k].lat != null) continue;
+    const r = await aiResolveVenue(X[k].q, near).catch(() => null);
+    if (r && (!v || distM(v.lat, v.lon, r.lat, r.lon) < 60000)) { X[k].lat = r.lat; X[k].lon = r.lon; }
+  }
 }
 async function aiResolveVenue(name, address) {
   const q = [name, address].filter(Boolean).join(', '); if (!q) return null;
@@ -2884,6 +2919,7 @@ async function startFromWebsite(url, msgEl) {
   say('Finding the venue…');
   const v = await aiResolveVenue(j.data.venue_name, j.data.venue_address);
   if (v) { cfg.venue = { name: v.name, address: v.address, lat: v.lat, lon: v.lon, city: v.city, region: v.region, country: v.country, cc: v.cc }; try { cfg.tz = await lookupTZ(v.lat, v.lon); } catch { /* floating */ } }
+  say('Pinning the start, finish and other places…'); await aiPinPlaces(cfg).catch(() => {});
   const pid = newPid(); LS.set('draft', cfg); LS.set('draftHosted', null); LS.set('draftId', pid); pageSave(pid, { cfg });
   SU = null; history.replaceState(null, '', siteBase() + '#page=' + pid);
   renderBuilder(cfg, `Filled in from ${hostOf(url)}. Check every detail before you publish.`, null, pid);
