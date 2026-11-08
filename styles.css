@@ -124,7 +124,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ev-nav::-webkit-scrollbar { display: none; }
 .ev-nav a { flex: none; text-decoration: none; font-size: .86rem; font-weight: 600; padding: .4em .85em; border-radius: 999px; background: var(--chip); }
 .ev-nav a:hover { background: var(--accent); color: var(--on-accent); }
-.ev-body { max-width: 760px; margin: 0 auto; padding: 4px 14px 0; display: grid; gap: 14px; }
+/* minmax(0,1fr): an implicit auto track grows to its widest child's min-content (e.g. the 7-day weather scroller), which widened the page past the screen on phones */
+.ev-body { max-width: 760px; margin: 0 auto; padding: 4px 14px 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.ev-body > * { min-width: 0; }
 .ev-sec { background: var(--card); border-radius: 16px; padding: 20px 18px; scroll-margin-top: 64px; }
 .sec-h { font: 700 1.45rem/1.1 var(--display); letter-spacing: -.01em; margin: 0 0 14px; display: flex; align-items: center; gap: 10px; }
 .sec-h::before { content: ''; width: 10px; height: 10px; border-radius: 3px; background: var(--accent); flex: none; }
@@ -724,3 +726,14 @@ dialog.place-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 /* hosted/demo pages: the language picker sits beside "Edit a copy", so the desktop tab row leaves room for both */
 .vbar .lang-sel { max-width: 104px; }
 @media (min-width: 760px) { body:has(.vbar .lang-sel) .ev:not(.is-preview) .ev-tabs { padding: 0 max(calc(50% - 300px), 250px); } }
+/* the viewer bar must fit the screen: brand, "Example page", the edit button and the language picker
+   were all non-shrinking and needed ~524px, so on phones the bar ran off the right edge and widened the page.
+   The edit button and picker keep their size; the note drops out first, then the brand collapses to its mark. */
+.vbar > * { flex: none; min-width: 0; }
+.vbar .brand { flex: 0 1 auto; overflow: hidden; white-space: nowrap; }
+.vbar .brand-mark { flex: none; }
+.vbar-note { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 559px) { .vbar:has(.lang-sel) .vbar-note { display: none; } }
+@media (max-width: 429px) { .vbar:has(.lang-sel) .brand { font-size: 0; gap: 0; padding-right: 9px; } }
+/* builder header (brand, Edit/Preview, Publish) needs ~380px; on narrower phones the brand shows just its mark */
+@media (max-width: 419px) { .b-top .brand { font-size: 0; gap: 0; } .b-top .brand-mark { flex: none; } }
