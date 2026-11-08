@@ -861,11 +861,10 @@ function renderLanding() {
         <h1><em>One link</em> for your guests’ whole trip.</h1>
         <p class="lede">Add your event and the venue. Guests get your schedule, plus how to get there and where to stay.</p>
         <div class="btns"><a class="btn primary big" id="hero-cta" href="#setup">Create a page</a></div>
-        <p class="muted small">Free. No account needed.</p>
+        <p class="muted small">Free. No account needed. <a class="link" href="#examples">See examples</a></p>
       </div>
     </section>
     ${myPagesHTML()}
-    ${samplesHTML()}
     <section class="land-what">
       <h2>What your guests get</h2>
       <dl>
@@ -2596,10 +2595,14 @@ function myPagesHTML() {
       <div class="mp-b">${open ? `<a class="btn sm" href="${esc(open)}">Open</a>` : ''}<a class="btn sm ${open ? '' : 'primary'}" href="#page=${esc(x.pid)}">Edit</a><a class="btn sm ghost" href="#dup=${esc(x.pid)}">Duplicate</a><button type="button" class="btn sm ghost" data-mp-del="${esc(x.pid)}" aria-label="Remove ${esc(c.title)} from this list">Remove</button></div></li>`; }).join('')}</ul>
     <div data-slot="acct-pages"></div></section>`;
 }
+function renderExamples() {
+  document.title = 'Examples · Eventpages'; scrollTo(0, 0);
+  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>Eventpages</a><span class="land-nav"><a class="btn primary" href="#setup">Create a page</a></span></header>${samplesHTML()}</main>`;
+}
 function samplesHTML() {
   const ex = window.EXAMPLES; const order = ['japan-trip', 'tulum-wedding', 'chicago-10k', 'redrocks-concert', 'nyc-conference', 'sf-festival'].filter(id => ex[id]);
   const demoOf = (id) => Object.keys(DEMOS).find(k => DEMOS[k] === id);
-  return `<section class="land-ex" id="samples"><h2>Samples</h2>
+  return `<section class="land-ex" id="samples"><h2>Examples</h2>
     <div class="ex-grid">${order.map(id => { const e = normalize(clone(ex[id])); const v = e.venue;
       return `<div class="ex-card" style="${themeStyle(e.theme)}"><a class="ex-hit" href="?demo=${demoOf(id)}" aria-label="Open ${esc(e.title)}"></a>
         <span class="ex-img" style="background-image:url('${esc(e.cover)}')"></span>
@@ -3643,6 +3646,7 @@ function route() {
   if (h.startsWith('ex=')) { const e = window.EXAMPLES[h.slice(3)]; if (e) return renderViewer(normalize(clone(e)), { exampleId: h.slice(3), tab }); return renderBroken(); }
   if (h.startsWith('edit=')) { const c = unpackEvent(h.slice(5)); if (c) return renderBuilder(c, 'Editing a copy. The original link won’t change.'); return renderBroken(); }
   if (h.startsWith('edit-ex=')) { const e = window.EXAMPLES[h.slice(8)]; if (e) return renderBuilder(clone(e), 'Copy of an example. Publish to get your own link.'); }
+  if (h === 'examples') { SU = null; return renderExamples(); }
   if (h === 'setup') return renderSetup();
   if (h === 'new') { const d = LS.get('draft'); return d && d.title ? renderBuilder(d, null, LS.get('draftHosted'), LS.get('draftId') || undefined) : renderSetup(); }
   if (h.startsWith('page=')) { const x = pagesAll().find(p => p.pid === h.slice(5)); if (x) return renderBuilder(x.cfg, null, x.hosted, x.pid); }
