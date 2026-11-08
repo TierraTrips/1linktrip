@@ -1,0 +1,12 @@
+/* Homepage header: one "Create a page" at a time. The header button stays hidden while the hero button is on screen
+   (toggled by wireHomeHeader in app.js); the header goes sticky with a thin bottom rule once the page scrolls. */
+.land.home .land-top { position: sticky; top: 0; z-index: 20; margin: 0 -20px; padding: 14px 20px; padding-top: max(14px, env(safe-area-inset-top));
+  background: var(--fog); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border-bottom: 1px solid transparent; transition: border-color .25s ease; }
+.land.home .land-top.scrolled { border-bottom-color: color-mix(in srgb, currentColor 10%, transparent); }
+.land.home .top-cta { opacity: 0; transform: translateY(-6px) scale(.96); pointer-events: none; visibility: hidden;
+  transition: opacity .25s ease, transform .25s ease, visibility 0s linear .25s; }
+.land.home .land-top.show-cta .top-cta { opacity: 1; transform: none; pointer-events: auto; visibility: visible; transition: opacity .25s ease, transform .25s ease, visibility 0s; }
+.land.home .land-hero { grid-template-columns: 1fr; padding-bottom: 24px; }
+@media (min-width: 860px) { .land.home .land-hero { grid-template-columns: 1fr; padding: 48px 0 40px; } .land.home .land-copy { max-width: 760px; } }
+@media (prefers-reduced-motion: reduce) { .land.home .top-cta, .land.home .land-top.show-cta .top-cta { transition: none; } }

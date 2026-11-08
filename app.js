@@ -852,18 +852,17 @@ async function copy(text) {
 function renderLanding() {
   LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
   document.title = 'Eventpages — one link for your guests’ whole trip';
-  const ex = window.EXAMPLES; const draft = LS.get('draft');
+  const draft = LS.get('draft');
   $('#app').innerHTML = `
-  <main class="land">
-    <header class="land-top"><a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>Eventpages</a><span class="land-nav">${LS.get('signedIn') ? '<a class="link" href="#mine">My pages</a>' : ''}<a class="btn primary" href="#setup">Create a page</a></span></header>
+  <main class="land home">
+    <header class="land-top"><a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>Eventpages</a><span class="land-nav">${LS.get('signedIn') ? '<a class="link" href="#mine">My pages</a>' : ''}<a class="btn primary top-cta" href="#setup" aria-hidden="true" tabindex="-1">Create a page</a></span></header>
     <section class="land-hero">
       <div class="land-copy">
         <h1><em>One link</em> for your guests’ whole trip.</h1>
         <p class="lede">Add your event and the venue. Guests get your schedule, plus how to get there and where to stay.</p>
-        <div class="btns"><a class="btn primary big" href="#setup">Create a page</a><a class="btn big" href="#samples">Try a sample</a></div>
+        <div class="btns"><a class="btn primary big" id="hero-cta" href="#setup">Create a page</a></div>
         <p class="muted small">Free. No account needed.</p>
       </div>
-      <div class="land-stack" aria-hidden="true">${Object.entries(ex).slice(0, 3).map(([id, e], i) => miniTicket(id, e, i)).join('')}</div>
     </section>
     ${myPagesHTML()}
     ${samplesHTML()}
@@ -882,13 +881,21 @@ function renderLanding() {
     </section>
     <footer class="land-foot">Built on Google Maps, Open-Meteo and OurAirports data.</footer>
   </main>`;
-  wireLanding();
+  wireLanding(); wireHomeHeader();
 }
-function miniTicket(id, e, i) {
-  const a = nearestAirports(e.venue.lat, e.venue.lon)[0];
-  return `<div class="mt mt-${i}" style="${themeStyle(e.theme)}"><div class="mt-l"><span class="lbl">${esc(e.type)}</span><b>${esc(e.title)}</b><span>${esc(dateRange(e.start, e.end))}</span><span>${esc(e.venue.name)}</span></div><div class="mt-r"><span class="lbl">Fly into</span><b>${esc(a ? a.iata : '')}</b></div></div>`;
+// One "Create a page" at a time: the header button shows only while the hero button is scrolled off-screen.
+// The header turns sticky with a bottom rule once the page scrolls (styles in home.css).
+let homeIO = null;
+function homeScroll() { const top = $('.land.home .land-top'); if (top) top.classList.toggle('scrolled', scrollY > 4); }
+addEventListener('scroll', homeScroll, { passive: true });
+function wireHomeHeader() {
+  if (homeIO) { homeIO.disconnect(); homeIO = null; }
+  const top = $('.land.home .land-top'), cta = top && top.querySelector('.top-cta'), hero = $('#hero-cta'); if (!cta || !hero) return;
+  const set = (show) => { top.classList.toggle('show-cta', show); cta.setAttribute('aria-hidden', show ? 'false' : 'true'); cta.tabIndex = show ? 0 : -1; };
+  if (!('IntersectionObserver' in window)) { set(true); return; }
+  homeIO = new IntersectionObserver((es) => set(!es[es.length - 1].isIntersecting), { rootMargin: `-${top.offsetHeight}px 0px 0px 0px`, threshold: 0 });
+  homeIO.observe(hero); homeScroll();
 }
-
 // ---------- viewer ----------
 // ---------- builder ----------
 async function pinPlace(k, btn) {
