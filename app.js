@@ -1547,7 +1547,8 @@ function suRender() {
   let h = '', body = '', cta = '';
   if (n === 0) {
     h = 'What are you planning?';
-    body = `${suAIHTML()}<div class="su-types">${SETUP_TYPES.map(([type, label, sub, col]) => `<button type="button" class="su-type ${c.type === type && SU.typed ? 'on' : ''}" data-su-type="${esc(type)}"><i class="ti" aria-hidden="true"><svg viewBox="0 0 24 24">${TYPE_ICONS[type] || TYPE_ICONS.Party}</svg></i><b>${esc(label)}</b><span>${esc(sub)}</span></button>`).join('')}</div>`;
+    body = `${suAIHTML()}<div class="su-types">${SETUP_TYPES.map(([type, label, sub, col]) => `<button type="button" class="su-type ${SU.pick === type ? 'on' : ''}" aria-pressed="${SU.pick === type}" data-su-type="${esc(type)}"><i class="ti" aria-hidden="true"><svg viewBox="0 0 24 24">${TYPE_ICONS[type] || TYPE_ICONS.Party}</svg></i><b>${esc(label)}</b><span>${esc(sub)}</span></button>`).join('')}</div>`;
+    cta = `<button type="button" class="btn primary big" data-su="next0" ${SU.pick ? '' : 'disabled'}>Next</button>`;
   } else if (n === 1) {
     h = 'What’s it called, and when?';
     body = `<div class="field"><label for="su-title">Name</label><input id="su-title" data-su-f="title" value="${esc(c.title)}" maxlength="80" autocomplete="off"></div>
@@ -1571,7 +1572,7 @@ function suRender() {
   }
   m.innerHTML = `${prog}${top}<h1>${h}</h1><div class="su-body">${body}</div><div class="grow"></div>${n === 1 || n === 2 ? suTicket(c) : ''}${cta}`;
   LS.set('draft', c); pageSave(LS.get('draftId'), { cfg: c }); suPreview();
-  if (n === 0) aiReady().then(ok => { const el = $('[data-su-ai]'); if (el && ok) el.hidden = false; const pend = LS.get('pendingAiUrl'); if (ok && pend && el) { LS.del('pendingAiUrl'); sbUser().then(u => { if (!u) return; el.querySelector('.su-ai-form').hidden = false; $('#su-ai-url').value = pend; SU.aiType = LS.get('pendingAiType') || ''; LS.del('pendingAiType'); $$('.su-type').forEach(x => x.classList.toggle('on', x.dataset.suType === SU.aiType)); suAIHint(); suAIGo(); }).catch(() => {}); } });
+  if (n === 0) aiReady().then(ok => { const el = $('[data-su-ai]'); if (el && ok) el.hidden = false; const pend = LS.get('pendingAiUrl'); if (ok && pend && el) { LS.del('pendingAiUrl'); sbUser().then(u => { if (!u) return; el.querySelector('.su-ai-form').hidden = false; $('#su-ai-url').value = pend; SU.pick = SU.aiType = LS.get('pendingAiType') || ''; LS.del('pendingAiType'); $$('.su-type').forEach(x => x.classList.toggle('on', x.dataset.suType === SU.aiType)); const nb = $('[data-su="next0"]'); if (nb) nb.disabled = !SU.pick; suAIHint(); suAIGo(); }).catch(() => {}); } });
   placeAutocomplete($('#su-q'), { bias: () => null, onPick: (id, tok) => gpVenue(id, tok).then(r => {
     if (!SU) return; const cc = SU.cfg; cc.venue = { name: r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc }; SU.q = r.name; SU.results = []; SU.msg = '';
     suRender(); lookupTZ(r.lat, r.lon).then(tz => { cc.tz = tz; LS.set('draft', cc); }).catch(() => {});
@@ -1581,14 +1582,21 @@ function suRender() {
 document.addEventListener('click', (e) => {
   if (!SU || !e.target.closest('.setup')) return;
   const b = e.target.closest('button'); if (!b) return; const d = b.dataset; const c = SU.cfg;
-  if (d.suType && SU.step === 0 && $('.su-ai-form') && !$('.su-ai-form').hidden) {
-    SU.aiType = SU.aiType === d.suType ? '' : d.suType;
-    $$('.su-type').forEach(x => x.classList.toggle('on', x.dataset.suType === SU.aiType)); suAIHint();
-  } else if (d.suType) {
-    const type = d.suType; const keep = { title: c.title, start: c.start, end: c.end, venue: c.venue, tz: c.tz };
-    SU.cfg = Object.assign(blankEvent(type), keep); SU.typed = true; B.cfg = SU.cfg; SU.step = 1; suRender();
+  if (d.suType) {
+    // picking a category only selects it; Next moves on, so a website link can be added too
+    SU.pick = SU.aiType = SU.pick === d.suType ? '' : d.suType;
+    $$('.su-type').forEach(x => { const on = x.dataset.suType === SU.pick; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on); });
+    suAIHint(); const nb = $('[data-su="next0"]'); if (nb) nb.disabled = !SU.pick;
+  } else if (d.su === 'next0') {
+    const f = $('.su-ai-form'); const url = f && !f.hidden ? ($('#su-ai-url').value || '').trim() : '';
+    if (url) suAIGo();
+    else if (SU.pick) {
+      const type = SU.pick; const keep = { title: c.title, start: c.start, end: c.end, venue: c.venue, tz: c.tz };
+      if (!(SU.typed && c.type === type)) { SU.cfg = Object.assign(blankEvent(type), keep); B.cfg = SU.cfg; }
+      SU.typed = true; SU.step = 1; suRender();
+    }
   } else if (d.whenTg != null) { whenToggle(c); suRender(); const f = $(hasTime(c.start) ? '#su-st' : '#su-sd'); if (f) f.focus(); }
-  else if (d.su === 'ai-open') { const f = $('.su-ai-form'); f.hidden = !f.hidden; if (!f.hidden) { SU.aiType = ''; $$('.su-type').forEach(x => x.classList.remove('on')); suAIHint(); $('#su-ai-url').focus(); } }
+  else if (d.su === 'ai-open') { const f = $('.su-ai-form'); f.hidden = !f.hidden; if (!f.hidden) { SU.aiType = SU.pick || ''; suAIHint(); $('#su-ai-url').focus(); } }
   else if (d.su === 'ai-go') suAIGo();
   else if (d.si === 'send') signInSubmit($('.setup'));
   else if (d.su === 'back') { SU.step = Math.max(0, SU.step - 1); suRender(); }
