@@ -35,7 +35,7 @@ const str = (description: string) => ({ type: "string", description });
 const EVENT_TOOL: Anthropic.Tool = {
   name: "save_event",
   description: "Save the event page details found in the source. Use empty strings or empty arrays for anything the source does not say.",
-  strict: true,
+  // Not strict: this schema is too large for a strict grammar (the API answers 400). The site validates every field it reads.
   input_schema: {
     type: "object",
     additionalProperties: false,
