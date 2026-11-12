@@ -966,14 +966,39 @@ function hotelsHTML(cfg, data) {
       <div class="mini">${(() => { const a = hotelBookAction(cfg, h); return ext(a.url, a.label, 'mini-b'); })()}<button type="button" class="mini-b" ${h.g && h.g.gid ? `data-gpid="${esc(h.g.gid)}"` : `data-place="${esc(placeKey(h))}"`}>${t('Details')}</button>${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
     <span class="dist">${esc(fmtDist(h.d, v.cc))}<small>${h.d < 2000 ? walkTxt(h.d) : t('from the venue')}</small></span></li>`).join('')}${hs.length > 3 ? `<li class="more-li"><button type="button" class="btn sm" data-more>${t('All {n} hotels', { n: hs.length })}</button></li>` : ''}</ul>`;
 }
+// Temperatures are fetched in °F (packing hints compare in °F) and shown in the guest's unit: their saved choice
+// (global, every page), else their locale's (°F for US-region / plain English browsers, °C elsewhere).
+const F_REGIONS = new Set(['US', 'PR', 'GU', 'VI', 'AS', 'MP', 'UM', 'LR', 'MM', 'BS', 'BZ', 'KY', 'PW', 'FM', 'MH']);
+function tempUnit() {
+  const s = LS.get('tempUnit'); if (s === 'F' || s === 'C') return s;
+  const loc = String((navigator.languages && navigator.languages[0]) || navigator.language || ''); if (!loc) return 'F';
+  const [lang, ...rest] = loc.split(/[-_]/); const region = rest.find(p => /^[A-Za-z]{2}$/.test(p));
+  if (region) return F_REGIONS.has(region.toUpperCase()) ? 'F' : 'C';
+  return lang.toLowerCase() === 'en' ? 'F' : 'C';
+}
+const fmtTemp = (f, u = tempUnit()) => Math.round(u === 'C' ? (f - 32) * 5 / 9 : f);
+const tempUnitsHTML = (u = tempUnit()) => `<div class="wx-units" role="group" aria-label="${esc(t('Temperature unit'))}">${['F', 'C'].map(k => `<button type="button" data-tunit="${k}" aria-pressed="${u === k}">°${k}</button>`).join('')}</div>`;
+function repaintTemps(focusUnit) {
+  document.querySelectorAll('[data-slot="weather"]').forEach(s => {
+    if (!s._wx) return; s.innerHTML = weatherHTML(s._wx, s._cfg);
+    if (focusUnit && s._focus) { const b = s.querySelector(`[data-tunit="${focusUnit}"]`); if (b) b.focus(); }
+    s._focus = false;
+  });
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-tunit]'); if (!b) return;
+  const s = b.closest('[data-slot="weather"]'); if (s) s._focus = document.activeElement === b;
+  LS.set('tempUnit', b.dataset.tunit); repaintTemps(b.dataset.tunit);
+});
+window.addEventListener('storage', (e) => { if (e.key === 'ep:tempUnit') repaintTemps(); });
 function weatherHTML(w, cfg) {
+  const u = tempUnit();
   const heads = { forecast: t('Forecast'), recent: t('Recent weather'), past: t('What the weather was'), typical: t('Typical for these dates · {a}–{b} average', { a: w.from, b: w.to }) };
-  const r = Math.round;
-  return `<p class="wx-head"><span class="lbl">${esc(heads[w.kind])}</span>${w.partial ? `<span class="muted small">${t('Later days appear as they come into the 16-day forecast.')}</span>` : ''}</p>
+  return `<div class="wx-top"><p class="wx-head"><span class="lbl">${esc(heads[w.kind])}</span>${w.partial ? `<span class="muted small">${t('Later days appear as they come into the 16-day forecast.')}</span>` : ''}</p>${tempUnitsHTML(u)}</div>
   <div class="wx">${w.days.map(d => {
     const [label, ic] = w.kind === 'typical' ? (d.wet / (d.of || 1) >= 0.5 ? ['Often wet', 'rain'] : d.wet ? ['Mostly dry', 'part'] : ['Usually dry', 'sun']) : WMO(d.code);
     return `<div class="wx-d"><span class="wx-date">${esc(fmt(d.date, { weekday: 'short' }))}<small>${esc(fmt(d.date, { month: 'short', day: 'numeric' }))}</small></span>${icon(ic)}
-      <span class="wx-t"><b>${r(d.hi)}°</b><span>${r(d.lo)}°F</span></span>
+      <span class="wx-t"><b>${fmtTemp(d.hi, u)}°</b><span>${fmtTemp(d.lo, u)}°${u}</span></span>
       <span class="wx-x">${w.kind === 'typical' ? t('Rain {n} of {m} yrs', { n: d.wet, m: d.of }) : w.kind === 'past' ? `${d.precip ? d.precip.toFixed(2) + ' in' : t('Dry')}` : d.pop != null ? t('{n}% rain', { n: d.pop }) : esc(t(label))}</span>
       <span class="wx-l">${esc(t(label))}</span></div>`;
   }).join('')}</div>`;
@@ -1747,7 +1772,7 @@ function wireEvent(cfg, art, seq, air, opts) {
   refreshTrip(); applyModes();
 
   if (cfg.start && (slot('weather') || art._pack)) {
-    weatherFor(cfg).then(w => { if (!alive()) return; art._wx = w; if (slot('weather')) slot('weather').innerHTML = weatherHTML(w, cfg); art._pack && art._pack(); })
+    weatherFor(cfg).then(w => { if (!alive()) return; art._wx = w; const ws = slot('weather'); if (ws) { ws._wx = w; ws._cfg = cfg; ws.innerHTML = weatherHTML(w, cfg); } art._pack && art._pack(); })
       .catch(() => { if (alive() && slot('weather')) slot('weather').innerHTML = `<p class="muted">${navigator.onLine === false ? `<b>${t('Offline')}</b> · ${t('The forecast needs a connection.')}` : t('Weather is unavailable right now. Try reloading the page.')}</p>`; });
   }
   const mapCtl = wireMap(cfg, art, opts);
