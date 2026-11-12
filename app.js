@@ -1524,7 +1524,37 @@ function eventTabHTML(cfg) {
   const o = sectionOrder(cfg); if (routeInItin(cfg) && o.indexOf('route') < o.indexOf('schedule')) { o.splice(o.indexOf('schedule'), 1); o.splice(o.indexOf('route'), 1, 'schedule'); }
   return o.map(id => parts[id] ? parts[id]() : customSecHTML(cfg, id)).join('');
 }
+// A trip whose destination is a country or region ("Japan") has no useful point for maps, searches or airports: use the
+// first route stop's point instead (the destination name stays as written). Stops without a map point are found by city.
+const isCoarseVenue = (v) => !!v && (!v.city || (!!v.country && v.name.trim().toLowerCase() === v.country.trim().toLowerCase()));
+function tripView(cfg) {
+  if (!isTrip(cfg)) return cfg; const v = cfg.venue; const s = stopsOf(cfg).find(x => x.lat != null);
+  if (!s || (v && !isCoarseVenue(v))) return cfg;
+  return { ...cfg, venue: { ...(v || {}), name: v ? v.name : s.name, address: s.address || s.name, lat: s.lat, lon: s.lon, city: s.city || s.name, region: s.region || '', country: s.country || (v && v.country) || '', cc: s.cc || (v && v.cc) || '', pinName: s.name, zoom: 13 } };
+}
+const tripCC = (cfg) => (cfg.venue && cfg.venue.cc) || (stopsOf(cfg).find(x => x.cc) || {}).cc || '';
+// a city-level point for a route stop: never a country, inside the trip's country, a city/town result preferred
+async function geocodeCity(name, country, cc) {
+  const q = [name, country].filter(Boolean).join(', '); if (!q) return null; const k = 'sgeo:' + q.toLowerCase().slice(0, 120);
+  const c = LS.get(k); if (c) return c.miss ? null : c;
+  let xs; try { xs = await geocode(q); } catch { return null; }
+  const ok = (xs || []).filter(x => x.lat != null && !(x.types || []).some(ty => ty === 'country' || ty === 'continent') && !(cc && x.cc && x.cc !== cc));
+  const r = ok.find(x => (x.types || []).some(ty => /^(locality|postal_town|sublocality|administrative_area_level_[12]|colloquial_area)$/.test(ty))) || ok.find(x => !(x.types || []).length) || null;
+  const out = r ? { name, address: r.address || r.name, lat: r.lat, lon: r.lon, city: r.city || name, region: r.region || '', country: r.country || country || '', cc: r.cc || cc || '' } : null;
+  LS.set(k, out || { miss: 1 }); return out;
+}
+async function repairStops(cfg) {
+  const ss = stopsOf(cfg).filter(s => s.lat == null); if (!ss.length || !isTrip(cfg)) return false;
+  const cc = tripCC(cfg), country = (cfg.venue && cfg.venue.country) || (stopsOf(cfg).find(x => x.country) || {}).country || ''; let n = 0;
+  for (const s of ss) { const r = await geocodeCity(s.name, s.country || country, s.cc || cc); if (r) { Object.assign(s, { address: s.address || r.address, lat: r.lat, lon: r.lon, city: s.city || r.city, region: s.region || r.region, country: s.country || r.country, cc: s.cc || r.cc }); n++; } }
+  return n > 0;
+}
 function renderEvent(cfg, root, opts = {}) {
+  if (!opts.repaired && isTrip(cfg) && stopsOf(cfg).some(s => s.lat == null)) {
+    const seq0 = renderSeq + 1; repairStops(cfg).then(ok => { if (ok && renderSeq === seq0 && document.body.contains(root)) { const p = root.querySelector('.ev-panel:not([hidden])'); renderEvent(cfg, root, { ...opts, repaired: true, tab: p ? p.dataset.panel : opts.tab }); } }).catch(() => {});
+  }
+  if (!opts.src) opts = { ...opts, src: cfg }; // "Edit a copy" and the language picker keep the page as written
+  cfg = tripView(cfg);
   const seq = ++renderSeq;
   maps.forEach(m => { try { m.remove(); } catch {} }); maps.clear();
   loadFont(cfg.theme.font);
@@ -3028,7 +3058,7 @@ const pinText = (s) => { s = String(s || ''); return s.length > 22 ? s.slice(0, 
 const HOTEL_PIN = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="60" viewBox="0 0 48 60"><defs><filter id="s" x="-40%" y="-30%" width="180%" height="160%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity=".45"/></filter></defs><path filter="url(#s)" d="M24 3C13 3 4 11.6 4 22.4 4 36.6 24 57 24 57s20-20.4 20-34.6C44 11.6 35 3 24 3z" fill="#E35B47" stroke="#fff" stroke-width="3"/><g fill="#fff"><rect x="12" y="15" width="3.2" height="17" rx="1.2"/><rect x="12" y="26" width="24" height="3.2" rx="1"/><rect x="32.8" y="22" width="3.2" height="10" rx="1.2"/><circle cx="19.6" cy="21.4" r="2.9"/><rect x="23.6" y="19" width="12.4" height="5.6" rx="2.4"/></g></svg>');
 const STAR_PIN = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34"><defs><filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#000" flood-opacity=".4"/></filter></defs><path filter="url(#s)" d="M17 2.5l4.3 8.9 9.7 1.4-7 6.8 1.7 9.7-8.7-4.6-8.7 4.6 1.7-9.7-7-6.8 9.7-1.4z" fill="#E8A100" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/></svg>');
 function googleAdapter(g, el, c) {
-  const map = new g.Map(el, { center: { lat: c.lat, lng: c.lon }, zoom: 15, disableDefaultUI: true, zoomControl: true, gestureHandling: 'cooperative', clickableIcons: false, keyboardShortcuts: false });
+  const map = new g.Map(el, { center: { lat: c.lat, lng: c.lon }, zoom: c.zoom || 15, disableDefaultUI: true, zoomControl: true, gestureHandling: 'cooperative', clickableIcons: false, keyboardShortcuts: false });
   const info = new g.InfoWindow(); const all = []; el._gmap = map;
   const pop = (m, html) => m.addListener('click', () => { info.setContent(html); info.open({ anchor: m, map }); });
   return {
@@ -3052,7 +3082,7 @@ function googleAdapter(g, el, c) {
 }
 function leafletAdapter(el, c) {
   const Lf = window.L; el.innerHTML = ''; delete el._leaflet_id;
-  const map = Lf.map(el, { scrollWheelZoom: false, zoomControl: false, attributionControl: true }).setView([c.lat, c.lon], 15);
+  const map = Lf.map(el, { scrollWheelZoom: false, zoomControl: false, attributionControl: true }).setView([c.lat, c.lon], c.zoom || 15);
   Lf.control.zoom({ position: 'topright' }).addTo(map); el._leafletMap = map;
   Lf.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
   return {
@@ -3095,7 +3125,7 @@ function wireMap(cfg, art, opts) {
   const draw = (a) => {
     st.adapter = a; maps.add(a); st.groups = {}; st.area = null; if (areaBtn) areaBtn.hidden = true;
     if (a.onMoved) { a.onMoved(onMoved); setTimeout(() => { if (!st.area && st.adapter === a) st.area = viewArea(); }, 0); } // Leaflet's first view fires before we listen
-    a.pin(v.lat, v.lon, { title: v.name, color: cfg.theme.accent, html: `<b>${esc(v.name)}</b><br>${esc(v.address || '')}` });
+    a.pin(v.lat, v.lon, { title: v.pinName || v.name, color: cfg.theme.accent, html: `<b>${esc(v.pinName || v.name)}</b><br>${esc(v.address || '')}` });
     const sp = typeSpec(cfg), td = typeData(cfg), pts = [[v.lat, v.lon]];
     if (sp && !cfg.off.details) sp.fields.filter(f => f[2] === 'place' && td[f[0]] && td[f[0]].lat != null).forEach(([k, label]) => {
       const p = td[k]; pts.push([p.lat, p.lon]); a.label(p.lat, p.lon, { title: `${t(label)}: ${p.q}`, text: t(label), html: `<b>${esc(t(label))}</b><br>${esc(p.q)}` });
@@ -3145,7 +3175,7 @@ function wireMap(cfg, art, opts) {
     setHotels: (items) => { st.hotels = items; if (st.adapter && st.adapter.hotelPins) st.adapter.hotelPins(items); },
     centerOn: (lat, lon, z) => { const go = () => st.adapter && st.adapter.center(lat, lon, z || 15); st.adapter ? go() : setTimeout(go, 1500); },
     setFood: (items) => { st.food = items; const g = st.groups.food; if (g) g.g.set(items.map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)) }))); },
-    center: (lat, lon) => { st.area = null; const go = () => st.adapter && st.adapter.center(lat, lon, 14); st.adapter ? go() : setTimeout(go, 1500); },
+    center: (lat, lon, z) => { st.area = null; const go = () => st.adapter && st.adapter.center(lat, lon, z || 14); st.adapter ? go() : setTimeout(go, 1500); },
     onArea: (fn) => { st.areaFns.push(fn); },
     searchedArea: (a) => { st.area = a; if (areaBtn) areaBtn.hidden = true; },
     _view: () => viewArea(),
@@ -3373,7 +3403,7 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
     const b = e.target.closest('button'); if (!b) return; const f = art._gp; const d = b.dataset;
     if (d.gplace) { art._openGPlace(d.gplace); return; }
     if (d.gpSave) { const r = (rows || []).find(x => x.id === d.gpSave); if (r) toggleSaved(cfg, art, { src: 'g', ref: r.id, name: r.name, lat: r.lat, lon: r.lon, rating: r.rating, count: r.count, addr: r.addr, hours: '', type: placeType([], r.type.toLowerCase()) }); render(); return; }
-    if (d.gpStop != null) { const st = ss[+d.gpStop]; art._stop = hotelStops(cfg).indexOf(st); if (art._stop < 0) art._stop = 0; const h = art._hotelAt ? art._hotelAt(art._stop) : null; art._center = h || st; art._fromHotel = !!h; art._hotelPt = h; $$('[data-gp-stop]', s).forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); }); if (mapCtl) mapCtl.center(art._center.lat, art._center.lon); art._hotelUI && art._hotelUI(); return load(); }
+    if (d.gpStop != null) { const st = ss[+d.gpStop]; art._stop = hotelStops(cfg).indexOf(st); if (art._stop < 0) art._stop = 0; const h = art._hotelAt ? art._hotelAt(art._stop) : null; art._center = h || st; art._fromHotel = !!h; art._hotelPt = h; $$('[data-gp-stop]', s).forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); }); if (mapCtl) mapCtl.center(art._center.lat, art._center.lon, h ? 15 : 13); art._hotelUI && art._hotelUI(); return load(); }
     if ('gpGo' in d) { textSearch(qIn.value.trim()); return; }
     if ('gpQClear' in d) { f.q = ''; qIn.value = ''; return load(); }
     if (d.gpCat) { if (f.cat === d.gpCat && !f.q) return; f.cat = d.gpCat; f.cuisine = ''; f.price = ''; f.q = ''; qIn.value = ''; return load(); }
@@ -3591,12 +3621,12 @@ function wireHotel(cfg, art, mapCtl) {
     if (bar) { bar.innerHTML = hotelBarHTML(cfg, art); const q = bar.querySelector('[data-hotel-q]'); if (q) placeAutocomplete(q, { bias: () => ss[art._stop], onPick: (id, tok) => gpVenue(id, tok).then(v => { art._hotelEdit = false; setHotel(cfg, art, art._stop, v); }).catch(() => toast(t('Couldn’t load that place right now.'))) }); }
     const cur = art._hotelAt(art._stop); const saved = planLoad(cfg).some(x => x.lat != null && !x.hotel);
     if (key) key.innerHTML = cur || saved ? `${cur ? `<span class="mk"><img src="${HOTEL_PIN}" alt="">${t('Your hotel')}</span>` : ''}${saved ? `<span class="mk"><img src="${STAR_PIN}" alt="">${t('Saved')}</span>` : ''}${cur ? `<button type="button" class="mk-go" data-hotel-go>${t('Hotel')}</button>` : ''}` : '';
-    if (center() && art._gpReload) art._gpReload();
+    if (center()) { if (art._gpReload) art._gpReload(); const h = art._hotelPt; if (mapCtl) { if (h) mapCtl.center(h.lat, h.lon, 15); else if (ss[art._stop]) mapCtl.center(ss[art._stop].lat, ss[art._stop].lon, 13); } }
   };
   art._hotelUI = ui; ui();
   resolveHotels(cfg).then(n => { if (n && document.body.contains(art)) ui(); }).catch(() => {});
   const find = (q) => { const m = bar.querySelector('[data-hotel-msg]'); if (q.length < 2) return; if (m) m.textContent = t('Searching…');
-    const s = ss[art._stop]; geocode(`${q}, ${s.city || s.name}`).then(xs => { const r = xs.find(x => x.lat != null); if (!r) { if (m) m.textContent = t('No match. Try the hotel name and street.'); return; } art._hotelEdit = false; setHotel(cfg, art, art._stop, { ...r, name: r.name || q }); })
+    const s = ss[art._stop]; geocode(`${q}, ${s.city || s.name}`).then(xs => { const r = xs.find(x => x.lat != null && !(x.types || []).some(ty => ty === 'country' || ty === 'continent') && distM(x.lat, x.lon, s.lat, s.lon) < 80000); if (!r) { if (m) m.textContent = t('No match. Try the hotel name and street.'); return; } art._hotelEdit = false; setHotel(cfg, art, art._stop, { ...r, name: r.name || q }); })
       .catch(() => { if (m) m.textContent = navigator.onLine === false ? t('Offline') : t('Search is unavailable right now'); }); };
   if (bar) bar.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
     if ('hotelChange' in d) { art._hotelEdit = true; ui(); const q = bar.querySelector('[data-hotel-q]'); if (q) q.focus(); }
@@ -3675,7 +3705,7 @@ function gpVenue(id, session) {
 function gGeocode(q) {
   const key = 'gg1:' + q.trim().toLowerCase(); if (memo.has(key)) return memo.get(key);
   const p = gFetch('https://places.googleapis.com/v1/places:searchText', { textQuery: q, pageSize: 6 }, 'places.id,places.displayName,places.formattedAddress,places.location,places.addressComponents,places.types')
-    .then(j => (j.places || []).filter(x => x.location).map(x => { const r = gpToVenue(x); r.display = r.address && r.address !== r.name ? `${r.name}, ${r.address}` : r.address; return r; }));
+    .then(j => (j.places || []).filter(x => x.location).map(x => { const r = gpToVenue(x); r.types = x.types || []; r.display = r.address && r.address !== r.name ? `${r.name}, ${r.address}` : r.address; return r; }));
   memo.set(key, p); p.catch(() => memo.delete(key)); return p;
 }
 // hotels, sights and stations near a point, in the shape osmNearby returns (no restaurants: the Google list covers food)
@@ -3893,7 +3923,7 @@ function routeClick(b, cfg) {
   if (d.stMv) { const i = +d.stMv, j = i + +d.dir; if (j >= 0 && j < cfg.stops.length) { [cfg.stops[i], cfg.stops[j]] = [cfg.stops[j], cfg.stops[i]]; changed(true); } }
   if (d.stClear) { const s = cfg.stops[+d.stClear]; cfg.stops[+d.stClear] = { name: '', from: s.from, to: s.to }; changed(true); }
   if (d.stFind) { const i = +d.stFind; const q = ($(`#st-q-${i}`) || {}).value || ''; if (q.trim().length < 2) return true;
-    geocode(q.trim()).then(rs => { const r = rs[0]; if (!r) { toast('No match. Try adding the country.'); return; } setStop(cfg, i, r); }).catch(() => toast('Search is unavailable right now')); }
+    geocode(q.trim()).then(rs => { const cc = tripCC(cfg); const ok = rs.filter(x => !(x.types || []).some(ty => ty === 'country' || ty === 'continent')); const r = ok.find(x => !cc || !x.cc || x.cc === cc) || ok[0] || rs[0]; if (!r) { toast('No match. Try adding the country.'); return; } setStop(cfg, i, r); }).catch(() => toast('Search is unavailable right now')); }
   return true;
 }
 function routeInput(i, cfg) {
@@ -4413,7 +4443,8 @@ async function docApply(cfg, items) {
   const next = clone(cfg); const live = items.filter(x => !x.gone); const xd = () => (next.x[next.type] = next.x[next.type] || {});
   const route = live.filter(x => x.sec === 'route' && cleanText(x.title, 80));
   if (route.length) {
-    next.stops = await Promise.all(route.map(async (x) => { const name = cleanText(x.title, 80); const r = await aiResolveVenue(name, x.country || '').catch(() => null);
+    const cc0 = tripCC(next), co0 = (next.venue && next.venue.country) || '';
+    next.stops = await Promise.all(route.map(async (x) => { const name = cleanText(x.title, 80); const r = await geocodeCity(name, x.country || co0, x.country ? '' : cc0).catch(() => null) || await aiResolveVenue(name, x.country || co0).catch(() => null);
       const s = { name, from: isoDay(x.date), to: isoDay(x.end) && (!isoDay(x.date) || x.end >= x.date) ? x.end : '' };
       return r && r.lat != null ? { name, address: r.address, lat: r.lat, lon: r.lon, city: r.city || name, region: r.region, country: r.country, cc: r.cc, from: s.from, to: s.to } : s; }));
     const f0 = next.stops.find(s => s.lat != null);
