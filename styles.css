@@ -816,3 +816,6 @@ dialog.confirm-dlg { width: min(400px, calc(100vw - 32px)); background: var(--pa
 .rv-card .field.when-f { grid-column: 1 / -1; }
 .rv-card input[type="datetime-local"], .rv-card input[type="date"] { width: 100%; min-width: 0; box-sizing: border-box; }
 .thr .msg.in { background: var(--card, #fff); }
+/* custom sections */
+.ev-sec.cs .cs-img { display: block; width: 100%; max-height: 420px; object-fit: cover; border-radius: 12px; margin: 0 0 12px; }
+.ev-sec.cs .links { margin-top: 12px; } .ev-sec.cs .sec-b > .links:first-child { margin-top: 0; }

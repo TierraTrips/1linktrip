@@ -1193,7 +1193,7 @@ const TYPE_CARDS = {
 };
 const TYPE_GROUP = { Trip: 'For trips', Wedding: 'For weddings', Race: 'For races', Hyrox: 'For Hyrox', Concert: 'For concerts', Performance: 'For performances', 'Sporting event': 'For game day', Conference: 'For conferences' };
 const COMMON_CARDS = [['schedule', 'Schedule', 'Times and places'], ['notes', 'Notes for guests', 'Kids, parking, FAQ'], ['about', 'About', 'Host, description'],
-  ['bring', 'Must-bring items', 'Required items'], ['langs', 'Guest languages', 'Translations']];
+  ['bring', 'Must-bring items', 'Required items'], ['custom', 'Custom section', 'Your own heading and info'], ['langs', 'Guest languages', 'Translations']];
 const CARD_ICONS = {
   rsvp: '<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>', block: '<path d="M3 20V9l9-5 9 5v11"/><path d="M9 20v-6h6v6"/>', dress: '<path d="M9 3l3 3 3-3 3 4-3 2v12H9V9L6 7z"/>',
   registry: '<rect x="3" y="8" width="18" height="13" rx="1"/><path d="M12 8v13M3 12h18M12 8S8 3 6 5s6 3 6 3 8-1 6-3-6 3-6 3"/>', startfinish: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
@@ -1210,14 +1210,24 @@ const CARD_ICONS = {
   results: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   agenda: '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>', schedule: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', notes: '<path d="M5 3h14v18H5z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
   about: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>', look: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-6-5-9 8"/>',
-  bring: '<path d="M6 8h12l-1 12H7z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>', access: '<circle cx="12" cy="4.5" r="1.5"/><path d="M12 7v6h5l2 6M12 10H7"/><path d="M9 13a5 5 0 1 0 6 6"/>'
+  bring: '<path d="M6 8h12l-1 12H7z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>', custom: '<path d="M4 5h16M4 10h10M4 15h7"/><path d="M17 13v8M13 17h8"/>', access: '<circle cx="12" cy="4.5" r="1.5"/><path d="M12 7v6h5l2 6M12 10H7"/><path d="M9 13a5 5 0 1 0 6 6"/>'
 };
 const cardIcon = (id) => `<svg viewBox="0 0 24 24" aria-hidden="true">${CARD_ICONS[id] || CARD_ICONS.notes}</svg>`;
 
 function blankEvent(type) {
   const s = addDays(todayYMD(), 30); type = type || 'Party';
   return { v: 2, type, title: '', tagline: '', host: '', description: '', start: s, end: '', tz: '', venue: null, cover: '',
-    theme: { ...typeDefaults(type).theme }, tools: defaultTools(type), off: type === 'Trip' ? { rsvp: true } : {}, schedule: [], notes: [], x: {}, bring: '' };
+    theme: { ...typeDefaults(type).theme }, tools: defaultTools(type), off: type === 'Trip' ? { rsvp: true } : {}, schedule: [], notes: [], x: {}, bring: '', custom: [] };
+}
+// the organizer's own sections: cfg.custom = [{ id, title, text, label, url, img }]; on the page as section 'c-<id>'
+const blankCustom = () => ({ id: Math.random().toString(36).slice(2, 8), title: '', text: '', label: '', url: '', img: '' });
+const customSid = (x) => 'c-' + x.id;
+function normCustom(xs) {
+  const seen = new Set(); const str = (v, n) => typeof v === 'string' ? v.slice(0, n) : '';
+  return (Array.isArray(xs) ? xs : []).filter(x => x && typeof x === 'object').slice(0, 20).map((x, i) => {
+    let id = typeof x.id === 'string' && /^[a-z0-9]{1,12}$/.test(x.id) ? x.id : 's' + i; while (seen.has(id)) id += 'x'; seen.add(id);
+    return { id, title: str(x.title, 80), text: str(x.text, 3000), label: str(x.label, 80), url: str(x.url, 800), img: str(x.img, 800) };
+  }).filter(x => x.title || x.text || x.label || x.url || x.img);
 }
 // Old links (v1) carried a `sections` list and a generic `links` list. Map them onto tools, notes and type cards so they open as before.
 function normalize(c) {
@@ -1248,6 +1258,7 @@ function normalize(c) {
   c.tools = { ...defaultTools(c.type), ...(c.tools || {}) };
   c.off = c.off || {}; c.notes = Array.isArray(c.notes) ? c.notes : []; c.schedule = Array.isArray(c.schedule) ? c.schedule : [];
   c.x = c.x && typeof c.x === 'object' ? c.x : {}; c.bring = typeof c.bring === 'string' ? c.bring : '';
+  c.custom = normCustom(c.custom);
   c.lang = typeof c.lang === 'string' && /^[a-z]{2,3}$/.test(c.lang) ? c.lang : 'en';
   c.langs = Array.isArray(c.langs) ? c.langs.filter(l => typeof l === 'string' && /^[a-z]{2,3}$/.test(l) && l !== c.lang).slice(0, 12) : [];
   if (c.tr && typeof c.tr === 'object') { const tr = {}; for (const [l, m] of Object.entries(c.tr)) { if (!/^[a-z]{2,3}$/.test(l) || !m || typeof m !== 'object') continue; tr[l] = {}; for (const [k, e] of Object.entries(m)) if (e && typeof e.t === 'string' && typeof e.h === 'string') tr[l][k] = { h: e.h, t: e.t.slice(0, 6000), ...(e.o ? { o: true } : {}) }; } c.tr = tr; } else c.tr = {};
@@ -1274,6 +1285,14 @@ function notesHTML(cfg) {
   return `<ul class="links">${ns.map(x => x.url
     ? `<li><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(x.label)}</b><span>${esc(x.text || hostOf(x.url))}</span>${arrow}</a></li>`
     : `<li class="note"><b>${esc(x.label)}</b><span>${esc(x.text)}</span></li>`).join('')}</ul>`;
+}
+function customSecHTML(cfg, sid) {
+  const x = (cfg.custom || []).find(y => customSid(y) === sid); if (!x || !(x.title || '').trim() || cfg.off[sid]) return '';
+  const img = httpsUrl(x.img), url = httpsUrl(x.url);
+  const body = (img ? `<img class="cs-img" src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '')
+    + (x.text || '').split(/\n\s*\n/).filter(p => p.trim()).map(p => `<p>${esc(p.trim()).replace(/\n/g, '<br>')}</p>`).join('')
+    + (url ? `<ul class="links"><li><a href="${esc(url)}" target="_blank" rel="noopener noreferrer"><b>${esc((x.label || '').trim() || hostOf(url))}</b>${(x.label || '').trim() ? `<span>${esc(hostOf(url))}</span>` : ''}${arrow}</a></li></ul>` : '');
+  return sec(sid, x.title, body, 'cs');
 }
 function needToKnowHTML(cfg) {
   const parts = [];
@@ -1393,7 +1412,7 @@ function eventTabHTML(cfg) {
     schedule: () => `<div data-slot="schedule-wrap">${sec('schedule', t(schedTitle(cfg)), scheduleHTML(cfg))}</div>`,
     weather: () => cfg.venue && cfg.start && cfg.tools.weather ? sec('weather', t('Weather'), `<div data-slot="weather"><div class="skel" role="status"><span></span><span></span><em>${t('Loading weather…')}</em></div></div>`) : '',
   };
-  return sectionOrder(cfg).map(id => parts[id]()).join('');
+  return sectionOrder(cfg).map(id => parts[id] ? parts[id]() : customSecHTML(cfg, id)).join('');
 }
 function renderEvent(cfg, root, opts = {}) {
   const seq = ++renderSeq;
@@ -1823,7 +1842,7 @@ function cardDone(c, id) {
   if (id === 'route') return stopsOf(c).length > 0;
   const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id);
   if (tc) { const sp = typeSpec(c), d = typeData(c); return tc[3].some(k => { const f = sp.fields.find(x => x[0] === k); return f && filled(f[2], d[k]); }); }
-  return { schedule: () => c.schedule.some(x => x.title), notes: () => c.notes.some(x => x.label), about: () => !!(c.description || c.host), look: () => !!c.cover, bring: () => !!c.bring.trim(),
+  return { schedule: () => c.schedule.some(x => x.title), custom: () => c.custom.some(x => x.title.trim()), notes: () => c.notes.some(x => x.label), about: () => !!(c.description || c.host), look: () => !!c.cover, bring: () => !!c.bring.trim(),
     access: () => !!(c.access && Object.values(c.access).some(Boolean)), replies: () => !c.off.rsvp, msgs: () => !!c.guestMessages, langs: () => (c.langs || []).length > 0 }[id]?.() || false;
 }
 const cardBtn = (c, [id, title, sub]) => { const done = cardDone(c, id); return `<button type="button" class="acard ${done ? 'on' : ''}" data-card="${id}"><span class="aic">${cardIcon(id)}</span><b>${esc(title)}</b><span>${esc(sub)}</span><i class="plus" aria-hidden="true">${done ? '✓' : '+'}</i></button>`; };
@@ -1865,7 +1884,7 @@ function venueFieldHTML(c) {
     : `<div class="field"><label for="vq">${isTrip(c) ? 'Destination' : 'Venue'}</label><div class="search"><input id="vq" placeholder="${isTrip(c) ? 'City or region' : 'Venue name or address'}" value="${esc(B.vq || '')}"><button type="button" class="btn" data-b="search">Search</button></div></div>
       <ul class="vres">${B.venueResults.map((r, i) => `<li><button type="button" data-pick="${i}"><b>${esc(r.name)}</b><span>${esc(r.display)}</span></button></li>`).join('')}</ul>${B.vmsg ? `<p class="hint">${esc(B.vmsg)}</p>` : ''}`;
 }
-function openCard(id) { B.card = id; renderSheet(); const sh = $('#sheet'); if (!sh.open) sh.showModal(); }
+function openCard(id) { if (id === 'custom' && !B.cfg.custom.length) B.cfg.custom.push(blankCustom()); B.card = id; renderSheet(); const sh = $('#sheet'); if (!sh.open) sh.showModal(); }
 function renderSheet() {
   const c = B.cfg; const id = B.card; const form = $('#sheet .sheet-in'); if (!form || !id) return;
   const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id); const cc = allCards(c).common.find(x => x[0] === id) || COMMON_CARDS.find(x => x[0] === id);
@@ -1877,6 +1896,12 @@ function renderSheet() {
     <div class="btns"><button type="button" class="btn sm" data-b="add-sched">+ Add item</button>${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`;
   else if (id === 'notes') body = `${c.notes.map((x, i) => `<div class="rowed"><input data-n="${i}" data-k="label" value="${esc(x.label)}" placeholder="Title" aria-label="Title"><input data-n="${i}" data-k="text" value="${esc(x.text || '')}" placeholder="Text" aria-label="Text"><input data-n="${i}" data-k="url" type="url" value="${esc(x.url || '')}" placeholder="Link (optional)" aria-label="Link"><button type="button" class="ic del" data-ndel="${i}" aria-label="Remove">Remove</button></div>`).join('')}
     <button type="button" class="btn sm" data-b="add-note">+ Add note</button>`;
+  else if (id === 'custom') body = `${c.custom.map((x, i) => `<div class="rowed cs-row"><input data-cs="${i}" data-k="title" value="${esc(x.title)}" placeholder="Title" aria-label="Title" maxlength="80" required>
+    <textarea data-cs="${i}" data-k="text" rows="4" placeholder="Text" aria-label="Text" maxlength="3000">${esc(x.text)}</textarea>
+    <div class="two"><input data-cs="${i}" data-k="label" value="${esc(x.label)}" placeholder="Link name" aria-label="Link name" maxlength="80"><input data-cs="${i}" data-k="url" type="url" value="${esc(x.url)}" placeholder="Link, https://…" aria-label="Link"></div>
+    <div class="cover-row">${httpsUrl(x.img) ? `<img src="${esc(x.img)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<input data-cs="${i}" data-k="img" type="url" value="${esc(x.img)}" placeholder="Photo link, https://…" aria-label="Photo link"></div>
+    <button type="button" class="ic del" data-cdel="${i}" aria-label="Delete ${esc(x.title || 'section')}">Delete</button></div>`).join('')}
+    <button type="button" class="btn sm" data-b="add-custom">+ Add section</button>`;
   else if (id === 'langs') body = langsCardHTML(c);
   else if (id === 'about') body = `${aboutSiteHTML(c)}${fieldWrap('Hosted by', `<input id="f-host" data-f="host" value="${esc(c.host)}">`, 'f-host')}${fieldWrap('About', `<textarea id="f-desc" data-f="description" rows="6">${esc(c.description)}</textarea>`, 'f-desc')}`;
   else if (id === 'look') body = `${fieldWrap('Cover photo link', `<input id="f-cover" data-f="cover" type="url" value="${esc(c.cover)}" placeholder="https://…/photo.jpg">`, 'f-cover')}
@@ -1905,6 +1930,7 @@ function wireInputs(root) {
     else if (d.t) { cfg.theme[d.t] = i.value; $$('.sw', root).forEach(s => s.classList.remove('on')); changed(); }
     else if (d.s != null) { cfg.schedule[+d.s][d.k] = i.value; changed(); }
     else if (d.n != null) { cfg.notes[+d.n][d.k] = i.value; changed(); }
+    else if (d.cs != null) { const x = cfg.custom[+d.cs]; if (x) { x[d.k] = i.value; changed(); } }
     else if (d.tool) { cfg.tools[d.tool] = i.checked; changed(); }
     else if (i.id === 'vq') B.vq = i.value;
     else if (i.id === 'f-site') B.site = i.value;
@@ -1929,6 +1955,13 @@ function wireInputs(root) {
     else if (d.sdel != null) { cfg.schedule.splice(+d.sdel, 1); changed(true); }
     else if (d.b === 'add-note') { cfg.notes.push({ label: '', text: '', url: '' }); changed(true); }
     else if (d.ndel != null) { cfg.notes.splice(+d.ndel, 1); changed(true); }
+    else if (d.b === 'add-custom') { cfg.custom.push(blankCustom()); changed(true); setTimeout(() => $$('#sheet [data-cs][data-k="title"]').pop()?.focus(), 0); }
+    else if (d.cdel != null) {
+      const x = cfg.custom[+d.cdel]; if (!x) return;
+      const drop = () => { const sid = customSid(x); const i = cfg.custom.indexOf(x); if (i < 0) return; cfg.custom.splice(i, 1); delete cfg.off[sid]; if (Array.isArray(cfg.order)) cfg.order = cfg.order.filter(k => k !== sid); changed(true); };
+      if (![x.title, x.text, x.label, x.url, x.img].join('').trim()) drop();
+      else confirmDlg({ title: `Delete “${x.title.trim() || 'Custom section'}”?`, ok: 'Delete' }).then(yes => { if (yes) drop(); });
+    }
     else if (d.xadd) { const x = (cfg.x[cfg.type] = cfg.x[cfg.type] || {}); (x[d.xadd] = x[d.xadd] || []).push({ label: '', url: '' }); changed(true); }
     else if (d.xdel) { cfg.x[cfg.type][d.xdel].splice(+d.i, 1); changed(true); }
     else if (d.xfind) pinPlace(d.xfind, b);
@@ -3847,6 +3880,7 @@ function textFields(cfg) {
   ['title', 'tagline', 'description', 'bring'].forEach(k => put(k, cfg[k]));
   (cfg.schedule || []).forEach((x, i) => { put(`schedule[${i}].title`, x.title); put(`schedule[${i}].note`, x.note); });
   (cfg.notes || []).forEach((x, i) => { put(`notes[${i}].label`, x.label); put(`notes[${i}].text`, x.text); });
+  (cfg.custom || []).forEach((x, i) => { put(`custom[${i}].title`, x.title); put(`custom[${i}].text`, x.text); put(`custom[${i}].label`, x.label); });
   const sp = typeSpec(cfg), td = typeData(cfg);
   if (sp) sp.fields.filter(f => f[2] === 'text' || f[2] === 'lines').forEach(([k]) => put(`x.${cfg.type}.${k}`, td[k]));
   Object.entries(cfg.access || {}).forEach(([k, v]) => put(`access.${k}`, v));
@@ -3969,7 +4003,7 @@ const THEME_PRESETS = [
 const EVENT_SECTIONS = [['route', 'Route'], ['about', 'About'], ['details', 'Need to know'], ['rsvp', 'RSVP form'], ['access', 'Access and arrival'], ['schedule', 'Schedule'], ['weather', 'Weather']];
 const schedTitle = (cfg) => isTrip(cfg) ? 'Itinerary' : 'Schedule';
 function sectionOrder(cfg) {
-  const ids = EVENT_SECTIONS.map(x => x[0]); const o = (Array.isArray(cfg.order) ? cfg.order : (typeDefaults(cfg.type).order || [])).filter((x, i, a) => ids.includes(x) && a.indexOf(x) === i);
+  const ids = EVENT_SECTIONS.map(x => x[0]).concat((cfg.custom || []).filter(x => x && (x.title || '').trim()).map(customSid)); const o = (Array.isArray(cfg.order) ? cfg.order : (typeDefaults(cfg.type).order || [])).filter((x, i, a) => ids.includes(x) && a.indexOf(x) === i);
   ids.forEach((x, i) => { if (!o.includes(x)) o.splice(Math.min(i, o.length), 0, x); });
   return o;
 }
@@ -3979,7 +4013,7 @@ const sameTheme = (a, b) => a.accent.toLowerCase() === b.accent.toLowerCase() &&
 function designHTML(c) {
   const th = c.theme; const order = sectionOrder(c);
   const lab = Object.fromEntries(EVENT_SECTIONS);
-  lab.schedule = schedTitle(c);
+  lab.schedule = schedTitle(c); (c.custom || []).forEach(x => { lab[customSid(x)] = x.title; });
   return `<div class="field"><label>Style</label><div class="presets">${THEME_PRESETS.map(([n, p]) => `<button type="button" class="preset ${sameTheme(th, p) ? 'on' : ''} ${p.mode === 'dark' ? 'dark' : ''}" data-preset="${esc(n)}" style="--pa:${p.accent};font-family:${esc(FONTS[p.font].css)}"><i aria-hidden="true"></i><span>${esc(n)}</span></button>`).join('')}</div></div>
     <div class="field"><label for="f-accent-hex">Color</label><div class="swatches">${SWATCHES.map(s => `<button type="button" class="sw ${s.toLowerCase() === th.accent.toLowerCase() ? 'on' : ''}" style="background:${s}" data-sw="${s}" aria-label="Color ${s}"></button>`).join('')}<label class="custom-c"><input type="color" data-t="accent" value="${esc(th.accent)}" aria-label="Pick any color"><span>Custom</span></label><input id="f-accent-hex" class="hex" data-hex value="${esc(th.accent)}" maxlength="7" spellcheck="false" aria-label="Color code"></div></div>
     <div class="field"><label for="f-cover">Cover photo</label><div class="cover-row">${c.cover ? `<img src="${esc(c.cover)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<input id="f-cover" data-f="cover" type="url" value="${esc(c.cover)}" placeholder="Photo link, https://…"></div>${c.cover ? '<button type="button" class="link" data-b="cover-clear">Remove photo</button>' : ''}</div>
