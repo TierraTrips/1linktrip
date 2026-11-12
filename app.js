@@ -1574,6 +1574,12 @@ function wireEvent(cfg, art, seq, air, opts) {
   // Google Places first; if it is refused (quota, key) the OpenStreetMap list takes over, now or when its data arrives
   let gmode = false;
   const osmFood = (d) => { const s0 = slot('food'); if (!s0 || !alive()) return; art._useSrc('osm'); if (mapCtl) mapCtl.setData(d); wirePlaces(cfg, art, d, mapCtl ? mapCtl.setFood : null); };
+  // "Search this area" on the OpenStreetMap list (no Google, or Google refused): the same lists around the new center
+  if (mapCtl) mapCtl.onArea((a) => {
+    if (gmode || !slot('food')) return; slot('food').innerHTML = loading(t('places to eat'));
+    osmNearby(a.lat, a.lon).then(d => { if (!alive() || gmode) return; mapCtl.setData(d); wirePlaces(cfg, art, d, mapCtl.setFood, { lat: a.lat, lon: a.lon }); })
+      .catch(() => { if (alive() && slot('food')) slot('food').innerHTML = `<p class="muted">${t('Nearby places could not be loaded right now.')}</p>`; });
+  });
   gmode = wireGPlaces(cfg, art, mapCtl, () => {
     gmode = false; if (mapCtl) mapCtl.osmMode(); const s0 = slot('food'); if (s0) s0.innerHTML = loading(t('places to eat'));
     // Google's nearby data has no restaurants list (the Google list handled that), so fetch the OpenStreetMap one
@@ -2789,19 +2795,20 @@ function placeCardHTML(cfg, p) {
     <button type="button" class="link" data-pc-map>${t('Show on map')}</button>
   </div>`;
 }
-function wirePlaces(cfg, art, data, setMarkers) {
+function wirePlaces(cfg, art, data, setMarkers, center) {
   const s = art.querySelector('[data-slot="food"]'); if (!s) return;
+  if (s._wpOff) s._wpOff(); const ac = new AbortController(); s._wpOff = () => ac.abort(); const on = { signal: ac.signal }; // re-wired after Search this area
   const all = allPlaces(data);
   const byKey = new Map(all.concat((data.hotels || []).map(p => ({ ...p, cat: 'hotel' })), (data.sights || []).map(p => ({ ...p, cat: 'sight' }))).map(p => [placeKey(p), p]));
   const gDone = {};
   const gLoad = () => {
-    const cat = placeFilters(cfg, art).cat; if (!GKEY || !cfg.venue || !G_TYPES[cat] || gDone[cat]) return;
+    const cat = placeFilters(cfg, art).cat; if (ac.signal.aborted || !GKEY || !cfg.venue || !G_TYPES[cat] || gDone[cat]) return;
     const panel = art.querySelector('[data-panel="nearby"]'); if (panel && panel.hidden) return;
     gDone[cat] = true;
-    gNearby(cfg.venue, cat).then(gs => { gMerge(all, gs); if (document.body.contains(s)) render(); }).catch(() => {});
+    gNearby(center || cfg.venue, cat).then(gs => { gMerge(all, gs); if (document.body.contains(s) && !ac.signal.aborted) render(); }).catch(() => {});
   };
   (art._showFns = art._showFns || []).push((k) => { if (k === 'nearby') gLoad(); });
-  const render = () => { s.innerHTML = placesHTML(cfg, data, art); if (setMarkers) setMarkers(filterPlaces(cfg, all, placeFilters(cfg, art)).slice(0, 60)); gLoad(); };
+  const render = () => { if (ac.signal.aborted) return; s.innerHTML = placesHTML(cfg, data, art); if (setMarkers) setMarkers(filterPlaces(cfg, all, placeFilters(cfg, art)).slice(0, 60)); gLoad(); };
   art._openPlace = (key) => {
     const p = byKey.get(key); if (!p) return;
     let d = $('#placedlg'); if (!d) { d = document.createElement('dialog'); d.id = 'placedlg'; d.className = 'sheet place-sheet'; document.body.appendChild(d); d.addEventListener('click', (e) => { if (e.target === d) d.close(); }); }
@@ -2831,8 +2838,8 @@ function wirePlaces(cfg, art, data, setMarkers) {
     else if (d.pfMore != null) art._pfMore = true;
     else return;
     render();
-  });
-  s.addEventListener('change', (e) => { const i = e.target; if (!i.dataset.pf) return; const f = placeFilters(cfg, art); f[i.dataset.pf] = i.dataset.pf === 'dist' ? +i.value : i.value; render(); });
+  }, on);
+  s.addEventListener('change', (e) => { const i = e.target; if (!i.dataset.pf) return; const f = placeFilters(cfg, art); f[i.dataset.pf] = i.dataset.pf === 'dist' ? +i.value : i.value; render(); }, on);
   render();
 }
 
@@ -2925,6 +2932,8 @@ function googleAdapter(g, el, c) {
     pins: (() => { let ms = []; return (items, color) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map, position: { lat: x.lat, lng: x.lon }, title: x.title, zIndex: x.z || 500, optimized: false, icon: color ? { path: 'M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z', fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 1, anchor: new g.Point(12, 36) } : undefined }); m.addListener('click', () => x.onClick && x.onClick()); return m; }); }; })(),
     savedPins: (() => { let ms = []; return (items) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map, position: { lat: x.lat, lng: x.lon }, title: x.title, zIndex: 800, optimized: false, label: { text: '★', color: '#fff', fontSize: '13px' }, icon: { path: 'M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z', fillColor: '#E8A100', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 1.1, anchor: new g.Point(12, 36), labelOrigin: new g.Point(12, 12) } }); m.addListener('click', () => x.onClick && x.onClick()); return m; }); }; })(),
     onPoi: (fn) => { map.setOptions({ clickableIcons: true }); map.addListener('click', (e) => { if (e.placeId) { e.stop(); fn(e.placeId); } }); },
+    view: () => { const b = map.getBounds(); if (!b) return null; const c = b.getCenter(), ne = b.getNorthEast(); return { lat: c.lat(), lon: c.lng(), ne: [ne.lat(), ne.lng()] }; },
+    onMoved: (fn) => map.addListener('idle', fn),
     invalidateSize: () => { g.event.trigger(map, 'resize'); },
     remove: () => { all.forEach(m => m.setMap(null)); el.innerHTML = ''; },
   };
@@ -2932,7 +2941,7 @@ function googleAdapter(g, el, c) {
 function leafletAdapter(el, c) {
   const Lf = window.L; el.innerHTML = ''; delete el._leaflet_id;
   const map = Lf.map(el, { scrollWheelZoom: false, zoomControl: false, attributionControl: true }).setView([c.lat, c.lon], 15);
-  Lf.control.zoom({ position: 'topright' }).addTo(map);
+  Lf.control.zoom({ position: 'topright' }).addTo(map); el._leafletMap = map;
   Lf.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
   return {
     kind: 'leaflet', map,
@@ -2946,6 +2955,8 @@ function leafletAdapter(el, c) {
     pins: (() => { let lg = null; return (items, color) => { if (!lg) lg = Lf.layerGroup().addTo(map); lg.clearLayers(); items.forEach(x => Lf.circleMarker([x.lat, x.lon], { radius: 10, color: '#fff', weight: 2, fillColor: color || '#D93025', fillOpacity: 1 }).on('click', () => x.onClick && x.onClick()).bindTooltip(x.title || '').addTo(lg)); }; })(),
     savedPins: (() => { let lg = null; return (items) => { if (!lg) lg = Lf.layerGroup().addTo(map); lg.clearLayers(); items.forEach(x => Lf.marker([x.lat, x.lon], { icon: Lf.divIcon({ className: 'spin', html: '<span>★</span>', iconSize: [30, 30], iconAnchor: [15, 15] }), title: x.title, zIndexOffset: 800 }).on('click', () => x.onClick && x.onClick()).addTo(lg)); }; })(),
     onPoi: () => {},
+    view: () => { const b = map.getBounds(); const c = b.getCenter(), ne = b.getNorthEast(); return { lat: c.lat, lon: c.lng, ne: [ne.lat, ne.lng] }; },
+    onMoved: (fn) => map.on('moveend', fn),
     invalidateSize: () => map.invalidateSize(),
     remove: () => map.remove(),
   };
@@ -2953,10 +2964,24 @@ function leafletAdapter(el, c) {
 // The venue map on the Nearby tab. Built the first time the tab is shown; nearby data can arrive before or after.
 function wireMap(cfg, art, opts) {
   let el = art.querySelector('[data-slot="map"]'); const v = cfg.venue; if (!el || !v) return;
-  const T = cfg.tools; const st = { data: null, food: null, groups: {}, adapter: null, building: false, gmode: false, pins: [], poi: null, saved: [] };
+  const T = cfg.tools; const st = { data: null, food: null, groups: {}, adapter: null, building: false, gmode: false, pins: [], poi: null, saved: [], area: null, areaFns: [] };
   const drawPins = () => { const a = st.adapter; if (!a) return; a.pins(st.pins); if (st.poi) a.onPoi(st.poi); };
+  // "Search this area": after any pan/zoom that moves the view away from the last searched area, a button offers to
+  // search again inside what is on screen. Compared against the last search (not a flag set by code), so it can't get stuck.
+  const wrap = el.closest('.map-wrap');
+  if (wrap && !wrap.querySelector('[data-area-go]')) wrap.insertAdjacentHTML('afterbegin', `<button type="button" class="area-btn" data-area-go hidden>${esc(t('Search this area'))}</button>`);
+  const areaBtn = wrap ? wrap.querySelector('[data-area-go]') : null;
+  const viewArea = () => { const a = st.adapter; const w = a && a.view ? a.view() : null; if (!w || !isFinite(w.lat)) return null; return { lat: +w.lat.toFixed(5), lon: +w.lon.toFixed(5), r: Math.round(Math.min(50000, Math.max(250, distM(w.lat, w.lon, w.ne[0], w.ne[1])))) }; };
+  const areaMoved = (a, b) => !b || distM(a.lat, a.lon, b.lat, b.lon) > 0.3 * Math.min(a.r, b.r) || a.r < b.r * 0.45 || a.r > b.r * 2.2;
+  const onMoved = () => {
+    const now = viewArea(); if (!now || !areaBtn) return;
+    if (!st.area) { st.area = now; return; } // the first view after drawing is the starting area
+    areaBtn.hidden = !(st.areaFns.length && areaMoved(now, st.area));
+  };
+  if (areaBtn) areaBtn.onclick = () => { const now = viewArea(); if (!now) return; st.area = now; areaBtn.hidden = true; st.areaFns.forEach(fn => { try { fn(now); } catch { /* one list failing doesn't stop the others */ } }); };
   const draw = (a) => {
-    st.adapter = a; maps.add(a); st.groups = {};
+    st.adapter = a; maps.add(a); st.groups = {}; st.area = null; if (areaBtn) areaBtn.hidden = true;
+    if (a.onMoved) { a.onMoved(onMoved); setTimeout(() => { if (!st.area && st.adapter === a) st.area = viewArea(); }, 0); } // Leaflet's first view fires before we listen
     a.pin(v.lat, v.lon, { title: v.name, color: cfg.theme.accent, html: `<b>${esc(v.name)}</b><br>${esc(v.address || '')}` });
     const sp = typeSpec(cfg), td = typeData(cfg), pts = [[v.lat, v.lon]];
     if (sp && !cfg.off.details) sp.fields.filter(f => f[2] === 'place' && td[f[0]] && td[f[0]].lat != null).forEach(([k, label]) => {
@@ -2969,6 +2994,7 @@ function wireMap(cfg, art, opts) {
   const popup = (x) => `<b>${esc(x.name)}</b><br>${esc(t('{d} from the venue', { d: fmtDist(x.d, v.cc) }))}`;
   const layers = () => {
     const a = st.adapter, d = st.data; if (!a || !d || st.gmode) return;
+    Object.values(st.groups).forEach(x => { try { x.g.set([]); x.g.show(false); } catch { /* gone */ } }); st.groups = {};
     const defs = [['food', '#E4572E', t('Food & drink'), (st.food || d.food.slice(0, 25)).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)), html: popup(x) }))]];
     if (T.stay) defs.push(['hotels', '#7B4FD6', t('Hotels'), d.hotels.slice(0, 15).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)), html: popup(x) }))]);
     if (T.tours) defs.push(['sights', '#0B9A6D', t('Sights'), (d.sights || []).slice(0, 12).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)), html: popup(x) }))]);
@@ -3003,7 +3029,10 @@ function wireMap(cfg, art, opts) {
     onPoi: (fn) => { st.poi = fn; if (st.adapter) st.adapter.onPoi(fn); },
     setSaved: (items) => { st.saved = items; if (st.adapter && st.adapter.savedPins) st.adapter.savedPins(items); },
     setFood: (items) => { st.food = items; const g = st.groups.food; if (g) g.g.set(items.map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)) }))); },
-    center: (lat, lon) => { const go = () => st.adapter && st.adapter.center(lat, lon, 14); st.adapter ? go() : setTimeout(go, 1500); },
+    center: (lat, lon) => { st.area = null; const go = () => st.adapter && st.adapter.center(lat, lon, 14); st.adapter ? go() : setTimeout(go, 1500); },
+    onArea: (fn) => { st.areaFns.push(fn); },
+    searchedArea: (a) => { st.area = a; if (areaBtn) areaBtn.hidden = true; },
+    _view: () => viewArea(),
     focus: (p) => { if (p.lat == null) return; showTab(art, 'nearby', opts); const go = () => { if (st.adapter) st.adapter.center(p.lat, p.lon, 17); }; st.adapter ? go() : setTimeout(go, 1500); el.scrollIntoView({ block: 'center' }); },
   };
 }
@@ -3109,14 +3138,14 @@ const gpRow = (x, v) => ({ id: x.id, name: (x.displayName && x.displayName.text)
   d: x.location ? distM(v.lat, v.lon, x.location.latitude, x.location.longitude) : 0 });
 function gpQueryKey(f) { if (f.q) return `q:${f.q.toLowerCase()}:${f.diet}`; return f.diet ? `diet:${f.cat}:${f.diet}` : f.cuisine && f.cat === 'restaurant' ? `cuisine:${f.cuisine}` : `cat:${f.cat}`; }
 function gpSearch(cfg, f, center) {
-  const v = center || cfg.venue; const qk = gpQueryKey(f); const key = `gq1:${osmKey(v.lat, v.lon)}:${qk}`;
+  const v = center || cfg.venue; const qk = gpQueryKey(f); const key = `gq1:${osmKey(v.lat, v.lon)}${v.r ? ':r' + v.r : ''}:${qk}`;
   const c = LS.get(key); if (c && Date.now() - c.t < G_TTL) return Promise.resolve(c.d);
   if (memo.has(key)) return memo.get(key);
-  const cat = GP_CATS.find(x => x[0] === f.cat) || GP_CATS[0]; const circle = { center: { latitude: v.lat, longitude: v.lon }, radius: cat[3] };
+  const cat = GP_CATS.find(x => x[0] === f.cat) || GP_CATS[0]; const rad = v.r || cat[3]; const circle = { center: { latitude: v.lat, longitude: v.lon }, radius: rad };
   let req;
   if (f.q) {
     const diet = f.diet ? GP_DIETS.find(x => x[0] === f.diet)[2] + ' ' : '';
-    req = gFetch('https://places.googleapis.com/v1/places:searchText', { textQuery: diet + f.q, maxResultCount: 20, locationBias: { circle: { center: { latitude: v.lat, longitude: v.lon }, radius: 5000 } } }, GP_LIST_MASK);
+    req = gFetch('https://places.googleapis.com/v1/places:searchText', { textQuery: diet + f.q, maxResultCount: 20, locationBias: { circle: { center: { latitude: v.lat, longitude: v.lon }, radius: v.r || 5000 } } }, GP_LIST_MASK);
   } else if (f.diet) {
     const noun = { restaurant: 'restaurants', coffee: 'cafes', bar: 'bars', todo: 'restaurants', hotel: 'restaurants' }[f.cat] || 'restaurants';
     req = gFetch('https://places.googleapis.com/v1/places:searchText', { textQuery: `${GP_DIETS.find(x => x[0] === f.diet)[2]} ${noun}`, maxResultCount: 20, locationBias: { circle } }, GP_LIST_MASK);
@@ -3124,7 +3153,8 @@ function gpSearch(cfg, f, center) {
     const types = f.cuisine && f.cat === 'restaurant' ? [gpCuisineType(f.cuisine)] : cat[2];
     req = gFetch('https://places.googleapis.com/v1/places:searchNearby', { includedTypes: types, maxResultCount: 20, locationRestriction: { circle } }, GP_LIST_MASK);
   }
-  const p = req.then(j => { const d = (j.places || []).map(x => gpRow(x, v)).filter(x => x.lat != null && (f.q || x.d <= cat[3] * 1.8)); LS.set(key, { t: Date.now(), d }); return d; });
+  const from = v.anchor || v; // an area search still measures distance from the venue (or the trip stop)
+  const p = req.then(j => { const d = (j.places || []).map(x => gpRow(x, from)).filter(x => x.lat != null && (f.q || distM(v.lat, v.lon, x.lat, x.lon) <= rad * (v.r ? 1.2 : 1.8))); LS.set(key, { t: Date.now(), d }); return d; });
   memo.set(key, p); p.catch(() => memo.delete(key)); return p;
 }
 function gpDetails(id, session) {
@@ -3215,7 +3245,10 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
     gpDetails(id).then(d => { if (!dlg.open) return; openPlaceDialog(cfg, gpCardHTML(cfg, d), () => mapCtl && mapCtl.focus(d), gPlanPlace(d), art); })
       .catch(() => { if (dlg.open) dlg.querySelector('.pc').insertAdjacentHTML('beforeend', `<p class="muted">${t('Couldn’t load this place right now.')}</p>`); });
   };
-  if (mapCtl) { mapCtl.googleMode(); mapCtl.onPoi((placeId) => art._openGPlace(placeId)); }
+  if (mapCtl) {
+    mapCtl.googleMode(); mapCtl.onPoi((placeId) => art._openGPlace(placeId));
+    mapCtl.onArea((a) => { if (gpBroken) return; const base = art._center && !art._center.r ? art._center : (art._center && art._center.anchor) || v0; art._center = { lat: a.lat, lon: a.lon, r: a.r, anchor: { lat: base.lat, lon: base.lon } }; started = true; load(); });
+  }
   const go = () => { if (started) return; const panel = art.querySelector('[data-panel="nearby"]'); if (panel && panel.hidden) return; started = true; load(); };
   (art._showFns = art._showFns || []).push((k) => { if (k === 'nearby') go(); });
   bodyEl.innerHTML = gpHTML(cfg, art, null);
