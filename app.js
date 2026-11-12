@@ -1357,24 +1357,43 @@ function aboutHTML(cfg) {
   if (cfg.off.about || !(cfg.description || cfg.host)) return '';
   return `${cfg.host ? `<p class="host"><span class="lbl">${t('Hosted by')}</span> ${esc(cfg.host)}</p>` : ''}${cfg.description.split(/\n\s*\n/).filter(Boolean).map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}`;
 }
-const scheduleSecHTML = (cfg) => sec('schedule', t(schedTitle(cfg)), scheduleHTML(cfg) + (cfg.off.schedule ? '' : docsHTML(cfg, ['schedule'])));
+const scheduleSecHTML = (cfg) => sec('schedule', t(schedTitle(cfg)), scheduleHTML(cfg) + (cfg.off.schedule ? '' : docsHTML(cfg, ['schedule'])) + (routeInItin(cfg) && !cfg.off.route ? docsHTML(cfg, ['route']).replace(/^<ul class="docs/, '<ul class="route-docs docs') : ''));
+// trips show their route (cities + dates) as the Itinerary's legs instead of a separate Route section
+const routeInItin = (cfg) => isTrip(cfg) && stopsOf(cfg).length > 0;
+// which leg a day belongs to: the stop whose stay covers it (leave day → next stop), else the nearest dated stop; -1 when no stop has dates
+function legOf(ss, d) {
+  const i = ss.findIndex(s => s.from && s.to && d >= s.from && d < s.to); if (i >= 0) return i;
+  let best = -1, dist = Infinity;
+  ss.forEach((s, j) => { if (!s.from) return; const e = s.to && s.to > s.from ? s.to : s.from; const x = d < s.from ? daysBetween(d, s.from) : d > e ? daysBetween(e, d) : 0; if (x < dist || (x === dist && d >= s.from)) { best = j; dist = x; } });
+  return best;
+}
+// the Itinerary for a trip: one block per route stop (tap → Nearby for that stop), its days under it; undated days last
+function legsHTML(cfg, ss, days, dayHTML) {
+  const by = ss.map(() => []), rest = []; const nb = tabsFor(cfg).some(x => x[0] === 'nearby');
+  days.forEach(e => { const i = e[0] ? legOf(ss, e[0]) : -1; (i >= 0 ? by[i] : rest).push(e); });
+  const head = (s, i) => { const inner = `<span class="route-n">${i + 1}</span><span><b>${esc(s.name)}</b>${stopRange(s) ? `<small>${esc(stopRange(s))}</small>` : ''}</span>`;
+    return s.lat != null && nb ? `<button type="button" class="route-stop leg-h" data-route-stop="${i}">${inner}</button>` : `<div class="route-stop leg-h">${inner}</div>`; };
+  return `<ol class="route legs">${ss.map((s, i) => `<li class="leg">${head(s, i)}${by[i].length ? `<div class="leg-days">${by[i].map(dayHTML).join('')}</div>` : ''}</li>`).join('')}</ol>${rest.map(dayHTML).join('')}`;
+}
 // one schedule: the organizer's items, with the guest's own bookings mixed in
 function scheduleHTML(cfg) {
   const evs = cfg.off.schedule ? [] : cfg.schedule.filter(x => x.title).map(x => ({ ev: true, start: (x.date || '') + (x.date && x.time ? 'T' + x.time : ''), name: x.title, note: x.note, kind: x.kind || '' }));
   const mine = cfg.tools.mytrip ? itinLoad(cfg).map((x, i) => ({ ...x, i })).concat(planLoad(cfg).filter(x => x.day).map(x => ({ kind: '', name: x.name, start: x.day + (x.time ? 'T' + x.time : ''), confNo: x.booked ? x.conf : '', note: x.note }))) : [];
-  if (!evs.length && !mine.length) return '';
+  const legs = routeInItin(cfg) && !cfg.off.route ? stopsOf(cfg) : null;
+  if (!evs.length && !mine.length && !legs) return '';
   const view = mine.length ? (LS.get('schedview:' + itinKey(cfg)) || 'all') : 'all';
   const key = (x) => x.ev && isTrip(cfg) ? (x.start || '9999').slice(0, 10) : (x.start || '9999');
   const all = (view === 'event' ? evs : evs.concat(mine)).sort((a, b) => (a.start || '9999').slice(0, 10).localeCompare((b.start || '9999').slice(0, 10)) || key(a).localeCompare(key(b)));
   const days = {}; all.forEach(x => (days[(x.start || '').slice(0, 10)] = days[(x.start || '').slice(0, 10)] || []).push(x));
   const tm = (s) => fmtTime((s || '').slice(11, 16));
-  return `${mine.length ? `<div class="seg2 sched-seg" role="group"><button type="button" data-sched="all" class="${view === 'all' ? 'on' : ''}" aria-pressed="${view === 'all'}">${t('Everything')}</button><button type="button" data-sched="event" class="${view === 'event' ? 'on' : ''}" aria-pressed="${view === 'event'}">${t('Event only')}</button></div>` : ''}
-  ${Object.entries(days).map(([d, xs]) => `<div class="day"><h3 class="day-h">${d ? `${isTrip(cfg) && cfg.start && d >= cfg.start.slice(0, 10) ? `<span class="dayn">${esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 }))}</span> ` : ''}${esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' }))}${stopsOf(cfg).length > 1 && stopFor(cfg, d) ? ` <span class="day-city">${esc(stopFor(cfg, d).name)}</span>` : ''}` : t('Anytime')}</h3><ol class="tl">${xs.map(x => {
+  const dayHTML = ([d, xs]) => `<div class="day"><h3 class="day-h">${d ? `${isTrip(cfg) && cfg.start && d >= cfg.start.slice(0, 10) ? `<span class="dayn">${esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 }))}</span> ` : ''}${esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' }))}${!legs && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? ` <span class="day-city">${esc(stopFor(cfg, d).name)}</span>` : ''}` : t('Anytime')}</h3><ol class="tl">${xs.map(x => {
     if (x.ev) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"><time>${esc(tm(x.start)) || (isTrip(cfg) ? '' : '—')}</time><div><b>${esc(x.name)}${x.kind && x.kind !== 'activity' ? ` <em class="kind">${esc(t(PLAN_KINDS[x.kind] || ''))}</em>` : ''}</b>${x.note ? `<span>${esc(x.note)}</span>` : ''}</div></li>`;
     const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
     const until = x.end ? (x.end.slice(0, 10) !== (x.start || '').slice(0, 10) ? t('until {d}', { d: fmt(x.end.slice(0, 10), { month: 'short', day: 'numeric' }) }) : t('until {d}', { d: tm(x.end) })) : '';
     return `<li class="mine"><time>${esc(tm(x.start)) || '—'}</time><div><b>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))} <em class="yours">${t('Yours')}</em></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), until, x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>${fl.status ? ext(fl.status, t('Flight status') + ' ↗', 'tl-link') : ''}</div></li>`;
-  }).join('')}</ol></div>`).join('')}`;
+  }).join('')}</ol></div>`;
+  return `${mine.length ? `<div class="seg2 sched-seg" role="group"><button type="button" data-sched="all" class="${view === 'all' ? 'on' : ''}" aria-pressed="${view === 'all'}">${t('Everything')}</button><button type="button" data-sched="event" class="${view === 'event' ? 'on' : ''}" aria-pressed="${view === 'event'}">${t('Event only')}</button></div>` : ''}
+  ${legs ? legsHTML(cfg, legs, Object.entries(days), dayHTML) : Object.entries(days).map(dayHTML).join('')}`;
 }
 function stubSideHTML(cfg, ap) {
   const v = cfg.venue;
@@ -1458,7 +1477,7 @@ function myTripTabHTML(cfg) {
 }
 function eventTabHTML(cfg) {
   const parts = {
-    route: () => sec('route', t('Route'), routeGuestHTML(cfg) + (cfg.off.route ? '' : docsHTML(cfg, ['route']))),
+    route: () => routeInItin(cfg) ? '' : sec('route', t('Route'), routeGuestHTML(cfg) + (cfg.off.route ? '' : docsHTML(cfg, ['route']))),
     about: () => sec('about', t('About'), aboutHTML(cfg) + (cfg.off.about ? '' : docsHTML(cfg, ['about']))),
     details: () => sec('details', t('Need to know'), needToKnowHTML(cfg)),
     rsvp: () => '<div data-slot="rsvp-wrap"></div>',
@@ -1466,7 +1485,9 @@ function eventTabHTML(cfg) {
     schedule: () => `<div data-slot="schedule-wrap">${scheduleSecHTML(cfg)}</div>`,
     weather: () => cfg.venue && cfg.start && cfg.tools.weather ? sec('weather', t('Weather'), `<div data-slot="weather"><div class="skel" role="status"><span></span><span></span><em>${t('Loading weather…')}</em></div></div>`) : '',
   };
-  return sectionOrder(cfg).map(id => parts[id] ? parts[id]() : customSecHTML(cfg, id)).join('');
+  // trips: the route lives inside the Itinerary, which takes whichever of the two slots comes first
+  const o = sectionOrder(cfg); if (routeInItin(cfg) && o.indexOf('route') < o.indexOf('schedule')) { o.splice(o.indexOf('schedule'), 1); o.splice(o.indexOf('route'), 1, 'schedule'); }
+  return o.map(id => parts[id] ? parts[id]() : customSecHTML(cfg, id)).join('');
 }
 function renderEvent(cfg, root, opts = {}) {
   const seq = ++renderSeq;
@@ -1506,7 +1527,7 @@ function renderEvent(cfg, root, opts = {}) {
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-gpid]'); if (b && art._openGPlace) art._openGPlace(b.dataset.gpid); });
   wireEvent(cfg, art, seq, air, opts);
   if (opts.hosted && typeof wireHosted === 'function') wireHosted(cfg, art, opts.hosted, opts);
-  art.addEventListener('click', (e) => { const b = e.target.closest('[data-route-stop]'); if (!b) return; showTab(art, 'nearby', opts); const c2 = art.querySelector(`[data-gp-stop="${b.dataset.routeStop}"]`); if (c2) c2.click(); });
+  art.addEventListener('click', (e) => { const b = e.target.closest('[data-route-stop]'); if (!b || !art.querySelector('[data-panel="nearby"]')) return; showTab(art, 'nearby', opts); const c2 = art.querySelector(`[data-gp-stop="${b.dataset.routeStop}"]`); if (c2) c2.click(); });
 }
 function showTab(art, k, opts = {}) {
   $$('.ev-panel', art).forEach(p => { p.hidden = p.dataset.panel !== k; });
@@ -4492,7 +4513,7 @@ function coverFieldHTML(c) {
 function designHTML(c) {
   const th = c.theme; const order = sectionOrder(c);
   const lab = Object.fromEntries(EVENT_SECTIONS);
-  lab.schedule = schedTitle(c); (c.custom || []).forEach(x => { lab[customSid(x)] = x.title; });
+  lab.schedule = schedTitle(c); if (isTrip(c)) lab.route = 'Route (shown in Itinerary)'; (c.custom || []).forEach(x => { lab[customSid(x)] = x.title; });
   const pre = THEME_PRESETS.find(([, p]) => sameTheme(th, p)); const known = !!COLOR_NAME[th.accent.toLowerCase()]; const custom = !known || (B && B.customColor);
   const sel = (id, key, prev, opts) => `<div class="dsel">${prev}<select id="${id}" data-d="${key}">${opts}</select></div>`;
   return `<div class="dgrid">

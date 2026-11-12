@@ -76,7 +76,8 @@ function fakeSupabase(user) {
     if (OLD_BASE) {
       const panels = async (b, id) => { await page.goto(b + '#ex=' + id); await page.waitForSelector('.ev-body'); await page.waitForTimeout(400);
         return page.$$eval('.ev-panel', ps => ps.map(p => p.innerHTML.replace(/<div data-slot="(weather|map|food|legend|pack-list|pack-sum|rental|flights|stays|trains)"[\s\S]*?<\/div>/g, '').length)); };
-      for (const id of ids) { const a = await panels(OLD_BASE, id), b = await panels(BASE, id); ok(JSON.stringify(a) === JSON.stringify(b), `${id}: panels match the previous build (${a} vs ${b})`); }
+      for (const id of ids) { const a = await panels(OLD_BASE, id), b = await panels(BASE, id); if (await page.evaluate((id) => { const c = window.EXAMPLES[id]; return c.type === 'Trip' && (c.stops || []).some(s => s && s.name); }, id)) { a[0] = b[0]; } // trips with a route: the Event tab now shows the route inside the Itinerary (tests/itinerary-route.js)
+        ok(JSON.stringify(a) === JSON.stringify(b), `${id}: panels match the previous build (${a} vs ${b})`); }
     }
     await ctx.close();
   }
@@ -236,16 +237,16 @@ function fakeSupabase(user) {
     await ctx.close();
     for (const w of [390, 320]) {
       const { ctx, page } = await mk(w);
-      await page.goto(BASE + '#e=' + packed); await page.waitForSelector('#sec-route'); await page.waitForTimeout(500);
-      const d = await page.$eval('#sec-route .docs li', li => ({ name: li.querySelector('b').textContent, view: li.querySelectorAll('.doc-a a')[0].textContent, vh: li.querySelectorAll('.doc-a a')[0].href, dl: li.querySelectorAll('.doc-a a')[1].textContent, dh: li.querySelectorAll('.doc-a a')[1].href, tgt: li.querySelector('.doc-main').target }));
+      await page.goto(BASE + '#e=' + packed); await page.waitForSelector('#sec-schedule .route-docs'); await page.waitForTimeout(500);
+      const d = await page.$eval('#sec-schedule .route-docs li', li => ({ name: li.querySelector('b').textContent, view: li.querySelectorAll('.doc-a a')[0].textContent, vh: li.querySelectorAll('.doc-a a')[0].href, dl: li.querySelectorAll('.doc-a a')[1].textContent, dh: li.querySelectorAll('.doc-a a')[1].href, tgt: li.querySelector('.doc-main').target }));
       ok(d.name === 'Japan itinerary.pdf' && d.view === 'View' && d.dl === 'Download' && d.tgt === '_blank' && /\?download=Japan%20itinerary\.pdf$/.test(d.dh) && d.vh.startsWith(SBURL), `@${w} route document ${JSON.stringify(d)}`);
       const cs = cfgAfter.custom.find(x => x.title === 'Emergency contacts' && cfgAfter.files.some(f => f.sec === 'c-' + x.id));
       ok(!!(await page.$(`#sec-c-${cs.id} .docs li`)), `@${w} custom section shows its document`);
       const of = await overflow(page); ok(of.length === 0, `@${w} guest page: no overflow ${of.join(' ')}`);
-      if (SHOTS) { await page.locator('#sec-route').scrollIntoViewIfNeeded(); await page.locator('#sec-route').screenshot({ path: `${SHOTS}/doc-guest-route-${w}.png` }); }
+      if (SHOTS) { await page.locator('#sec-schedule').scrollIntoViewIfNeeded(); await page.locator('#sec-schedule').screenshot({ path: `${SHOTS}/doc-guest-route-${w}.png` }); }
       if (w === 320) { // guest language: labels translated, file name as written
-        await page.goto(BASE + '?lang=es#e=' + packed); await page.waitForSelector('#sec-route .docs'); await page.waitForTimeout(300);
-        const es = await page.$$eval('#sec-route .doc-a a', as => as.map(a => a.textContent).join('|'));
+        await page.goto(BASE + '?lang=es#e=' + packed); await page.waitForSelector('#sec-schedule .route-docs'); await page.waitForTimeout(300);
+        const es = await page.$$eval('#sec-schedule .route-docs .doc-a a', as => as.map(a => a.textContent).join('|'));
         ok(es === 'Ver|Descargar', `es labels ${es}`);
       }
       await ctx.close();
