@@ -807,7 +807,7 @@ function tripDates(cfg) {
 }
 // ---------- travel mode filter (multi-select; nothing picked = everything) ----------
 const TRAVEL_MODES = [['fly', 'Flying'], ['train', 'Train'], ['rental', 'Rental car'], ['drive', 'Driving'], ['transit', 'Transit']];
-const eventKey = (cfg) => 'modes:' + Math.abs([...(cfg.title || '') + (cfg.start || '') + (cfg.venue ? cfg.venue.name : '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)).toString(36);
+const eventKey = (cfg) => cfg._ek || 'modes:' + Math.abs([...(cfg.title || '') + (cfg.start || '') + (cfg.venue ? cfg.venue.name : '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)).toString(36);
 const RAIL_CC = new Set(['jp', 'kr', 'cn', 'tw', 'in', 'ca', 'au']);
 const hasTrains = (v, cfg) => v.cc === 'us' || TRAINLINE_CC.has(v.cc) || RAIL_CC.has(v.cc) || (cfg && stopsOf(cfg).length > 1);
 function travelModes(cfg, air) {
@@ -1518,7 +1518,8 @@ function nearbyTabHTML(cfg) {
 }
 function bookingsHTML(cfg) {
   const items = itinLoad(cfg); const air = cfg.tools && cfg.tools.travel ? airFor(cfg) : [];
-  return `${air.length ? `<div class="ap-mine" data-slot="ap-mine">${airportSelHTML(cfg, air, chosenAirport(cfg, air), true)}</div>` : ''}${items.length ? `<ul class="plist rich bookings">${items.map((x, i) => {
+  const order = items.map((x, i) => [x, i]).sort((a, b) => (a[0].start || '9999').localeCompare(b[0].start || '9999') || a[1] - b[1]); // by departure / start; i stays the stored index (Edit)
+  return `${air.length ? `<div class="ap-mine" data-slot="ap-mine">${airportSelHTML(cfg, air, chosenAirport(cfg, air), true)}</div>` : ''}${items.length ? `<ul class="plist rich bookings">${order.map(([x, i]) => {
     const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
     const when = x.start ? fmt(x.start.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' }) + (x.start.length > 10 ? ' · ' + fmtTime(x.start.slice(11, 16)) : '') : '';
     const via = viaOf(x); const viaUrl = via && via.url;
@@ -1555,11 +1556,14 @@ function eventTabHTML(cfg) {
 const isCoarseVenue = (v) => !!v && (!v.city || (!!v.country && v.name.trim().toLowerCase() === v.country.trim().toLowerCase()));
 function tripView(cfg) {
   if (!isTrip(cfg)) return cfg;
-  const ds = stopsOf(cfg).flatMap(x => [x.from, x.to]).filter(isoDay).sort();
+  // evidence: route legs, the guest's own flights (departure dates), the itinerary's dated items (outliers dropped)
+  const fl = itinLoad(cfg).filter(x => x.kind === 'flight').map(x => (x.start || '').slice(0, 10));
+  const sp = tripSpan(stopsOf(cfg).flatMap(x => [x.from, x.to]).concat(fl, (cfg.schedule || []).map(x => x.date)).filter(isoDay));
+  const ds = sp ? sp : [];
   if (ds.length >= 2 && cfg.start) { const rs = ds[0], re = ds[ds.length - 1], s0 = cfg.start.slice(0, 10), e0 = (cfg.end || cfg.start).slice(0, 10);
-    if (rs < s0 || re > e0) { // the stored dates don't cover the route: mostly-overlapping → widen; barely (a misread date) → the route's own span
+    if (daysBetween(rs, s0) > 1 || daysBetween(e0, re) > 1) { // more than a day outside (a red-eye the night before doesn't move the trip) // the stored dates don't cover the route: mostly-overlapping → widen; barely (a misread date) → the route's own span
       const ov = Math.max(0, daysBetween(rs > s0 ? rs : s0, re < e0 ? re : e0)); const keep = ov * 2 >= daysBetween(rs, re);
-      cfg = { ...cfg, start: keep && s0 < rs ? s0 : rs, end: keep && e0 > re ? e0 : re }; } }
+      cfg = { ...cfg, _ek: eventKey(cfg), start: keep && s0 < rs ? s0 : rs, end: keep && e0 > re ? e0 : re }; } }
   const v = cfg.venue; const s = stopsOf(cfg).find(x => x.lat != null);
   if (!s || (v && !isCoarseVenue(v))) return cfg;
   return { ...cfg, venue: { ...(v || {}), name: v ? v.name : s.name, address: s.address || s.name, lat: s.lat, lon: s.lon, city: s.city || s.name, region: s.region || '', country: s.country || (v && v.country) || '', cc: s.cc || (v && v.cc) || '', pinName: s.name, zoom: 13 } };
@@ -3647,9 +3651,8 @@ function planHTML(cfg) {
   if (view === 'type') {
     groups = PTYPES.map(([ty]) => [tlabel(ty), xs.filter(x => x.type === ty).sort((a, b) => (a.day || '9999').localeCompare(b.day || '9999') || byTime(a, b))]).filter(([, g]) => g.length);
   } else {
-    const inDays = days.map(d => [dayLabel(cfg, d), xs.filter(x => x.day === d).sort(byTime)]).filter(([, g]) => g.length);
-    const other = xs.filter(x => x.day && !days.includes(x.day)).sort((a, b) => a.day.localeCompare(b.day) || byTime(a, b));
-    groups = inDays.concat(other.length ? [[t('Other days'), other]] : [], [[t('Saved for later'), xs.filter(x => !x.day).sort(byTime)]]).filter(([, g]) => g.length);
+    const dated = [...new Set(xs.filter(x => x.day).map(x => x.day))].sort();
+    groups = dated.map(d => [dayLabel(cfg, d), xs.filter(x => x.day === d).sort(byTime)]).concat([[t('Saved for later'), xs.filter(x => !x.day).sort(byTime)]]).filter(([, g]) => g.length);
   }
   return `<div class="plan-tools"><div class="seg2" role="group" aria-label="${t('View')}"><button type="button" data-plan-view="day" class="${view === 'day' ? 'on' : ''}" aria-pressed="${view === 'day'}">${t('By day')}</button><button type="button" data-plan-view="type" class="${view === 'type' ? 'on' : ''}" aria-pressed="${view === 'type'}">${t('By type')}</button></div>
       <div class="chips plan-chips">${PTYPES.filter(([ty]) => counts[ty]).map(([ty, l]) => `<button type="button" class="chip ${on.includes(ty) ? 'on' : ''}" data-plan-chip="${ty}" aria-pressed="${on.includes(ty)}">${t(l)} <span>${counts[ty]}</span></button>`).join('')}</div></div>
@@ -4219,6 +4222,7 @@ function withIds(cfg) { // bookings had no ids before sync existed
 }
 async function syncUser() { if (!SB || !LS.get('signedIn') || syncOff()) return null; try { return await sbUser(); } catch { return null; } }
 const syncPush = debounce(async (cfg) => {
+  if (cfg.demoTrip) return; // example page: its sample My trip stays out of the visitor's account
   const u = await syncUser(); if (!u) return; const c = await sb(); const key = syncKey(cfg);
   const rows = withIds(cfg).map(x => ({ id: x.id, page_key: key, kind: 'booking', item: x, updated_at: new Date().toISOString() }))
     .concat(planLoad(cfg).map(x => ({ id: x.id, page_key: key, kind: 'place', item: x, updated_at: new Date().toISOString() })))
@@ -4229,6 +4233,7 @@ const syncPush = debounce(async (cfg) => {
   await q;
 }, 800);
 async function syncPull(cfg, art) {
+  if (cfg.demoTrip) return;
   const u = await syncUser(); if (!u) return; const c = await sb(); const key = syncKey(cfg);
   const { data, error } = await c.from('trip_items').select('id,page_key,kind,item,source').in('page_key', [key, 'inbox']);
   if (error) { if (tableMissing(error)) LS.set('syncOff', Date.now()); return; }
