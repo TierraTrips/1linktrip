@@ -1013,6 +1013,8 @@ function wireGuestMsgs(cfg, art, hosted) {
     const seenKey = 'msgSeen:' + hosted.id;
     const paint = () => {
       const ev = art.querySelector('[data-slot="gm-ev"]'); const wrap = art.querySelector('[data-slot="gm-trip-wrap"]');
+      // a refresh never loses what the guest is typing
+      const keep = $$('[data-gm-send]', art).map(b => { const ta = art.querySelector('#gm-' + b.dataset.gmSend); return ta && [ta.id, ta.value, document.activeElement === ta, ta.selectionStart]; }).filter(Boolean);
       const gname = (ids) => (ids || []).map(id => (G.groups.find(g => g.id === id) || {}).name).filter(Boolean).join(', ');
       const anns = G.anns.length ? `<ul class="ann-list gm-anns">${G.anns.map(a => `<li><time>${esc(fmtStamp(a.created_at))}${gname(a.group_ids) ? ' · ' + esc(gname(a.group_ids)) : ''}</time><p>${esc(a.body)}</p></li>`).join('')}</ul>` : '';
       const thread = msgListHTML(G.rows, cfg, false);
@@ -1023,8 +1025,9 @@ function wireGuestMsgs(cfg, art, hosted) {
       }
       if (wrap) {
         const show = G.user && (on || G.rows.length || G.anns.length);
-        wrap.innerHTML = show ? sec('gmt', t('Messages'), `${anns}${thread}${on || G.rows.length ? msgComposeHTML('trip', t('Write a message'), t('Send')) : ''}`, 'gm-sec') : '';
+        wrap.innerHTML = show ? sec('gmt', t('Messages'), `${anns}${thread}${on ? msgComposeHTML('trip', t('Write a message'), t('Send')) : ''}`, 'gm-sec') : '';
       }
+      keep.forEach(([id, v, f, pos]) => { const ta = art.querySelector('#' + id); if (!ta) return; ta.value = v; if (f) { ta.focus(); try { ta.setSelectionRange(pos, pos); } catch {} } });
       const newest = G.rows.filter(r => r.from_host).concat(G.anns).map(r => r.created_at).sort().pop() || '';
       const tab = art.querySelector('[data-tab-go="mytrip"][role="tab"]'); if (tab) tab.classList.toggle('has-new', !!newest && newest > (LS.get(seenKey) || ''));
       const tp = art.querySelector('.ev-panel[data-panel="mytrip"]'); if (tp && !tp.hidden && newest) { LS.set(seenKey, newest); if (tab) tab.classList.remove('has-new'); }
@@ -1767,7 +1770,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   sh.addEventListener('click', (e) => { if (e.target === sh) sh.close(); });
   wireInputs(sh.querySelector('.sheet-in'));
   if (typeof wirePubHost === 'function') wirePubHost();
-  if (SB) msgReady().then(ok => { if (ok && B && !$('[data-card="msgs"]')) buildForm(); });
+  if (SB && (LS.get('signedIn') || B.hosted)) msgReady().then(ok => { if (ok && B && !$('[data-card="msgs"]')) buildForm(); }); // no network for signed-out drafts
   if (LS.get('signedIn') && SB) aiModes().then(m => { if (m.includes('translate') && B && !$('[data-card="langs"]')) buildForm(); });
   preview();
   if (window.__openCard) { const id = window.__openCard; window.__openCard = null; openCard(id); }

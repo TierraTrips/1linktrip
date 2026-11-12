@@ -160,6 +160,9 @@ const shot = async (loc, name) => { if (SHOTS) await loc.screenshot({ path: `${S
     ok(!/host@example\.com/.test(await page.content()), 'the host’s email is nowhere on the guest page');
     ok(!(await page.$eval('[data-tab-go="mytrip"][role="tab"]', b => b.classList.contains('has-new'))), 'opening My trip clears the dot');
     await page.locator('#sec-gmt').screenshot(SHOTS ? { path: `${SHOTS}/guest-mytrip-messages.png` } : {});
+    await page.fill('#gm-trip', 'Half-typed'); await page.focus('#gm-trip');
+    await page.evaluate(() => document.querySelector('.ev')._gmLoad()); await page.waitForTimeout(300);
+    ok(await page.$eval('#gm-trip', ta => ta.value === 'Half-typed' && document.activeElement === ta), 'a refresh keeps what the guest is typing');
     const ov = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     ok(ov <= 0, 'no sideways scroll at 390px on My trip');
     ok(!errors.length, 'guest signed in: no script errors ' + errors.join(' | '));
