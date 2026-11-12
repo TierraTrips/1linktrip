@@ -317,9 +317,12 @@ const TRAINLINE_CC = new Set(['gb', 'fr', 'de', 'it', 'es', 'nl', 'be', 'at', 'c
 const venueLine = (v) => v ? [v.name, v.address && !v.address.startsWith(v.name) ? v.address : (v.address && v.address !== v.name ? v.address : '')].filter(Boolean).join(', ') : '';
 const placeLabel = (v) => [v.city, v.cc === 'us' ? v.region : v.country].filter(Boolean).join(', ');
 
+// brand lockup: a dotted route ending at a pin, then the wordmark "Plan" + superscript "EZR"
+const BRAND = '<svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true" focusable="false"><path d="M8.5 31.5C15 32 13 21 20 21.5s8 2.8 9.6-.6" fill="none" stroke="#E2572F" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="0.1 5"/><circle cx="8.5" cy="31.5" r="3.6" fill="currentColor"/><path d="M30 5.5a7.2 7.2 0 0 1 7.2 7.2c0 5.3-7.2 11.8-7.2 11.8s-7.2-6.5-7.2-11.8A7.2 7.2 0 0 1 30 5.5z" fill="currentColor"/><circle cx="30" cy="12.7" r="2.7" fill="#EEF1E8"/></svg><span class="wm"><em>Plan</em><span class="z">EZR</span></span>';
 // ---------- event model ----------
 const FONTS = {
-  grotesk: { label: 'Grotesk', css: "'Bricolage Grotesque', system-ui, sans-serif", gf: null },
+  field: { label: 'Field', css: "'Newsreader', Georgia, serif", gf: null },
+  grotesk: { label: 'Grotesk', css: "'Bricolage Grotesque', system-ui, sans-serif", gf: 'Bricolage+Grotesque:opsz,wght@12..96,400..800' },
   serif: { label: 'Editorial serif', css: "'Fraunces', Georgia, serif", gf: 'Fraunces:opsz,wght@9..144,400..800' },
   classic: { label: 'Classic', css: "'Cormorant Garamond', Georgia, serif", gf: 'Cormorant+Garamond:wght@500;600;700' },
   condensed: { label: 'Poster', css: "'Big Shoulders Display', 'Arial Narrow', sans-serif", gf: 'Big+Shoulders+Display:wght@600..900' },
@@ -369,7 +372,7 @@ const typeSpec = (cfg) => TYPE_FIELDS[cfg.type] || null;
 const typeData = (cfg) => (cfg.x && cfg.x[cfg.type]) || {};
 const filled = (kind, val) => kind === 'links' ? (val || []).some(l => l.label && l.url) : kind === 'place' ? !!(val && val.q) : !!(val && String(val).trim());
 const hasTypeInfo = (cfg) => { const sp = typeSpec(cfg), d = typeData(cfg); return !!sp && sp.fields.some(([k, , kind]) => filled(kind, d[k])); };
-const SWATCHES = ['#3048F0', '#0B7A75', '#FF6B35', '#C2185B', '#6D28D9', '#B8860B', '#1F2937', '#2E7D32'];
+const SWATCHES = ['#1F3A2E', '#0B7A75', '#FF6B35', '#C2185B', '#6D28D9', '#B8860B', '#1F2937', '#2E7D32'];
 
 const packEvent = (c) => LZString.compressToEncodedURIComponent(JSON.stringify(c));
 function unpackEvent(s) { try { const j = LZString.decompressFromEncodedURIComponent(s); return j ? normalize(JSON.parse(j)) : null; } catch { return null; } }
@@ -386,7 +389,7 @@ function onAccent(hex) {
   const lum = 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
   return lum > 0.36 ? '#111318' : '#ffffff';
 }
-const themeStyle = (t) => `--accent:${t.accent};--on-accent:${onAccent(t.accent)};--display:${FONTS[t.font]?.css || FONTS.grotesk.css}`;
+const themeStyle = (t) => `--accent:${t.accent};--on-accent:${onAccent(t.accent)};--display:${FONTS[t.font]?.css || FONTS.field.css}`;
 
 // ---------- ICS ----------
 function icsText(cfg, url) {
@@ -855,7 +858,7 @@ function renderLanding() {
   const draft = LS.get('draft');
   $('#app').innerHTML = `
   <main class="land home">
-    <header class="land-top"><a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>PlanEZR</a><span class="land-nav">${LS.get('signedIn') ? '<a class="link" href="#mine">My pages</a>' : ''}<button type="button" class="btn sm" id="share-app">Share</button><a class="btn primary top-cta" href="#setup" aria-hidden="true" tabindex="-1">Create a page</a></span></header>
+    <header class="land-top"><a class="brand" href="#">${BRAND}</a><span class="land-nav">${LS.get('signedIn') ? '<a class="link" href="#mine">My pages</a>' : ''}<button type="button" class="btn sm" id="share-app">Share</button><a class="btn primary top-cta" href="#setup" aria-hidden="true" tabindex="-1">Create a page</a></span></header>
     <section class="land-hero">
       <div class="land-copy">
         <h1><em>One link</em> for your guests’ whole trip.</h1>
@@ -915,7 +918,7 @@ async function pinPlace(k, btn) {
 }
 // ---------- router ----------
 function renderBroken() {
-  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#"><span class="brand-mark"></span>PlanEZR</a></header><section class="broken"><h1>This link is incomplete.</h1><p class="lede">The event is stored inside the link, and part of it is missing. Ask whoever sent it to copy the whole link again.</p><a class="btn primary" href="#">Go to PlanEZR</a></section></main>`;
+  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a></header><section class="broken"><h1>This link is incomplete.</h1><p class="lede">The event is stored inside the link, and part of it is missing. Ask whoever sent it to copy the whole link again.</p><a class="btn primary" href="#">Go to PlanEZR</a></section></main>`;
 }
 
 // ================= v2: defaults, guest tabs, editor gallery, setup flow =================
@@ -929,14 +932,14 @@ const TYPE_DEFAULTS = {
   Trip: { theme: { accent: '#1E7FA8', font: 'serif', mode: 'light' }, off: [], order: ['route', 'schedule', 'about', 'details', 'weather', 'access', 'rsvp'] },
   Wedding: { theme: { accent: '#0B7A75', font: 'serif', mode: 'light' }, off: [] },
   Race: { theme: { accent: '#2E7D32', font: 'wide', mode: 'light' }, off: ['tours'] },
-  Conference: { theme: { accent: '#3048F0', font: 'grotesk', mode: 'light' }, off: ['packing'] },
+  Conference: { theme: { accent: '#1F3A2E', font: 'field', mode: 'light' }, off: ['packing'] },
   Concert: { theme: { accent: '#FF6B35', font: 'condensed', mode: 'dark' }, off: ['stay'] },
   Performance: { theme: { accent: '#6D28D9', font: 'classic', mode: 'light' }, off: ['stay'] },
   Hyrox: { theme: { accent: '#FFD100', font: 'condensed', mode: 'dark' }, off: ['tours'] },
   Festival: { theme: { accent: '#FF6B35', font: 'condensed', mode: 'dark' }, off: [] },
   'Sporting event': { theme: { accent: '#C2185B', font: 'condensed', mode: 'dark' }, off: ['stay', 'packing'] }
 };
-const typeDefaults = (type) => TYPE_DEFAULTS[type] || { theme: { accent: '#3048F0', font: 'grotesk', mode: 'light' }, off: [] };
+const typeDefaults = (type) => TYPE_DEFAULTS[type] || { theme: { accent: '#1F3A2E', font: 'field', mode: 'light' }, off: [] };
 const defaultTools = (type) => Object.fromEntries(TOOLS.map(([k]) => [k, !typeDefaults(type).off.includes(k)]));
 const TYPE_ICONS = {
   Wedding: '<circle cx="9" cy="14" r="5"/><circle cx="15" cy="14" r="5"/><path d="M10 5l2-2 2 2-2 2z"/>',
@@ -951,7 +954,7 @@ const TYPE_ICONS = {
   Party: '<path d="M4 20l5-14 9 9z"/><path d="M14 3v2M19 8h2M17.5 4.5l-1.4 1.4"/>',
 };
 const SETUP_TYPES = [['Wedding', 'Wedding', 'RSVP, room block, dress code', '#0B7A75'], ['Race', 'Race', 'Start, finish, packet pickup', '#2E7D32'],
-  ['Conference', 'Conference', 'Badges, agenda, speakers', '#3048F0'], ['Concert', 'Concert', 'Doors, set times, bag policy', '#FF6B35'],
+  ['Conference', 'Conference', 'Badges, agenda, speakers', '#1F3A2E'], ['Concert', 'Concert', 'Doors, set times, bag policy', '#FF6B35'],
   ['Festival', 'Festival', 'Stages, multi-day', '#B8860B'], ['Sporting event', 'Game day', 'Seats, tailgating, parking', '#C2185B'],
   ['Performance', 'Performance', 'Recital, show, call time', '#6D28D9'], ['Hyrox', 'Hyrox', 'Wave, check-in, bag drop', '#FFD100'],
   ['Party', 'Something else', 'Party, reunion, retreat', '#1F2937'], ['Trip', 'Vacation / Trip', 'Day by day, stays, packing', '#1E7FA8']];
@@ -1038,7 +1041,7 @@ function normalize(c) {
 // ---------- guest view ----------
 const TABS = [['event', 'Event'], ['travel', 'Travel'], ['nearby', 'Nearby'], ['mytrip', 'My trip']];
 const TAB_ICONS = {
-  event: '<rect x="3" y="7" width="18" height="12" rx="2"/><path d="M15 7v12" stroke-dasharray="2 2"/>',
+  event: '<path d="M6 21V4"/><path d="M6 4h12l-2.5 4.5L18 13H6"/>',
   travel: '<path d="M2 16l20-6-3-3-6 2-6-5-2 1 4 6-4 1-2-2-1 1z"/>',
   nearby: '<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
   mytrip: '<rect x="4" y="4" width="16" height="17" rx="2"/><path d="M8 2v4M16 2v4M8 12l2.5 2.5L16 9"/>'
@@ -1377,7 +1380,7 @@ function renderViewer(cfg, { exampleId, tab } = {}) {
   document.title = (cfg.title || 'Event') + ' · PlanEZR';
   const packed = location.hash.split('&t=')[0].slice(3);
   const editHref = exampleId ? `#edit-ex=${exampleId}` : `#edit=${packed}`;
-  $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#"><span class="brand-mark" aria-hidden="true"></span>PlanEZR</a>${exampleId ? `<span class="vbar-note">${t('Example page')}</span>` : ''}<a class="btn sm" href="${editHref}">${exampleId ? t('Customize this') : t('Edit a copy')}</a></div><div id="ev-root"></div></div>`;
+  $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#">${BRAND}</a>${exampleId ? `<span class="vbar-note">${t('Example page')}</span>` : ''}<a class="btn sm" href="${editHref}">${exampleId ? t('Customize this') : t('Edit a copy')}</a></div><div id="ev-root"></div></div>`;
   $('.vbar').insertAdjacentHTML('beforeend', langSelectHTML(cfg));
   renderEvent(translatedView(cfg, LANG), $('#ev-root'), { tab, src: cfg });
   const foot = $('.ev-foot a'); if (foot && exampleId) foot.setAttribute('href', editHref);
@@ -1395,7 +1398,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   $('#app').innerHTML = `
   <div class="builder" data-tab="edit">
     <header class="b-top">
-      <a class="brand sm" href="#"><span class="brand-mark" aria-hidden="true"></span>PlanEZR</a>
+      <a class="brand sm" href="#">${BRAND}</a>
       <div class="seg" role="tablist"><button role="tab" data-tab="edit" aria-selected="true">Edit</button><button role="tab" data-tab="preview" aria-selected="false">Preview</button></div>
       <button class="btn primary sm" data-act="publish">Share</button>
     </header>
@@ -1625,7 +1628,7 @@ function suTicket(c) {
 function suRender() {
   const c = SU.cfg; const n = SU.step; const m = $('.su-main'); if (!m) return;
   const prog = `<div class="prog" aria-hidden="true">${[0, 1, 2, 3].map(i => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</div>`;
-  const top = `<div class="su-top">${n > 0 && n < 3 ? '<button type="button" class="link" data-su="back">← Back</button>' : '<a class="brand sm" href="#"><span class="brand-mark" aria-hidden="true"></span>PlanEZR</a>'}${n === 2 ? '<button type="button" class="link strong" data-su="skip">Skip</button>' : ''}</div>`;
+  const top = `<div class="su-top">${n > 0 && n < 3 ? '<button type="button" class="link" data-su="back">← Back</button>' : '<a class="brand sm" href="#">' + BRAND + '</a>'}${n === 2 ? '<button type="button" class="link strong" data-su="skip">Skip</button>' : ''}</div>`;
   let h = '', body = '', cta = '';
   if (n === 0) {
     h = 'What are you planning?';
@@ -1958,7 +1961,7 @@ const fmtStamp = (iso) => { try { return new Intl.DateTimeFormat(LOCALES[LANG] |
 // ---------- guest side: a hosted page ----------
 async function renderHosted(slug, tab) {
   LANG = pickLang(); document.documentElement.lang = LANG;
-  $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#"><span class="brand-mark" aria-hidden="true"></span>PlanEZR</a></div><div id="ev-root"><div class="skel" role="status"><span></span><span></span><em>${t('Loading…')}</em></div></div></div>`;
+  $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#">${BRAND}</a></div><div id="ev-root"><div class="skel" role="status"><span></span><span></span><em>${t('Loading…')}</em></div></div></div>`;
   let row = null;
   try { row = await fetchHosted(slug); }
   catch { return hostedProblem(t('Couldn’t load this page. Check your connection and try again.'), true); }
@@ -1974,7 +1977,7 @@ async function renderHosted(slug, tab) {
   window.scrollTo(0, 0);
 }
 function hostedProblem(msg, retry) {
-  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#"><span class="brand-mark"></span>PlanEZR</a></header><section class="broken"><h1>${esc(msg)}</h1>${retry ? `<button class="btn primary" onclick="location.reload()">${t('Try again')}</button>` : `<a class="btn primary" href="${esc(siteBase())}">${t('Go to PlanEZR')}</a>`}</section></main>`;
+  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a></header><section class="broken"><h1>${esc(msg)}</h1>${retry ? `<button class="btn primary" onclick="location.reload()">${t('Try again')}</button>` : `<a class="btn primary" href="${esc(siteBase())}">${t('Go to PlanEZR')}</a>`}</section></main>`;
   $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
 }
 function rsvpFormHTML(cfg, hosted) {
@@ -2134,7 +2137,7 @@ function renderHostNote() {
 // ---------- organizer: My pages, replies, updates ----------
 async function renderMine(id, notice) {
   LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr'; document.title = 'My pages · PlanEZR';
-  const shell = (inner) => { $('#app').innerHTML = `<main class="mine"><header class="land-top"><a class="brand" href="#"><span class="brand-mark"></span>PlanEZR</a><nav class="mine-nav"><a href="#mine">My pages</a><a class="btn sm primary" href="#setup">New page</a></nav></header><div class="mine-in">${notice ? `<p class="b-note">${esc(notice)}</p>` : ''}${inner}</div></main>`; };
+  const shell = (inner) => { $('#app').innerHTML = `<main class="mine"><header class="land-top"><a class="brand" href="#">${BRAND}</a><nav class="mine-nav"><a href="#mine">My pages</a><a class="btn sm primary" href="#setup">New page</a></nav></header><div class="mine-in">${notice ? `<p class="b-note">${esc(notice)}</p>` : ''}${inner}</div></main>`; };
   if (!SB) return shell('<h1>Hosting isn’t set up</h1>');
   shell('<p class="muted">Loading…</p>');
   let user = null;
@@ -2603,7 +2606,7 @@ function myPagesHTML() {
 }
 function renderExamples() {
   document.title = 'Examples · PlanEZR'; scrollTo(0, 0);
-  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>PlanEZR</a><span class="land-nav"><a class="btn primary" href="#setup">Create a page</a></span></header>${samplesHTML()}</main>`;
+  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a><span class="land-nav"><a class="btn primary" href="#setup">Create a page</a></span></header>${samplesHTML()}</main>`;
 }
 function samplesHTML() {
   const ex = window.EXAMPLES; const order = ['japan-trip', 'tulum-wedding', 'chicago-10k', 'redrocks-concert', 'nyc-conference', 'sf-festival'].filter(id => ex[id]);
@@ -3537,7 +3540,7 @@ function tripClick(b, cfg) {
 
 // ================= customization: Design section, section order, type defaults =================
 const THEME_PRESETS = [
-  ['Classic', { accent: '#3048F0', font: 'grotesk', mode: 'light' }], ['Garden', { accent: '#0B7A75', font: 'serif', mode: 'light' }],
+  ['Classic', { accent: '#1F3A2E', font: 'field', mode: 'light' }], ['Garden', { accent: '#0B7A75', font: 'serif', mode: 'light' }],
   ['Romance', { accent: '#C2185B', font: 'classic', mode: 'light' }], ['Sunset', { accent: '#FF6B35', font: 'wide', mode: 'light' }],
   ['Gold', { accent: '#B8860B', font: 'classic', mode: 'dark' }], ['Night', { accent: '#6D28D9', font: 'condensed', mode: 'dark' }],
   ['Stadium', { accent: '#C2185B', font: 'condensed', mode: 'dark' }], ['Trail', { accent: '#2E7D32', font: 'wide', mode: 'light' }],

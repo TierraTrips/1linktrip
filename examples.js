@@ -16,7 +16,7 @@ window.EXAMPLES = {
       lat: 40.75836, lon: -74.00221, city: 'New York', region: 'New York', country: 'United States', cc: 'us'
     },
     cover: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Javits_Center_November_2022.jpg/1280px-Javits_Center_November_2022.jpg',
-    theme: { accent: '#3048F0', font: 'grotesk', mode: 'light' },
+    theme: { accent: '#1F3A2E', font: 'field', mode: 'light' },
     sections: ['about', 'typeinfo', 'schedule', 'weather', 'map', 'travel', 'stay', 'food', 'tours', 'around', 'links', 'packing', 'calendar'].map(id => ({ id, on: true })),
     schedule: [
       { date: '2026-11-18', time: '08:00', title: 'Badge pickup and coffee', note: 'North Concourse' },
