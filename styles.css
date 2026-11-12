@@ -910,3 +910,32 @@ body.doc-dragging::after { content: 'Drop to upload a document'; position: fixed
 .ph-up input[type="url"] { width: 100%; box-sizing: border-box; }
 .ph-up .hint:empty { display: none; }
 .field .ph-up label.file-pick { font-family: inherit; font-size: .88rem; font-weight: 600; text-transform: none; letter-spacing: normal; color: var(--ink, inherit); margin: 0; }
+
+/* Nearby: the guest's hotel (bar above the map, big coral pin with a permanent label) and saved spots (gold stars) */
+.hotel-bar { margin: 0 0 12px; }
+.hb { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; border: 1.5px solid color-mix(in srgb, #E35B47 45%, transparent); background: color-mix(in srgb, #E35B47 7%, var(--card, #fff)); }
+.hb-ic { width: 30px; height: 38px; flex: none; }
+.hb-t { flex: 1; min-width: 0; display: grid; gap: 1px; } .hb-t b { overflow-wrap: anywhere; } .hb-t .lbl { margin: 0; }
+.hb-set { display: grid; gap: 6px; } .hb-set label { font-weight: 600; font-size: .92rem; } .hb-set .link { justify-self: start; }
+.hb-set .search { display: flex; gap: 8px; } .hb-set .search input, .hb-set .ac-wrap { flex: 1; min-width: 0; }
+.hpin { overflow: visible; } .hpin img { width: 48px; height: 60px; display: block; }
+.map-lbl { position: absolute; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 700 11px/1.2 var(--sans, system-ui, sans-serif); font-style: normal; color: #12141B; background: #fff; padding: 2px 7px; border-radius: 9px; box-shadow: 0 1px 4px rgba(0,0,0,.35); pointer-events: none; }
+.pin .map-lbl { top: 42px; }
+.hpin .map-lbl { top: 62px; font-size: 12px; border: 1.5px solid #E35B47; }
+.gmap-lbl { background: #fff; padding: 2px 7px; border-radius: 9px; box-shadow: 0 1px 4px rgba(0,0,0,.35); } .gmap-lbl.hotel { border: 1.5px solid #E35B47; }
+.spin img { width: 34px; height: 34px; display: block; }
+.spin span { display: none; }
+.map-key { position: absolute; left: 10px; bottom: 30px; z-index: 500; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 20px); pointer-events: none; }
+.map-key:empty { display: none; }
+.mk, .mk-go { display: inline-flex; align-items: center; gap: 5px; font: 600 12px/1 var(--sans, system-ui, sans-serif); background: #fff; color: #12141B; border-radius: 999px; padding: 4px 9px 4px 5px; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+.mk img { width: 16px; height: 20px; object-fit: contain; }
+.mk-go { all: unset; box-sizing: border-box; display: inline-flex; align-items: center; font: 700 12px/1 var(--sans, system-ui, sans-serif); background: #E35B47; color: #fff; border-radius: 999px; padding: 6px 12px; box-shadow: 0 1px 4px rgba(0,0,0,.3); cursor: pointer; pointer-events: auto; }
+.mk-go:focus-visible { outline: 2px solid #12141B; outline-offset: 2px; }
+.places li.has-star { display: flex; align-items: center; gap: 4px; }
+.places li.has-star .place-row { flex: 1; min-width: 0; }
+.star-b { all: unset; box-sizing: border-box; flex: none; width: 40px; height: 40px; display: grid; place-items: center; font-size: 1.35rem; color: var(--muted, #5B6472); cursor: pointer; border-radius: 50%; }
+.star-b.on { color: #E8A100; }
+.star-b:focus-visible { outline: 2px solid var(--accent); }
+.spots li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.spots li > div { display: grid; gap: 2px; min-width: 0; } .spots li b { overflow-wrap: anywhere; } .spots li span { color: var(--muted, var(--slate)); font-size: .88rem; }
+.spots .mini-b { flex: none; }
