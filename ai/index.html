@@ -15,7 +15,7 @@ textarea{width:100%;height:50vh;box-sizing:border-box;font:12px ui-monospace,Men
 </ol>
 <p>This version also reads the site’s packet pickup, course, parking, FAQ and travel pages, fills each section for the event type, and uses only the upcoming edition (it skips past-year results and archives). It also powers <b>Ask AI to edit</b> in the editor <b>guest languages</b> (your page, updates and RSVP notes translated), and <b>booking screenshots and PDFs</b> (guests upload a confirmation in My trip → Add a booking; one call reads every reservation in it).</p>
 <p>1LinkTrip shows “Start from a website” and AI email import automatically once the function answers. Only signed-in organizers can use it; each import is one Claude Haiku 5.5 call.</p>
-<button id="b">Copy code</button><textarea id="t" readonly>// 1LinkTrip &quot;ai-import&quot; Supabase Edge Function.
+<button id="b">Copy code</button><textarea id="t" data-src="ai-import.ts" readonly>// 1LinkTrip &quot;ai-import&quot; Supabase Edge Function.
 // Turns a website or pasted text into a 1LinkTrip page draft, or a confirmation email into itinerary items.
 //
 // Deploy: Supabase Dashboard → Edge Functions → Deploy a new function → Via editor → name it ai-import → paste this file → Deploy.

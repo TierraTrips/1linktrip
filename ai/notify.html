@@ -8,7 +8,7 @@ textarea{width:100%;height:40vh;box-sizing:border-box;font:12px ui-monospace,Men
 <h3>1. Database</h3><ol><li>Run <a href="../supabase/schema-3.html">database setup, part 3</a> if you haven’t.</li></ol>
 <h3>2. The function</h3><ol><li>Tap <b>Copy function</b> → Supabase → <b>Edge Functions</b> → <b>Deploy a new function</b> → <b>Via editor</b> → name <code>notify</code> → paste → <b>Deploy</b>. Leave <b>Verify JWT</b> on.</li>
 <li>Edge Functions → <b>Secrets</b> → add <code>RESEND_API_KEY</code> (your Resend key, the same <code>re_…</code> one from <a href="../resend/">sign-in emails</a> works).</li></ol>
-<button data-copy="fn">Copy function</button><textarea id="fn" readonly>// 1LinkTrip &quot;notify&quot; Supabase Edge Function: emails new guest messages, host replies and host updates through Resend.
+<button data-copy="fn">Copy function</button><textarea id="fn" data-src="notify.ts" readonly>// 1LinkTrip &quot;notify&quot; Supabase Edge Function: emails new guest messages, host replies and host updates through Resend.
 // In-app delivery (My trip, My pages) always works without this; email is the extra.
 //
 // Deploy: Supabase Dashboard → Edge Functions → Deploy a new function → Via editor → name it notify → paste this file → Deploy.
