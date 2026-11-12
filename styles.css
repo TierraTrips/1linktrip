@@ -1013,3 +1013,4 @@ html.is-offline body::before { content: 'Offline'; position: fixed; top: max(12p
 .cx-hidden { margin: 16px 0 4px; padding: 10px 12px; border-radius: 12px; background: var(--chip, #EEF1F4); }
 .cx-hidden summary { cursor: pointer; font-weight: 600; font-size: .9rem; min-height: 28px; display: flex; align-items: center; }
 .cx-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.gp-none { margin: 10px 0 0; }

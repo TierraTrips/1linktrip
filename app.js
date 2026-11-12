@@ -3441,9 +3441,10 @@ function gpHTML(cfg, art, rows) {
   const v = cfg.venue; const f = art._gp; const list = gpFilter(rows || [], f);
   const prices = ['$', '$$', '$$$', '$$$$']; const isFood = f.cat === 'restaurant' || f.cat === 'coffee' || f.cat === 'bar';
   const active = (f.cuisine ? 1 : 0) + (f.diet ? 1 : 0) + (f.open ? 1 : 0) + (f.stars ? 1 : 0) + (f.price ? 1 : 0);
+  const none = !f.cat && !f.q;
   return `<div class="pf gp" role="group" aria-label="${t('Filters')}">
     <div class="chips pf-cats">${GP_CATS.map(([k, l]) => `<button type="button" class="chip ${f.cat === k && !f.q ? 'on' : ''}" data-gp-cat="${k}" aria-pressed="${f.cat === k && !f.q}">${t(l)}</button>`).join('')}</div>
-    <div class="chips pf-diet">
+    <div class="chips pf-diet"${none ? ' hidden' : ''}>
       <button type="button" class="chip ${f.open ? 'on' : ''}" data-gp-open aria-pressed="${f.open}">${t('Open now')}</button>
       ${[4, 4.5].map(n => `<button type="button" class="chip ${f.stars === n ? 'on' : ''}" data-gp-stars="${n}" aria-pressed="${f.stars === n}">★ ${n.toFixed(1)}+</button>`).join('')}
       ${f.cat !== 'todo' ? prices.map(pr => `<button type="button" class="chip ${f.price === pr ? 'on' : ''}" data-gp-price="${pr}" aria-pressed="${f.price === pr}">${esc(priceSym(cfg, pr))}</button>`).join('') : ''}
@@ -3453,7 +3454,7 @@ function gpHTML(cfg, art, rows) {
       <label class="pf-sel"><span class="sr">${t('Dietary')}</span><select data-gp="diet"><option value="">${t('Any dietary need')}</option>${GP_DIETS.map(([k, l]) => `<option value="${k}" ${f.diet === k ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></label>
     </div>` : ''}
   </div>
-  ${rows == null ? `<div class="skel" role="status"><span></span><span></span><em>${t('Loading places…')}</em></div>` : `
+  ${none ? `<p class="muted gp-none">${t('Pick a category or search for a place.')}</p>` : rows == null ? `<div class="skel" role="status"><span></span><span></span><em>${t('Loading places…')}</em></div>` : `
   ${f.q ? `<p class="gp-q"><span>${esc(t('Results for “{q}”', { q: f.q }))}</span> <button type="button" class="link" data-gp-q-clear>${t('Clear search')}</button></p>` : ''}
   <p class="pf-count muted small" role="status" aria-live="polite">${esc(list.length === 1 ? t('1 place') : t('{n} places', { n: list.length }))}${active ? ` · <button type="button" class="link" data-gp-clear>${t('Clear filters')}</button>` : ''}</p>
   ${list.length ? `<ul class="plist rich places">${list.map(r => `<li class="has-star"><button type="button" class="place-row" data-gplace="${esc(r.id)}"><div><b>${esc(r.name)}</b>${r.rating ? `<span class="rt">${gRatingHTML(r)}</span>` : ''}<span>${esc([r.type, priceSym(cfg, r.price)].filter(Boolean).join(' · '))}</span>${r.open != null ? `<span class="tags">${r.open ? `<em class="open">${t('Open now')}</em>` : `<em class="closed">${t('Closed now')}</em>`}</span>` : ''}</div><span class="dist">${esc(fmtDist(r.d, v.cc))}<small>${r.d < 2500 ? walkTxt(r.d) : art._fromHotel ? t('from your hotel') : t('from the venue')}</small></span></button>${starBtnHTML(cfg, r.id, r.name)}</li>`).join('')}</ul>`
@@ -3503,7 +3504,8 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
   const pins = () => { if (mapCtl) mapCtl.setPins(gpFilter(rows || [], art._gp).map(r => ({ lat: r.lat, lon: r.lon, title: r.name, onClick: () => art._openGPlace(r.id) }))); };
   const render = () => { bodyEl.innerHTML = gpHTML(cfg, art, rows); pins(); };
   const load = () => {
-    const my = ++seq; rows = null; render();
+    const my = ++seq; if (!art._gp.cat && !art._gp.q) { rows = []; render(); return; } // no category picked: just the map and the search box
+    rows = null; render();
     gpSearch(cfg, art._gp, art._center).then(d => { if (my !== seq) return; rows = d; if (art._useSrc) art._useSrc('google'); render(); })
       .catch(e => { if (my !== seq) return; if (/places 4(03|29)|places 400/.test(e.message)) { gpBroken = true; onFail && onFail(); return; } rows = []; render(); });
   };
@@ -3527,7 +3529,7 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
     if (d.gpStop != null) { const st = ss[+d.gpStop]; art._stop = hotelStops(cfg).indexOf(st); if (art._stop < 0) art._stop = 0; const h = art._hotelAt ? art._hotelAt(art._stop) : null; art._center = h || st; art._fromHotel = !!h; art._hotelPt = h; $$('[data-gp-stop]', s).forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); }); if (mapCtl) mapCtl.center(art._center.lat, art._center.lon, h ? 15 : 13); art._hotelUI && art._hotelUI(); return load(); }
     if ('gpGo' in d) { textSearch(qIn.value.trim()); return; }
     if ('gpQClear' in d) { f.q = ''; qIn.value = ''; return load(); }
-    if (d.gpCat) { if (f.cat === d.gpCat && !f.q) return; f.cat = d.gpCat; f.cuisine = ''; f.price = ''; f.q = ''; qIn.value = ''; return load(); }
+    if (d.gpCat) { f.cat = f.cat === d.gpCat && !f.q ? '' : d.gpCat; f.cuisine = ''; f.price = ''; f.q = ''; qIn.value = ''; return load(); }
     if (d.gpOpen != null) f.open = !f.open;
     else if (d.gpStars) f.stars = f.stars === +d.gpStars ? 0 : +d.gpStars;
     else if (d.gpPrice) f.price = f.price === d.gpPrice ? '' : d.gpPrice;
