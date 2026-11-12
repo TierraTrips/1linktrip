@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>1LinkTrip · Logo directions</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#DCE8E4">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=Public+Sans:wght@400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{--ink:#0F4A50;--route:#E35B47;--ri:#B4402F;--soft:#8FBDB6;--contour:#C5DDD8;--fog:#EDF4F1;--slate:#41655F;--lede:#2A5852;--rule:#CCDDD9;
+  --serif:'Newsreader',Georgia,serif;--sans:'Public Sans',system-ui,-apple-system,sans-serif;--mono:'IBM Plex Mono',ui-monospace,Menlo,monospace}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:#DCE8E4;color:var(--ink);font:15px/1.45 var(--sans);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1300px;margin:0 auto;padding:26px 14px 60px}
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:6px 14px;flex-wrap:wrap;margin:0 6px 20px}
+.top h1{font:600 1.05rem var(--sans);margin:0;letter-spacing:-.01em}
+.k{font:600 .64rem/1.2 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--slate)}
+.opts{display:grid;grid-template-columns:minmax(0,1fr);gap:22px}
+@media (min-width:1120px){.opts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ---------- direction card ---------- */
+.opt{background:#fff;border-radius:22px;padding:14px;box-shadow:0 1px 0 #0000000d;min-width:0}
+.opt-h{display:flex;align-items:baseline;gap:10px;margin:2px 4px 12px}
+.opt-h h2{font:600 1.25rem/1.1 var(--sans);letter-spacing:-.015em;margin:0}
+
+/* big lockup on the brand paper, with the hero contours behind it */
+.stage{position:relative;isolation:isolate;overflow:hidden;background:var(--fog);border-radius:16px;min-height:200px;display:flex;align-items:center;justify-content:center;padding:36px 18px}
+.stage svg.ct{position:absolute;z-index:-1;inset:0 0 0 auto;height:100%;width:auto;opacity:.85}
+.stage .lock{font-size:clamp(2.5rem,9vw,3.6rem)}
+
+/* lockups: mark + wordmark, sized by font-size so every use scales together */
+.lock{display:inline-flex;align-items:center;gap:.28em;color:var(--ink);line-height:1;white-space:nowrap}
+.lock .mk{width:1.18em;height:1.18em;flex:none;display:block}
+.wm{display:inline-block}
+.lock .mkA{margin:0 -.14em 0 -.1em}
+
+/* A · Route 1: Newsreader roman, capital L so 1 and L never collide */
+.wA{font:600 1em/1 var(--serif);font-variation-settings:'opsz' 60;letter-spacing:-.018em}
+.wA .one{margin-right:-.035em}
+/* B · Chain link: Public Sans heavy, coral 1 */
+.wB{font:760 .9em/1 var(--sans);letter-spacing:-.035em}
+.wB .one{color:var(--route);margin-right:.035em}
+/* C · Numeral badge: lowercase, "1link" heavy + "trip" light */
+.wC{font:800 .9em/1 var(--sans);letter-spacing:-.04em}
+.wC .one{margin-right:.02em}
+.wC .t{font-weight:400;letter-spacing:-.025em}
+/* D · Type only: Newsreader display, coral i-dots as two route stops, 1–L kern tuned */
+.wD{font:540 1.08em/1 var(--serif);font-variation-settings:'opsz' 72;letter-spacing:-.022em}
+.wD .one{margin-right:-.06em}
+.wD .ti{position:relative;display:inline-block}
+.wD .ti::after{content:'';position:absolute;left:50%;top:.115em;width:.15em;height:.15em;margin-left:-.075em;border-radius:50%;background:var(--route)}
+
+/* glyph check strip */
+.gc{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin:12px 4px 2px}
+.gl{display:flex;align-items:baseline;gap:.32em;font-size:1.9rem;line-height:1;color:var(--ink)}
+.gl i{font-style:normal}
+.gl b{font:600 .5rem var(--mono);letter-spacing:.06em;color:var(--slate);margin:0 .5em 0 .05em}
+.pill{font:600 .6rem/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;padding:5px 8px;border-radius:999px;white-space:nowrap}
+.pill.ok{background:#E2EFEB;color:var(--ink)}
+.pill.warn{background:#FBE6E2;color:var(--ri)}
+.risk{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:10px 4px 0;padding:10px 12px;border-radius:12px;background:#FDF3F1;box-shadow:inset 0 0 0 1px #F2D3CD}
+.risk .bad{font:400 1.7rem/1 var(--serif);color:var(--ink);text-decoration:line-through;text-decoration-color:var(--route);text-decoration-thickness:2px}
+.risk .good{font-size:1.7rem}
+.risk .arrow{font:600 .9rem var(--mono);color:var(--ri)}
+.kern{display:flex;align-items:flex-end;gap:12px;margin:10px 4px 0}
+.kern .pair{position:relative;font:540 3.4rem/1 var(--serif);font-variation-settings:'opsz' 72;color:var(--ink);padding:0 4px}
+.kern .pair .one{margin-right:-.06em}
+.kern .pair::before,.kern .pair::after{content:'';position:absolute;top:-4px;bottom:-4px;width:0;border-left:1.5px dashed var(--route)}
+.kern .pair::before{left:42%}.kern .pair::after{left:51%}
+
+/* ---------- body: phone + side column ---------- */
+.body{display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;align-items:flex-start}
+.side{flex:1 1 200px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.icons{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.tile{display:block;border-radius:22.5%;overflow:hidden;box-shadow:0 0 0 1px #0000001a,0 10px 22px -14px #0006;flex:none}
+.tile svg{display:block;width:100%;height:100%}
+.t180{width:180px;height:180px}.t60{width:60px;height:60px}
+.cap{display:flex;flex-direction:column;gap:6px}
+
+/* browser tab mock */
+.chrome{width:100%;max-width:300px;border-radius:12px;overflow:hidden;background:#DEE3E1;box-shadow:0 0 0 1px #0000001a}
+.tabs{display:flex;align-items:flex-end;padding:7px 8px 0;gap:6px}
+.dots{display:flex;gap:5px;padding:0 6px 9px 2px}.dots i{width:8px;height:8px;border-radius:50%;background:#B9C2BF}
+.tab{display:flex;align-items:center;gap:7px;background:#fff;border-radius:9px 9px 0 0;padding:7px 10px 8px;min-width:0;flex:0 1 190px}
+.fav{width:16px;height:16px;flex:none;display:block;border-radius:3px;overflow:hidden}
+.fav svg{display:block;width:100%;height:100%}
+.tab span{font:500 .72rem/1 var(--sans);color:#2b2f2e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab .x{margin-left:auto;font-size:.7rem;color:#7a827f}
+.bar{background:#fff;padding:6px 8px 8px}
+.url{display:flex;align-items:center;gap:6px;background:#EEF1F0;border-radius:999px;padding:5px 11px;font:500 .74rem/1 var(--sans);color:#2b2f2e}
+.url svg{width:10px;height:10px;flex:none}
+
+/* phone: the live homepage top, rebranded */
+.phone{--stop:22px;--gutter:40px;flex:none;width:340px;max-width:100%;padding-bottom:26px;overflow:hidden;position:relative;border-radius:26px;
+  background:var(--fog);color:var(--ink);box-shadow:0 0 0 1px #0000001f,0 18px 36px -24px #0006;font:16px/1.5 var(--sans)}
+.phone::after{content:'';position:absolute;left:0;right:0;bottom:0;height:36px;background:linear-gradient(to bottom,transparent,var(--fog));pointer-events:none}
+.p-top{display:flex;justify-content:space-between;align-items:center;padding:16px 20px 14px;gap:10px}
+.p-top .lock{font-size:1.3rem}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:.55em 1.05em;border-radius:10px;border:1.5px solid currentColor;background:transparent;font:600 .95rem var(--sans);white-space:nowrap;color:inherit}
+.btn.sm{min-height:36px;padding:.35em .9em;font-size:.88rem}
+.btn.big{min-height:52px;padding:.7em 1.4em;font-size:1.05rem}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.p-hero{position:relative;isolation:isolate;padding:28px 20px 22px}
+.p-hero svg.ct{position:absolute;z-index:-1;top:-70px;right:0;width:340px;height:420px;
+  -webkit-mask:linear-gradient(to right,transparent,#000 35%);mask:linear-gradient(to right,transparent,#000 35%)}
+.p-hero h1{font:500 2.55rem/.98 var(--serif);font-variation-settings:'opsz' 72;letter-spacing:-.025em;margin:0 0 .4em;text-wrap:balance}
+.p-hero .lede{font-size:1.06rem;color:var(--lede);margin:0 0 1.5em}
+.p-hero .fine{font-size:.85rem;color:var(--slate);margin:1em 0 0}
+.p-hero .fine u{text-underline-offset:2px}
+.p-what{padding:34px 20px 0}
+.p-what h2{font:500 1.7rem var(--serif);letter-spacing:-.02em;margin:0 0 14px}
+.p-what dl{margin:0}
+.p-what dl>div{position:relative;padding:13px 0 13px var(--gutter)}
+.p-what dl>div+div::after{content:'';position:absolute;top:0;left:var(--gutter);right:0;border-top:1px solid var(--contour)}
+.p-what dl>div::before{content:'';position:absolute;left:calc(var(--stop)/2 - 2px);top:0;bottom:0;width:4px;background:radial-gradient(circle,var(--route) 1.5px,transparent 2px) center top/4px 8px repeat-y}
+.p-what dl>div:first-child::before{top:50%}
+.p-what dt{font:600 1.06rem/1.35 var(--serif)}
+.p-what dt::before{content:'';position:absolute;z-index:1;left:0;top:50%;width:var(--stop);height:var(--stop);margin-top:calc(var(--stop)/-2);border-radius:50%;background:var(--fog);border:2px solid var(--ink)}
+.p-what dd{margin:0;color:var(--lede)}
+
+@media (max-width:420px){
+  .wrap{padding:18px 10px 48px}
+  .opt{padding:10px;border-radius:20px}
+  .stage{min-height:160px;padding:30px 10px}
+  .stage .lock{font-size:2.35rem}
+  .phone{width:100%}
+  .body{gap:14px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top"><h1>1LinkTrip · logo directions</h1><span class="k">Mock · Lagoon palette · 1linktrip.com</span></header>
+  <main class="opts" id="opts"></main>
+</div>
+<script>
+const C = { ink:'#0F4A50', route:'#E35B47', ri:'#B4402F', soft:'#8FBDB6', contour:'#C5DDD8', fog:'#EDF4F1' };
+
+/* ---- marks (40×40) ---- */
+// A: the dotted route draws the numeral 1 (flag, then stem) and lands in the pin, whose point is the foot
+const markA = (ink = C.ink, paper = C.fog) => `<g>
+  <path d="M10 13 L21 4 V25.3" fill="none" stroke="${C.route}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="0.1 3.45"/>
+  <circle cx="10" cy="13" r="3" fill="${ink}"/>
+  <path d="M21 25a5.7 5.7 0 0 1 5.7 5.7c0 4.3-5.7 9-5.7 9s-5.7-4.7-5.7-9A5.7 5.7 0 0 1 21 25z" fill="${ink}"/>
+  <circle cx="21" cy="30.7" r="2.1" fill="${paper}"/></g>`;
+// B: one chain link; three sides solid, the fourth a dotted leg of the route back to the start: a round trip
+const markB = (ink = C.ink, start = C.ink) => `<g transform="rotate(-45 20 20)">
+  <path d="M13 27.2 H27 A7.2 7.2 0 0 0 27 12.8 H13" fill="none" stroke="${ink}" stroke-width="4.2" stroke-linecap="round"/>
+  <path d="M13 12.8 A7.2 7.2 0 0 0 13 27.2" fill="none" stroke="${C.route}" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="0.1 4.4"/>
+  <circle cx="13" cy="27.2" r="3.6" fill="${start}"/></g>`;
+// C: a slab-footed numeral 1 knocked out of a map pin, landing on a coral shadow
+const markC = (ink = C.ink, paper = C.fog) => `<g>
+  <ellipse cx="20" cy="38.2" rx="5.2" ry="1.5" fill="${C.route}"/>
+  <path d="M20 2.5a13.6 13.6 0 0 1 13.6 13.6c0 9.4-13.6 21.4-13.6 21.4S6.4 25.5 6.4 16.1A13.6 13.6 0 0 1 20 2.5z" fill="${ink}"/>
+  <path d="M19.3 8.6h3.6v13.1h2.7v2.7h-9.2v-2.7h2.9V13l-2.8 1.5-1.1-2.5z" fill="${paper}"/></g>`;
+
+const svg = (inner, cls = 'mk') => `<svg class="${cls}" viewBox="0 0 40 40" aria-hidden="true">${inner}</svg>`;
+const contour = (stroke, op, vb) => `<svg class="ct" viewBox="${vb}" preserveAspectRatio="xMaxYMin slice" fill="none" stroke="${stroke}" stroke-width="1.4" opacity="${op}" aria-hidden="true"><path d="M360 0c20 80 140 100 240 80"/><path d="M300 0c16 120 180 156 300 132"/><path d="M236 0c8 164 220 216 364 188"/><path d="M172 0c-8 208 256 280 428 248"/><path d="M104 0c-28 260 300 352 496 312"/><path d="M36 0c-50 300 330 420 564 380"/><path d="M524 0c-8 28 24 44 76 32"/></svg>`;
+
+/* ---- app icons (100×100) ---- */
+const lines = (s, o = 1) => `<g fill="none" stroke="${s}" stroke-width="1.6" opacity="${o}"><path d="M-4 24c26 8 52-12 108 4"/><path d="M-4 78c34-10 60 12 108-2"/></g>`;
+const iconA = `<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="${C.fog}"/>${lines(C.contour)}<g transform="translate(12 12) scale(1.9)">${markA()}</g></svg>`;
+const iconB = `<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="${C.ink}"/>${lines('#2C6A6F')}<g transform="translate(12 12) scale(1.9)">${markB(C.fog, C.fog)}</g></svg>`;
+const iconC = `<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="${C.fog}"/>${lines(C.contour)}<g transform="translate(13 10) scale(1.85)">${markC()}</g></svg>`;
+const iconD = `<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="${C.ink}"/>${lines('#2C6A6F')}
+  <text x="43" y="68" text-anchor="middle" font-family="Newsreader, Georgia, serif" font-weight="560" font-size="56" letter-spacing="-3" fill="${C.fog}" style="font-variation-settings:'opsz' 72">1L</text>
+  <circle cx="83" cy="66.5" r="4.6" fill="${C.route}"/></svg>`;
+
+/* ---- wordmarks ---- */
+const W = {
+  A: `<span class="wm wA"><span class="one">1</span>LinkTrip</span>`,
+  B: `<span class="wm wB"><span class="one">1</span>LinkTrip</span>`,
+  C: `<span class="wm wC"><span class="one">1</span>link<span class="t">trip</span></span>`,
+  D: `<span class="wm wD"><span class="one">1</span>L<span class="ti">ı</span>nkTr<span class="ti">ı</span>p</span>`,
+};
+
+const D = [
+  { key:'A', name:'Route 1', mark:svg(markA(), 'mk mkA'), icon:iconA, wm:W.A,
+    glyph:`<span class="gl" style="font:600 1.9rem var(--serif)"><i>1</i><b>ONE</b><i>L</i><b>CAP L</b><i>l</i><b>LOWER L</b></span><span class="pill ok">Cap L keeps 1·L apart</span>` },
+  { key:'B', name:'Chain link', mark:svg(markB()), icon:iconB, wm:W.B,
+    glyph:`<span class="gl" style="font:760 1.9rem var(--sans)"><i style="color:var(--route)">1</i><b>ONE</b><i>L</i><b>CAP L</b><i>I</i><b>CAP I</b></span><span class="pill ok">Coral 1 · flagged</span>` },
+  { key:'C', name:'Numeral badge', mark:svg(markC()), icon:iconC, wm:W.C,
+    glyph:`<span class="gl" style="font:800 1.9rem var(--sans)"><i>1</i><b>ONE</b><i>l</i><b>LOWER L</b></span><span class="pill warn">Lowercase: 1 next to l</span>`,
+    extra:`<div class="risk"><span class="k" style="color:var(--ri)">Avoid</span><span class="bad">1linktrip</span><span class="arrow">→</span><span class="lock good">${W.C}</span><span class="k">Serif 1 and l blur · heavy sans keeps the flag</span></div>` },
+  { key:'D', name:'Type only', mark:'', icon:iconD, wm:W.D,
+    glyph:`<span class="gl" style="font:540 1.9rem var(--serif)"><i>1</i><b>ONE</b><i>L</i><b>CAP L</b></span><span class="pill ok">Coral i-dots = two stops</span>`,
+    extra:`<div class="kern"><span class="pair"><span class="one">1</span>L</span><span class="cap"><span class="k">1 → L kern −60</span><span class="k" style="color:var(--slate);font-weight:500">Tightened so “1Link” reads as one word</span></span></div>` },
+];
+
+const lock = d => `<span class="lock">${d.mark}${d.wm}</span>`;
+const lockSm = d => `<span class="lock">${d.mark}${d.wm}</span>`;
+
+document.getElementById('opts').innerHTML = D.map(d => `<article class="opt" aria-label="${d.name}">
+  <div class="opt-h"><h2>${d.name}</h2><span class="k">Direction ${d.key}</span></div>
+  <div class="stage">${contour(C.contour, '.9', '0 0 600 420')}${lock(d)}</div>
+  <div class="gc">${d.glyph}</div>
+  ${d.extra || ''}
+  <div class="body">
+    <div class="phone">
+      <div class="p-top">${lockSm(d)}<span class="btn sm">Share</span></div>
+      <section class="p-hero">${contour(C.contour, '.8', '0 0 600 420')}
+        <h1>One link for your guests’ whole trip.</h1>
+        <p class="lede">Add your event and venue. Guests get your schedule, directions and places to stay.</p>
+        <span class="btn primary big">Create a page</span>
+        <p class="fine">Free, no account needed. <u>See examples</u></p>
+      </section>
+      <section class="p-what"><h2>What your guests get</h2><dl>
+        <div><dt>Weather</dt><dd>The forecast for your dates.</dd></div>
+        <div><dt>Map</dt><dd>The venue and what’s around it.</dd></div>
+        <div><dt>Flights</dt><dd>The nearest airports and fares.</dd></div>
+      </dl></section>
+    </div>
+    <div class="side">
+      <div class="cap"><span class="k">App icon · 180 / 60</span>
+        <div class="icons"><span class="tile t180">${d.icon}</span><span class="tile t60">${d.icon}</span></div></div>
+      <div class="cap"><span class="k">Browser tab</span>
+        <div class="chrome">
+          <div class="tabs"><span class="dots"><i></i><i></i><i></i></span><span class="tab"><span class="fav">${d.icon}</span><span>1LinkTrip · One link for your guests’ trip</span><span class="x">✕</span></span></div>
+          <div class="bar"><div class="url"><svg viewBox="0 0 10 10"><rect x="1.5" y="4.5" width="7" height="5" rx="1" fill="#5f6664"/><path d="M3 4.5V3a2 2 0 0 1 4 0v1.5" fill="none" stroke="#5f6664" stroke-width="1.2"/></svg>1linktrip.com</div></div>
+        </div></div>
+    </div>
+  </div>
+</article>`).join('');
+</script>
+</body>
+</html>
