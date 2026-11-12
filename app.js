@@ -575,7 +575,7 @@ function flightArrival(air, items) {
   const low = (x) => String(x || '').toLowerCase();
   const hit = (s) => air.find(a => new RegExp(`\\b${a.iata}\\b`).test(String(s || '')) || low(s).includes(low(a.name)) || (a.city && low(s).includes(low(a.city))));
   const fl = (items || []).filter(x => x && x.kind === 'flight').sort((a, b) => String(a.start || '').localeCompare(String(b.start || '')));
-  for (const x of fl) { const m = String(x.note || '').match(/→\s*([^·]+)/); const a = m && hit(m[1]); if (a) return a; }
+  for (const x of fl) { const m = String(x.note || '').match(/→\s*([^·]+)/); const a = (x.to && hit(x.to)) || (m && hit(m[1])); if (a) return a; }
   for (const x of fl) { const a = hit([x.name, x.address, x.note].join(' ')); if (a) return a; }
   return null;
 }
@@ -594,14 +594,14 @@ function airportSelHTML(cfg, air, ap, always) {
   return `<label class="pf-sel ap-sel"><span>${t('Flying into')}</span><select data-ap-sel>${air.map(a => `<option value="${esc(a.iata)}"${a.iata === ap.iata ? ' selected' : ''}>${esc(`${a.iata} · ${a.city || a.name} · ${fmtDist(a.d, v.cc)}`)}</option>`).join('')}</select></label>`;
 }
 const flightLinks = (f) => { const code = (f || '').replace(/\s+/g, '').toUpperCase(); if (!/^[A-Z0-9]{2}\d{1,4}$/.test(code)) return {}; const a = AIRLINES[code.slice(0, 2)]; return { status: `https://www.flightaware.com/live/flight/${code}`, manage: a && a[1] ? a[1] : '' }; };
-function itinFormHTML(x, i) {
+function itinFormHTML(x, i, air = []) {
   const k = x.kind || '';
   const f = (key, label, type = 'text', ph = '', cls = '') => `<div class="field ${cls}"><label for="it-${key}">${t(label)}</label><input id="it-${key}" type="${type === 'datetime-local' && isDate(x[key] || '') ? 'date' : type}" data-it="${key}" value="${esc(x[key] || '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}></div>`;
   return `<form class="itin-form" onsubmit="return false">
-    ${i == null ? `<div class="field wide"><label for="it-paste">${t('Confirmation')}</label><textarea id="it-paste" rows="3" placeholder="${t('Paste a confirmation email or link')}"></textarea><div class="ai-read" data-ai-read hidden><button type="button" class="btn sm" data-itin-ai>✦ ${t('Read with AI')}</button><span class="hint" data-ai-msg role="status" aria-live="polite"></span></div></div>` : ''}
     <div class="trip">
       <div class="field"><label for="it-kind">${t('Type')}</label><select id="it-kind" data-it="kind"><option value="">${t('Choose')}</option>${Object.entries(ITIN_KINDS).map(([v, l]) => `<option value="${v}" ${v === k ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></div>
       ${f('flight', 'Flight number', 'text', 'UA 1234').replace('<div class="field', `<div${k === 'flight' ? '' : ' hidden'} class="field`)}
+      ${f('to', 'Arriving at', 'text', air[0] ? air[0].iata : 'CUN').replace('<div class="field', `<div${k === 'flight' ? '' : ' hidden'} class="field`).replace('<input ', '<input list="it-to-list" autocapitalize="characters" ')}<datalist id="it-to-list">${air.map(a => `<option value="${esc(a.iata)}">${esc(a.name)}</option>`).join('')}</datalist>
       ${f('name', 'Name')}
       ${f('start', k === 'flight' ? 'Departs' : 'Starts', 'datetime-local')}${f('end', k === 'flight' ? 'Arrives' : 'Ends', 'datetime-local')}
       ${f('address', 'Address', 'text', '', 'wide')}
@@ -1161,7 +1161,7 @@ function tripBarHTML(cfg) {
 }
 function travelTabHTML(cfg, air) {
   const v = cfg.venue; const T = cfg.tools; const out = [];
-  out.push(`<div class="ev-sec trip-sec">${tripBarHTML(cfg)}${T.travel ? modeBarHTML(cfg, air) : ''}</div>`);
+  out.push(`<div class="ev-sec trip-sec">${tripBarHTML(cfg)}${T.travel ? modeBarHTML(cfg, air) : ''}${canAddTrip(cfg) ? `<div class="btns add-bk"><button type="button" class="btn primary" data-addbooking>+ ${t('Add a booking')}</button></div>` : ''}</div>`);
   if (T.travel) out.push(sec('travel', t('Getting there'), `
     <div data-slot="flights" data-mode="fly"></div>
     ${hasTrains(v, cfg) ? '<div data-slot="trains" data-mode="train"></div>' : ''}
@@ -1194,7 +1194,7 @@ function bookingsHTML(cfg) {
     const links = [fl.status ? ext(fl.status, t('Flight status'), 'mini-b') : '', fl.manage ? ext(fl.manage, t('Manage booking'), 'mini-b') : '', x.link ? ext(x.link, t('Open booking'), 'mini-b') : '', x.address ? ext(L.place(x.address), 'Google Maps', 'mini-b') : ''].join('');
     return `<li><div><b>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when, x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>${x.note ? `<span>${esc(x.note)}</span>` : ''}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button></div></div></li>`;
   }).join('')}</ul>` : ''}
-  <div class="btns itin-btns"><button type="button" class="btn primary" data-itin-add>+ ${t('Add booking')}</button>${items.length ? `<button type="button" class="btn" data-itin-ics>${t('Add to calendar')}</button>` : ''}</div><div data-slot="itin-form"></div>`;
+  <div class="btns itin-btns"><button type="button" class="btn primary" data-itin-add>+ ${t('Add a booking')}</button>${items.length ? `<button type="button" class="btn" data-itin-ics>${t('Add to calendar')}</button>` : ''}</div><div data-slot="itin-form"></div>`;
 }
 function myTripTabHTML(cfg) {
   const T = cfg.tools; const out = [];
@@ -1326,6 +1326,11 @@ function wireEvent(cfg, art, seq, air, opts) {
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-ap]'); if (b) setAirport(b.dataset.ap, b); });
   art.addEventListener('change', (e) => { const s = e.target.closest('[data-ap-sel]'); if (s) setAirport(s.value, s); });
   art.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-addbooking]') || !art._itinAdd) return;
+    showTab(art, 'mytrip', opts); art._itinAdd();
+    const f = art.querySelector('#sec-itinerary [data-slot="itin-form"]'); if (f) f.scrollIntoView({ block: 'start' });
+  });
+  art.addEventListener('click', (e) => {
     const b = e.target.closest('[data-addtrip]'); if (!b || !art._itinOpen) return;
     const tr = tripDates(cfg); const k = b.dataset.addtrip;
     if (b.dataset.iata) setAirport(b.dataset.iata);
@@ -1396,49 +1401,137 @@ function wireEvent(cfg, art, seq, air, opts) {
   }
 }
 
+// "Add a booking": one sheet — paste text or a link / upload a screenshot or PDF / enter it yourself. Anything read
+// lands as cards to check before saving.
+const bkChooserHTML = () => `<div class="itin-sheet" data-sheet="choose"><div class="add-choices">
+    <button type="button" class="add-choice" data-itin-mode="paste">${t('Paste confirmation text or link')}</button>
+    <button type="button" class="add-choice" data-itin-mode="file" hidden>${t('Upload a screenshot or PDF')}</button>
+    <button type="button" class="add-choice" data-itin-mode="manual">${t('Enter it yourself')}</button></div>
+    <div class="btns"><button type="button" class="btn ghost" data-itin-cancel>${t('Cancel')}</button></div></div>`;
+const bkPasteHTML = () => `<div class="itin-sheet" data-sheet="paste"><div class="field wide"><label for="it-paste">${t('Confirmation')}</label><textarea id="it-paste" rows="5" placeholder="${t('Paste a confirmation email or link')}"></textarea></div>
+    <div class="btns"><button type="button" class="btn primary" data-itin-read>${t('Read it')}</button><button type="button" class="btn" data-itin-ai hidden>✦ ${t('Read with AI')}</button><button type="button" class="btn ghost" data-itin-cancel>${t('Cancel')}</button></div>
+    <p class="hint" data-ai-msg role="status" aria-live="polite"></p><div data-signin-slot></div></div>`;
+const bkFileHTML = () => `<div class="itin-sheet" data-sheet="file"><label class="btn primary file-pick">${t('Choose a screenshot or PDF')}<input type="file" accept="image/*,application/pdf" multiple data-itin-file hidden></label>
+    <div class="btns"><button type="button" class="btn ghost" data-itin-cancel>${t('Cancel')}</button></div>
+    <p class="hint" data-ai-msg role="status" aria-live="polite"></p><div data-signin-slot></div></div>`;
+const bkSignInHTML = () => `<div class="bk-signin"><p><b>${t('Sign in to read it automatically.')}</b></p>${signInFormHTML('')}</div>`;
+function bkReviewHTML(xs) {
+  const inp = (x, i, k, label, type = 'text') => `<div class="field${k === 'name' || k === 'address' ? ' wide' : ''}"><label for="rv${i}-${k}">${t(label)}</label><input id="rv${i}-${k}" type="${type === 'when' ? (isDate(x[k] || '') ? 'date' : 'datetime-local') : type}" data-rv="${i}" data-rk="${k}" value="${esc(x[k] || '')}"></div>`;
+  return `<div class="itin-sheet" data-sheet="review"><ul class="rv-list">${xs.map((x, i) => `<li class="rv-card">
+    <div class="trip">
+      <div class="field"><label for="rv${i}-kind">${t('Type')}</label><select id="rv${i}-kind" data-rv="${i}" data-rk="kind"><option value="">${t('Choose')}</option>${Object.entries(ITIN_KINDS).map(([v, l]) => `<option value="${v}" ${v === x.kind ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></div>
+      ${x.kind === 'flight' ? inp(x, i, 'flight', 'Flight number') : inp(x, i, 'confNo', 'Confirmation')}
+      ${inp(x, i, 'name', 'Name')}
+      ${inp(x, i, 'start', x.kind === 'flight' ? 'Departs' : 'Starts', 'when')}${inp(x, i, 'end', x.kind === 'flight' ? 'Arrives' : 'Ends', 'when')}
+      ${x.kind === 'flight' ? inp(x, i, 'to', 'Arriving at') + inp(x, i, 'confNo', 'Confirmation') : inp(x, i, 'address', 'Address')}
+    </div><button type="button" class="mini-b" data-rv-del="${i}">${t('Remove')}</button></li>`).join('')}</ul>
+    <div class="btns"><button type="button" class="btn primary" data-rv-save>${esc(t('Save all ({n})', { n: xs.length }))}</button><button type="button" class="btn ghost" data-itin-cancel>${t('Cancel')}</button></div></div>`;
+}
+const blobB64 = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(new Error(t('Couldn’t read it.'))); r.readAsDataURL(b); });
+async function bookingFile(f) { // photos are shrunk on the phone before upload; PDFs go as they are
+  if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '')) { if (f.size > 9e6) throw new Error(t('That PDF is too large.')); return { media_type: 'application/pdf', data: await blobB64(f) }; }
+  if (!/^image\//.test(f.type)) throw new Error(t('Use a photo, screenshot or PDF.'));
+  const url = URL.createObjectURL(f);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error(t('Use a photo, screenshot or PDF.'))); i.src = url; });
+    const k = Math.min(1, 1800 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+    const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.85));
+    return { media_type: 'image/jpeg', data: await blobB64(blob) };
+  } finally { URL.revokeObjectURL(url); }
+}
+const flightName = (f) => { const code = String(f || '').replace(/\s+/g, '').toUpperCase(); const m = code.match(/^([A-Z0-9]{2})(\d{1,4})$/); if (!m) return ''; const a = AIRLINES[m[1]]; return a ? `${a[0]} ${m[1]} ${m[2]}` : ''; };
 function wireItin(cfg, art) {
   const s = art.querySelector('#sec-itinerary'); if (!s) return;
-  const body = s.querySelector('.sec-b'); let draft = null, editing = null;
+  const body = s.querySelector('.sec-b'); let draft = null, editing = null, review = [], autoName = '';
+  const air = cfg.venue ? airFor(cfg) : [];
   const rerender = () => { body.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); art._planChanged && art._planChanged(); art._apRefresh && art._apRefresh(); if (LS.get('signedIn')) syncPush(cfg); };
+  const formSlot = () => body.querySelector('[data-slot="itin-form"]');
+  const sheet = (html) => { const slot = formSlot(); slot.innerHTML = html; body.querySelector('.itin-btns')?.setAttribute('hidden', ''); return slot; };
+  // a saved flight that lands at one of the nearby airports becomes the "Flying into" pick
+  const arrivalPick = (xs) => { const a = flightArrival(air, xs); if (a) LS.set(apKey(cfg), a.iata); };
+  const saveNew = (add) => { LS.set(itinKey(cfg), itinLoad(cfg).concat(add)); arrivalPick(add); rerender(); if (add.length > 1) toast(t('Added {n} bookings', { n: add.length })); };
+  const fileOk = () => LS.get('signedIn') ? aiModes().then(m => m.includes('file')) : aiReady();
+  const openChooser = () => { const slot = sheet(bkChooserHTML()); fileOk().then(ok => { const b = slot.querySelector('[data-itin-mode="file"]'); if (b && ok) b.hidden = false; }).catch(() => {}); };
+  const openReview = (xs) => { review = xs.map(x => ({ ...x })); if (!review.length) return openChooser(); sheet(bkReviewHTML(review)); };
+  const askSignIn = (slot) => { const el = slot.querySelector('[data-signin-slot]'); if (el) el.innerHTML = bkSignInHTML(); };
   const openForm = (x, i) => {
-    draft = { ...x }; editing = i; const slot = body.querySelector('[data-slot="itin-form"]'); slot.innerHTML = itinFormHTML(draft, i);
-    body.querySelector('.itin-btns')?.setAttribute('hidden', '');
-    (slot.querySelector('#it-paste') || slot.querySelector('#it-name')).focus();
-    aiReady().then(ok => { const el = slot.querySelector('[data-ai-read]'); if (el && ok) el.hidden = false; });
+    draft = { ...x }; editing = i; autoName = ''; const slot = sheet(itinFormHTML(draft, i, air));
+    slot.querySelector('#it-name').focus();
     placeAutocomplete(slot.querySelector('#it-address'), { bias: () => cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(r => { draft.address = r.address; if (!draft.name) draft.name = r.name; fill(); }).catch(() => {}) });
   };
-  const fill = () => { const slot = body.querySelector('[data-slot="itin-form"]'); slot.querySelectorAll('[data-it]').forEach(el => { el.value = draft[el.dataset.it] || ''; });
-    const fo = slot.querySelector('[data-it="flight"]').closest('.field'); fo.hidden = draft.kind !== 'flight';
+  const fill = () => { const slot = formSlot(); slot.querySelectorAll('[data-it]').forEach(el => { if (document.activeElement !== el) el.value = draft[el.dataset.it] || ''; });
+    ['flight', 'to'].forEach(k => { slot.querySelector(`[data-it="${k}"]`).closest('.field').hidden = draft.kind !== 'flight'; });
     slot.querySelector('label[for="it-start"]').textContent = t(draft.kind === 'flight' ? 'Departs' : 'Starts'); slot.querySelector('label[for="it-end"]').textContent = t(draft.kind === 'flight' ? 'Arrives' : 'Ends');
     slot.querySelector('#it-note').placeholder = draft.kind === 'flight' ? t('Confirmation code, last name') : '';
     ['start', 'end'].forEach(k => { const el = slot.querySelector('#it-' + k); const ty = isDate(draft[k] || '') ? 'date' : 'datetime-local'; if (el.type !== ty) { el.type = ty; el.value = draft[k] || ''; } }); };
   art._itinOpen = (x) => { openForm(x, null); fill(); const c = body.querySelector('#it-confNo'); if (c) c.focus({ preventScroll: true }); };
+  art._itinAdd = () => openChooser();
+  art._itinReview = (xs) => openReview(xs);
+  const runAI = (b, slot, req) => {
+    const msg = slot.querySelector('[data-ai-msg]');
+    if (!LS.get('signedIn')) { askSignIn(slot); return; }
+    b.disabled = true; msg.textContent = t('Reading…');
+    aiImport(req).then(j => {
+      const add = aiItemsToBookings(j.data && j.data.items); b.disabled = false;
+      if (!add.length) { msg.textContent = t('No reservations found. Enter it yourself.'); return; }
+      openReview(add);
+    }).catch(e => { b.disabled = false; if (e.signin) { msg.textContent = ''; askSignIn(slot); } else msg.textContent = e.message || t('Couldn’t read it.'); });
+  };
   body.addEventListener('click', (e) => {
+    const sio = e.target.closest('[data-si-oauth]'); if (sio) { oauthSignIn(sio.dataset.siOauth); return; }
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
-    if ('itinAdd' in d) openForm({}, null);
-    else if ('itinEdit' in d) openForm(itinLoad(cfg)[+d.itinEdit], +d.itinEdit);
+    if (d.si === 'send') { signInSubmit(b.closest('.bk-signin')); return; }
+    if ('itinAdd' in d) openChooser();
+    else if (d.itinMode === 'paste') { const slot = sheet(bkPasteHTML()); slot.querySelector('#it-paste').focus(); aiReady().then(ok => { const a = slot.querySelector('[data-itin-ai]'); if (a && ok) a.hidden = false; }); }
+    else if (d.itinMode === 'file') { const slot = sheet(bkFileHTML()); if (!LS.get('signedIn')) askSignIn(slot); }
+    else if (d.itinMode === 'manual') { openForm({}, null); fill(); }
+    else if ('itinRead' in d) { const txt = (body.querySelector('#it-paste') || {}).value || ''; const p = parseReservation(txt, cfg.start);
+      if (!txt.trim()) { body.querySelector('[data-ai-msg]').textContent = t('Paste the whole confirmation first.'); return; }
+      if (p.kind === 'flight' && !p.name) p.name = flightName(p.flight); openReview([p]); }
+    else if ('itinAi' in d) {
+      const slot = formSlot(); const txt = (slot.querySelector('#it-paste') || {}).value || '';
+      if (txt.trim().length < 20) { slot.querySelector('[data-ai-msg]').textContent = t('Paste the whole confirmation first.'); return; }
+      runAI(b, slot, { text: txt, kind: 'confirmation' });
+    }
+    else if ('rvDel' in d) { review.splice(+d.rvDel, 1); openReview(review); }
+    else if ('rvSave' in d) {
+      const add = review.filter(x => x.name || x.flight || x.start).map(x => ({ ...x, name: x.name || (x.kind === 'flight' ? flightName(x.flight) || String(x.flight || '').toUpperCase() : '') }));
+      if (!add.length) { toast(t('Add a name or a date')); return; }
+      saveNew(add);
+    }
+    else if ('itinEdit' in d) { openForm(itinLoad(cfg)[+d.itinEdit], +d.itinEdit); fill(); }
     else if ('itinCancel' in d) rerender();
     else if ('itinDel' in d) { const xs = itinLoad(cfg); xs.splice(+d.itinDel, 1); LS.set(itinKey(cfg), xs); rerender(); }
     else if ('itinSave' in d) {
       if (!draft.name && !draft.flight && !draft.start) { toast(t('Add a name or a date')); return; }
-      if (draft.kind === 'flight' && draft.flight && !draft.name) { const a = AIRLINES[draft.flight.replace(/\s+/g, '').slice(0, 2).toUpperCase()]; draft.name = [a ? a[0] : '', draft.flight.toUpperCase()].filter(Boolean).join(' '); }
-      const xs = itinLoad(cfg); editing == null ? xs.push(draft) : (xs[editing] = draft); LS.set(itinKey(cfg), xs); rerender();
+      if (draft.kind === 'flight' && draft.flight && !draft.name) draft.name = flightName(draft.flight) || draft.flight.toUpperCase();
+      if (draft.kind !== 'flight') draft.to = '';
+      if (editing == null) return saveNew([draft]);
+      const xs = itinLoad(cfg); const was = xs[editing] || {}; xs[editing] = draft; LS.set(itinKey(cfg), xs); if ((was.to || '') !== (draft.to || '') || was.kind !== draft.kind) arrivalPick([draft]); rerender();
     }
     else if ('itinIcs' in d) itinICS(cfg);
-    else if ('itinAi' in d) {
-      const txt = (body.querySelector('#it-paste') || {}).value || ''; const msg = body.querySelector('[data-ai-msg]');
-      if (txt.trim().length < 20) { msg.textContent = t('Paste the whole confirmation first.'); return; }
-      b.disabled = true; msg.textContent = t('Reading…');
-      aiImport({ text: txt, kind: 'confirmation' }).then(j => {
-        const add = aiItemsToBookings(j.data && j.data.items); if (!add.length) { b.disabled = false; msg.textContent = t('No reservations found. Fill it in below.'); return; }
-        const xs = itinLoad(cfg).concat(add); LS.set(itinKey(cfg), xs); rerender(); toast(t('Added {n} bookings', { n: add.length }));
-      }).catch(e => { b.disabled = false; msg.textContent = e.signin ? t('Sign in (My pages) to use AI import. The quick reader below still works.') : (e.message || t('Couldn’t read it.')); });
-    }
+  });
+  body.addEventListener('change', (e) => {
+    const f = e.target.closest('[data-itin-file]'); if (!f || !f.files || !f.files.length) return;
+    const slot = formSlot(); const msg = slot.querySelector('[data-ai-msg]'); const label = slot.querySelector('.file-pick');
+    if (!LS.get('signedIn')) { askSignIn(slot); f.value = ''; return; }
+    msg.textContent = t('Reading…'); label.classList.add('busy');
+    Promise.all([...f.files].slice(0, 6).map(bookingFile)).then(files => runAI({ set disabled(v) { label.classList.toggle('busy', v); } }, slot, { mode: 'file', files }))
+      .catch(err => { label.classList.remove('busy'); msg.textContent = err.message || t('Couldn’t read it.'); }).finally(() => { f.value = ''; });
   });
   body.addEventListener('input', (e) => {
-    const x = e.target; if (!draft) return;
-    if (x.id === 'it-paste') { const p = parseReservation(x.value, cfg.start); for (const k in p) if (p[k]) draft[k] = p[k]; if (!x.value.trim()) for (const k in draft) draft[k] = ''; fill(); return; }
-    if (x.dataset.it) { draft[x.dataset.it] = x.value; if (x.dataset.it === 'kind') fill(); }
+    const x = e.target;
+    if (x.dataset.rv != null) { const r = review[+x.dataset.rv]; if (!r) return; r[x.dataset.rk] = x.value; if (x.dataset.rk === 'kind') openReview(review); return; }
+    if (!draft || !x.dataset.it) return;
+    draft[x.dataset.it] = x.value;
+    if (x.dataset.it === 'kind') fill();
+    if (x.dataset.it === 'flight') { // airline + number: the card names itself; status and manage links appear once saved
+      const n = flightName(x.value); const ni = formSlot().querySelector('#it-name');
+      if (n && (!draft.name || draft.name === autoName)) { draft.name = autoName = n; ni.value = n; }
+    }
+    if (x.dataset.it === 'to' && /^[a-z]{3}$/i.test(x.value)) draft.to = x.value.toUpperCase();
   });
 }
 
@@ -3206,7 +3299,7 @@ function aiItemsToBookings(items) {
     const st = String(x.start || ''), en = String(x.end || '');
     const okDT = (s) => /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(s) ? s : '';
     return { kind: AI_KIND[x.type] || 'other', name: cleanText(x.name || x.provider, 120), start: okDT(st), end: okDT(en), address: cleanText(x.address, 200), confNo: cleanText(x.confirmation, 60),
-      link: httpsUrl(x.link), flight: cleanText(x.flight_number, 12), note: cleanText([x.from && x.to ? `${x.from} → ${x.to}` : '', x.note].filter(Boolean).join(' · '), 300) };
+      link: httpsUrl(x.link), flight: cleanText(x.flight_number, 12), to: AI_KIND[x.type] === 'flight' ? cleanText(x.to, 60) : '', note: cleanText([x.from && x.to ? `${x.from} → ${x.to}` : '', x.note].filter(Boolean).join(' · '), 300) };
   }).filter(x => x.name || x.start);
 }
 
@@ -3733,5 +3826,5 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

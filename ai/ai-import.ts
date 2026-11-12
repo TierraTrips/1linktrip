@@ -10,6 +10,8 @@
 //            { "text": "…", "kind": "event" | "confirmation" } → { ok, kind, data }
 //            { "mode": "edit", "page": {…current page…}, "instruction": "move the ceremony to 5pm" } → { ok, kind: "edit", data: { summary, changes } }
 //            { "mode": "translate", "fields": { key: text, … }, "target": "es", "source": "en" } → { ok, kind: "translate", data: { translations: [{ key, text }] } }
+//            { "mode": "file", "files": [{ "media_type": "image/jpeg" | "image/png" | "image/webp" | "image/gif" | "application/pdf", "data": "<base64>" }] }
+//              → { ok, kind: "confirmation", data: { items } }   (booking screenshots / PDFs; same items as kind "confirmation")
 // GET (signed in) → { ok, ready, modes } so the site only shows features this deployed version supports.
 // Only signed-in users can call it. Input is capped at 40,000 characters.
 
@@ -18,6 +20,9 @@ import Anthropic from "npm:@anthropic-ai/sdk@1.6.0";
 const ALLOWED_ORIGIN = "https://bbbot0209.github.io";
 const MAX_CHARS = 40_000;
 const MODEL = "claude-haiku-5-5";
+const MAX_FILES = 6;
+const MAX_FILE_B64 = 14_000_000; // ≈ 10 MB of files
+const FILE_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 const cors = {
   "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
@@ -295,7 +300,7 @@ function signedInUser(req: Request): string | null {
 export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   const key = Deno.env.get("ANTHROPIC_API_KEY");
-  if (req.method === "GET") return json(200, { ok: true, ready: !!key, modes: ["url", "text", "edit", "translate"] });
+  if (req.method === "GET") return json(200, { ok: true, ready: !!key, modes: ["url", "text", "edit", "translate", "file"] });
   if (req.method !== "POST") return json(405, { ok: false, error: "Use POST" });
   if (!signedInUser(req)) return json(401, { ok: false, error: "Sign in to use import" });
   if (!key) return json(503, { ok: false, error: "Import is not set up yet (missing ANTHROPIC_API_KEY)" });
@@ -349,6 +354,37 @@ export async function handler(req: Request): Promise<Response> {
       if (e instanceof Anthropic.RateLimitError) return json(429, { ok: false, error: "Busy right now, try again in a minute" });
       if (e instanceof Anthropic.AuthenticationError) return json(503, { ok: false, error: "The ANTHROPIC_API_KEY secret is not valid" });
       return json(502, { ok: false, error: "Edit failed" });
+    }
+  }
+
+  if (body.mode === "file") {
+    const files = (body as unknown as { files?: { media_type?: string; data?: string }[] }).files;
+    if (!Array.isArray(files) || !files.length) return json(400, { ok: false, error: "Attach a screenshot or PDF" });
+    if (files.length > MAX_FILES) return json(413, { ok: false, error: `Up to ${MAX_FILES} files at once` });
+    const blocks: Anthropic.ContentBlockParam[] = []; let total = 0;
+    for (const f of files) {
+      const mt = String(f && f.media_type || ""); const data = String(f && f.data || "").replace(/^data:[^,]*,/, "");
+      if (!data || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) return json(400, { ok: false, error: "File data must be base64" });
+      total += data.length; if (total > MAX_FILE_B64) return json(413, { ok: false, error: "Files are too large (10 MB total)" });
+      if (FILE_IMAGE_TYPES.includes(mt)) blocks.push({ type: "image", source: { type: "base64", media_type: mt as "image/jpeg", data } });
+      else if (mt === "application/pdf") blocks.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data } });
+      else return json(415, { ok: false, error: "Use a photo, screenshot or PDF" });
+    }
+    const client = new Anthropic({ apiKey: key });
+    try {
+      const msg = await client.messages.create({
+        model: MODEL, max_tokens: 16000, system: SYSTEM, tools: [ITEMS_TOOL], tool_choice: { type: "tool", name: ITEMS_TOOL.name },
+        messages: [{ role: "user", content: [...blocks, { type: "text", text: `Today is ${new Date().toISOString().slice(0, 10)}. The attached screenshots or PDFs are the SOURCE: booking confirmations. Save every reservation in them.` }] }],
+      });
+      if (msg.stop_reason === "refusal") return json(422, { ok: false, error: "The model declined this file" });
+      const call = msg.content.find((b) => b.type === "tool_use");
+      if (!call || call.type !== "tool_use") return json(502, { ok: false, error: "No result" });
+      return json(200, { ok: true, kind: "confirmation", data: call.input });
+    } catch (e) {
+      if (e instanceof Anthropic.RateLimitError) return json(429, { ok: false, error: "Busy right now, try again in a minute" });
+      if (e instanceof Anthropic.AuthenticationError) return json(503, { ok: false, error: "The ANTHROPIC_API_KEY secret is not valid" });
+      if (e instanceof Anthropic.APIError) return json(502, { ok: false, error: `Couldn't read the file (${e.status ?? "network"})` });
+      return json(500, { ok: false, error: "Import failed" });
     }
   }
 

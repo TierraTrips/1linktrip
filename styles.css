@@ -756,3 +756,16 @@ dialog.place-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .ap-mine { margin-bottom: 12px; }
 .add-trip { display: flex; justify-content: flex-end; }
 .airports li .btns { grid-column: 1 / -1; }
+/* Add a booking sheet */
+.itin-sheet { margin-top: 14px; padding: 14px; border-radius: 14px; background: var(--chip); display: grid; gap: 10px; }
+.itin-sheet textarea { width: 100%; box-sizing: border-box; }
+.add-choices { display: grid; gap: 8px; }
+.add-choice { font: inherit; font-weight: 600; text-align: left; padding: 14px 16px; border-radius: 12px; border: 1.5px solid var(--line, var(--rule)); background: var(--card, #fff); color: var(--ink); cursor: pointer; }
+.add-choice:hover { border-color: var(--accent); }
+.file-pick { cursor: pointer; justify-self: start; } .file-pick.busy { opacity: .55; pointer-events: none; }
+.rv-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.rv-card { padding: 12px; border-radius: 12px; background: var(--card, #fff); }
+.rv-card .trip { margin: 0 0 8px; }
+.rv-card .wide { grid-column: 1 / -1; }
+.bk-signin .signin { margin-top: 6px; }
+.add-bk { margin-top: 10px; }
