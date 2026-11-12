@@ -1,6 +1,6 @@
 // 1LinkTrip service worker: app shell offline. Same-origin files are network-first, so deploys show up on the next open.
 // Bump VERSION on every deploy anyway: it clears old caches and triggers the in-page 'Updated' prompt.
-const VERSION = 'ep-2026-11-12f';
+const VERSION = 'ep-2026-11-12g';
 const SHELL = ['./', './index.html', './app.js', './styles.css', './home.css', './airports.js', './examples.js', './osm-snapshots.js', './qrcode.js', './i18n.js', './supabase-config.js', './google-config.js',
   './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './icon.svg'];
 // Static third-party libraries and fonts the page needs to render. Data APIs (weather, Overpass, geocoding, map tiles) are never cached here.
@@ -27,7 +27,7 @@ const staleWhileRevalidate = async (req, ev) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request; if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  if (url.origin === self.location.origin && /\/(proposal|supabase|google|ai)\//.test(url.pathname)) return; // proposal and setup pages are not part of the app: never cached
+  if (url.origin === self.location.origin && /\/(proposal|supabase|google|ai|setup|domain|resend|brand)\//.test(url.pathname)) return; // proposal, brand and setup pages are not part of the app: never cached
   const same = url.origin === self.location.origin && url.pathname.startsWith(new URL('./', self.registration.scope).pathname);
   if (req.mode === 'navigate' || (same && /\/$|\.html$/.test(url.pathname))) { e.respondWith(networkFirst(req)); return; }
   // our own files: network first so a new deploy shows up on the next open; the cache is the offline fallback

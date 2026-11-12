@@ -2458,7 +2458,7 @@ function pubHostHTML() {
   if (P.state === 'busy') return `<div class="pub-host"><p><b>Publishing your short link…</b></p></div>`;
   if (P.state === 'done') return `<div class="pub-host ok"><p><b>Short link is live.</b> Tap Share again to update it. <a href="#mine">Replies in My pages</a></p></div>`;
   if (P.state === 'signin') return `<div class="pub-host"><p><b>Sign in to get a short link.</b> Your page is saved.</p>${signInFormHTML(P.msg, LS.get('signinEmail') || '')}</div>`;
-  return `<div class="pub-host"><p><b>Short link with RSVP</b> <span class="mono">…/eventpages/?e=${esc(makeSlug(B.cfg.title).replace(/-[a-z0-9]{5}$/, ''))}</span></p>${P.msg ? `<p class="hint">${esc(P.msg)}</p>` : ''}<button type="button" class="btn" data-ph="go">Get a short link</button></div>`;
+  return `<div class="pub-host"><p><b>Short link with RSVP</b> <span class="mono">${esc(location.host + location.pathname.replace(/[^/]*$/, ''))}?e=${esc(makeSlug(B.cfg.title).replace(/-[a-z0-9]{5}$/, ''))}</span></p>${P.msg ? `<p class="hint">${esc(P.msg)}</p>` : ''}<button type="button" class="btn" data-ph="go">Get a short link</button></div>`;
 }
 function renderPubHost() { const box = $('#pub-host'); if (box) box.innerHTML = pubHostHTML(); }
 async function hostNow() {

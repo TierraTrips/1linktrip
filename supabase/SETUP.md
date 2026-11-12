@@ -28,8 +28,10 @@ The built-in email sender is rate-limited, so it's fine for testing. Before real
 ## 3. Allow the site's address for sign-in links
 
 1. Open **Authentication → URL Configuration**.
-2. Set **Site URL** to `https://bbbot0209.github.io/eventpages/`
-3. Under **Redirect URLs**, add `https://bbbot0209.github.io/eventpages/**`
+2. Set **Site URL** to `https://1linktrip.com`
+3. Under **Redirect URLs**, add `https://1linktrip.com/**` and `https://www.1linktrip.com/**`. Keep `https://bbbot0209.github.io/eventpages/**` too (the old address still works).
+
+Step-by-step version with Copy buttons: https://bbbot0209.github.io/eventpages/setup/#step4
 
 ## Check (optional)
 
