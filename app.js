@@ -1600,7 +1600,7 @@ function renderEvent(cfg, root, opts = {}) {
   // a source is credited once it actually supplies the map or places (OpenStreetMap only when Google is unavailable)
   art._useSrc = (k) => { art._srcs.add(k); const el = art.querySelector('[data-slot="attrib"]'); if (el) el.innerHTML = attribHTML(art._srcs); };
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-gpid]'); if (b && art._openGPlace) art._openGPlace(b.dataset.gpid); });
-  wireEvent(cfg, art, seq, air, opts); wireOffline(cfg, art, opts);
+  wireEvent(cfg, art, seq, air, opts); wireOffline(cfg, art, opts); if (!opts.preview) wireCollapse(cfg, art);
   if (opts.hosted && typeof wireHosted === 'function') wireHosted(cfg, art, opts.hosted, opts);
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-route-stop]'); if (!b || !art.querySelector('[data-panel="nearby"]')) return; showTab(art, 'nearby', opts); const c2 = art.querySelector(`[data-gp-stop="${b.dataset.routeStop}"]`); if (c2) c2.click(); });
 }
@@ -1617,7 +1617,7 @@ function wireEvent(cfg, art, seq, air, opts) {
   const v = cfg.venue; const T = cfg.tools; const alive = () => seq === renderSeq && document.body.contains(art);
   const slot = (n) => art.querySelector(`[data-slot="${n}"]`);
   const renderSchedule = () => { const w = slot('schedule-wrap'); if (w) w.innerHTML = scheduleSecHTML(cfg); };
-  art._renderSchedule = renderSchedule;
+  art._renderSchedule = () => { renderSchedule(); art._cx && art._cx(); }; // a new booking can fold its Travel part
   art.addEventListener('click', (e) => {
     const a = e.target.closest('[data-act],[data-food],[data-tmode],[data-tab-go],[data-sched],[data-more]'); if (!a) return;
     if (a.dataset.tabGo) showTab(art, a.dataset.tabGo, opts);
@@ -3655,6 +3655,64 @@ function wirePlan(cfg, art, mapCtl) {
   });
 }
 
+// ================= guest tabs: collapse any section, hide it for this guest, booked parts fold to one line =================
+// Per guest per trip: { c: { id: 1 collapsed | 0 opened }, h: { id: 1 hidden } } in localStorage, synced with My trip.
+// A Travel part the guest already booked (flight, train, rental car, hotel) starts folded to its summary line.
+const cxKey = (cfg) => 'secui:' + syncKey(cfg);
+const CX_PARTS = [['fly', 'Flights', ['flight']], ['train', 'Trains', ['train']], ['rental', 'Rental car', ['car']]];
+function cxBooked(cfg) {
+  const xs = itinLoad(cfg); const day = (x) => (x.start || '').slice(0, 10);
+  const line = (k, label) => { const b = xs.filter(x => x.kind === k).sort((a, c) => (a.start || '').localeCompare(c.start || '')); if (!b.length) return '';
+    const x = b[0]; const when = k === 'hotel' || k === 'stay' ? (day(x) ? dateRange(day(x), (x.end || '').slice(0, 10) || day(x)).replace(/, \d{4}$/, '') : '') : day(x) ? fmt(day(x), { month: 'short', day: 'numeric' }) : '';
+    return `✓ ${[t(label), k === 'flight' ? x.flight || x.name : x.name, when].filter(Boolean).join(' · ')}${b.length > 1 ? ` · +${b.length - 1}` : ''}`; };
+  return { 'm-fly': line('flight', 'Flight'), 'm-train': line('train', 'Train'), 'm-rental': line('car', 'Rental car'), stay: line('hotel', 'Hotel') || line('stay', 'Hotel') };
+}
+function wireCollapse(cfg, art) {
+  const st = () => LS.get(cxKey(cfg), null) || { c: {}, h: {} };
+  const save = (x) => { LS.set(cxKey(cfg), x); if (LS.get('signedIn') && cfg.tools.mytrip) syncPush(cfg); };
+  const units = () => {
+    const out = [];
+    $$('.ev-panel .ev-sec[data-sec]', art).forEach(s => { const h = s.querySelector(':scope > .sec-h'); if (h) out.push({ id: s.dataset.sec, el: s, title: h.textContent, kind: 'sec' }); });
+    CX_PARTS.forEach(([m, label]) => { const el = art.querySelector(`[data-panel="travel"] [data-mode="${m}"]`); if (el) out.push({ id: 'm-' + m, el, title: t(label), kind: 'part' }); });
+    return out;
+  };
+  const paint = () => {
+    const x = st(); const booked = cxBooked(cfg);
+    units().forEach(u => {
+      const col = x.c[u.id] === 1 || (x.c[u.id] !== 0 && !!booked[u.id]); const hid = !!x.h[u.id];
+      let ctl = u.kind === 'sec' ? u.el.querySelector(':scope > .cx') : u.el.previousElementSibling && u.el.previousElementSibling.classList.contains('cx-part') ? u.el.previousElementSibling : null;
+      if (!ctl) {
+        const html = `<div class="cx${u.kind === 'part' ? ' cx-part' : ''}">${u.kind === 'part' ? `<b class="cx-t">${esc(u.title)}</b>` : ''}<span class="cx-sum" data-cx-sum></span><button type="button" class="cx-hide" data-cx-hide="${esc(u.id)}" aria-label="${esc(t('Hide {s}', { s: u.title }))}">${t('Hide')}</button><button type="button" class="cx-tog" data-cx-tog="${esc(u.id)}" aria-label="${esc(u.title)}"><i aria-hidden="true"></i></button></div>`;
+        if (u.kind === 'sec') u.el.querySelector(':scope > .sec-h').insertAdjacentHTML('afterend', html); else u.el.insertAdjacentHTML('beforebegin', html);
+        ctl = u.kind === 'sec' ? u.el.querySelector(':scope > .cx') : u.el.previousElementSibling;
+        if (u.kind === 'sec') u.el.classList.add('cx-sec');
+      }
+      const tog = ctl.querySelector('[data-cx-tog]'); tog.setAttribute('aria-expanded', String(!col));
+      ctl.querySelector('[data-cx-sum]').textContent = col ? booked[u.id] || '' : '';
+      if (u.kind === 'sec') { let sl = u.el.querySelector(':scope > .cx-sumline'); if (!sl) { ctl.insertAdjacentHTML('afterend', '<div class="cx-sumline"></div>'); sl = ctl.nextElementSibling; } sl.textContent = col ? booked[u.id] || '' : ''; }
+      u.el.classList.toggle('cx-col', col); u.el.classList.toggle('cx-hid', hid); if (u.kind === 'part') ctl.classList.toggle('cx-hid', hid);
+    });
+    // "Hidden (n)" at the bottom of each tab: tap to bring one back
+    $$('.ev-panel', art).forEach(pn => {
+      const hs = units().filter(u => x.h[u.id] && pn.contains(u.el)); let row = pn.querySelector(':scope .cx-hidden');
+      if (!hs.length) { if (row) row.remove(); return; }
+      const html = `<details class="cx-hidden"><summary>${esc(t('Hidden ({n})', { n: hs.length }))}</summary><div class="cx-list">${hs.map(u => `<button type="button" class="btn sm" data-cx-show="${esc(u.id)}">${esc(t('Show {s}', { s: u.title }))}</button>`).join('')}</div></details>`;
+      const body = pn.querySelector('.ev-body') || pn; if (row) { const open = row.open; row.outerHTML = html; if (open) body.querySelector('.cx-hidden').open = true; } else body.insertAdjacentHTML('beforeend', html);
+    });
+  };
+  art._cx = paint; paint();
+  art.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cx-tog],[data-cx-hide],[data-cx-show]'); const h2 = !b && e.target.closest('.cx-sec > .sec-h');
+    if (!b && !h2) return; const x = st(); const booked = cxBooked(cfg);
+    const id = b ? b.dataset.cxTog || b.dataset.cxHide || b.dataset.cxShow : h2.parentElement.dataset.sec;
+    if ((b && b.dataset.cxTog) || h2) { const col = x.c[id] === 1 || (x.c[id] !== 0 && !!booked[id]); x.c[id] = col ? 0 : 1; }
+    else if (b.dataset.cxHide) x.h[id] = 1; else delete x.h[id];
+    save(x); paint();
+  });
+  // Travel parts are filled in later (airports, counters): keep their headers in place
+  const tp = art.querySelector('[data-panel="travel"]'); if (tp) new MutationObserver(debounce(() => { if (document.body.contains(art)) paint(); }, 120)).observe(tp, { childList: true });
+}
+
 // ================= the guest's hotel per city + saved spots (★) =================
 // Hotel per route city: the guest's own hotel booking (My trip) for those dates → else the host's stay on the itinerary
 // for that leg → else one the guest sets here. A hotel the guest sets is a plan item { hotel: true } so it syncs and
@@ -4099,7 +4157,8 @@ const syncPush = debounce(async (cfg) => {
   const u = await syncUser(); if (!u) return; const c = await sb(); const key = syncKey(cfg);
   const rows = withIds(cfg).map(x => ({ id: x.id, page_key: key, kind: 'booking', item: x, updated_at: new Date().toISOString() }))
     .concat(planLoad(cfg).map(x => ({ id: x.id, page_key: key, kind: 'place', item: x, updated_at: new Date().toISOString() })))
-    .concat(shopLoad(cfg).map(x => ({ id: x.id, page_key: key, kind: 'place', item: { ...x, shop: true }, updated_at: new Date().toISOString() })));
+    .concat(shopLoad(cfg).map(x => ({ id: x.id, page_key: key, kind: 'place', item: { ...x, shop: true }, updated_at: new Date().toISOString() })))
+    .concat(LS.get(cxKey(cfg)) ? [{ id: 'ui-' + key, page_key: key, kind: 'place', item: { secui: true, ...LS.get(cxKey(cfg)) }, updated_at: new Date().toISOString() }] : []);
   if (rows.length) { const { error } = await c.from('trip_items').upsert(rows, { onConflict: 'owner,id' }); if (tableMissing(error)) { LS.set('syncOff', Date.now()); return; } }
   let q = c.from('trip_items').delete().eq('page_key', key); if (rows.length) q = q.not('id', 'in', `(${rows.map(r => '"' + r.id.replace(/"/g, '') + '"').join(',')})`);
   await q;
@@ -4110,7 +4169,7 @@ async function syncPull(cfg, art) {
   if (error) { if (tableMissing(error)) LS.set('syncOff', Date.now()); return; }
   const mine = (data || []).filter(r => r.page_key === key); const inbox = (data || []).filter(r => r.page_key === 'inbox');
   const bk = withIds(cfg), pl = planLoad(cfg), sh = shopLoad(cfg); const have = new Set(bk.map(x => x.id).concat(pl.map(x => x.id), sh.map(x => x.id))); let added = 0;
-  mine.forEach(r => { if (have.has(r.id) || !r.item) return; if (r.kind === 'place' && r.item.shop) { const { shop, ...x } = r.item; sh.push({ ...x, id: r.id }); } else if (r.kind === 'place') pl.push({ ...r.item, id: r.id }); else bk.push({ ...r.item, id: r.id }); added++; });
+  mine.forEach(r => { if (r.item && r.item.secui) { if (!LS.get(cxKey(cfg))) { const { secui, ...ui } = r.item; LS.set(cxKey(cfg), ui); art._cx && art._cx(); } return; } if (have.has(r.id) || !r.item) return; if (r.kind === 'place' && r.item.shop) { const { shop, ...x } = r.item; sh.push({ ...x, id: r.id }); } else if (r.kind === 'place') pl.push({ ...r.item, id: r.id }); else bk.push({ ...r.item, id: r.id }); added++; });
   if (added) { LS.set(shopKey(cfg), sh); art._shop && art._shop(); LS.set(itinKey(cfg), bk); planSave(cfg, pl); art._planChanged && art._planChanged(); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); }
   if (added || !mine.length) syncPush(cfg); // first sync uploads what this device already had
   const slot = art.querySelector('#sec-plan .sec-b');

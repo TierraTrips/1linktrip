@@ -976,3 +976,28 @@ html.is-offline body::before { content: 'Offline'; position: fixed; top: max(12p
 .off-row small { font-size: .8rem; }
 .map-off:empty { display: none; } .map-off { margin-bottom: 12px; }
 .off-msg b { color: var(--ink, #12141B); }
+
+/* guest tabs: collapse / hide any section; booked Travel parts fold to a one-line summary */
+.cx-sec { position: relative; }
+.cx-sec > .sec-h { cursor: pointer; padding-right: 96px; }
+.cx { display: flex; align-items: center; gap: 4px; }
+.cx-sec > .cx { position: absolute; top: 14px; right: 10px; }
+.cx-part { margin: 14px 0 4px; flex-wrap: wrap; } .cx-part .cx-t { flex: 1 1 auto; min-width: 0; font: 600 .95rem var(--sans); }
+.cx-part .cx-sum { order: 5; flex-basis: 100%; } .cx-part .cx-sum:empty { display: none; }
+.cx-sum { font-size: .84rem; font-weight: 600; color: #1B7F3B; overflow-wrap: anywhere; }
+.cx-sec > .cx .cx-sum { display: none; }
+.cx-sumline { display: none; margin: 2px 0 0; font-size: .86rem; font-weight: 600; color: #1B7F3B; overflow-wrap: anywhere; }
+.cx-sec.cx-col > .cx-sumline:not(:empty) { display: block; }
+.cx-hide, .cx-tog { all: unset; box-sizing: border-box; cursor: pointer; min-width: 40px; height: 40px; display: grid; place-items: center; border-radius: 999px; color: var(--muted, #5B6472); font: 600 .78rem var(--sans, system-ui); }
+.cx-hide { padding: 0 8px; }
+.cx-hide:hover, .cx-tog:hover { background: var(--chip, #EEF1F4); }
+.cx-hide:focus-visible, .cx-tog:focus-visible { outline: 2px solid var(--accent); }
+.cx-tog i { width: 9px; height: 9px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-135deg) translate(-2px, -2px); transition: transform .15s; }
+.cx-tog[aria-expanded="false"] i { transform: rotate(45deg) translate(-2px, -2px); }
+.cx-sec.cx-col > :not(.sec-h):not(.cx):not(.cx-sumline) { display: none !important; }
+.cx-sec.cx-col { padding-bottom: 14px; }
+[data-mode].cx-col { display: none !important; }
+.cx-hid { display: none !important; }
+.cx-hidden { margin: 16px 0 4px; padding: 10px 12px; border-radius: 12px; background: var(--chip, #EEF1F4); }
+.cx-hidden summary { cursor: pointer; font-weight: 600; font-size: .9rem; min-height: 28px; display: flex; align-items: center; }
+.cx-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
