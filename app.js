@@ -953,6 +953,183 @@ async function pinPlace(k, btn) {
   } catch { toast('Search is unavailable right now'); btn.textContent = 'Pin on map'; }
   btn.disabled = false;
 }
+// ================= messages: guest ↔ host threads, guest groups, updates for chosen groups (schema-3; hidden until installed) =================
+// Who may read what is enforced on the server (supabase/schema-3.sql). The page only shows what those rules return.
+let msgReadyP = null;
+function msgReady() {
+  if (!SB) return Promise.resolve(false);
+  const c = LS.get('msgReady'); if (c && Date.now() - c.t < (c.ok ? 3600e3 : 300e3)) return Promise.resolve(c.ok);
+  // 200 = the tables exist; 404 (not installed yet), 401/403 or offline = keep everything hidden
+  return msgReadyP || (msgReadyP = fetchTimeout(`${SB.url}/rest/v1/event_groups?select=id&limit=1`, { headers: { apikey: SB.key, Accept: 'application/json' } }, 8000)
+    .then(r => r.status === 200).catch(() => false).then(ok => { LS.set('msgReady', { t: Date.now(), ok }); msgReadyP = null; return ok; }));
+}
+const msgReadyNow = () => { const c = LS.get('msgReady'); return !!(c && c.ok); };
+let notifyP = null;
+function notifyReady() {
+  const c = LS.get('notifyReady'); if (c && Date.now() - c.t < (c.ok ? 3600e3 : 600e3)) return Promise.resolve(c.ok);
+  return notifyP || (notifyP = fetchTimeout(`${SB.url}/functions/v1/notify`, {}, 8000).then(r => r.status === 200 || r.status === 401).catch(() => false)
+    .then(ok => { LS.set('notifyReady', { t: Date.now(), ok }); notifyP = null; return ok; }));
+}
+// email is the extra; the message or update is already saved and shows in the app either way
+async function notifyEmail(kind, id) {
+  try {
+    if (!id || !SB || !(await notifyReady())) return;
+    const c = await sb(); const { data } = await c.auth.getSession(); const tok = data && data.session && data.session.access_token; if (!tok) return;
+    await fetchTimeout(`${SB.url}/functions/v1/notify`, { method: 'POST', headers: { Authorization: 'Bearer ' + tok, apikey: SB.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, id }) }, 15000);
+  } catch { /* in-app delivery already happened */ }
+}
+// where a guest returns after signing in on a hosted page: the same page and tab
+const hostedBack = (art) => { const p = art && art.querySelector('.ev-panel:not([hidden])'); const k = p ? p.dataset.panel : 'event'; return '?e=' + enc(new URLSearchParams(location.search).get('e') || '') + (k && k !== 'event' ? '#t=' + k : ''); };
+const msgSignInHTML = () => `<div class="bk-signin gm-signin"><p><b>${t('Sign in first.')}</b></p>${signInFormHTML('')}</div>`;
+const msgListHTML = (rows, cfg, host) => rows.length ? `<ul class="msg-list">${rows.map(r => {
+  const mine = host ? r.from_host : !r.from_host; const who = r.from_host ? (host ? t('You') : (cfg.host || t('Host'))) : (host ? (r.guest_name || r.guest_email || t('Guest')) : t('You'));
+  return `<li class="msg ${mine ? 'out' : 'in'}"><span class="who">${esc(who)} · <time>${esc(fmtStamp(r.created_at))}</time></span><p>${esc(r.body)}</p></li>`; }).join('')}</ul>` : '';
+const msgComposeHTML = (key, label, btn) => `<div class="msg-compose"><textarea id="gm-${key}" rows="2" maxlength="2000" aria-label="${esc(label)}" placeholder="${esc(label)}"></textarea><button type="button" class="btn primary" data-gm-send="${key}">${esc(btn)}</button></div><p class="hint" data-gm-msg role="status" aria-live="polite"></p>`;
+
+// ---------- guest side: "Message the host" on the Event tab, "Messages" on My trip, group picker in RSVP ----------
+async function myGuestUser() { if (!LS.get('signedIn')) return null; try { return await sbUser(); } catch { return null; } }
+async function setMyGroup(eventId, gid, user) {
+  const c = await sb(); const email = String(user.email || '').toLowerCase(); if (!email) return;
+  await c.from('event_group_members').delete().eq('event_id', eventId).eq('email', email).eq('added_by', 'guest');
+  if (gid) await c.from('event_group_members').insert({ event_id: eventId, group_id: gid, email, added_by: 'guest' });
+}
+function wireGuestMsgs(cfg, art, hosted) {
+  msgReady().then(async (ok) => {
+    if (!ok || !document.body.contains(art)) return;
+    const G = { user: null, rows: [], anns: [], groups: [], picks: [] };
+    art._gm = G;
+    // groups a guest may pick at RSVP (public list; host-only groups stay hidden)
+    rest(`event_groups?event_id=eq.${enc(hosted.id)}&self_pick=eq.true&select=id,name,sort&order=sort.asc,name.asc`).then(rows => { G.picks = rows || []; art._fillPick && art._fillPick(); }).catch(() => {});
+    G.user = await myGuestUser();
+    const pend = LS.get('grpPick:' + hosted.id);
+    if (G.user && pend) setMyGroup(hosted.id, pend, G.user).then(() => { LS.del('grpPick:' + hosted.id); load(); }).catch(() => {});
+    const evBody = art.querySelector('.ev-panel[data-panel="event"] .ev-body'); const tripBody = art.querySelector('.ev-panel[data-panel="mytrip"] .ev-body');
+    const on = !!cfg.guestMessages;
+    if (on && evBody && !art.querySelector('#sec-gm')) {
+      const html = sec('gm', t('Message the host'), '<div data-slot="gm-ev"></div>');
+      const after = evBody.querySelector('#sec-rsvp'); if (after) after.insertAdjacentHTML('afterend', html); else evBody.insertAdjacentHTML('beforeend', html);
+    }
+    if (tripBody && G.user && !art.querySelector('#sec-gmt')) tripBody.insertAdjacentHTML('afterbegin', `<div data-slot="gm-trip-wrap"></div>`);
+    const seenKey = 'msgSeen:' + hosted.id;
+    const paint = () => {
+      const ev = art.querySelector('[data-slot="gm-ev"]'); const wrap = art.querySelector('[data-slot="gm-trip-wrap"]');
+      const gname = (ids) => (ids || []).map(id => (G.groups.find(g => g.id === id) || {}).name).filter(Boolean).join(', ');
+      const anns = G.anns.length ? `<ul class="ann-list gm-anns">${G.anns.map(a => `<li><time>${esc(fmtStamp(a.created_at))}${gname(a.group_ids) ? ' · ' + esc(gname(a.group_ids)) : ''}</time><p>${esc(a.body)}</p></li>`).join('')}</ul>` : '';
+      const thread = msgListHTML(G.rows, cfg, false);
+      if (ev) {
+        if (!G.user) ev.innerHTML = msgSignInHTML();
+        else if (!wrap) ev.innerHTML = `${anns}${thread}${msgComposeHTML('ev', t('Write a message'), t('Send'))}`; // no My trip tab: the whole thread lives here
+        else ev.innerHTML = `${msgComposeHTML('ev', t('Write a message'), t('Send'))}${G.rows.length ? `<button type="button" class="btn sm" data-tab-go="mytrip">${esc(t('Messages'))} (${G.rows.length})</button>` : ''}`;
+      }
+      if (wrap) {
+        const show = G.user && (on || G.rows.length || G.anns.length);
+        wrap.innerHTML = show ? sec('gmt', t('Messages'), `${anns}${thread}${on || G.rows.length ? msgComposeHTML('trip', t('Write a message'), t('Send')) : ''}`, 'gm-sec') : '';
+      }
+      const newest = G.rows.filter(r => r.from_host).concat(G.anns).map(r => r.created_at).sort().pop() || '';
+      const tab = art.querySelector('[data-tab-go="mytrip"][role="tab"]'); if (tab) tab.classList.toggle('has-new', !!newest && newest > (LS.get(seenKey) || ''));
+      const tp = art.querySelector('.ev-panel[data-panel="mytrip"]'); if (tp && !tp.hidden && newest) { LS.set(seenKey, newest); if (tab) tab.classList.remove('has-new'); }
+    };
+    const load = async () => {
+      if (!G.user) { paint(); return; }
+      try {
+        const c = await sb();
+        const [m, a, g] = await Promise.all([
+          c.from('event_messages').select('id,from_host,body,created_at').eq('event_id', hosted.id).eq('guest', G.user.id).order('created_at', { ascending: true }).limit(200),
+          c.from('announcements').select('id,body,created_at,group_ids').eq('event_id', hosted.id).order('created_at', { ascending: false }).limit(30),
+          c.from('event_groups').select('id,name').eq('event_id', hosted.id)]);
+        if (m.error && tableMissing(m.error)) { LS.set('msgReady', { t: Date.now(), ok: false }); return; }
+        G.rows = m.data || []; G.anns = (a.data || []).filter(x => (x.group_ids || []).length); G.groups = g.data || [];
+      } catch { /* keep what is shown */ }
+      if (document.body.contains(art)) paint();
+    };
+    paint(); load(); art._gmLoad = load;
+    // simple refresh: on opening My trip, on coming back to the app, and every 30 s while My trip is open
+    (art._showFns = art._showFns || []).push((k) => { if (k === 'mytrip') { load(); } });
+    if (document._gmVis) document.removeEventListener('visibilitychange', document._gmVis); // one listener, for the page on screen
+    document._gmVis = () => { if (!document.hidden && document.body.contains(art)) load(); }; document.addEventListener('visibilitychange', document._gmVis);
+    const iv = setInterval(() => { if (!document.body.contains(art)) return clearInterval(iv); const tp = art.querySelector('.ev-panel[data-panel="mytrip"]'); if (!document.hidden && tp && !tp.hidden) load(); }, 30000);
+    art.addEventListener('click', async (e) => {
+      const sio = e.target.closest('.gm-signin [data-si-oauth]'); if (sio) { oauthSignIn(sio.dataset.siOauth); LS.set('afterSignIn', hostedBack(art)); return; }
+      const b = e.target.closest('.gm-signin [data-si="send"], [data-gm-send]'); if (!b) return;
+      if (b.dataset.si === 'send') { LS.set('afterSignIn', hostedBack(art)); signInSubmit(b.closest('.gm-signin')); return; }
+      const box = b.closest('.ev-sec, [data-slot="gm-ev"]'); const ta = box.querySelector('textarea'); const hint = box.querySelector('[data-gm-msg]');
+      const body = (ta.value || '').trim().slice(0, 2000); if (!body) { ta.focus(); return; }
+      b.disabled = true; hint.textContent = t('Sending…');
+      try {
+        const c = await sb(); const mine = LS.get('rsvp:' + hosted.id) || {}; const md = G.user.user_metadata || {};
+        const { data, error } = await c.from('event_messages').insert({ event_id: hosted.id, body, guest_name: (mine.name || md.full_name || md.name || '').slice(0, 120) || null }).select('id,from_host,body,created_at').single();
+        if (error) throw error;
+        G.rows.push(data); ta.value = ''; paint(); notifyEmail('message', data.id);
+        const h2 = art.querySelector(`[data-gm-send="${b.dataset.gmSend}"]`)?.closest('.ev-sec, [data-slot="gm-ev"]')?.querySelector('[data-gm-msg]'); if (h2) h2.textContent = t('Sent');
+      } catch { b.disabled = false; hint.textContent = t('Couldn’t send. Try again.'); }
+    });
+    art.addEventListener('keydown', (e) => { if (e.target.id === 'si-email' && e.target.closest('.gm-signin') && e.key === 'Enter') { e.preventDefault(); LS.set('afterSignIn', hostedBack(art)); signInSubmit(e.target.closest('.gm-signin')); } });
+  });
+}
+const groupPickHTML = (picks, cur) => picks.length ? `<div class="field"><label for="rs-group">${t('Group')}</label><select id="rs-group"><option value="">${t('Choose')}</option>${picks.map(g => `<option value="${esc(g.id)}" ${g.id === cur ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></div>` : '';
+
+// ---------- host side: groups editor (builder card + My pages), inbox, Send to ----------
+const parseEmails = (s) => [...new Set(String(s || '').toLowerCase().match(/[^\s,;<>"'()]+@[^\s,;<>"'()]+\.[a-z]{2,}/g) || [])].slice(0, 500);
+async function loadGroups(c, eventId) {
+  const [g, m] = await Promise.all([c.from('event_groups').select('id,name,self_pick,sort').eq('event_id', eventId).order('sort', { ascending: true }).order('name', { ascending: true }),
+    c.from('event_group_members').select('group_id,email,added_by').eq('event_id', eventId).order('email', { ascending: true })]);
+  if (g.error) throw g.error;
+  return (g.data || []).map(x => ({ ...x, members: (m.data || []).filter(y => y.group_id === x.id) }));
+}
+function groupsEdHTML(groups) {
+  return `<div class="grp-ed">${groups.map(g => `<div class="grp-card" data-gid="${esc(g.id)}">
+      <div class="grp-h"><b>${esc(g.name)}</b><span class="muted small">${esc(g.members.length === 1 ? t('1 person') : t('{n} people', { n: g.members.length }))}</span></div>
+      <label class="tool"><input type="checkbox" data-g-pick="${esc(g.id)}" ${g.self_pick ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${t('Guests can pick')}</label>
+      <details class="grp-more"><summary>${t('Emails')}</summary>
+        ${g.members.length ? `<ul class="grp-mem">${g.members.map(m => `<li><span>${esc(m.email)}</span><button type="button" class="link" data-g-rm="${esc(g.id)}" data-email="${esc(m.email)}" aria-label="${esc(t('Remove'))} ${esc(m.email)}">×</button></li>`).join('')}</ul>` : ''}
+        <textarea rows="3" data-g-paste="${esc(g.id)}" aria-label="${esc(t('Emails, one per line'))}" placeholder="${esc(t('Emails, one per line'))}"></textarea>
+        <div class="btns"><button type="button" class="btn sm" data-g-add="${esc(g.id)}">${t('Add emails')}</button><button type="button" class="link" data-g-del="${esc(g.id)}">${t('Delete group')}</button></div>
+      </details></div>`).join('')}
+    <div class="search grp-new"><input data-g-name maxlength="60" aria-label="${esc(t('Group name'))}" placeholder="${esc(t('Group name'))}"><button type="button" class="btn" data-g-new>${t('Add')}</button></div>
+    <p class="hint" data-g-hint role="status" aria-live="polite"></p></div>`;
+}
+// one wiring for both places; `after` re-renders the host view once something changed
+function wireGroupsEd(root, c, eventId, after) {
+  if (root._gWired) return; root._gWired = true;
+  const hint = (s) => { const h = root.querySelector('[data-g-hint]'); if (h) h.textContent = s; };
+  root.addEventListener('change', async (e) => {
+    const i = e.target.closest('[data-g-pick]'); if (!i) return;
+    const { error } = await c.from('event_groups').update({ self_pick: i.checked }).eq('id', i.dataset.gPick); if (error) { hint(error.message); return; } after();
+  });
+  root.addEventListener('keydown', (e) => { if (e.target.matches('[data-g-name]') && e.key === 'Enter') { e.preventDefault(); root.querySelector('[data-g-new]').click(); } });
+  root.addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
+    if ('gNew' in d) { const inp = root.querySelector('[data-g-name]'); const name = (inp.value || '').trim().slice(0, 60); if (!name) { inp.focus(); return; }
+      b.disabled = true; const n = root.querySelectorAll('.grp-card').length;
+      const { error } = await c.from('event_groups').insert({ event_id: eventId, name, sort: n }); b.disabled = false;
+      if (error) { hint(error.code === '23505' ? t('You already have that group.') : error.message); return; } after(); }
+    else if (d.gAdd) { const ta = root.querySelector(`[data-g-paste="${CSS.escape(d.gAdd)}"]`); const emails = parseEmails(ta.value); if (!emails.length) { ta.focus(); return; }
+      b.disabled = true; const { error } = await c.from('event_group_members').upsert(emails.map(email => ({ event_id: eventId, group_id: d.gAdd, email, added_by: 'host' })), { onConflict: 'group_id,email', ignoreDuplicates: true }); b.disabled = false;
+      if (error) { hint(error.message); return; } after(); }
+    else if (d.gRm) { await c.from('event_group_members').delete().eq('group_id', d.gRm).eq('email', d.email); after(); }
+    else if (d.gDel) { if (!confirm(t('Delete this group?'))) return; await c.from('event_groups').delete().eq('id', d.gDel); after(); }
+  });
+}
+const sendToHTML = (groups) => groups.length ? `<div class="send-to"><span class="lbl-s">${t('Send to')}</span><div class="chips" role="group" aria-label="${esc(t('Send to'))}"><button type="button" class="chip on" data-st-all aria-pressed="true">${t('Everyone')}</button>${groups.map(g => `<button type="button" class="chip" data-st-g="${esc(g.id)}" aria-pressed="false">${esc(g.name)}</button>`).join('')}</div></div>` : '';
+function wireSendTo(root) {
+  root.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-st-all],[data-st-g]'); if (!b) return;
+    const all = root.querySelector('[data-st-all]'); const gs = $$('[data-st-g]', root);
+    const set = (x, on) => { x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); };
+    if ('stAll' in b.dataset) { set(all, true); gs.forEach(x => set(x, false)); return; }
+    set(b, !b.classList.contains('on')); const any = gs.some(x => x.classList.contains('on')); set(all, !any);
+  });
+}
+const sendToIds = (root) => $$('[data-st-g].on', root).map(x => x.dataset.stG);
+function inboxHTML(rows, seen) {
+  const th = new Map(); rows.forEach(r => { if (!th.has(r.guest)) th.set(r.guest, []); th.get(r.guest).push(r); });
+  const list = [...th.entries()].map(([g, xs]) => ({ g, xs, last: xs[xs.length - 1], who: xs.find(x => !x.from_host) || {} })).sort((a, b) => b.last.created_at.localeCompare(a.last.created_at));
+  if (!list.length) return `<p class="muted">${t('No messages yet.')}</p>`;
+  return `<div class="inbox">${list.map(({ g, xs, last, who }) => { const unread = !last.from_host && last.created_at > ((seen || {})[g] || '');
+    return `<details class="thr" data-thr="${esc(g)}"><summary><span class="thr-who"><b>${esc(who.guest_name || who.guest_email || t('Guest'))}</b>${who.guest_name && who.guest_email ? ` <span class="muted small">${esc(who.guest_email)}</span>` : ''}</span>${unread ? `<i class="dot" aria-label="${esc(t('New'))}"></i>` : ''}<span class="thr-last">${esc(last.body.slice(0, 90))}</span></summary>
+      ${msgListHTML(xs, {}, true)}${msgComposeHTML('h-' + g, t('Reply'), t('Reply'))}</details>`; }).join('')}</div>`;
+}
+
 // ---------- router ----------
 function renderBroken() {
   $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a></header><section class="broken"><h1>This link is incomplete.</h1><p class="lede">The event is stored inside the link, and part of it is missing. Ask whoever sent it to copy the whole link again.</p><a class="btn primary" href="#">Go to 1LinkTrip</a></section></main>`;
@@ -1416,7 +1593,7 @@ const bkFileHTML = () => `<div class="itin-sheet" data-sheet="file"><label class
     <p class="hint" data-ai-msg role="status" aria-live="polite"></p><div data-signin-slot></div></div>`;
 const bkSignInHTML = () => `<div class="bk-signin"><p><b>${t('Sign in to read it automatically.')}</b></p>${signInFormHTML('')}</div>`;
 function bkReviewHTML(xs) {
-  const inp = (x, i, k, label, type = 'text') => `<div class="field${k === 'name' || k === 'address' ? ' wide' : ''}"><label for="rv${i}-${k}">${t(label)}</label><input id="rv${i}-${k}" type="${type === 'when' ? (isDate(x[k] || '') ? 'date' : 'datetime-local') : type}" data-rv="${i}" data-rk="${k}" value="${esc(x[k] || '')}"></div>`;
+  const inp = (x, i, k, label, type = 'text') => `<div class="field${k === 'name' || k === 'address' ? ' wide' : ''}${type === 'when' && !isDate(x[k] || '') ? ' when-f' : ''}"><label for="rv${i}-${k}">${t(label)}</label><input id="rv${i}-${k}" type="${type === 'when' ? (isDate(x[k] || '') ? 'date' : 'datetime-local') : type}" data-rv="${i}" data-rk="${k}" value="${esc(x[k] || '')}"></div>`;
   return `<div class="itin-sheet" data-sheet="review"><ul class="rv-list">${xs.map((x, i) => `<li class="rv-card">
     <div class="trip">
       <div class="field"><label for="rv${i}-kind">${t('Type')}</label><select id="rv${i}-kind" data-rv="${i}" data-rk="kind"><option value="">${t('Choose')}</option>${Object.entries(ITIN_KINDS).map(([v, l]) => `<option value="${v}" ${v === x.kind ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></div>
@@ -1590,6 +1767,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   sh.addEventListener('click', (e) => { if (e.target === sh) sh.close(); });
   wireInputs(sh.querySelector('.sheet-in'));
   if (typeof wirePubHost === 'function') wirePubHost();
+  if (SB) msgReady().then(ok => { if (ok && B && !$('[data-card="msgs"]')) buildForm(); });
   if (LS.get('signedIn') && SB) aiModes().then(m => { if (m.includes('translate') && B && !$('[data-card="langs"]')) buildForm(); });
   preview();
   if (window.__openCard) { const id = window.__openCard; window.__openCard = null; openCard(id); }
@@ -1643,10 +1821,10 @@ function cardDone(c, id) {
   const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id);
   if (tc) { const sp = typeSpec(c), d = typeData(c); return tc[3].some(k => { const f = sp.fields.find(x => x[0] === k); return f && filled(f[2], d[k]); }); }
   return { schedule: () => c.schedule.some(x => x.title), notes: () => c.notes.some(x => x.label), about: () => !!(c.description || c.host), look: () => !!c.cover, bring: () => !!c.bring.trim(),
-    access: () => !!(c.access && Object.values(c.access).some(Boolean)), replies: () => !c.off.rsvp, langs: () => (c.langs || []).length > 0 }[id]?.() || false;
+    access: () => !!(c.access && Object.values(c.access).some(Boolean)), replies: () => !c.off.rsvp, msgs: () => !!c.guestMessages, langs: () => (c.langs || []).length > 0 }[id]?.() || false;
 }
 const cardBtn = (c, [id, title, sub]) => { const done = cardDone(c, id); return `<button type="button" class="acard ${done ? 'on' : ''}" data-card="${id}"><span class="aic">${cardIcon(id)}</span><b>${esc(title)}</b><span>${esc(sub)}</span><i class="plus" aria-hidden="true">${done ? '✓' : '+'}</i></button>`; };
-function allCards(c) { const cc0 = COMMON_CARDS.filter(x => x[0] !== 'langs' || canTranslate() || (c.langs || []).length); return { type: TYPE_CARDS[c.type] || [], common: isTrip(c) ? cc0.filter(x => x[0] !== 'replies').map(x => x[0] === 'schedule' ? ['schedule', 'Day by day', 'Plans, bookings'] : x) : cc0 }; }
+function allCards(c) { const cc0 = COMMON_CARDS.filter(x => (x[0] !== 'langs' || canTranslate() || (c.langs || []).length) && (x[0] !== 'msgs' || msgReadyNow())); return { type: TYPE_CARDS[c.type] || [], common: isTrip(c) ? cc0.filter(x => x[0] !== 'replies').map(x => x[0] === 'schedule' ? ['schedule', 'Day by day', 'Plans, bookings'] : x) : cc0 }; }
 function buildForm() {
   const c = B.cfg; const f = $('.b-form'); if (!f) return; const keepNote = f.querySelector('.b-note:not(.b-host)'); const keepAI = f.querySelector('[data-ai-edit]');
   const open = new Set($$('details[data-acc][open]', f).map(d => d.dataset.acc)); B.moreOpen = open.has('design-more');
@@ -1705,7 +1883,7 @@ function renderSheet() {
   else if (id === 'bring') body = fieldWrap('Guests must bring', `<textarea id="f-bring" data-f="bring" rows="5" placeholder="One per line">${esc(c.bring)}</textarea>`, 'f-bring');
   else if (typeof extraCardBody === 'function') body = extraCardBody(id, c);
   const head = title;
-  setTimeout(() => { if (id === 'route') wireRouteAC(c); }, 0);
+  setTimeout(() => { if (id === 'route') wireRouteAC(c); if (id === 'msgs') loadCardGroups(); }, 0);
   form.innerHTML = `<div class="grab" aria-hidden="true"></div><h2>${esc(head)}<button type="button" class="x" data-b="close" aria-label="Close">×</button></h2><div class="sheet-b">${body}</div><button type="button" class="btn primary big" data-b="close">Done</button>`;
 }
 // one input handler for the form and the card sheet
@@ -1988,6 +2166,7 @@ function extraInput(i, cfg) {
     return;
   }
   if (i.dataset.rsvpOn != null) { cfg.off.rsvp = !i.checked; changed(); return; }
+  if (i.dataset.gmsg != null) { cfg.guestMessages = i.checked; changed(); return; }
   if (i.dataset.access) { cfg.access = cfg.access || {}; cfg.access[i.dataset.access] = i.value; changed(); }
 }
 
@@ -1995,7 +2174,16 @@ function extraInput(i, cfg) {
 const ACCESS_FIELDS = [['dropoff', 'Drop-off point'], ['entrance', 'Step-free entrance'], ['parking', 'Accessible parking'], ['restrooms', 'Accessible restrooms'], ['notes', 'Other access notes']];
 COMMON_CARDS.splice(3, 0, ['access', 'Access and arrival', 'Drop-off, step-free']);
 COMMON_CARDS.splice(1, 0, ['replies', 'RSVP form', 'Collect replies']);
+COMMON_CARDS.push(['msgs', t('Messages'), t('Guest messages, groups')]); // shown once schema-3 is installed
+async function loadCardGroups() {
+  const slot = $('#sheet [data-grp-slot]'); if (!slot || !B.hosted || !SB) return; const eid = B.hosted.id;
+  const paint = async () => { try { const c = await sb(); const gs = await loadGroups(c, eid); if (!document.body.contains(slot)) return; slot.innerHTML = groupsEdHTML(gs); wireGroupsEd(slot, c, eid, paint); } catch { slot.innerHTML = ''; } };
+  if (!(await myGuestUser())) { slot.innerHTML = `<p class="hint">${t('Sign in to manage groups.')}</p>`; return; }
+  paint();
+}
 function extraCardBody(id, c) {
+  if (id === 'msgs') return `<label class="tool"><input type="checkbox" data-gmsg ${c.guestMessages ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${t('Let guests message you')}</label>
+    <h3 class="sub-h">${t('Groups')}</h3><div data-grp-slot>${B.hosted ? `<p class="muted small">${t('Loading…')}</p>` : `<p class="hint">${t('Get a short link first.')}</p>`}</div>`;
   if (id === 'replies') return `<label class="chk"><input type="checkbox" data-rsvp-on ${c.off.rsvp ? '' : 'checked'}> RSVP form on your short link</label><p class="hint">Replies show in My pages. Short links only.</p>`;
   if (id !== 'access') return '';
   const a = c.access || {};
@@ -2149,6 +2337,7 @@ function rsvpFormHTML(cfg, hosted) {
     <div class="field"><span class="lbl-s">${t('Will you be there?')}</span><div class="seg2" role="radiogroup"><button type="button" role="radio" data-rsvp-att="1" aria-checked="${prev.attending !== false}" class="${prev.attending !== false ? 'on' : ''}">${t('Yes, I’ll be there')}</button><button type="button" role="radio" data-rsvp-att="0" aria-checked="${prev.attending === false}" class="${prev.attending === false ? 'on' : ''}">${t('Can’t make it')}</button></div></div>
     <div class="two"><div class="field" data-rsvp-guests ${prev.attending === false ? 'hidden' : ''}><label for="rs-guests">${t('How many, including you')}</label><input id="rs-guests" type="number" min="1" max="20" inputmode="numeric" value="${esc(prev.guests || 1)}"></div>
     <div class="field"><label for="rs-email">${t('Email (optional)')}</label><input id="rs-email" type="email" maxlength="254" autocomplete="email" value="${esc(prev.email || '')}"></div></div>
+    <div data-rsvp-group></div>
     <div class="field"><label for="rs-note">${t('Note for the host (optional)')}</label><textarea id="rs-note" rows="2" maxlength="1000">${esc(prev.note || '')}</textarea></div>
     <p class="rsvp-msg" role="status" aria-live="polite"></p>
     <button type="button" class="btn primary" data-rsvp="send">${t('Send reply')}</button>
@@ -2164,6 +2353,9 @@ function wireHosted(cfg, art, hosted, opts = {}) {
     if (wrap) wrap.innerHTML = html; else body.querySelector('[data-slot="ann"]').insertAdjacentHTML('afterend', html);
   }
   if (opts.preview) { art.querySelectorAll('.rsvp input, .rsvp textarea, .rsvp button').forEach(x => { x.disabled = true; }); return; }
+  // groups guests can pick at RSVP, and messages (both hidden until schema-3 is installed)
+  art._fillPick = () => { const g = art.querySelector('[data-rsvp-group]'); const P = art._gm; if (g && P && P.picks.length) g.innerHTML = groupPickHTML(P.picks, (LS.get('rsvp:' + hosted.id) || {}).group || ''); };
+  wireGuestMsgs(cfg, art, hosted);
   fetchAnnouncements(hosted.id).then(rows => {
     const s = art.querySelector('[data-slot="ann"]'); if (!s || !rows || !rows.length) return;
     const tr = (cfg.tr && cfg.tr[LANG]) || {}; const show = (r) => { const e = tr['ann.' + r.id]; return e && e.h === hashStr(r.body) ? e.t : r.body; };
@@ -2176,7 +2368,7 @@ function wireHosted(cfg, art, hosted, opts = {}) {
       $$('[data-rsvp-att]', slot).forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-checked', String(on)); });
       slot.querySelector('[data-rsvp-guests]').hidden = b.dataset.rsvpAtt === '0'; return;
     }
-    if (b.dataset.rsvp === 'again') { const m = LS.get('rsvp:' + hosted.id) || {}; m.editing = true; LS.set('rsvp:' + hosted.id, m); slot.innerHTML = rsvpFormHTML(cfg, hosted); return; }
+    if (b.dataset.rsvp === 'again') { const m = LS.get('rsvp:' + hosted.id) || {}; m.editing = true; LS.set('rsvp:' + hosted.id, m); slot.innerHTML = rsvpFormHTML(cfg, hosted); art._fillPick(); return; }
     if (b.dataset.rsvp !== 'send') return;
     const v = (id) => (slot.querySelector('#' + id)?.value || '').trim();
     const msg = slot.querySelector('.rsvp-msg');
@@ -2185,10 +2377,12 @@ function wireHosted(cfg, art, hosted, opts = {}) {
     const guests = attending ? Math.min(20, Math.max(1, parseInt(v('rs-guests'), 10) || 1)) : 0;
     if (!name) { msg.textContent = t('Add your name first.'); slot.querySelector('#rs-name').focus(); return; }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msg.textContent = t('That email doesn’t look right.'); slot.querySelector('#rs-email').focus(); return; }
+    const group = (slot.querySelector('#rs-group') || {}).value || '';
     b.disabled = true; msg.textContent = t('Sending…');
     try {
-      await sendRSVP({ event_id: hosted.id, name, email: email || null, attending, guests, note: note || null });
-      LS.set('rsvp:' + hosted.id, { name, email, attending, guests, note, at: Date.now() });
+      await sendRSVP({ event_id: hosted.id, name, email: email || null, attending, guests, note: note || null, ...(group ? { group_id: group } : {}) });
+      LS.set('rsvp:' + hosted.id, { name, email, attending, guests, note, group, at: Date.now() });
+      if (group) { const u = art._gm && art._gm.user; if (u) setMyGroup(hosted.id, group, u).then(() => art._gmLoad && art._gmLoad()).catch(() => {}); else LS.set('grpPick:' + hosted.id, group); }
       slot.innerHTML = rsvpFormHTML(cfg, hosted);
     } catch { b.disabled = false; msg.textContent = t('Couldn’t send your reply. Check your connection and try again.'); }
   });
@@ -2232,6 +2426,7 @@ async function authReturn() {
   if (p && p.cfg) { LS.set('draft', p.cfg); LS.set('draftHosted', p.hosted || null); history.replaceState(null, '', siteBase() + '#new'); renderBuilder(p.cfg, null, p.hosted || null, LS.get('draftId') || undefined); publish({ host: true }); return; }
   const back = LS.get('afterSignIn'); LS.del('afterSignIn');
   if (back && back !== '#mine' && /^#(mine|new|setup)/.test(back)) { history.replaceState(null, '', siteBase() + back); return route(); }
+  if (back && /^\?e=[a-z0-9-]+(#t=[a-z]+)?$/.test(back)) { history.replaceState(null, '', siteBase() + back); return route(); } // a guest signed in on a hosted page
   history.replaceState(null, '', siteBase() + '#mine'); renderMine('');
 }
 
@@ -2317,6 +2512,12 @@ async function renderMine(id, notice) {
   if (error) return shell(`<h1>My pages</h1><p>Couldn’t load your pages. ${esc(error.message)}</p>`);
   shell(`<div class="mine-h"><h1>My pages</h1><span class="muted small">${esc(user.email || '')} · <button type="button" class="link" data-mine="signout">Sign out</button></span></div>
     ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = normalize(r.config); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · hidden'}</span><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a></div><div class="btns"><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a><button type="button" class="btn sm" data-mine-edit="${esc(r.id)}">Edit</button><button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button></div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Share, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
+  if (data.length) msgReady().then(async ok => { // "2 new" next to pages with unanswered guest messages
+    if (!ok) return; const { data: ms } = await c.from('event_messages').select('event_id,guest,from_host,created_at').in('event_id', data.map(x => x.id)).order('created_at', { ascending: true }).limit(5000);
+    data.forEach(ev => { const seen = LS.get('inboxSeen:' + ev.id, {}) || {}; const last = new Map(); (ms || []).filter(x => x.event_id === ev.id).forEach(x => last.set(x.guest, x));
+      const n = [...last.values()].filter(x => !x.from_host && x.created_at > (seen[x.guest] || '')).length;
+      const a = n && $(`.mine-list a[href="#mine/${CSS.escape(ev.id)}"]`); if (a) a.insertAdjacentHTML('beforeend', ` <span class="badge">${esc(t('{n} new', { n }))}</span>`); });
+  }).catch(() => {});
   $('.mine').addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.mine === 'signout') { await c.auth.signOut(); LS.del('signedIn'); LS.del('draftHosted'); location.hash = '#'; }
@@ -2324,6 +2525,7 @@ async function renderMine(id, notice) {
     if (b.dataset.mineEdit) { const r = data.find(x => x.id === b.dataset.mineEdit); const cfg = normalize(r.config); const ex = pagesAll().find(x => x.hosted && x.hosted.id === r.id); LS.set('draft', cfg); LS.set('draftHosted', { id: r.id, slug: r.slug }); LS.set('draftId', ex ? ex.pid : newPid()); location.hash = '#new'; }
   });
 }
+let mineOpenThr = [];
 const guestListKey = (id) => 'guests:' + id;
 function parseGuestList(text) {
   const rows = String(text || '').split(/\r?\n/).map(l => l.split(/[,;\t]/).map(x => x.replace(/^"|"$/g, '').trim())).filter(r => r.some(Boolean));
@@ -2342,26 +2544,53 @@ async function renderMineEvent(id, shell, c, user) {
   const ev = await c.from('events').select('id,slug,config,published').eq('id', id).maybeSingle();
   if (ev.error || !ev.data) return shell(`<h1>Page not found</h1><p><a href="#mine">Back to My pages</a></p>`);
   const r = ev.data; const cfg = normalize(r.config);
-  const [rs, an] = await Promise.all([c.from('rsvps').select('id,name,email,attending,guests,note,created_at').eq('event_id', id).order('created_at', { ascending: true }),
-    c.from('announcements').select('id,body,created_at').eq('event_id', id).order('created_at', { ascending: false })]);
+  const ready = await msgReady(); // messages and groups (schema-3): sections stay out until it is installed
+  const [rs, an, ms, grp] = await Promise.all([c.from('rsvps').select('id,name,email,attending,guests,note,created_at' + (ready ? ',group_id' : '')).eq('event_id', id).order('created_at', { ascending: true }),
+    c.from('announcements').select('id,body,created_at' + (ready ? ',group_ids' : '')).eq('event_id', id).order('created_at', { ascending: false }),
+    ready ? c.from('event_messages').select('id,guest,from_host,guest_name,guest_email,body,created_at').eq('event_id', id).order('created_at', { ascending: true }).limit(2000) : null,
+    ready ? loadGroups(c, id).catch(() => null) : null]);
+  const msgs = ms && !ms.error ? ms.data || [] : null; const groups = grp || []; const gName = (gid) => (groups.find(g => g.id === gid) || {}).name || '';
+  const seenKey = 'inboxSeen:' + id; const seen = LS.get(seenKey, {}) || {};
   // one row per guest: a later reply from the same name or email replaces the earlier one
   const latest = new Map(); (rs.data || []).forEach(x => latest.set((x.email || '').toLowerCase() || normName(x.name), x));
   const replies = [...latest.values()].reverse(); const yes = replies.filter(x => x.attending); const no = replies.filter(x => !x.attending);
   const guests = LS.get(guestListKey(id), []) || []; const waiting = notReplied(guests, replies);
   shell(`<p><a href="#mine">← My pages</a></p><div class="mine-h"><h1>${esc(cfg.title || 'Untitled')}</h1><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a></div>
+    ${msgs ? `<section class="mine-sec" id="mine-msgs"><h2>${t('Messages')}</h2><label class="tool gm-on"><input type="checkbox" data-gm-on ${cfg.guestMessages ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${t('Let guests message you')}</label>${inboxHTML(msgs, seen)}</section>` : ''}
     <section class="mine-sec"><h2>Updates</h2><p class="muted small">Guests see these at the top of your page.</p>
-      <form class="ann-form" onsubmit="return false"><textarea id="an-body" rows="3" maxlength="2000" placeholder="Shuttle leaves the hotel at 4:30. Bring a jacket."></textarea><div class="btns"><button type="button" class="btn primary" data-an="post">Post update</button></div><p class="hint" role="status" aria-live="polite"></p></form>
-      <ul class="ann-list own">${(an.data || []).map(a => `<li><time>${esc(fmtStamp(a.created_at))}</time><p>${esc(a.body)}</p><button type="button" class="link" data-an-del="${esc(a.id)}">Delete</button></li>`).join('')}</ul></section>
+      <form class="ann-form" onsubmit="return false"><textarea id="an-body" rows="3" maxlength="2000" placeholder="Shuttle leaves the hotel at 4:30. Bring a jacket."></textarea>${msgs ? sendToHTML(groups) : ''}<div class="btns"><button type="button" class="btn primary" data-an="post">Post update</button></div><p class="hint" role="status" aria-live="polite"></p></form>
+      <ul class="ann-list own">${(an.data || []).map(a => `<li><time>${esc(fmtStamp(a.created_at))}${(a.group_ids || []).length ? ' · ' + esc(t('Send to')) + ': ' + esc(a.group_ids.map(gName).filter(Boolean).join(', ')) : ''}</time><p>${esc(a.body)}</p><button type="button" class="link" data-an-del="${esc(a.id)}">Delete</button></li>`).join('')}</ul></section>
     <section class="mine-sec"><h2>Replies</h2>
       <p class="rs-sum"><b>${yes.reduce((n, x) => n + (x.guests || 1), 0)}</b> coming <span class="muted">(${yes.length} ${yes.length === 1 ? 'reply' : 'replies'})</span> · <b>${no.length}</b> can’t make it${guests.length ? ` · <b>${waiting.length}</b> of ${guests.length} on your list haven’t replied` : ''}</p>
-      ${replies.length ? `<div class="tbl-wrap"><table class="rs-tbl"><thead><tr><th>Name</th><th>Reply</th><th>Party</th><th>Email</th><th>Note</th></tr></thead><tbody>${replies.map(x => `<tr><td>${esc(x.name)}</td><td>${x.attending ? 'Coming' : 'Can’t make it'}</td><td>${x.attending ? esc(x.guests) : '–'}</td><td>${esc(x.email || '')}</td><td data-note-id="${esc(x.id)}">${esc(x.note || '')}</td></tr>`).join('')}</tbody></table></div><div class="btns"><button type="button" class="btn sm" data-rs="csv">Download CSV</button></div>` : '<p class="muted">No replies yet. Share your short link and they’ll show up here.</p>'}
+      ${replies.length ? `<div class="tbl-wrap"><table class="rs-tbl"><thead><tr><th>Name</th><th>Reply</th><th>Party</th>${groups.length ? `<th>${t('Group')}</th>` : ''}<th>Email</th><th>Note</th></tr></thead><tbody>${replies.map(x => `<tr><td>${esc(x.name)}</td><td>${x.attending ? 'Coming' : 'Can’t make it'}</td><td>${x.attending ? esc(x.guests) : '–'}</td>${groups.length ? `<td>${esc(gName(x.group_id))}</td>` : ''}<td>${esc(x.email || '')}</td><td data-note-id="${esc(x.id)}">${esc(x.note || '')}</td></tr>`).join('')}</tbody></table></div><div class="btns"><button type="button" class="btn sm" data-rs="csv">Download CSV</button></div>` : '<p class="muted">No replies yet. Share your short link and they’ll show up here.</p>'}
       <h3 class="sub-h">Guest list</h3><p class="muted small">Import a CSV or paste names (one per line, optional email) to see who hasn’t replied. Your list stays on this device.</p>
       <div class="btns"><label class="btn sm file-btn">Import CSV<input type="file" data-gl-file accept=".csv,.txt,text/csv,text/plain"></label>${guests.length ? '<button type="button" class="btn sm ghost" data-gl="clear">Clear list</button>' : ''}</div>
       <textarea id="gl-paste" rows="3" placeholder="Ana Ruiz, ana@example.com&#10;Ben Okafor"></textarea><div class="btns"><button type="button" class="btn sm" data-gl="add">Add to list</button></div>
       ${guests.length ? `<h3 class="sub-h">Haven’t replied (${waiting.length})</h3>${waiting.length ? `<ul class="gl-list">${waiting.map(g => `<li>${esc(g.name || g.email)}${g.name && g.email ? ` <span class="muted small">${esc(g.email)}</span>` : ''}</li>`).join('')}</ul>` : '<p class="muted">Everyone on your list has replied.</p>'}` : ''}
     </section>
+    ${msgs ? `<section class="mine-sec" id="mine-groups"><h2>${t('Groups')}</h2><div data-grp-root>${groupsEdHTML(groups)}</div></section>` : ''}
     <section class="mine-sec"><h2>Page</h2><div class="btns"><button type="button" class="btn sm" data-pg="edit">Edit page</button><button type="button" class="btn sm ghost" data-pg="vis">${r.published ? 'Hide page' : 'Show page again'}</button></div><p class="muted small">${r.published ? 'Anyone with the link can see it.' : 'Hidden: guests see “This page isn’t available”.'}</p></section>`);
-  const m = $('.mine'); const again = () => renderMine(id);
+  const m = $('.mine'); const again = () => { mineOpenThr = [...$$('details.thr[open]', m)].map(d => d.dataset.thr); return renderMine(id); };
+  if (msgs) {
+    $$('details.thr', m).forEach(d => { if (mineOpenThr.includes(d.dataset.thr)) d.open = true; d.addEventListener('toggle', () => { if (!d.open) return; const xs = msgs.filter(x => x.guest === d.dataset.thr); const last = xs[xs.length - 1]; if (last) { seen[d.dataset.thr] = last.created_at; LS.set(seenKey, seen); d.querySelector('.dot')?.remove(); } }); });
+    mineOpenThr = [];
+    const gr = m.querySelector('[data-grp-root]'); if (gr) wireGroupsEd(gr, c, id, again);
+    wireSendTo(m);
+    m.addEventListener('change', async (e) => { if (e.target.dataset.gmOn == null) return; const on = e.target.checked; const { error } = await c.from('events').update({ config: { ...r.config, guestMessages: on } }).eq('id', id); if (error) { e.target.checked = !on; toast(error.message); } else { r.config.guestMessages = on; toast(on ? t('Guests can message you') : t('Messages off')); } });
+    m.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-gm-send^="h-"]'); if (!b) return; const guest = b.dataset.gmSend.slice(2);
+      const box = b.closest('details'); const ta = box.querySelector('textarea'); const hint = box.querySelector('[data-gm-msg]'); const body = (ta.value || '').trim().slice(0, 2000); if (!body) { ta.focus(); return; }
+      b.disabled = true; hint.textContent = t('Sending…');
+      const { data, error } = await c.from('event_messages').insert({ event_id: id, guest, from_host: true, body }).select('id').single();
+      if (error) { b.disabled = false; hint.textContent = t('Couldn’t send. Try again.'); return; }
+      notifyEmail('message', data.id); again();
+    });
+    // new messages show up while the page is open (every 30 s), unless the host is typing
+    const n0 = msgs.length; const iv = setInterval(async () => {
+      if (!document.body.contains(m)) return clearInterval(iv); if (document.hidden || $$('textarea', m).some(x => x.value.trim())) return;
+      const { count } = await c.from('event_messages').select('id', { count: 'exact', head: true }).eq('event_id', id); if (count != null && count !== n0) { clearInterval(iv); again(); }
+    }, 30000);
+  }
   const notes = Object.fromEntries(replies.filter(x => x.note && x.note.trim().length > 1).map(x => [x.id, x.note]));
   if (Object.keys(notes).length && canTranslate()) translateForHost(notes).then(tr => { for (const [k, v] of Object.entries(tr)) { const td = m.querySelector(`[data-note-id="${CSS.escape(k)}"]`); if (td && v && v.trim() !== notes[k].trim()) td.insertAdjacentHTML('beforeend', `<div class="tr-note">↳ ${esc(v)}</div>`); } }).catch(() => {});
   const addGuests = (list) => { if (!list.length) { toast('No names found'); return; } const cur = LS.get(guestListKey(id), []) || []; const seen = new Set(cur.map(g => g.email || normName(g.name))); list.forEach(g => { const k = g.email || normName(g.name); if (!seen.has(k)) { seen.add(k); cur.push(g); } }); LS.set(guestListKey(id), cur); toast(`${cur.length} on your guest list`); again(); };
@@ -2370,9 +2599,11 @@ async function renderMineEvent(id, shell, c, user) {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
     if (d.an === 'post') {
       const body = $('#an-body').value.trim().slice(0, 2000); const hint = $('.ann-form .hint'); if (!body) { hint.textContent = 'Write something first.'; return; }
-      b.disabled = true; const { data: an0, error } = await c.from('announcements').insert({ event_id: id, body }).select('id').single(); if (error) { b.disabled = false; hint.textContent = 'Couldn’t post: ' + error.message; return; }
+      const gids = msgs ? sendToIds(m) : []; // updates for chosen groups are never copied into the public page config (no stored translations)
+      b.disabled = true; const { data: an0, error } = await c.from('announcements').insert({ event_id: id, body, ...(gids.length ? { group_ids: gids } : {}) }).select('id').single(); if (error) { b.disabled = false; hint.textContent = 'Couldn’t post: ' + error.message; return; }
+      if (msgs && an0) notifyEmail('announcement', an0.id);
       const langs = (cfg.langs || []).filter(l => l !== srcLang(cfg));
-      if (langs.length && canTranslate() && an0) { hint.textContent = 'Translating for your guests…'; const raw = clone(r.config); raw.tr = raw.tr || {};
+      if (langs.length && canTranslate() && an0 && !gids.length) { hint.textContent = 'Translating for your guests…'; const raw = clone(r.config); raw.tr = raw.tr || {};
         for (const l of langs) { try { const j = await aiImport({ mode: 'translate', fields: { ['ann.' + an0.id]: body }, target: l, source: srcLang(cfg) }); const x = ((j.data && j.data.translations) || [])[0]; if (x) { raw.tr[l] = raw.tr[l] || {}; raw.tr[l]['ann.' + an0.id] = { h: hashStr(body), t: x.text }; } } catch { /* post stays in the original language */ } }
         await c.from('events').update({ config: raw }).eq('id', id); }
       again();

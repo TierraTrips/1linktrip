@@ -769,3 +769,41 @@ dialog.place-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .rv-card .wide { grid-column: 1 / -1; }
 .bk-signin .signin { margin-top: 6px; }
 .add-bk { margin-top: 10px; }
+
+/* ---------- messages: guest ↔ host threads, groups, Send to ---------- */
+.msg-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+.msg { max-width: 86%; padding: 9px 12px; border-radius: 14px; background: var(--chip, #EEF0F4); justify-self: start; }
+.msg.out { justify-self: end; background: color-mix(in srgb, var(--accent, #3048F0) 14%, var(--card, #fff)); }
+.msg .who { display: block; font: 600 .68rem var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted, var(--slate)); }
+.msg p { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg-compose { display: flex; gap: 8px; align-items: flex-end; }
+.msg-compose textarea { flex: 1; min-width: 0; min-height: 44px; border: 1.5px solid var(--line, var(--rule)); border-radius: 10px; padding: .5em .7em; font: inherit; font-size: 16px; background: var(--card, #fff); color: var(--ink); box-sizing: border-box; resize: vertical; }
+[data-gm-msg] { min-height: 1em; margin-top: 4px; }
+.gm-anns { margin-bottom: 14px; }
+.ev-tabs button.has-new span::after { content: ''; display: inline-block; width: 7px; height: 7px; margin-left: 4px; border-radius: 50%; background: var(--accent); vertical-align: top; }
+.inbox { display: grid; gap: 8px; margin-top: 12px; }
+.thr { border-radius: 12px; background: var(--chip, #F1F2F5); padding: 10px 12px; }
+.thr summary { cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; list-style: none; }
+.thr summary::-webkit-details-marker { display: none; }
+.thr-who { min-width: 0; overflow-wrap: anywhere; } .thr-last { grid-column: 1 / -1; color: var(--slate); font-size: .88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thr[open] summary { margin-bottom: 10px; } .thr[open] .thr-last { display: none; }
+.thr .dot, .badge { align-self: center; }
+.thr .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--gate, #3048F0); }
+.badge { display: inline-block; font-size: .72rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--gate, #3048F0); color: #fff; }
+.gm-on { margin: 4px 0 2px; }
+.grp-ed { display: grid; gap: 10px; }
+.grp-card { border-radius: 12px; background: var(--chip, #F1F2F5); padding: 10px 12px; display: grid; gap: 8px; }
+.grp-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; } .grp-h b { overflow-wrap: anywhere; }
+.grp-card .tool { justify-self: start; background: var(--card, #fff); }
+.grp-more summary { cursor: pointer; font-weight: 600; font-size: .9rem; }
+.grp-more textarea { width: 100%; box-sizing: border-box; margin-top: 8px; font: inherit; font-size: 16px; border: 1.5px solid var(--rule); border-radius: 10px; padding: .5em .7em; }
+.grp-more .btns { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.grp-mem { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 2px; font-size: .9rem; }
+.grp-mem li { display: flex; justify-content: space-between; align-items: center; gap: 8px; } .grp-mem span { overflow-wrap: anywhere; min-width: 0; }
+.grp-mem .link { font-size: 1.1rem; padding: 0 6px; }
+.send-to { margin: 10px 0 2px; } .send-to .lbl-s { display: block; font: 600 .7rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--slate); margin-bottom: 6px; }
+.send-to .chips { margin-bottom: 0; }
+/* review cards in "Add a booking": date-and-time fields get the full row so the time isn't clipped on a phone */
+.rv-card .field.when-f { grid-column: 1 / -1; }
+.rv-card input[type="datetime-local"], .rv-card input[type="date"] { width: 100%; min-width: 0; box-sizing: border-box; }
+.thr .msg.in { background: var(--card, #fff); }
