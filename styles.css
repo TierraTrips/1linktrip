@@ -744,3 +744,15 @@ dialog.place-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 @media (max-width: 429px) { .vbar:has(.lang-sel) .brand { font-size: 0; gap: 0; padding-right: 9px; } }
 /* builder header (brand, Edit/Preview, Publish) needs ~380px; on narrower phones the brand shows just its mark */
 @media (max-width: 419px) { .b-top .brand { font-size: 0; gap: 0; } .b-top .brand-mark { flex: none; } }
+/* "Flying into" pick: chosen airport row, pickers in Rental car and My trip, Add to my trip */
+.airports li.on { box-shadow: inset 0 0 0 2px var(--accent); }
+.airports .chip.ap-pick { min-height: 36px; font-size: .84rem; background: var(--card); }
+.airports .chip.ap-pick.on { background: var(--accent); color: var(--on-accent, #fff); }
+.airports .btns .mini-b { align-self: center; }
+.ap-transfer { margin-top: 10px; }
+.ap-sel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 10px; }
+.ap-sel > span { font-size: .85rem; color: var(--muted, var(--slate)); }
+.ap-sel select { max-width: 100%; }
+.ap-mine { margin-bottom: 12px; }
+.add-trip { display: flex; justify-content: flex-end; }
+.airports li .btns { grid-column: 1 / -1; }

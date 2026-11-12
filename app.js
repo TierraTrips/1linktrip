@@ -302,6 +302,7 @@ const L = {
   kayakCars: (iata, d1, d2) => `https://www.kayak.com/cars/${iata}/${d1}/${d2}`,
   rome2rio: (from, to) => `https://www.rome2rio.com/map/${enc(from.replace(/ /g, '-'))}/${enc(to.replace(/ /g, '-'))}`,
   transit: (from, v) => `https://www.google.com/maps/dir/?api=1&origin=${enc(from)}&destination=${v.lat},${v.lon}&travelmode=transit`,
+  route: (a, v) => `https://www.google.com/maps/dir/?api=1&origin=${a.lat},${a.lon}&destination=${v.lat},${v.lon}&travelmode=driving`,
   dir: (v, mode) => `https://www.google.com/maps/dir/?api=1&destination=${v.lat},${v.lon}&travelmode=${mode}`,
   place: (name, extra) => `https://www.google.com/maps/search/?api=1&query=${enc([name, extra].filter(Boolean).join(', '))}`,
   uber: (v, name) => `https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff%5Blatitude%5D=${v.lat}&dropoff%5Blongitude%5D=${v.lon}&dropoff%5Bnickname%5D=${enc(name)}`,
@@ -566,10 +567,36 @@ function parseReservation(text, refDate) {
 }
 const itinKey = (cfg) => 'itin:' + eventKey(cfg).slice(6);
 const itinLoad = (cfg) => LS.get(itinKey(cfg), []) || [];
+// "Flying into": the guest's arrival airport, one of the airports near the venue. One saved value per event (ap:<key>).
+// Default: their saved pick → a flight in their bookings that lands at one of them → the closest large airport → the closest.
+const apKey = (cfg) => 'ap:' + eventKey(cfg).slice(6);
+const airFor = (cfg) => cfg.venue ? nearestAirports(cfg.venue.lat, cfg.venue.lon) : [];
+function flightArrival(air, items) {
+  const low = (x) => String(x || '').toLowerCase();
+  const hit = (s) => air.find(a => new RegExp(`\\b${a.iata}\\b`).test(String(s || '')) || low(s).includes(low(a.name)) || (a.city && low(s).includes(low(a.city))));
+  const fl = (items || []).filter(x => x && x.kind === 'flight').sort((a, b) => String(a.start || '').localeCompare(String(b.start || '')));
+  for (const x of fl) { const m = String(x.note || '').match(/→\s*([^·]+)/); const a = m && hit(m[1]); if (a) return a; }
+  for (const x of fl) { const a = hit([x.name, x.address, x.note].join(' ')); if (a) return a; }
+  return null;
+}
+function pickAirport(air, saved, items) {
+  if (!air || !air.length) return null;
+  return air.find(a => a.iata === saved) || flightArrival(air, items) || air.find(a => a.large) || air[0];
+}
+const chosenAirport = (cfg, air = airFor(cfg)) => pickAirport(air, LS.get(apKey(cfg)), itinLoad(cfg));
+const canAddTrip = (cfg) => !!(cfg.tools && cfg.tools.mytrip && cfg.start);
+// a prefilled booking card in My trip (the guest adds the confirmation later)
+const addTripBtn = (cfg, kind, place, label) => canAddTrip(cfg) ? `<div class="add-trip"><button type="button" class="mini-b" data-addtrip="${kind}" data-at-place="${esc(place)}" data-at-label="${esc(label)}">+ ${t('Add to my trip')}</button></div>` : '';
+function airportSelHTML(cfg, air, ap, always) {
+  if (!ap || (air.length < 2 && !always)) return '';
+  const v = cfg.venue;
+  if (air.length < 2) return `<p class="ap-sel"><span>${t('Flying into')}</span> <b>${esc(ap.iata)}</b> ${esc(ap.name)}</p>`;
+  return `<label class="pf-sel ap-sel"><span>${t('Flying into')}</span><select data-ap-sel>${air.map(a => `<option value="${esc(a.iata)}"${a.iata === ap.iata ? ' selected' : ''}>${esc(`${a.iata} · ${a.city || a.name} · ${fmtDist(a.d, v.cc)}`)}</option>`).join('')}</select></label>`;
+}
 const flightLinks = (f) => { const code = (f || '').replace(/\s+/g, '').toUpperCase(); if (!/^[A-Z0-9]{2}\d{1,4}$/.test(code)) return {}; const a = AIRLINES[code.slice(0, 2)]; return { status: `https://www.flightaware.com/live/flight/${code}`, manage: a && a[1] ? a[1] : '' }; };
 function itinFormHTML(x, i) {
   const k = x.kind || '';
-  const f = (key, label, type = 'text', ph = '', cls = '') => `<div class="field ${cls}"><label for="it-${key}">${t(label)}</label><input id="it-${key}" type="${type}" data-it="${key}" value="${esc(x[key] || '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}></div>`;
+  const f = (key, label, type = 'text', ph = '', cls = '') => `<div class="field ${cls}"><label for="it-${key}">${t(label)}</label><input id="it-${key}" type="${type === 'datetime-local' && isDate(x[key] || '') ? 'date' : type}" data-it="${key}" value="${esc(x[key] || '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}></div>`;
   return `<form class="itin-form" onsubmit="return false">
     ${i == null ? `<div class="field wide"><label for="it-paste">${t('Confirmation')}</label><textarea id="it-paste" rows="3" placeholder="${t('Paste a confirmation email or link')}"></textarea><div class="ai-read" data-ai-read hidden><button type="button" class="btn sm" data-itin-ai>✦ ${t('Read with AI')}</button><span class="hint" data-ai-msg role="status" aria-live="polite"></span></div></div>` : ''}
     <div class="trip">
@@ -743,18 +770,22 @@ function modeBarHTML(cfg, air) {
   const ms = travelModes(cfg, air); if (ms.length < 2) return '';
   return `<div class="chips mode-bar" role="group" aria-label="${t('How are you getting there?')}"><button type="button" class="chip on" data-tmode="all" aria-pressed="true">${t('All')}</button>${ms.map(([k, l]) => `<button type="button" class="chip" data-tmode="${k}" aria-pressed="false">${t(l)}</button>`).join('')}</div>`;
 }
-function flightsHTML(cfg, air) {
+function flightsHTML(cfg, air, ap = chosenAirport(cfg, air)) {
   const tr = tripDates(cfg); const o = LS.get('origin'); const v = cfg.venue;
   if (!air.length) return `<p class="muted">${t('No airports with scheduled flights within 220 km of the venue.')}</p>`;
-  return `<h3 class="sub-h">${t('Nearest airports')}</h3><ul class="airports">${air.map(a => `<li>
+  const multi = air.length > 1;
+  return `<h3 class="sub-h">${t('Nearest airports')}</h3><ul class="airports">${air.map(a => { const on = ap && a.iata === ap.iata; return `<li class="${multi && on ? 'on' : ''}">
     <div class="ap-code">${esc(a.iata)}</div>
     <div class="ap-info"><b>${esc(a.name)}</b><span>${esc(t('{d} from the venue', { d: fmtDist(a.d, v.cc) }))}${a.large ? '' : ' · ' + t('regional')}</span></div>
     <div class="btns">
+      ${multi ? `<button type="button" class="chip ap-pick${on ? ' on' : ''}" data-ap="${esc(a.iata)}" aria-pressed="${on}">${on ? '✓ ' + t('Flying in here') : t('Fly in here')}</button>` : ''}
       ${o === a.iata ? `<span class="muted small">${t('That is your home airport.')}</span>` : `${bookExt('flights', 'gflights', { to: a.iata, from: o, d1: tr.arrive, d2: tr.leave }, 'Google Flights', 'btn')}
       ${o ? bookExt('flights', 'kayak', { from: o, to: a.iata, d1: tr.arrive, d2: tr.leave }, 'Kayak', 'btn') : ''}`}
-    </div></li>`).join('')}</ul>
+      ${canAddTrip(cfg) ? `<button type="button" class="mini-b" data-addtrip="flight" data-iata="${esc(a.iata)}" data-at-place="${esc(a.name)}" data-at-label="${esc(t('Flight to {a}', { a: a.iata }))}">+ ${t('Add to my trip')}</button>` : ''}
+    </div></li>`; }).join('')}</ul>
+    ${ap ? `<div class="row-links ap-transfer">${ext(L.route(ap, v), `${esc(t('From {a} to the venue', { a: ap.iata }))} <small>${esc(fmtDist(ap.d, v.cc))} · Google Maps</small>`, 'row-link')}</div>` : ''}
     ${o ? '' : `<p class="muted small">${t('Add the airport you are flying from to compare fares on Kayak too.')}</p>`}
-    ${airlinePickHTML(cfg, air)}`;
+    ${airlinePickHTML(cfg, air, ap)}`;
 }
 function trainsHTML(cfg) {
   const v = cfg.venue; const o = LS.get('origin'); const oa = o && airportByCode(o);
@@ -767,20 +798,25 @@ function trainsHTML(cfg) {
   if (TRAINLINE_CC.has(v.cc)) items.push(ext('https://www.thetrainline.com/', `${t('Trains and coaches in Europe')} <small>Trainline</small>`, 'row-link'));
   return `${routeTrainsHTML(cfg)}<h3 class="sub-h">${t('Train and bus')}</h3><div class="row-links">${items.join('')}</div>${from ? '' : `<p class="muted small">${t('Add where you are coming from to see train and bus routes on Rome2Rio.')}</p>`}`;
 }
-function rentalHTML(cfg, air) {
+function rentalHTML(cfg, air, ap = chosenAirport(cfg, air)) {
   const tr = tripDates(cfg); const v = cfg.venue;
-  const items = air.slice(0, 2).map(a => bookExt('cars', 'kayakCars', { iata: a.iata, d1: tr.arrive, d2: tr.leave }, `${esc(t('Rental cars near {a}', { a: `${a.name} (${a.iata})` }))} <small>Kayak</small>`));
+  const items = (ap ? [ap] : []).map(a => bookExt('cars', 'kayakCars', { iata: a.iata, d1: tr.arrive, d2: tr.leave }, `${esc(t('Rental cars near {a}', { a: `${a.name} (${a.iata})` }))} <small>Kayak</small>`));
   items.push(ext(L.place('car rental', placeLabel(v) || v.name), `${esc(t('Rental desks near the venue'))} <small>Google Maps</small>`, 'row-link'));
   const d = (x) => fmt(x, { month: 'short', day: 'numeric' });
-  return `<h3 class="sub-h">${t('Rental car')}</h3><p class="muted small">${esc(t('Pick up {a} (arrival) · return {b} (departure)', { a: d(tr.arrive), b: d(tr.leave) }))}</p>${GKEY && air[0] ? `<div data-slot="car-counters"></div>` : ''}<div class="row-links">${items.join('')}</div>`;
+  return `<h3 class="sub-h">${t('Rental car')}</h3>${airportSelHTML(cfg, air, ap)}<p class="muted small">${esc(t('Pick up {a} (arrival) · return {b} (departure)', { a: d(tr.arrive), b: d(tr.leave) }))}</p>${GKEY && ap ? `<div data-slot="car-counters"></div>` : ''}<div class="row-links">${items.join('')}</div>${addTripBtn(cfg, 'car', ap ? ap.name : (placeLabel(v) || v.name), ap ? t('Rental car at {a}', { a: ap.iata }) : t('Rental car'))}`;
 }
-function stayLinks(cfg) {
-  if (stopsOf(cfg).length > 1) return routeStaysHTML(cfg);
+// hotels stay at the venue; a far-off arrival airport gets one extra link for late arrivals and early departures
+const AP_FAR = 40e3;
+function stayLinks(cfg, ap = chosenAirport(cfg)) {
   const tr = tripDates(cfg); const v = cfg.venue; const q = placeLabel(v) || v.name; const n = tr.guests || 2;
+  const near = ap && ap.d > AP_FAR ? bookExt('hotels', 'ghotels', { q: ap.name, d1: tr.arrive, d2: tr.leave, n }, `${esc(t('Hotels near {a}', { a: `${ap.name} (${ap.iata})` }))} <small>Google Hotels</small>`) : '';
+  const nearAdd = near ? addTripBtn(cfg, 'hotel', ap.name, t('Hotel near {a}', { a: ap.iata })) : '';
+  if (stopsOf(cfg).length > 1) return routeStaysHTML(cfg) + near + nearAdd;
   const p = { q, d1: tr.arrive, d2: tr.leave, n };
   return [bookExt('hotels', 'ghotels', p, `${esc(t('Hotels in {c}', { c: v.city || q }))} <small>Google Hotels</small>`),
     bookExt('hotels', 'booking', p, `${t('Hotels and apartments')} <small>Booking.com</small>`),
-    bookExt('hotels', 'airbnb', p, `${t('Homes and apartments')} <small>Airbnb</small>`)].join('');
+    bookExt('hotels', 'airbnb', p, `${t('Homes and apartments')} <small>Airbnb</small>`),
+    addTripBtn(cfg, 'hotel', q, t('Hotel in {c}', { c: v.city || q })), near, nearAdd].join('');
 }
 function toursHTML(cfg) {
   return `<div class="row-links" data-slot="tour-links">${tourLinks(cfg)}</div>
@@ -1087,6 +1123,10 @@ function scheduleHTML(cfg) {
     return `<li class="mine"><time>${esc(tm(x.start)) || '—'}</time><div><b>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))} <em class="yours">${t('Yours')}</em></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), until, x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>${fl.status ? ext(fl.status, t('Flight status') + ' ↗', 'tl-link') : ''}</div></li>`;
   }).join('')}</ol></div>`).join('')}`;
 }
+function stubSideHTML(cfg, ap) {
+  const v = cfg.venue;
+  return ap ? `<span class="lbl">${t('Fly into')}</span><b class="code">${esc(ap.iata)}</b><small>${esc(t('{d} away', { d: fmtDist(ap.d, v.cc) }))}</small>` : (cfg.start ? `<span class="lbl">${esc(fmt(cfg.start.slice(0, 10), { weekday: 'short' }))}</span><b class="code">${esc(fmt(cfg.start.slice(0, 10), { month: 'short' }).toUpperCase())}</b><small class="big-day">${esc(fmt(cfg.start.slice(0, 10), { day: 'numeric' }))}</small>` : `<span class="lbl">${t('Date')}</span><b class="code">TBA</b>`);
+}
 function ticketHTML(cfg, air) {
   const v = cfg.venue; const d = typeData(cfg);
   const rsvp = cfg.type === 'Wedding' && d.rsvp && !cfg.off.details;
@@ -1100,7 +1140,7 @@ function ticketHTML(cfg, air) {
       </div>
       <div class="stub-tear" aria-hidden="true"></div>
       <div class="stub-side">
-        ${air[0] ? `<span class="lbl">${t('Fly into')}</span><b class="code">${esc(air[0].iata)}</b><small>${esc(t('{d} away', { d: fmtDist(air[0].d, v.cc) }))}</small>` : (cfg.start ? `<span class="lbl">${esc(fmt(cfg.start.slice(0, 10), { weekday: 'short' }))}</span><b class="code">${esc(fmt(cfg.start.slice(0, 10), { month: 'short' }).toUpperCase())}</b><small class="big-day">${esc(fmt(cfg.start.slice(0, 10), { day: 'numeric' }))}</small>` : `<span class="lbl">${t('Date')}</span><b class="code">TBA</b>`)}
+        ${stubSideHTML(cfg, v ? chosenAirport(cfg, air) : null)}
       </div>
       <div class="stub-actions">
         ${rsvp ? ext(d.rsvp, t('RSVP'), 'btn primary') : ''}
@@ -1147,8 +1187,8 @@ function nearbyTabHTML(cfg) {
   return out.join('');
 }
 function bookingsHTML(cfg) {
-  const items = itinLoad(cfg);
-  return `${items.length ? `<ul class="plist rich bookings">${items.map((x, i) => {
+  const items = itinLoad(cfg); const air = cfg.tools && cfg.tools.travel ? airFor(cfg) : [];
+  return `${air.length ? `<div class="ap-mine" data-slot="ap-mine">${airportSelHTML(cfg, air, chosenAirport(cfg, air), true)}</div>` : ''}${items.length ? `<ul class="plist rich bookings">${items.map((x, i) => {
     const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
     const when = x.start ? fmt(x.start.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' }) + (x.start.length > 10 ? ' · ' + fmtTime(x.start.slice(11, 16)) : '') : '';
     const links = [fl.status ? ext(fl.status, t('Flight status'), 'mini-b') : '', fl.manage ? ext(fl.manage, t('Manage booking'), 'mini-b') : '', x.link ? ext(x.link, t('Open booking'), 'mini-b') : '', x.address ? ext(L.place(x.address), 'Google Maps', 'mini-b') : ''].join('');
@@ -1258,18 +1298,41 @@ function wireEvent(cfg, art, seq, air, opts) {
   art._applyModes = applyModes;
   // rental counters come from Google: fetch them only once the Travel tab is actually open
   const loadCounters = () => { const cs = slot('rental') && slot('rental').querySelector('[data-slot="car-counters"]'); const pnl = art.querySelector('[data-panel="travel"]');
-    if (!cs || !air[0] || gpBroken || (pnl && pnl.hidden)) return; gpCars(cfg, air[0]).then(rows => { if (rows.length && document.body.contains(cs)) cs.innerHTML = carCountersHTML(cfg, air[0], rows); }).catch(() => {}); };
+    const ap = chosenAirport(cfg, air); if (!cs || !ap || gpBroken || (pnl && pnl.hidden)) return; gpCars(cfg, ap).then(rows => { if (rows.length && document.body.contains(cs)) cs.innerHTML = carCountersHTML(cfg, ap, rows); }).catch(() => {}); };
   (art._showFns = art._showFns || []).push((k) => { if (k === 'travel') loadCounters(); });
   const refreshTrip = () => {
-    if (slot('flights')) slot('flights').innerHTML = flightsHTML(cfg, air);
+    const ap = chosenAirport(cfg, air);
+    if (slot('flights')) slot('flights').innerHTML = flightsHTML(cfg, air, ap);
     if (slot('trains')) slot('trains').innerHTML = trainsHTML(cfg);
-    if (slot('rental')) { slot('rental').innerHTML = rentalHTML(cfg, air); loadCounters(); }
-    if (slot('stay-links')) slot('stay-links').innerHTML = stayLinks(cfg);
+    if (slot('rental')) { slot('rental').innerHTML = rentalHTML(cfg, air, ap); loadCounters(); }
+    if (slot('stay-links')) slot('stay-links').innerHTML = stayLinks(cfg, ap);
+    const side = art.querySelector('.stub-side'); if (side && ap) side.innerHTML = stubSideHTML(cfg, ap);
+    if (ap) $$('[data-ap-sel]', art).forEach(s => { if (s.value !== ap.iata) s.value = ap.iata; });
     if (slot('tour-links')) slot('tour-links').innerHTML = tourLinks(cfg);
     if (art._osm && slot('hotels')) slot('hotels').innerHTML = hotelsHTML(cfg, art._osm);
     $$('[data-k]', art).forEach(i => { const tr = tripDates(cfg); if (document.activeElement !== i && tr[i.dataset.k] != null) i.value = tr[i.dataset.k]; });
     art._pack && art._pack();
   };
+  // "Flying into": one saved pick per event; the flights list, rental and My trip pickers all write it
+  let apLast = (chosenAirport(cfg, air) || {}).iata;
+  const setAirport = (iata, el) => {
+    if (!air.some(a => a.iata === iata)) return;
+    const box = el && el.closest('[data-slot]'); const name = box && box.dataset.slot; const top = el ? el.getBoundingClientRect().top : 0;
+    const q = el && el.matches('[data-ap-sel]') ? '[data-ap-sel]' : `[data-ap="${iata}"]`;
+    LS.set(apKey(cfg), iata); apLast = iata; refreshTrip();
+    const n = name && slot(name) && slot(name).querySelector(q); if (n) window.scrollBy(0, n.getBoundingClientRect().top - top); // keep the control under the finger
+  };
+  art._apRefresh = () => { const ap = chosenAirport(cfg, air); if (ap && ap.iata !== apLast) { apLast = ap.iata; refreshTrip(); } };
+  art.addEventListener('click', (e) => { const b = e.target.closest('[data-ap]'); if (b) setAirport(b.dataset.ap, b); });
+  art.addEventListener('change', (e) => { const s = e.target.closest('[data-ap-sel]'); if (s) setAirport(s.value, s); });
+  art.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-addtrip]'); if (!b || !art._itinOpen) return;
+    const tr = tripDates(cfg); const k = b.dataset.addtrip;
+    if (b.dataset.iata) setAirport(b.dataset.iata);
+    showTab(art, 'mytrip', opts);
+    art._itinOpen({ kind: k, name: b.dataset.atLabel || '', address: b.dataset.atPlace || '', start: tr.arrive, end: k === 'flight' ? '' : tr.leave });
+    const f = art.querySelector('#sec-itinerary [data-slot="itin-form"]'); if (f) f.scrollIntoView({ block: 'start' });
+  });
   const tripKey = 'trip:' + cfg.start.slice(0, 10) + ':' + (cfg.end || cfg.start).slice(0, 10);
   art.addEventListener('change', (e) => { const sel = e.target.closest('[data-airline]'); if (!sel) return; LS.set('airline', sel.value); refreshTrip(); });
   art.addEventListener('change', (e) => {
@@ -1336,7 +1399,7 @@ function wireEvent(cfg, art, seq, air, opts) {
 function wireItin(cfg, art) {
   const s = art.querySelector('#sec-itinerary'); if (!s) return;
   const body = s.querySelector('.sec-b'); let draft = null, editing = null;
-  const rerender = () => { body.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); art._planChanged && art._planChanged(); if (LS.get('signedIn')) syncPush(cfg); };
+  const rerender = () => { body.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); art._planChanged && art._planChanged(); art._apRefresh && art._apRefresh(); if (LS.get('signedIn')) syncPush(cfg); };
   const openForm = (x, i) => {
     draft = { ...x }; editing = i; const slot = body.querySelector('[data-slot="itin-form"]'); slot.innerHTML = itinFormHTML(draft, i);
     body.querySelector('.itin-btns')?.setAttribute('hidden', '');
@@ -1347,7 +1410,9 @@ function wireItin(cfg, art) {
   const fill = () => { const slot = body.querySelector('[data-slot="itin-form"]'); slot.querySelectorAll('[data-it]').forEach(el => { el.value = draft[el.dataset.it] || ''; });
     const fo = slot.querySelector('[data-it="flight"]').closest('.field'); fo.hidden = draft.kind !== 'flight';
     slot.querySelector('label[for="it-start"]').textContent = t(draft.kind === 'flight' ? 'Departs' : 'Starts'); slot.querySelector('label[for="it-end"]').textContent = t(draft.kind === 'flight' ? 'Arrives' : 'Ends');
-    slot.querySelector('#it-note').placeholder = draft.kind === 'flight' ? t('Confirmation code, last name') : ''; };
+    slot.querySelector('#it-note').placeholder = draft.kind === 'flight' ? t('Confirmation code, last name') : '';
+    ['start', 'end'].forEach(k => { const el = slot.querySelector('#it-' + k); const ty = isDate(draft[k] || '') ? 'date' : 'datetime-local'; if (el.type !== ty) { el.type = ty; el.value = draft[k] || ''; } }); };
+  art._itinOpen = (x) => { openForm(x, null); fill(); const c = body.querySelector('#it-confNo'); if (c) c.focus({ preventScroll: true }); };
   body.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
     if ('itinAdd' in d) openForm({}, null);
@@ -1624,7 +1689,7 @@ function renderSetup() {
 const suPreview = debounce(() => { const p = $('#su-frame'); if (p && getComputedStyle(p.parentElement).display !== 'none') renderEvent(SU.cfg, p, { preview: true }); }, 250);
 function suTicket(c) {
   const g = (v, ph) => v ? esc(v) : `<span class="ghost">${ph}</span>`;
-  const air = c.venue ? nearestAirports(c.venue.lat, c.venue.lon)[0] : null;
+  const air = c.venue ? pickAirport(nearestAirports(c.venue.lat, c.venue.lon), null, []) : null;
   return `<div class="su-ticket" style="--acc:${c.theme.accent}"><div><span class="lbl">${esc(c.type)}${c.venue && c.venue.city ? ' · ' + esc(c.venue.city) : ''}</span><b>${g(c.title, 'Your event')}</b><span>${c.start && SU.dated ? esc(dateRange(c.start, c.end)) + (c.start.length > 10 ? ' · ' + esc(fmtTime(c.start.slice(11, 16))) : '') : '<span class="ghost">Date</span>'}</span><span>${g(c.venue && c.venue.name, 'Venue')}</span></div><div class="r"><span class="lbl">Fly into</span><b>${air ? esc(air.iata) : '<span class="ghost">···</span>'}</b></div></div>`;
 }
 function suRender() {
@@ -3291,11 +3356,11 @@ const AIRLINE_BOOK = {
   LH: ['Lufthansa', () => 'https://www.lufthansa.com/us/en/homepage'], JL: ['JAL', () => 'https://www.jal.co.jp/flights/en-us/'], NH: ['ANA', () => 'https://www.ana.co.jp/en/us/'],
   EK: ['Emirates', () => 'https://www.emirates.com/us/english/'], QF: ['Qantas', () => 'https://www.qantas.com/us/en.html'],
 };
-function airlinePickHTML(cfg, air) {
+function airlinePickHTML(cfg, air, ap = chosenAirport(cfg, air)) {
   const o = LS.get('origin'); if (!air.length) return '';
   const cur = LS.get('airline') || '';
   const tr = tripDates(cfg); const n = tr.guests || 1;
-  const link = cur && AIRLINE_BOOK[cur] ? air.slice(0, 2).map(a => { const [name, fn] = AIRLINE_BOOK[cur]; return ext(fn(o || '', a.iata, tr.arrive, tr.leave, n), `${esc(t('Book with {b}', { b: name }))}${o ? ` <small>${esc(o)} → ${esc(a.iata)}</small>` : ''}`, 'row-link'); }).join('') : '';
+  const link = cur && AIRLINE_BOOK[cur] && ap ? [ap].map(a => { const [name, fn] = AIRLINE_BOOK[cur]; return ext(fn(o || '', a.iata, tr.arrive, tr.leave, n), `${esc(t('Book with {b}', { b: name }))}${o ? ` <small>${esc(o)} → ${esc(a.iata)}</small>` : ''}`, 'row-link'); }).join('') : '';
   return `<div class="airline-pick"><label class="pf-sel"><span>${t('Booking with a specific airline?')}</span><select data-airline><option value="">${t('Choose an airline')}</option>${Object.entries(AIRLINE_BOOK).map(([k, [name]]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></label>${link ? `<div class="row-links">${link}</div>` : ''}</div>`;
 }
 // rental counters at the arrival airport (Google), each to its own brand site
@@ -3668,5 +3733,5 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
