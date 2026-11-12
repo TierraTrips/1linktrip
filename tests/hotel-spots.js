@@ -90,7 +90,7 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
     const hm = await page.evaluate(() => window.__markers.filter(m => m.on && m.o.zIndex === 5000).map(m => ({ lat: m.o.position.lat, lbl: m.o.label && m.o.label.text, url: (m.o.icon || {}).url || '', w: m.o.icon.scaledSize.w, z: m.o.zIndex })));
     const maxZ = await page.evaluate(() => Math.max(...window.__markers.filter(m => m.on).map(m => m.o.zIndex || 0)));
     hm.sort((a, b) => b.lat - a.lat); // other cities' hotels may already be found too
-    ok(hm.length >= 1 && near(hm[0].lat, 35.6627) && hm[0].lbl === 'Park Hotel Tokyo' && /E35B47/.test(decodeURIComponent(hm[0].url)) && hm[0].w === 48 && maxZ === 5000, `@${w} hotel marker: big coral bed pin, labelled, on top ${JSON.stringify(hm)}`);
+    ok(hm.length >= 1 && near(hm[0].lat, 35.6627) && hm[0].lbl === 'Park Hotel Tokyo' && /1E3A8A/.test(decodeURIComponent(hm[0].url)) && hm[0].w === 32 && maxZ === 5000, `@${w} hotel marker: deep-blue bed pin, pin-sized, labelled, on top ${JSON.stringify(hm)}`);
     const nb = [...reqs].reverse().find(x => /searchNearby/.test(x.url));
     ok(nb && near(nb.b.locationRestriction.circle.center.latitude, 35.6627) && near(nb.b.locationRestriction.circle.center.longitude, 139.7576), `@${w} Nearby searches start at the hotel`);
     ok(/Your hotel/.test(await page.textContent('[data-slot="map-key"]')) && !!(await page.$('[data-slot="map-key"] [data-hotel-go]')), `@${w} map key + Hotel button`);

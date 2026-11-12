@@ -1913,6 +1913,7 @@ function renderBuilder(cfg, source, hosted, pid) {
       <a class="brand sm" href="#">${BRAND}</a>
       <div class="seg" role="tablist"><button role="tab" data-tab="edit" aria-selected="true">Edit</button><button role="tab" data-tab="preview" aria-selected="false">Preview</button></div>
       <button class="btn primary sm" data-act="publish">Share</button>
+      <div class="b-save" data-save role="status" aria-live="polite"></div>
     </header>
     <form class="b-form" autocomplete="off" onsubmit="return false">${source ? `<p class="b-note">${esc(source)}</p>` : ''}</form>
     <div class="b-preview"><div class="b-frame" id="preview"></div></div>
@@ -1924,11 +1925,14 @@ function renderBuilder(cfg, source, hosted, pid) {
     <div id="pub-host"></div>
     <div class="btns"><button type="button" class="btn primary" data-act="copy">Copy link</button><button type="button" class="btn" data-act="native-share" hidden>Share…</button><button type="button" class="btn" data-act="qr">QR code</button><a class="btn" id="pub-open" href="#" target="_blank" rel="noopener noreferrer">Open page</a><button class="btn ghost">Close</button></div>
   </form></dialog>`;
-  buildForm();
+  // what guests see on a shared page: the config last pushed (a page opened from My pages is live as opened)
+  B.live = B.hosted ? ((pagesAll().find(x => x.pid === B.pid) || {}).live || cfgHash(B.cfg)) : ''; if (B.hosted) pageSave(B.pid, { live: B.live });
+  buildForm(); saveStatus('');
   const bl = $('.builder');
   bl.addEventListener('click', (e) => {
     const tb = e.target.closest('[data-tab]'); if (tb && tb.tagName === 'BUTTON') { bl.dataset.tab = tb.dataset.tab; $$('.seg button').forEach(b => b.setAttribute('aria-selected', String(b === tb))); if (tb.dataset.tab === 'preview') { maps.forEach(m => m.invalidateSize()); window.scrollTo(0, 0); } }
     if (e.target.closest('[data-act="publish"]')) publishTranslated();
+    if (e.target.closest('[data-act="update-live"]')) updateLive();
   });
   const dlg = $('#pub');
   dlg.addEventListener('click', (e) => {
@@ -1968,9 +1972,34 @@ function publish(opts = {}) {
   if (!$('#pub').open) $('#pub').showModal();
   if (typeof renderPubHost === 'function') { B.pub = { state: 'offer' }; renderPubHost(); if (SB && (B.hosted || opts.host)) hostNow(); }
 }
-const savedraft = debounce(() => { LS.set('draft', B.cfg); pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted }); }, 300);
+const savedraft = debounce(() => { LS.set('draft', B.cfg); pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted }); saveStatus('saved'); }, 300);
+// Builder top bar: "Saving…" → "Saved" (this device) after every change; on a shared page with changes guests can't
+// see yet: "Changes not live yet" + Update page (the same publish as Share, without the share sheet) → "Live ✓".
+const cfgHash = (c) => hashStr(JSON.stringify(c));
+function saveStatus(st) {
+  const el = $('[data-save]'); if (!el || !B) return;
+  const dirty = !!(B.hosted && B.live && cfgHash(B.cfg) !== B.live);
+  const dev = st === 'saving' ? 'Saving…' : st === 'saved' ? 'Saved' : '';
+  el.innerHTML = B.pushing ? `<span>Updating page…</span>` : dirty ? `<span>${dev ? esc(dev) + ' · ' : ''}Changes not live yet</span><button type="button" class="btn sm" data-act="update-live">Update page</button>`
+    : B.hosted && B.justLive ? `<span class="ok">Live ✓</span>` : dev ? `<span>${esc(dev)}${dev === 'Saved' ? ' <small>on this device</small>' : ''}</span>` : '';
+  el.classList.toggle('dirty', dirty);
+}
+async function updateLive() {
+  if (!B || !B.hosted || B.pushing) return;
+  let user = null; try { user = await sbUser(); } catch { /* below */ }
+  if (!user) { publishTranslated(); return; } // signed out: the Share sheet asks to sign in, then publishes
+  B.pushing = true; saveStatus('');
+  try {
+    const c = B.cfg; const langs = (c.langs || []).filter(l => l !== srcLang(c));
+    if (langs.length && canTranslate() && langs.some(l => Object.keys(staleFields(c, l)).length)) { try { await translateCfg(c); LS.set('draft', B.cfg); } catch { /* publish in the organizer's language */ } }
+    const row = await publishHosted(B.cfg, B.hosted); B.hosted = { id: row.id, slug: row.slug };
+    markLive(); toast('Your page is updated');
+  } catch (e) { toast('Couldn’t update: ' + (e.message || 'try again')); }
+  finally { B.pushing = false; saveStatus(''); }
+}
+function markLive() { B.live = cfgHash(B.cfg); B.justLive = true; pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted, live: B.live }); saveStatus(''); }
 const preview = debounce(() => { const p = $('#preview'); if (!p) return; const sc = p.parentElement; const y = sc.scrollTop; const tab = p.querySelector('[data-tab-go][aria-selected="true"]')?.dataset.tabGo; renderEvent(B.cfg, p, { preview: true, shareUrl: shareURL(B.cfg), tab }); sc.scrollTop = y; }, 350);
-function changed(rebuild) { savedraft(); preview(); if (rebuild) { if (B.card) renderSheet(); else buildForm(); } }
+function changed(rebuild) { if (B) B.justLive = false; saveStatus('saving'); savedraft(); preview(); if (rebuild) { if (B.card) renderSheet(); else buildForm(); } }
 
 const fieldWrap = (label, html, id) => `<div class="field"><label${id ? ` for="${id}"` : ''}>${esc(label)}</label>${html}</div>`;
 // shorter labels inside a card sheet, where the card title already gives context (the page keeps the full labels)
@@ -2663,7 +2692,7 @@ async function hostNow() {
     const url = shortURL(row.slug); $('#pub-url').value = url; $('#pub-url').rows = 2; $('#pub-open').href = url;
     $('#pub h2').textContent = 'Your short link is ready';
     LS.set('published:' + Date.now(), { title: B.cfg.title, url });
-    B.pub = { state: 'done' }; renderPubHost(); renderHostNote();
+    B.pub = { state: 'done' }; renderPubHost(); renderHostNote(); markLive();
   } catch (e) { B.pub = { state: 'offer', msg: 'Couldn’t publish: ' + (e.message || 'try again') }; renderPubHost(); }
 }
 function wirePubHost() {
@@ -3059,9 +3088,9 @@ function loadGoogleMaps() {
     setTimeout(() => rej(new Error('Google Maps timed out')), 15000);
   }));
 }
-// map marks: the guest's hotel is a large coral pin with a bed, white outline and shadow; saved spots are gold stars
+// map marks: the guest's hotel is a deep-blue pin with a white bed (same size as the other pins, top of the stack); saved spots are gold stars
 const pinText = (s) => { s = String(s || ''); return s.length > 22 ? s.slice(0, 21).trim() + '…' : s; };
-const HOTEL_PIN = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="60" viewBox="0 0 48 60"><defs><filter id="s" x="-40%" y="-30%" width="180%" height="160%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity=".45"/></filter></defs><path filter="url(#s)" d="M24 3C13 3 4 11.6 4 22.4 4 36.6 24 57 24 57s20-20.4 20-34.6C44 11.6 35 3 24 3z" fill="#E35B47" stroke="#fff" stroke-width="3"/><g fill="#fff"><rect x="12" y="15" width="3.2" height="17" rx="1.2"/><rect x="12" y="26" width="24" height="3.2" rx="1"/><rect x="32.8" y="22" width="3.2" height="10" rx="1.2"/><circle cx="19.6" cy="21.4" r="2.9"/><rect x="23.6" y="19" width="12.4" height="5.6" rx="2.4"/></g></svg>');
+const HOTEL_PIN = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 48 60"><defs><filter id="s" x="-40%" y="-30%" width="180%" height="160%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity=".4"/></filter></defs><path filter="url(#s)" d="M24 3C13 3 4 11.6 4 22.4 4 36.6 24 57 24 57s20-20.4 20-34.6C44 11.6 35 3 24 3z" fill="#1E3A8A" stroke="#fff" stroke-width="3.5"/><g fill="#fff"><rect x="12" y="15" width="3.2" height="17" rx="1.2"/><rect x="12" y="26" width="24" height="3.2" rx="1"/><rect x="32.8" y="22" width="3.2" height="10" rx="1.2"/><circle cx="19.6" cy="21.4" r="2.9"/><rect x="23.6" y="19" width="12.4" height="5.6" rx="2.4"/></g></svg>');
 const STAR_PIN = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34"><defs><filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#000" flood-opacity=".4"/></filter></defs><path filter="url(#s)" d="M17 2.5l4.3 8.9 9.7 1.4-7 6.8 1.7 9.7-8.7-4.6-8.7 4.6 1.7-9.7-7-6.8 9.7-1.4z" fill="#E8A100" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/></svg>');
 function googleAdapter(g, el, c) {
   const map = new g.Map(el, { center: { lat: c.lat, lng: c.lon }, zoom: c.zoom || 15, disableDefaultUI: true, zoomControl: true, gestureHandling: 'cooperative', clickableIcons: false, keyboardShortcuts: false });
@@ -3072,7 +3101,7 @@ function googleAdapter(g, el, c) {
     center: (lat, lon, z) => { map.setCenter({ lat, lng: lon }); if (z) map.setZoom(z); },
     fit: (pts) => { const b = new g.LatLngBounds(); pts.forEach(([la, lo]) => b.extend({ lat: la, lng: lo })); map.fitBounds(b, 60); g.event.addListenerOnce(map, 'idle', () => { if (map.getZoom() > 16) map.setZoom(16); }); },
     pin: (lat, lon, { title, html, color }) => { const m = new g.Marker({ map, position: { lat, lng: lon }, title, zIndex: 1000, label: title ? { text: pinText(title), className: 'gmap-lbl', color: '#12141B', fontSize: '11px', fontWeight: '700' } : undefined, icon: { path: 'M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z', fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 1.15, anchor: new g.Point(12, 36), labelOrigin: new g.Point(12, 46) } }); pop(m, html); all.push(m); },
-    hotelPins: (() => { let ms = []; return (items) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map, position: { lat: x.lat, lng: x.lon }, title: x.title, zIndex: 5000, optimized: false, label: { text: pinText(x.label), className: 'gmap-lbl hotel', color: '#12141B', fontSize: '12px', fontWeight: '700' }, icon: { url: HOTEL_PIN, scaledSize: new g.Size(48, 60), anchor: new g.Point(24, 57), labelOrigin: new g.Point(24, 70) } }); m.addListener('click', () => x.onClick && x.onClick()); return m; }); }; })(),
+    hotelPins: (() => { let ms = []; return (items) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map, position: { lat: x.lat, lng: x.lon }, title: x.title, zIndex: 5000, optimized: false, label: { text: pinText(x.label), className: 'gmap-lbl hotel', color: '#12141B', fontSize: '12px', fontWeight: '700' }, icon: { url: HOTEL_PIN, scaledSize: new g.Size(32, 40), anchor: new g.Point(16, 38), labelOrigin: new g.Point(16, 49) } }); m.addListener('click', () => x.onClick && x.onClick()); return m; }); }; })(),
     label: (lat, lon, { title, text, html }) => { const m = new g.Marker({ map, position: { lat, lng: lon }, title, zIndex: 900, label: { text, fontSize: '11px', fontWeight: '700', color: '#12141B' }, icon: { path: g.SymbolPath.CIRCLE, scale: 0 } }); pop(m, html); all.push(m); },
     group: (color) => { let ms = [], vis = true; return {
       set: (items) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map: vis ? map : null, position: { lat: x.lat, lng: x.lon }, title: x.title, icon: { path: g.SymbolPath.CIRCLE, scale: 6, fillColor: color, fillOpacity: .95, strokeColor: '#fff', strokeWeight: 1.5 } }); if (x.onClick) m.addListener('click', x.onClick); else if (x.html) pop(m, x.html); return m; }); },
@@ -3081,7 +3110,7 @@ function googleAdapter(g, el, c) {
     savedPins: (() => { let ms = []; return (items) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map, position: { lat: x.lat, lng: x.lon }, title: x.title, zIndex: 4000, optimized: false, icon: { url: STAR_PIN, scaledSize: new g.Size(34, 34), anchor: new g.Point(17, 17) } }); m.addListener('click', () => x.onClick && x.onClick()); return m; }); }; })(),
     onPoi: (fn) => { map.setOptions({ clickableIcons: true }); map.addListener('click', (e) => { if (e.placeId) { e.stop(); fn(e.placeId); } }); },
     view: () => { const b = map.getBounds(); if (!b) return null; const c = b.getCenter(), ne = b.getNorthEast(); return { lat: c.lat(), lon: c.lng(), ne: [ne.lat(), ne.lng()] }; },
-    onMoved: (fn) => map.addListener('idle', fn),
+    onMoved: (fn) => map.addListener('idle', fn), zoom: () => map.getZoom(),
     invalidateSize: () => { g.event.trigger(map, 'resize'); },
     remove: () => { all.forEach(m => m.setMap(null)); el.innerHTML = ''; },
   };
@@ -3096,7 +3125,7 @@ function leafletAdapter(el, c) {
     center: (lat, lon, z) => map.setView([lat, lon], z || map.getZoom()),
     fit: (pts) => map.fitBounds(pts, { padding: [50, 50], maxZoom: 16 }),
     pin: (lat, lon, { title, html, color }) => Lf.marker([lat, lon], { icon: Lf.divIcon({ className: 'pin', html: `<span style="--accent:${color}"></span>${title ? `<em class="map-lbl">${esc(pinText(title))}</em>` : ''}`, iconSize: [30, 40], iconAnchor: [15, 38] }), title, zIndexOffset: 1000 }).addTo(map).bindPopup(html),
-    hotelPins: (() => { let lg = null; return (items) => { if (!lg) lg = Lf.layerGroup().addTo(map); lg.clearLayers(); items.forEach(x => Lf.marker([x.lat, x.lon], { icon: Lf.divIcon({ className: 'hpin', html: `<img src="${HOTEL_PIN}" alt=""><em class="map-lbl hotel">${esc(pinText(x.label))}</em>`, iconSize: [48, 60], iconAnchor: [24, 57] }), title: x.title, zIndexOffset: 5000 }).on('click', () => x.onClick && x.onClick()).addTo(lg)); }; })(),
+    hotelPins: (() => { let lg = null; return (items) => { if (!lg) lg = Lf.layerGroup().addTo(map); lg.clearLayers(); items.forEach(x => Lf.marker([x.lat, x.lon], { icon: Lf.divIcon({ className: 'hpin', html: `<img src="${HOTEL_PIN}" alt=""><em class="map-lbl hotel">${esc(pinText(x.label))}</em>`, iconSize: [32, 40], iconAnchor: [16, 38] }), title: x.title, zIndexOffset: 5000 }).on('click', () => x.onClick && x.onClick()).addTo(lg)); }; })(),
     label: (lat, lon, { title, text, html }) => Lf.marker([lat, lon], { icon: Lf.divIcon({ className: 'tpin', html: `<span>${esc(text)}</span>`, iconSize: null, iconAnchor: [0, 0] }), title, zIndexOffset: 900 }).addTo(map).bindPopup(html),
     group: (color) => { const lg = Lf.layerGroup().addTo(map); return {
       set: (items) => { lg.clearLayers(); items.forEach(x => { const m = Lf.circleMarker([x.lat, x.lon], { radius: 6, color: '#fff', weight: 1.5, fillColor: color, fillOpacity: .95 }); if (x.onClick) m.on('click', x.onClick); else if (x.html) m.bindPopup(x.html); m.addTo(lg); }); },
@@ -3105,7 +3134,7 @@ function leafletAdapter(el, c) {
     savedPins: (() => { let lg = null; return (items) => { if (!lg) lg = Lf.layerGroup().addTo(map); lg.clearLayers(); items.forEach(x => Lf.marker([x.lat, x.lon], { icon: Lf.divIcon({ className: 'spin', html: `<img src="${STAR_PIN}" alt="">`, iconSize: [34, 34], iconAnchor: [17, 17] }), title: x.title, zIndexOffset: 4000 }).on('click', () => x.onClick && x.onClick()).addTo(lg)); }; })(),
     onPoi: () => {},
     view: () => { const b = map.getBounds(); const c = b.getCenter(), ne = b.getNorthEast(); return { lat: c.lat, lon: c.lng, ne: [ne.lat, ne.lng] }; },
-    onMoved: (fn) => map.on('moveend', fn),
+    onMoved: (fn) => map.on('moveend', fn), zoom: () => map.getZoom(),
     invalidateSize: () => map.invalidateSize(),
     remove: () => map.remove(),
   };
@@ -3123,6 +3152,7 @@ function wireMap(cfg, art, opts) {
   const viewArea = () => { const a = st.adapter; const w = a && a.view ? a.view() : null; if (!w || !isFinite(w.lat)) return null; return { lat: +w.lat.toFixed(5), lon: +w.lon.toFixed(5), r: Math.round(Math.min(50000, Math.max(250, distM(w.lat, w.lon, w.ne[0], w.ne[1])))) }; };
   const areaMoved = (a, b) => !b || distM(a.lat, a.lon, b.lat, b.lon) > 0.3 * Math.min(a.r, b.r) || a.r < b.r * 0.45 || a.r > b.r * 2.2;
   const onMoved = () => {
+    const a0 = st.adapter; if (a0 && a0.zoom) el.classList.toggle('z-close', a0.zoom() >= 17); // street level: pin labels give way
     const now = viewArea(); if (!now || !areaBtn) return;
     if (!st.area) { st.area = now; return; } // the first view after drawing is the starting area
     areaBtn.hidden = !(st.areaFns.length && areaMoved(now, st.area));
@@ -3181,7 +3211,7 @@ function wireMap(cfg, art, opts) {
     setHotels: (items) => { st.hotels = items; if (st.adapter && st.adapter.hotelPins) st.adapter.hotelPins(items); },
     centerOn: (lat, lon, z) => { const go = () => st.adapter && st.adapter.center(lat, lon, z || 15); st.adapter ? go() : setTimeout(go, 1500); },
     setFood: (items) => { st.food = items; const g = st.groups.food; if (g) g.g.set(items.map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)) }))); },
-    center: (lat, lon, z) => { st.area = null; const go = () => st.adapter && st.adapter.center(lat, lon, z || 14); st.adapter ? go() : setTimeout(go, 1500); },
+    center: (lat, lon, z) => { st.area = null; const go = () => { st.area = null; if (areaBtn) areaBtn.hidden = true; if (st.adapter) st.adapter.center(lat, lon, z || 14); }; st.adapter ? go() : setTimeout(go, 1500); }, // a programmatic move is a new starting area
     onArea: (fn) => { st.areaFns.push(fn); },
     searchedArea: (a) => { st.area = a; if (areaBtn) areaBtn.hidden = true; },
     _view: () => viewArea(),
