@@ -1,0 +1,162 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>1LinkTrip message emails setup</title><meta name="robots" content="noindex"><style>body{font:16px -apple-system,system-ui,sans-serif;margin:0;padding:20px;background:#E7E9EE;color:#111;max-width:760px}
+ol{padding-left:1.2em} li{margin:6px 0} code{background:#fff;border-radius:6px;padding:1px 5px} h3{margin:22px 0 6px}
+button{font:600 18px -apple-system,system-ui,sans-serif;width:100%;padding:16px;border:0;border-radius:12px;background:#3048F0;color:#fff;margin:12px 0}
+textarea{width:100%;height:40vh;box-sizing:border-box;font:12px ui-monospace,Menlo,monospace;border-radius:12px;border:1px solid #ccc;padding:10px}</style></head>
+<body><h2 style="margin:0 0 4px">Message emails (optional)</h2>
+<p>Emails the host when a guest writes, the guest when the host replies, and guests when an update is posted for them. Messages already show in the app without this.</p>
+<h3>1. Database</h3><ol><li>Run <a href="../supabase/schema-3.html">database setup, part 3</a> if you haven’t.</li></ol>
+<h3>2. The function</h3><ol><li>Tap <b>Copy function</b> → Supabase → <b>Edge Functions</b> → <b>Deploy a new function</b> → <b>Via editor</b> → name <code>notify</code> → paste → <b>Deploy</b>. Leave <b>Verify JWT</b> on.</li>
+<li>Edge Functions → <b>Secrets</b> → add <code>RESEND_API_KEY</code> (your Resend key, the same <code>re_…</code> one from <a href="../resend/">sign-in emails</a> works).</li></ol>
+<button data-copy="fn">Copy function</button><textarea id="fn" readonly>// 1LinkTrip &quot;notify&quot; Supabase Edge Function: emails new guest messages, host replies and host updates through Resend.
+// In-app delivery (My trip, My pages) always works without this; email is the extra.
+//
+// Deploy: Supabase Dashboard → Edge Functions → Deploy a new function → Via editor → name it notify → paste this file → Deploy.
+//         Keep &quot;Verify JWT&quot; on (the default): only signed-in people can call it, and it checks they may notify for that row.
+// Secrets: RESEND_API_KEY (a Resend key with Sending access).
+//          NOTIFY_FROM (optional), e.g. &quot;1LinkTrip &lt;hello@yourdomain.com&gt;&quot; once your domain is verified in Resend.
+//          Until then the sender is onboarding@resend.dev, which Resend only delivers to the Resend account&#x27;s own email.
+//          SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are provided to Edge Functions automatically.
+//
+// POST { &quot;kind&quot;: &quot;message&quot;, &quot;id&quot;: &quot;&lt;event_messages.id&gt;&quot; }   guest wrote → email the page owner; host replied → email that guest
+// POST { &quot;kind&quot;: &quot;announcement&quot;, &quot;id&quot;: &quot;&lt;announcements.id&gt;&quot; } owner posted → email the chosen groups (or everyone known)
+// GET  → { ok, ready } (ready = RESEND_API_KEY is set)
+// Each row is emailed at most once (notified_at). The host&#x27;s own email address is never sent to guests.
+
+import { createClient } from &quot;npm:@supabase/supabase-js@2.119.0&quot;;
+
+const ALLOWED_ORIGIN = &quot;https://bbbot0209.github.io&quot;;
+const SITE = &quot;https://bbbot0209.github.io/eventpages/&quot;;
+const MAX_RECIPIENTS = 300;
+const THREAD_QUIET_MS = 10 * 60 * 1000; // one email per thread per 10 minutes
+
+const cors = {
+  &quot;Access-Control-Allow-Origin&quot;: ALLOWED_ORIGIN,
+  &quot;Access-Control-Allow-Headers&quot;: &quot;authorization, x-client-info, apikey, content-type&quot;,
+  &quot;Access-Control-Allow-Methods&quot;: &quot;POST, GET, OPTIONS&quot;,
+  &quot;Vary&quot;: &quot;Origin&quot;,
+};
+const json = (status: number, body: unknown) =&gt;
+  new Response(JSON.stringify(body), { status, headers: { ...cors, &quot;Content-Type&quot;: &quot;application/json&quot; } });
+
+export type Mail = { to: string; subject: string; text: string; html: string };
+// deno-lint-ignore no-explicit-any
+type Admin = any;
+export type Deps = { admin: Admin; send: (mails: Mail[]) =&gt; Promise&lt;void&gt;; ready: boolean; now?: () =&gt; number };
+
+const esc = (s: string) =&gt; s.replace(/[&amp;&lt;&gt;&quot;&#x27;]/g, (c) =&gt; ({ &quot;&amp;&quot;: &quot;&amp;amp;&quot;, &quot;&lt;&quot;: &quot;&amp;lt;&quot;, &quot;&gt;&quot;: &quot;&amp;gt;&quot;, &#x27;&quot;&#x27;: &quot;&amp;quot;&quot;, &quot;&#x27;&quot;: &quot;&amp;#39;&quot; }[c] as string));
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function mail(to: string, subject: string, lines: string[], link: string, linkLabel: string): Mail {
+  const text = `${lines.join(&quot;\n\n&quot;)}\n\n${linkLabel}: ${link}\n`;
+  const html = `&lt;div style=&quot;font:16px/1.5 -apple-system,system-ui,sans-serif;color:#111;max-width:560px&quot;&gt;${lines.map((l) =&gt; `&lt;p style=&quot;white-space:pre-wrap;margin:0 0 14px&quot;&gt;${esc(l)}&lt;/p&gt;`).join(&quot;&quot;)}&lt;p&gt;&lt;a href=&quot;${esc(link)}&quot; style=&quot;display:inline-block;background:#3048F0;color:#fff;text-decoration:none;padding:10px 16px;border-radius:10px&quot;&gt;${esc(linkLabel)}&lt;/a&gt;&lt;/p&gt;&lt;p style=&quot;color:#777;font-size:13px&quot;&gt;1LinkTrip&lt;/p&gt;&lt;/div&gt;`;
+  return { to, subject, text, html };
+}
+
+async function userEmail(admin: Admin, id: string): Promise&lt;string&gt; {
+  const { data } = await admin.auth.admin.getUserById(id);
+  const u = data &amp;&amp; data.user;
+  return u &amp;&amp; u.email &amp;&amp; u.email_confirmed_at ? String(u.email).toLowerCase() : &quot;&quot;;
+}
+
+// claim the row so a repeat call (or a double tap) never sends twice
+async function claim(admin: Admin, table: string, id: string): Promise&lt;boolean&gt; {
+  const { data, error } = await admin.from(table).update({ notified_at: new Date().toISOString() }).eq(&quot;id&quot;, id).is(&quot;notified_at&quot;, null).select(&quot;id&quot;);
+  return !error &amp;&amp; Array.isArray(data) &amp;&amp; data.length === 1;
+}
+
+export async function handler(req: Request, deps?: Deps): Promise&lt;Response&gt; {
+  if (req.method === &quot;OPTIONS&quot;) return new Response(&quot;ok&quot;, { headers: cors });
+  const d = deps || defaultDeps();
+  if (req.method === &quot;GET&quot;) return json(200, { ok: true, ready: d.ready });
+  if (req.method !== &quot;POST&quot;) return json(405, { ok: false, error: &quot;Use POST&quot; });
+
+  const token = (req.headers.get(&quot;Authorization&quot;) || &quot;&quot;).replace(/^Bearer\s+/i, &quot;&quot;);
+  const { data: who } = token ? await d.admin.auth.getUser(token) : { data: null };
+  const me = who &amp;&amp; who.user;
+  if (!me) return json(401, { ok: false, error: &quot;Sign in first&quot; });
+
+  let b: { kind?: string; id?: string };
+  try { b = await req.json(); } catch { return json(400, { ok: false, error: &quot;Send JSON&quot; }); }
+  const id = String(b.id || &quot;&quot;);
+  if (!UUID.test(id) || (b.kind !== &quot;message&quot; &amp;&amp; b.kind !== &quot;announcement&quot;)) return json(400, { ok: false, error: &quot;Unknown request&quot; });
+  if (!d.ready) return json(200, { ok: true, sent: 0, skipped: &quot;email not set up&quot; });
+  const now = d.now ? d.now() : Date.now();
+
+  if (b.kind === &quot;message&quot;) {
+    const { data: m } = await d.admin.from(&quot;event_messages&quot;).select(&quot;id,event_id,guest,from_host,guest_name,guest_email,body,notified_at,created_at&quot;).eq(&quot;id&quot;, id).maybeSingle();
+    if (!m) return json(404, { ok: false, error: &quot;Not found&quot; });
+    const { data: ev } = await d.admin.from(&quot;events&quot;).select(&quot;id,slug,owner,config&quot;).eq(&quot;id&quot;, m.event_id).maybeSingle();
+    if (!ev) return json(404, { ok: false, error: &quot;Not found&quot; });
+    // only the person who wrote it can ask for its email
+    if (m.from_host ? ev.owner !== me.id : m.guest !== me.id) return json(403, { ok: false, error: &quot;Not yours&quot; });
+    if (m.notified_at) return json(200, { ok: true, sent: 0, skipped: &quot;already sent&quot; });
+    const title = String((ev.config &amp;&amp; ev.config.title) || &quot;your page&quot;).slice(0, 120);
+    // a burst of messages in one thread becomes one email
+    const { data: recent } = await d.admin.from(&quot;event_messages&quot;).select(&quot;id,notified_at&quot;).eq(&quot;event_id&quot;, m.event_id).eq(&quot;guest&quot;, m.guest).eq(&quot;from_host&quot;, m.from_host)
+      .not(&quot;notified_at&quot;, &quot;is&quot;, null).gte(&quot;notified_at&quot;, new Date(now - THREAD_QUIET_MS).toISOString()).limit(1);
+    if (!(await claim(d.admin, &quot;event_messages&quot;, id))) return json(200, { ok: true, sent: 0, skipped: &quot;already sent&quot; });
+    if (recent &amp;&amp; recent.length) return json(200, { ok: true, sent: 0, skipped: &quot;recently emailed&quot; });
+    let out: Mail;
+    if (m.from_host) {
+      const to = await userEmail(d.admin, m.guest); if (!to) return json(200, { ok: true, sent: 0, skipped: &quot;no guest email&quot; });
+      out = mail(to, `New message from the host: ${title}`, [`The host of ${title} wrote:`, String(m.body)], `${SITE}?e=${ev.slug}#t=mytrip`, &quot;Open your messages&quot;);
+    } else {
+      const to = await userEmail(d.admin, ev.owner); if (!to) return json(200, { ok: true, sent: 0, skipped: &quot;no host email&quot; });
+      const from = [m.guest_name, m.guest_email].filter(Boolean).join(&quot; · &quot;) || &quot;A guest&quot;;
+      out = mail(to, `New message: ${title}`, [`${from} wrote:`, String(m.body)], `${SITE}#mine/${ev.id}`, &quot;Reply in My pages&quot;);
+    }
+    try { await d.send([out]); } catch (e) { return json(502, { ok: false, error: String((e as Error).message || e).slice(0, 200) }); }
+    return json(200, { ok: true, sent: 1 });
+  }
+
+  // announcement: only the page owner, and only once
+  const { data: a } = await d.admin.from(&quot;announcements&quot;).select(&quot;id,event_id,body,group_ids,notified_at&quot;).eq(&quot;id&quot;, id).maybeSingle();
+  if (!a) return json(404, { ok: false, error: &quot;Not found&quot; });
+  const { data: ev } = await d.admin.from(&quot;events&quot;).select(&quot;id,slug,owner,config,published&quot;).eq(&quot;id&quot;, a.event_id).maybeSingle();
+  if (!ev || ev.owner !== me.id) return json(403, { ok: false, error: &quot;Not yours&quot; });
+  if (a.notified_at) return json(200, { ok: true, sent: 0, skipped: &quot;already sent&quot; });
+  const gids: string[] = Array.isArray(a.group_ids) ? a.group_ids : [];
+  const emails = new Set&lt;string&gt;();
+  let q = d.admin.from(&quot;event_group_members&quot;).select(&quot;email&quot;).eq(&quot;event_id&quot;, ev.id);
+  if (gids.length) q = q.in(&quot;group_id&quot;, gids);
+  const { data: mem } = await q.limit(MAX_RECIPIENTS * 2);
+  (mem || []).forEach((r: { email: string }) =&gt; emails.add(String(r.email).toLowerCase()));
+  if (!gids.length) { // everyone: group members plus everyone who left an email with their reply
+    const { data: rs } = await d.admin.from(&quot;rsvps&quot;).select(&quot;email,attending&quot;).eq(&quot;event_id&quot;, ev.id).not(&quot;email&quot;, &quot;is&quot;, null).limit(MAX_RECIPIENTS * 2);
+    (rs || []).forEach((r: { email: string; attending: boolean }) =&gt; { if (r.attending !== false) emails.add(String(r.email).toLowerCase()); });
+  }
+  const owner = await userEmail(d.admin, ev.owner); if (owner) emails.delete(owner);
+  const to = [...emails].filter((e) =&gt; EMAIL.test(e)).slice(0, MAX_RECIPIENTS);
+  if (!(await claim(d.admin, &quot;announcements&quot;, id))) return json(200, { ok: true, sent: 0, skipped: &quot;already sent&quot; });
+  if (!to.length) return json(200, { ok: true, sent: 0 });
+  const title = String((ev.config &amp;&amp; ev.config.title) || &quot;an event&quot;).slice(0, 120);
+  // one email per person, so nobody sees the other recipients
+  const mails = to.map((e) =&gt; mail(e, `Update: ${title}`, [`An update about ${title}:`, String(a.body)], `${SITE}?e=${ev.slug}${gids.length ? &quot;#t=mytrip&quot; : &quot;&quot;}`, &quot;Open the page&quot;));
+  try { await d.send(mails); } catch (e) { return json(502, { ok: false, error: String((e as Error).message || e).slice(0, 200) }); }
+  return json(200, { ok: true, sent: mails.length });
+}
+
+function defaultDeps(): Deps {
+  const url = Deno.env.get(&quot;SUPABASE_URL&quot;) || &quot;&quot;; const svc = Deno.env.get(&quot;SUPABASE_SERVICE_ROLE_KEY&quot;) || &quot;&quot;;
+  const key = Deno.env.get(&quot;RESEND_API_KEY&quot;) || &quot;&quot;; const from = Deno.env.get(&quot;NOTIFY_FROM&quot;) || &quot;1LinkTrip &lt;onboarding@resend.dev&gt;&quot;;
+  const admin = createClient(url, svc, { auth: { persistSession: false, autoRefreshToken: false } });
+  const send = async (mails: Mail[]) =&gt; {
+    for (let i = 0; i &lt; mails.length; i += 100) { // Resend batch: up to 100 emails a call
+      const r = await fetch(&quot;https://api.resend.com/emails/batch&quot;, {
+        method: &quot;POST&quot;, headers: { Authorization: `Bearer ${key}`, &quot;Content-Type&quot;: &quot;application/json&quot; },
+        body: JSON.stringify(mails.slice(i, i + 100).map((m) =&gt; ({ from, to: [m.to], subject: m.subject, text: m.text, html: m.html }))),
+      });
+      if (!r.ok) throw new Error(`Resend ${r.status}: ${(await r.text()).slice(0, 160)}`);
+    }
+  };
+  return { admin, send, ready: !!key &amp;&amp; !!url &amp;&amp; !!svc };
+}
+
+// Supabase runs this file as the function; tests import it with NOTIFY_TEST=1 and pass fake deps.
+if (!Deno.env.get(&quot;NOTIFY_TEST&quot;)) Deno.serve((req) =&gt; handler(req));
+</textarea>
+<h3>3. Your domain (when ready)</h3><ol><li>Until a domain is verified in Resend, emails come from <code>onboarding@resend.dev</code> and Resend only delivers them to your own Resend email.</li>
+<li>After you add and verify a domain in Resend → <b>Domains</b>, add the secret <code>NOTIFY_FROM</code> = <code>1LinkTrip &lt;hello@yourdomain.com&gt;</code>. No code change needed.</li></ol>
+<script>document.querySelectorAll('button[data-copy]').forEach(b=>b.onclick=async()=>{const t=document.getElementById(b.dataset.copy);try{await navigator.clipboard.writeText(t.value)}catch(e){t.select();document.execCommand('copy')}const o=b.textContent;b.textContent='Copied ✓';setTimeout(()=>b.textContent=o,2000)})</script></body></html>
