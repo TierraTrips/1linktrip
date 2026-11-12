@@ -1,6 +1,6 @@
-# Eventpages on Supabase: owner setup
+# PlanEZR on Supabase: owner setup
 
-You need about five minutes in the Supabase dashboard. You don't need to send anything back: Eventpages already has the project URL and the publishable key. Never share the secret (service_role) key. Eventpages doesn't use it.
+You need about five minutes in the Supabase dashboard. You don't need to send anything back: PlanEZR already has the project URL and the publishable key. Never share the secret (service_role) key. PlanEZR doesn't use it.
 
 ## 1. Create the tables
 

@@ -1,4 +1,4 @@
--- Eventpages database schema for Supabase.
+-- PlanEZR database schema for Supabase.
 -- Paste into Dashboard → SQL Editor → New query → Run. Safe to run more than once.
 --
 -- Tables

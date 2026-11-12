@@ -1,5 +1,5 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Eventpages Google setup</title><meta name="robots" content="noindex">
+<title>PlanEZR Google setup</title><meta name="robots" content="noindex">
 <style>body{font:16px -apple-system,system-ui,sans-serif;margin:0;padding:20px;background:#E7E9EE;color:#111;line-height:1.45}
 ol{padding-left:22px}li{margin:0 0 14px}
 .c{display:flex;gap:8px;align-items:center;margin:6px 0}
@@ -11,13 +11,13 @@ a{color:#3048F0}.note{background:#fff;border-radius:12px;padding:12px;margin-top
 <ol>
 <li><b>Open Google Maps Platform.</b> Tap: <a href="https://console.cloud.google.com/google/maps-apis/start" target="_blank" rel="noopener">console.cloud.google.com/google/maps-apis/start</a><br>Sign in with your Google account if asked.</li>
 <li><b>Make a project.</b> At the top of the page, click the project picker (it may say "Select a project") → <b>New project</b> → name it:
-<div class="c"><code>Eventpages</code><button data-c="Eventpages">Copy</button></div>→ <b>Create</b>. Make sure "Eventpages" is now shown in the picker at the top.</li>
+<div class="c"><code>PlanEZR</code><button data-c="PlanEZR">Copy</button></div>→ <b>Create</b>. Make sure "PlanEZR" is now shown in the picker at the top.</li>
 <li><b>Add billing.</b> Google will ask you to add a billing account (name, address, card). Follow its prompts and click <b>Submit</b> / <b>Start</b>. There's a monthly free allowance.</li>
 <li><b>Copy your key.</b> After billing, Google shows a box titled something like <b>"Your API key"</b> with a long code starting with <code style="flex:none;padding:2px 6px">AIza</code>. Copy it and keep this tab open.<br>Don't see it? Left menu → <b>Keys &amp; Credentials</b> → your key is listed there → <b>Show key</b>.</li>
 <li><b>Turn on the two services.</b> Left menu → <b>APIs &amp; Services</b> (or go to <a href="https://console.cloud.google.com/google/maps-apis/api-list" target="_blank" rel="noopener">API list</a>). Find each of these and make sure it says <b>Enabled</b> (click it → <b>Enable</b> if not):
 <div class="c"><code>Places API (New)</code><button data-c="Places API (New)">Copy</button></div>
 <div class="c"><code>Maps JavaScript API</code><button data-c="Maps JavaScript API">Copy</button></div></li>
-<li><b>Lock the key to our site.</b> Open <a href="https://console.cloud.google.com/google/maps-apis/credentials" target="_blank" rel="noopener">Maps Platform → Keys &amp; Credentials</a> (check "Eventpages" is selected at the top) → click the key's <b>name</b> (blue text, e.g. "Maps Platform API Key") — not the copy icon. That opens <b>Edit API key</b>; scroll down to <b>Key restrictions</b>:
+<li><b>Lock the key to our site.</b> Open <a href="https://console.cloud.google.com/google/maps-apis/credentials" target="_blank" rel="noopener">Maps Platform → Keys &amp; Credentials</a> (check "PlanEZR" is selected at the top) → click the key's <b>name</b> (blue text, e.g. "Maps Platform API Key") — not the copy icon. That opens <b>Edit API key</b>; scroll down to <b>Key restrictions</b>:
 <br>• Under <b>Set an application restriction</b> choose <b>Websites</b> → <b>Add</b> → paste:
 <div class="c"><code>https://bbbot0209.github.io/*</code><button data-c="https://bbbot0209.github.io/*">Copy</button></div>→ <b>Done</b>.
 <br>• Under <b>API restrictions</b> choose <b>Restrict key</b> → tick <b>Places API (New)</b> and <b>Maps JavaScript API</b> → OK.

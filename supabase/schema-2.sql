@@ -1,4 +1,4 @@
--- Eventpages schema, part 2: personal itineraries synced to the account, and (dormant) email forwarding.
+-- PlanEZR schema, part 2: personal itineraries synced to the account, and (dormant) email forwarding.
 -- Paste into Supabase Dashboard → SQL Editor → New query → Run. Safe to run more than once. Adds new tables only.
 --
 --   trip_items      a signed-in person's own itinerary items (bookings and saved places), per page
