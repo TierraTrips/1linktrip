@@ -15,36 +15,40 @@ textarea{width:100%;height:40vh;box-sizing:border-box;font:12px ui-monospace,Men
 //         Keep &quot;Verify JWT&quot; on (the default): only signed-in people can call it, and it checks they may notify for that row.
 // Secrets: RESEND_API_KEY (a Resend key with Sending access).
 //          NOTIFY_FROM (optional), e.g. &quot;1LinkTrip &lt;hello@yourdomain.com&gt;&quot; once your domain is verified in Resend.
-//          Until then the sender is onboarding@resend.dev, which Resend only delivers to the Resend account&#x27;s own email.
+//          Until then the sender is onboarding@resend.dev, which Resend only delivers to the Resend account's own email.
 //          SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are provided to Edge Functions automatically.
 //
 // POST { &quot;kind&quot;: &quot;message&quot;, &quot;id&quot;: &quot;&lt;event_messages.id&gt;&quot; }   guest wrote → email the page owner; host replied → email that guest
 // POST { &quot;kind&quot;: &quot;announcement&quot;, &quot;id&quot;: &quot;&lt;announcements.id&gt;&quot; } owner posted → email the chosen groups (or everyone known)
 // GET  → { ok, ready } (ready = RESEND_API_KEY is set)
-// Each row is emailed at most once (notified_at). The host&#x27;s own email address is never sent to guests.
+// Each row is emailed at most once (notified_at). The host's own email address is never sent to guests.
 
 import { createClient } from &quot;npm:@supabase/supabase-js@2.119.0&quot;;
 
-const ALLOWED_ORIGIN = &quot;https://bbbot0209.github.io&quot;;
-const SITE = &quot;https://bbbot0209.github.io/eventpages/&quot;;
+// The site's addresses. A browser call from one of these gets its own Origin echoed back; anything else gets the first.
+const ALLOWED_ORIGINS = [&quot;https://1linktrip.com&quot;, &quot;https://www.1linktrip.com&quot;, &quot;https://bbbot0209.github.io&quot;];
+const SITE = &quot;https://1linktrip.com/&quot;;
 const MAX_RECIPIENTS = 300;
 const THREAD_QUIET_MS = 10 * 60 * 1000; // one email per thread per 10 minutes
 
-const cors = {
-  &quot;Access-Control-Allow-Origin&quot;: ALLOWED_ORIGIN,
-  &quot;Access-Control-Allow-Headers&quot;: &quot;authorization, x-client-info, apikey, content-type&quot;,
-  &quot;Access-Control-Allow-Methods&quot;: &quot;POST, GET, OPTIONS&quot;,
-  &quot;Vary&quot;: &quot;Origin&quot;,
-};
+export function corsFor(req: Request): Record&lt;string, string&gt; {
+  const origin = req.headers.get(&quot;Origin&quot;) || &quot;&quot;;
+  return {
+    &quot;Access-Control-Allow-Origin&quot;: ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
+    &quot;Access-Control-Allow-Headers&quot;: &quot;authorization, x-client-info, apikey, content-type&quot;,
+    &quot;Access-Control-Allow-Methods&quot;: &quot;POST, GET, OPTIONS&quot;,
+    &quot;Vary&quot;: &quot;Origin&quot;,
+  };
+}
 const json = (status: number, body: unknown) =&gt;
-  new Response(JSON.stringify(body), { status, headers: { ...cors, &quot;Content-Type&quot;: &quot;application/json&quot; } });
+  new Response(JSON.stringify(body), { status, headers: { &quot;Content-Type&quot;: &quot;application/json&quot; } });
 
 export type Mail = { to: string; subject: string; text: string; html: string };
 // deno-lint-ignore no-explicit-any
 type Admin = any;
 export type Deps = { admin: Admin; send: (mails: Mail[]) =&gt; Promise&lt;void&gt;; ready: boolean; now?: () =&gt; number };
 
-const esc = (s: string) =&gt; s.replace(/[&amp;&lt;&gt;&quot;&#x27;]/g, (c) =&gt; ({ &quot;&amp;&quot;: &quot;&amp;amp;&quot;, &quot;&lt;&quot;: &quot;&amp;lt;&quot;, &quot;&gt;&quot;: &quot;&amp;gt;&quot;, &#x27;&quot;&#x27;: &quot;&amp;quot;&quot;, &quot;&#x27;&quot;: &quot;&amp;#39;&quot; }[c] as string));
+const esc = (s: string) =&gt; s.replace(/[&amp;&lt;&gt;&quot;']/g, (c) =&gt; ({ &quot;&amp;&quot;: &quot;&amp;amp;&quot;, &quot;&lt;&quot;: &quot;&amp;lt;&quot;, &quot;&gt;&quot;: &quot;&amp;gt;&quot;, '&quot;': &quot;&amp;quot;&quot;, &quot;'&quot;: &quot;&amp;#39;&quot; }[c] as string));
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -66,8 +70,15 @@ async function claim(admin: Admin, table: string, id: string): Promise&lt;boolea
   return !error &amp;&amp; Array.isArray(data) &amp;&amp; data.length === 1;
 }
 
+// Every answer carries the CORS headers for this request's Origin.
 export async function handler(req: Request, deps?: Deps): Promise&lt;Response&gt; {
-  if (req.method === &quot;OPTIONS&quot;) return new Response(&quot;ok&quot;, { headers: cors });
+  const res = await route(req, deps);
+  for (const [k, v] of Object.entries(corsFor(req))) res.headers.set(k, v);
+  return res;
+}
+
+async function route(req: Request, deps?: Deps): Promise&lt;Response&gt; {
+  if (req.method === &quot;OPTIONS&quot;) return new Response(&quot;ok&quot;);
   const d = deps || defaultDeps();
   if (req.method === &quot;GET&quot;) return json(200, { ok: true, ready: d.ready });
   if (req.method !== &quot;POST&quot;) return json(405, { ok: false, error: &quot;Use POST&quot; });

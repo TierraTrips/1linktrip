@@ -77,3 +77,16 @@ Deno.test("not set up → nothing sent, rows stay unclaimed", async () => {
   assert(r.j.ok && r.j.skipped === "email not set up" && db.t.event_messages[0].notified_at === null, "skipped, unclaimed");
   const g = await handler(new Request("https://x/", { method: "GET" }), deps as never); assert((await g.json()).ready === false, "GET reports not ready");
 });
+
+Deno.test("CORS: echoes an allowed Origin, falls back to 1linktrip.com otherwise, on every answer", async () => {
+  const { admin } = fakeDb(); const deps = { admin, send: () => Promise.resolve(), ready: true };
+  for (const [origin, want] of [["https://1linktrip.com", "https://1linktrip.com"], ["https://www.1linktrip.com", "https://www.1linktrip.com"], ["https://bbbot0209.github.io", "https://bbbot0209.github.io"], ["https://evil.example", "https://1linktrip.com"], [null, "https://1linktrip.com"]] as const) {
+    for (const method of ["OPTIONS", "GET", "POST"]) {
+      const h: Record<string, string> = origin ? { Origin: origin } : {};
+      const r = await handler(new Request("https://x/functions/v1/notify", { method, headers: h, body: method === "POST" ? "{}" : undefined }), deps as never);
+      await r.body?.cancel();
+      assert(r.headers.get("Access-Control-Allow-Origin") === want, `${method} ${origin} → ${r.headers.get("Access-Control-Allow-Origin")}`);
+      assert(r.headers.get("Vary") === "Origin", "Vary");
+    }
+  }
+});

@@ -15,19 +15,23 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.119.0";
 
-const ALLOWED_ORIGIN = "https://bbbot0209.github.io";
-const SITE = "https://bbbot0209.github.io/eventpages/";
+// The site's addresses. A browser call from one of these gets its own Origin echoed back; anything else gets the first.
+const ALLOWED_ORIGINS = ["https://1linktrip.com", "https://www.1linktrip.com", "https://bbbot0209.github.io"];
+const SITE = "https://1linktrip.com/";
 const MAX_RECIPIENTS = 300;
 const THREAD_QUIET_MS = 10 * 60 * 1000; // one email per thread per 10 minutes
 
-const cors = {
-  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-  "Vary": "Origin",
-};
+export function corsFor(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") || "";
+  return {
+    "Access-Control-Allow-Origin": ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+    "Vary": "Origin",
+  };
+}
 const json = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
+  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 export type Mail = { to: string; subject: string; text: string; html: string };
 // deno-lint-ignore no-explicit-any
@@ -56,8 +60,15 @@ async function claim(admin: Admin, table: string, id: string): Promise<boolean> 
   return !error && Array.isArray(data) && data.length === 1;
 }
 
+// Every answer carries the CORS headers for this request's Origin.
 export async function handler(req: Request, deps?: Deps): Promise<Response> {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  const res = await route(req, deps);
+  for (const [k, v] of Object.entries(corsFor(req))) res.headers.set(k, v);
+  return res;
+}
+
+async function route(req: Request, deps?: Deps): Promise<Response> {
+  if (req.method === "OPTIONS") return new Response("ok");
   const d = deps || defaultDeps();
   if (req.method === "GET") return json(200, { ok: true, ready: d.ready });
   if (req.method !== "POST") return json(405, { ok: false, error: "Use POST" });

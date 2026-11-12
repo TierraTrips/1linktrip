@@ -34,21 +34,25 @@ textarea{width:100%;height:50vh;box-sizing:border-box;font:12px ui-monospace,Men
 
 import Anthropic from &quot;npm:@anthropic-ai/sdk@1.6.0&quot;;
 
-const ALLOWED_ORIGIN = &quot;https://bbbot0209.github.io&quot;;
+// The site's addresses. A browser call from one of these gets its own Origin echoed back; anything else gets the first.
+const ALLOWED_ORIGINS = [&quot;https://1linktrip.com&quot;, &quot;https://www.1linktrip.com&quot;, &quot;https://bbbot0209.github.io&quot;];
 const MAX_CHARS = 40_000;
 const MODEL = &quot;claude-haiku-5-5&quot;;
 const MAX_FILES = 6;
 const MAX_FILE_B64 = 14_000_000; // ≈ 10 MB of files
 const FILE_IMAGE_TYPES = [&quot;image/jpeg&quot;, &quot;image/png&quot;, &quot;image/webp&quot;, &quot;image/gif&quot;];
 
-const cors = {
-  &quot;Access-Control-Allow-Origin&quot;: ALLOWED_ORIGIN,
-  &quot;Access-Control-Allow-Headers&quot;: &quot;authorization, x-client-info, apikey, content-type&quot;,
-  &quot;Access-Control-Allow-Methods&quot;: &quot;POST, GET, OPTIONS&quot;,
-  &quot;Vary&quot;: &quot;Origin&quot;,
-};
+export function corsFor(req: Request): Record&lt;string, string&gt; {
+  const origin = req.headers.get(&quot;Origin&quot;) || &quot;&quot;;
+  return {
+    &quot;Access-Control-Allow-Origin&quot;: ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
+    &quot;Access-Control-Allow-Headers&quot;: &quot;authorization, x-client-info, apikey, content-type&quot;,
+    &quot;Access-Control-Allow-Methods&quot;: &quot;POST, GET, OPTIONS&quot;,
+    &quot;Vary&quot;: &quot;Origin&quot;,
+  };
+}
 const json = (status: number, body: unknown) =&gt;
-  new Response(JSON.stringify(body), { status, headers: { ...cors, &quot;Content-Type&quot;: &quot;application/json&quot; } });
+  new Response(JSON.stringify(body), { status, headers: { &quot;Content-Type&quot;: &quot;application/json&quot; } });
 
 const EVENT_TYPES = [&quot;Wedding&quot;, &quot;Conference&quot;, &quot;Concert&quot;, &quot;Performance&quot;, &quot;Race&quot;, &quot;Hyrox&quot;, &quot;Sporting event&quot;, &quot;Festival&quot;, &quot;Bachelor party&quot;, &quot;Bachelorette party&quot;, &quot;Birthday&quot;, &quot;Reunion&quot;, &quot;Retreat&quot;, &quot;Meetup&quot;, &quot;Party&quot;, &quot;Trip&quot;, &quot;Other&quot;];
 const ITEM_TYPES = [&quot;flight&quot;, &quot;hotel&quot;, &quot;stay&quot;, &quot;car&quot;, &quot;train&quot;, &quot;food&quot;, &quot;tour&quot;, &quot;other&quot;];
@@ -314,8 +318,15 @@ function signedInUser(req: Request): string | null {
   } catch { return null; }
 }
 
+// Every answer carries the CORS headers for this request's Origin.
 export async function handler(req: Request): Promise&lt;Response&gt; {
-  if (req.method === &quot;OPTIONS&quot;) return new Response(&quot;ok&quot;, { headers: cors });
+  const res = await route(req);
+  for (const [k, v] of Object.entries(corsFor(req))) res.headers.set(k, v);
+  return res;
+}
+
+async function route(req: Request): Promise&lt;Response&gt; {
+  if (req.method === &quot;OPTIONS&quot;) return new Response(&quot;ok&quot;);
   const key = Deno.env.get(&quot;ANTHROPIC_API_KEY&quot;);
   if (req.method === &quot;GET&quot;) return json(200, { ok: true, ready: !!key, modes: [&quot;url&quot;, &quot;text&quot;, &quot;edit&quot;, &quot;translate&quot;, &quot;file&quot;] });
   if (req.method !== &quot;POST&quot;) return json(405, { ok: false, error: &quot;Use POST&quot; });

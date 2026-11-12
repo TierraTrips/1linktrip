@@ -17,21 +17,25 @@
 
 import Anthropic from "npm:@anthropic-ai/sdk@1.6.0";
 
-const ALLOWED_ORIGIN = "https://bbbot0209.github.io";
+// The site's addresses. A browser call from one of these gets its own Origin echoed back; anything else gets the first.
+const ALLOWED_ORIGINS = ["https://1linktrip.com", "https://www.1linktrip.com", "https://bbbot0209.github.io"];
 const MAX_CHARS = 40_000;
 const MODEL = "claude-haiku-5-5";
 const MAX_FILES = 6;
 const MAX_FILE_B64 = 14_000_000; // ≈ 10 MB of files
 const FILE_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
-const cors = {
-  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-  "Vary": "Origin",
-};
+export function corsFor(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") || "";
+  return {
+    "Access-Control-Allow-Origin": ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+    "Vary": "Origin",
+  };
+}
 const json = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
+  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 const EVENT_TYPES = ["Wedding", "Conference", "Concert", "Performance", "Race", "Hyrox", "Sporting event", "Festival", "Bachelor party", "Bachelorette party", "Birthday", "Reunion", "Retreat", "Meetup", "Party", "Trip", "Other"];
 const ITEM_TYPES = ["flight", "hotel", "stay", "car", "train", "food", "tour", "other"];
@@ -297,8 +301,15 @@ function signedInUser(req: Request): string | null {
   } catch { return null; }
 }
 
+// Every answer carries the CORS headers for this request's Origin.
 export async function handler(req: Request): Promise<Response> {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  const res = await route(req);
+  for (const [k, v] of Object.entries(corsFor(req))) res.headers.set(k, v);
+  return res;
+}
+
+async function route(req: Request): Promise<Response> {
+  if (req.method === "OPTIONS") return new Response("ok");
   const key = Deno.env.get("ANTHROPIC_API_KEY");
   if (req.method === "GET") return json(200, { ok: true, ready: !!key, modes: ["url", "text", "edit", "translate", "file"] });
   if (req.method !== "POST") return json(405, { ok: false, error: "Use POST" });
