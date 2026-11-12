@@ -810,7 +810,7 @@ function tripDates(cfg) {
 }
 // ---------- travel mode filter (multi-select; nothing picked = everything) ----------
 const TRAVEL_MODES = [['fly', 'Flying'], ['train', 'Train'], ['rental', 'Rental car'], ['drive', 'Driving'], ['transit', 'Transit']];
-const eventKey = (cfg) => cfg._ek || 'modes:' + Math.abs([...(cfg.title || '') + (cfg.start || '') + (cfg.venue ? cfg.venue.name : '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)).toString(36);
+const eventKey = (cfg) => cfg._ek || cfg.ek || 'modes:' + Math.abs([...(cfg.title || '') + (cfg.start || '') + (cfg.venue ? cfg.venue.name : '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)).toString(36);
 const RAIL_CC = new Set(['jp', 'kr', 'cn', 'tw', 'in', 'ca', 'au']);
 const hasTrains = (v, cfg) => v.cc === 'us' || TRAINLINE_CC.has(v.cc) || RAIL_CC.has(v.cc) || (cfg && stopsOf(cfg).length > 1);
 function travelModes(cfg, air) {
@@ -1600,6 +1600,14 @@ function tripView(cfg) {
   if (!s || (v && !isCoarseVenue(v))) return cfg;
   return { ...cfg, venue: { ...(v || {}), name: v ? v.name : s.name, address: s.address || s.name, lat: s.lat, lon: s.lon, city: s.city || s.name, region: s.region || '', country: s.country || (v && v.country) || '', cc: s.cc || (v && v.cc) || '', pinName: s.name, zoom: 13 } };
 }
+// Pages imported before the trip-span fix keep wrong stored dates; tripView corrects them on the guest page. spanFixed
+// gives lists (My pages, account pages, print card, Duplicate) the same dates, and the builder saves them into the page
+// (ek pins the page's original key, so guests' My trip / packing / plans on their devices stay with the page).
+function spanFixed(cfg) {
+  if (!cfg || !cfg.start || !isTrip(cfg)) return cfg;
+  const v = tripView(cfg); if (v.start === cfg.start && (v.end || '') === (cfg.end || '')) return cfg;
+  return { ...cfg, start: v.start, end: v.end, ek: cfg.ek || eventKey(cfg) };
+}
 const tripCC = (cfg) => (cfg.venue && cfg.venue.cc) || (stopsOf(cfg).find(x => x.cc) || {}).cc || '';
 // a city-level point for a route stop: never a country, inside the trip's country, a city/town result preferred
 async function geocodeCity(name, country, cc) {
@@ -1974,6 +1982,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
   document.title = 'Edit your page · 1LinkTrip';
   B = { cfg: normalize(cfg), venueResults: [], tab: 'edit', card: null, hosted: hosted && hosted.id ? hosted : null }; delete B.cfg.demoTrip; // an example's sample My trip stays on the example
+  { const f = spanFixed(B.cfg); if (f !== B.cfg) { B.origHash = cfgHash(B.cfg); B.cfg = f; } } // stored dates from an old import: fix them for good (a shared page then shows Update page)
   LS.set('draftHosted', B.hosted); B.pid = pid || newPid(); LS.set('draftId', B.pid); LS.set('draft', B.cfg); pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted });
   $('#app').innerHTML = `
   <div class="builder" data-tab="edit">
@@ -1994,7 +2003,7 @@ function renderBuilder(cfg, source, hosted, pid) {
     <div class="btns"><button type="button" class="btn primary" data-act="copy">Copy link</button><button type="button" class="btn" data-act="native-share" hidden>Share…</button><button type="button" class="btn" data-act="qr">QR code</button><a class="btn" id="pub-open" href="#" target="_blank" rel="noopener noreferrer">Open page</a><button class="btn ghost">Close</button></div>
   </form></dialog>`;
   // what guests see on a shared page: the config last pushed (a page opened from My pages is live as opened)
-  B.live = B.hosted ? ((pagesAll().find(x => x.pid === B.pid) || {}).live || cfgHash(B.cfg)) : ''; if (B.hosted) pageSave(B.pid, { live: B.live });
+  B.live = B.hosted ? ((pagesAll().find(x => x.pid === B.pid) || {}).live || B.origHash || cfgHash(B.cfg)) : ''; if (B.hosted) pageSave(B.pid, { live: B.live });
   buildForm(); saveStatus('');
   const bl = $('.builder');
   bl.addEventListener('click', (e) => {
@@ -2552,7 +2561,7 @@ function openQR(cfg, url) {
 }
 function printCard(cfg, svg) {
   let c = $('#print-card'); if (!c) { c = document.createElement('div'); c.id = 'print-card'; document.body.appendChild(c); }
-  const v = cfg.venue; loadFont(cfg.theme.font);
+  cfg = spanFixed(cfg); const v = cfg.venue; loadFont(cfg.theme.font);
   c.setAttribute('style', themeStyle(cfg.theme));
   c.innerHTML = `<div class="pc-in"><p class="pc-k">${esc(cfg.type)}${v && v.city ? ' · ' + esc(v.city) : ''}</p><h1>${esc(cfg.title)}</h1>
     <p class="pc-when">${esc(dateRange(cfg.start, cfg.end))}${cfg.start && cfg.start.length > 10 ? ' · ' + esc(fmtTime(cfg.start.slice(11, 16))) : ''}</p>${v ? `<p class="pc-where">${esc(v.name)}</p>` : ''}
@@ -3052,7 +3061,7 @@ async function renderMine(id, notice) {
   const { data, error } = await c.from('events').select('id,slug,config,published,updated_at').eq('owner', user.id).order('updated_at', { ascending: false });
   if (error) return shell(`<h1>My pages</h1><p>Couldn’t load your pages. ${esc(error.message)}</p>`);
   shell(`<div class="mine-h"><h1>My pages</h1><span class="muted small">${esc(user.email || '')} · <button type="button" class="link" data-mine="signout">Sign out</button></span></div>
-    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = normalize(r.config); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · hidden'}</span><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a></div><div class="btns"><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a><button type="button" class="btn sm" data-mine-edit="${esc(r.id)}">Edit</button><button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button></div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Share, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
+    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · hidden'}</span><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a></div><div class="btns"><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a><button type="button" class="btn sm" data-mine-edit="${esc(r.id)}">Edit</button><button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button></div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Share, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
   if (data.length) msgReady().then(async ok => { // "2 new" next to pages with unanswered guest messages
     if (!ok) return; const { data: ms } = await c.from('event_messages').select('event_id,guest,from_host,created_at').in('event_id', data.map(x => x.id)).order('created_at', { ascending: true }).limit(5000);
     data.forEach(ev => { const seen = LS.get('inboxSeen:' + ev.id, {}) || {}; const last = new Map(); (ms || []).filter(x => x.event_id === ev.id).forEach(x => last.set(x.guest, x));
@@ -3587,11 +3596,11 @@ function confirmDlg({ title, body = '', ok = 'Delete', cancel = 'Cancel' }) {
     d.showModal();
   });
 }
-function duplicateCfg(cfg) { const c = normalize(clone(cfg)); c.title = (c.title || 'Untitled') + ' (copy)'; return c; }
+function duplicateCfg(cfg) { const c = spanFixed(normalize(clone(cfg))); delete c.ek; c.title = (c.title || 'Untitled') + ' (copy)'; return c; }
 function myPagesHTML() {
   const xs = pagesAll().slice().sort((a, b) => b.updated - a.updated); if (!xs.length) return '';
   const cur = LS.get('draftId');
-  return `<section class="land-mine" id="my-pages"><h2>My pages <small class="muted">on this device</small></h2><ul class="mp-list">${xs.slice(0, 12).map(x => { const c = normalize(clone(x.cfg)); const open = x.hosted ? shortURL(x.hosted.slug) : x.url;
+  return `<section class="land-mine" id="my-pages"><h2>My pages <small class="muted">on this device</small></h2><ul class="mp-list">${xs.slice(0, 12).map(x => { const c = spanFixed(normalize(clone(x.cfg))); const open = x.hosted ? shortURL(x.hosted.slug) : x.url;
     return `<li style="${themeStyle(c.theme)}"><i class="mp-dot" aria-hidden="true"></i><div class="mp-t"><b>${esc(c.title || 'Untitled')}</b><span>${esc([TYPE_LABEL[c.type] || c.type, c.start ? dateRange(c.start, c.end) : '', x.hosted ? 'short link' : open ? 'shared' : 'draft', x.pid === cur ? 'open in editor' : ''].filter(Boolean).join(' · '))}</span></div>
       <div class="mp-b">${open ? `<a class="btn sm" href="${esc(open)}">Open</a>` : ''}<a class="btn sm ${open ? '' : 'primary'}" href="#page=${esc(x.pid)}">Edit</a><a class="btn sm ghost" href="#dup=${esc(x.pid)}">Duplicate</a><button type="button" class="btn sm ghost" data-mp-del="${esc(x.pid)}" aria-label="Delete ${esc(c.title || 'Untitled')} from this list">Delete</button></div></li>`; }).join('')}</ul>
     <div data-slot="acct-pages"></div></section>`;
@@ -3622,7 +3631,7 @@ function wireLanding() {
     if (!u) return; const c = await sb(); const { data } = await c.from('events').select('id,slug,config,updated_at').eq('owner', u.id).order('updated_at', { ascending: false }).limit(20);
     const local = new Set([...pagesAll().filter(x => x.hosted).map(x => x.hosted.id), ...(LS.get('hiddenHosted') || [])]); const rows = (data || []).filter(r => !local.has(r.id)); const slot = $('[data-slot="acct-pages"]');
     if (!rows.length || !slot) return;
-    slot.innerHTML = `<h3 class="sub-h">On your account</h3><ul class="mp-list">${rows.map(r => { const c = normalize(r.config); return `<li style="${themeStyle(c.theme)}"><i class="mp-dot"></i><div class="mp-t"><b>${esc(c.title)}</b><span>${esc([TYPE_LABEL[c.type] || c.type, c.start ? dateRange(c.start, c.end) : '', 'short link'].filter(Boolean).join(' · '))}</span></div><div class="mp-b"><a class="btn sm" href="${esc(shortURL(r.slug))}">Open</a><a class="btn sm" href="#mine/${esc(r.id)}">Replies</a></div></li>`; }).join('')}</ul>`;
+    slot.innerHTML = `<h3 class="sub-h">On your account</h3><ul class="mp-list">${rows.map(r => { const c = spanFixed(normalize(r.config)); return `<li style="${themeStyle(c.theme)}"><i class="mp-dot"></i><div class="mp-t"><b>${esc(c.title)}</b><span>${esc([TYPE_LABEL[c.type] || c.type, c.start ? dateRange(c.start, c.end) : '', 'short link'].filter(Boolean).join(' · '))}</span></div><div class="mp-b"><a class="btn sm" href="${esc(shortURL(r.slug))}">Open</a><a class="btn sm" href="#mine/${esc(r.id)}">Replies</a></div></li>`; }).join('')}</ul>`;
   }).catch(() => {});
 }
 
