@@ -108,13 +108,14 @@ async function getJSON(url, { ttl = 3600e3, init, timeout = 20000, key } = {}) {
   if (memo.has(key)) return memo.get(key);
   const p = (async () => {
     const cached = LS.get('c:' + key);
-    if (cached && Date.now() - cached.t < ttl) return cached.d;
+    if (cached && (Date.now() - cached.t < ttl || navigator.onLine === false)) return cached.d;
     const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), timeout);
     try {
       const r = await fetch(url, { ...init, signal: ctl.signal });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return await r.json();
-    } finally { clearTimeout(tm); }
+    } catch (e) { if (cached && !/HTTP 4/.test(e.message)) return cached.d; throw e; }
+    finally { clearTimeout(tm); }
   })();
   memo.set(key, p);
   p.catch(() => memo.delete(key));
@@ -1147,7 +1148,10 @@ function wireGuestMsgs(cfg, art, hosted) {
         if (error) throw error;
         G.rows.push(data); ta.value = ''; paint(); notifyEmail('message', data.id);
         const h2 = art.querySelector(`[data-gm-send="${b.dataset.gmSend}"]`)?.closest('.ev-sec, [data-slot="gm-ev"]')?.querySelector('[data-gm-msg]'); if (h2) h2.textContent = t('Sent');
-      } catch { b.disabled = false; hint.textContent = t('Couldn’t send. Try again.'); }
+      } catch (err) {
+        if (isNetErr(err)) { const mine = LS.get('rsvp:' + hosted.id) || {}; outboxAdd({ kind: 'msg', row: { event_id: hosted.id, body, guest_name: (mine.name || '').slice(0, 120) || null } }); G.rows.push({ id: 'q' + Date.now(), from_host: false, body, created_at: new Date().toISOString() }); ta.value = ''; paint(); hint.textContent = t('Saved on this device. It will be sent when you’re back online.'); return; }
+        b.disabled = false; hint.textContent = t('Couldn’t send. Try again.');
+      }
     });
     art.addEventListener('keydown', (e) => { if (e.target.id === 'si-email' && e.target.closest('.gm-signin') && e.key === 'Enter') { e.preventDefault(); LS.set('afterSignIn', hostedBack(art)); signInSubmit(e.target.closest('.gm-signin')); } });
   });
@@ -1492,7 +1496,7 @@ function roomBlockHTML(cfg) {
 }
 function nearbyTabHTML(cfg) {
   const T = cfg.tools; const out = [];
-  if (T.nearby) out.push(sec('map', t('Map'), `<div class="hotel-bar" data-slot="hotel"></div><div class="map-wrap"><div class="map" data-slot="map" role="region" aria-label="${t('Map of the venue and surroundings')}"></div><div class="map-key" data-slot="map-key"></div><div class="map-legend" data-slot="legend"></div></div>`));
+  if (T.nearby) out.push(sec('map', t('Map'), `<div class="map-off" data-slot="map-off"></div><div class="hotel-bar" data-slot="hotel"></div><div class="map-wrap"><div class="map" data-slot="map" role="region" aria-label="${t('Map of the venue and surroundings')}"></div><div class="map-key" data-slot="map-key"></div><div class="map-legend" data-slot="legend"></div></div>`));
   if (T.nearby) out.push(sec('food', t('Places nearby'), `<div data-slot="food">${loading(t('places to eat'))}</div>`));
   if (T.tours) out.push(sec('tours', t('Things to do'), toursHTML(cfg)));
   return out.join('');
@@ -1585,7 +1589,7 @@ function renderEvent(cfg, root, opts = {}) {
     </div>
     ${tabs.some(x => x[0] === 'travel') ? panel('travel', travelTabHTML(cfg, air), tabHead('travel')) : ''}
     ${tabs.some(x => x[0] === 'nearby') ? panel('nearby', nearbyTabHTML(cfg), tabHead('nearby')) : ''}
-    ${tabs.some(x => x[0] === 'mytrip') ? panel('mytrip', myTripTabHTML(cfg), tabHead('mytrip')) : ''}
+    ${tabs.some(x => x[0] === 'mytrip') ? panel('mytrip', offlineRowHTML(cfg, opts) + myTripTabHTML(cfg), tabHead('mytrip')) : ''}
     <footer class="ev-foot">
       ${opts.preview ? '' : `<p class="lang-row">${langSelectHTML(opts.src || cfg)}</p><a href="#edit=${packEvent(opts.src || cfg)}">${t('Edit a copy of this page')}</a> · <a href="#">${t('Make your own')}</a>`}
       <p data-slot="attrib">${attribHTML(new Set())}</p>
@@ -1596,7 +1600,7 @@ function renderEvent(cfg, root, opts = {}) {
   // a source is credited once it actually supplies the map or places (OpenStreetMap only when Google is unavailable)
   art._useSrc = (k) => { art._srcs.add(k); const el = art.querySelector('[data-slot="attrib"]'); if (el) el.innerHTML = attribHTML(art._srcs); };
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-gpid]'); if (b && art._openGPlace) art._openGPlace(b.dataset.gpid); });
-  wireEvent(cfg, art, seq, air, opts);
+  wireEvent(cfg, art, seq, air, opts); wireOffline(cfg, art, opts);
   if (opts.hosted && typeof wireHosted === 'function') wireHosted(cfg, art, opts.hosted, opts);
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-route-stop]'); if (!b || !art.querySelector('[data-panel="nearby"]')) return; showTab(art, 'nearby', opts); const c2 = art.querySelector(`[data-gp-stop="${b.dataset.routeStop}"]`); if (c2) c2.click(); });
 }
@@ -1709,7 +1713,7 @@ function wireEvent(cfg, art, seq, air, opts) {
 
   if (cfg.start && (slot('weather') || art._pack)) {
     weatherFor(cfg).then(w => { if (!alive()) return; art._wx = w; if (slot('weather')) slot('weather').innerHTML = weatherHTML(w, cfg); art._pack && art._pack(); })
-      .catch(() => { if (alive() && slot('weather')) slot('weather').innerHTML = `<p class="muted">${t('Weather is unavailable right now. Try reloading the page.')}</p>`; });
+      .catch(() => { if (alive() && slot('weather')) slot('weather').innerHTML = `<p class="muted">${navigator.onLine === false ? `<b>${t('Offline')}</b> · ${t('The forecast needs a connection.')}` : t('Weather is unavailable right now. Try reloading the page.')}</p>`; });
   }
   const mapCtl = wireMap(cfg, art, opts);
   wirePlan(cfg, art, mapCtl);
@@ -2510,9 +2514,84 @@ async function rest(path, { method = 'GET', body, prefer } = {}) {
   const headers = { apikey: SB.key, Accept: 'application/json' };
   if (body) headers['Content-Type'] = 'application/json';
   if (prefer) headers.Prefer = prefer;
-  const r = await fetchTimeout(`${SB.url}/rest/v1/${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined }, 15000);
+  const url = `${SB.url}/rest/v1/${path}`; const keep = method === 'GET' && offKeepRest(path);
+  let r;
+  try { r = await fetchTimeout(url, { method, headers, body: body ? JSON.stringify(body) : undefined }, 15000); }
+  catch (e) { if (method === 'GET' && OFFLINE_REST.test(path)) { const h = await offGet(url); if (h) return h.json(); } throw e; }
   if (!r.ok) { const e = new Error('Request failed (' + r.status + ')'); e.status = r.status; throw e; }
+  if (keep && r.status === 200) { const j = await r.json(); offPut(url, new Response(JSON.stringify(j), { headers: { 'Content-Type': 'application/json' } })); return j; }
   return r.status === 204 || r.status === 201 && prefer === 'return=minimal' ? null : r.json();
+}
+// ================= offline: a trip the guest opened stays readable without a connection =================
+// The service worker keeps the app itself (sw.js). This keeps the page's data: its config and updates (REST), its
+// documents and photos (Storage), in the 'ep-data' cache that survives app updates; My trip data is in localStorage.
+// "Save for offline" in My trip is on by default for every trip opened; off removes this page's copies.
+const DATA_CACHE = 'ep-data';
+const OFFLINE_REST = /^(events\?slug=eq\.|announcements\?|event_groups\?)/;
+const offOK = () => typeof caches !== 'undefined';
+const offSlugOf = (path) => { const m = path.match(/^events\?slug=eq\.([a-z0-9-]+)/); return m ? m[1] : ''; };
+const offOn = (key) => LS.get('offline:' + key) !== false;
+const offKeepRest = (path) => OFFLINE_REST.test(path) && (!offSlugOf(path) || offOn(offSlugOf(path)));
+async function offPut(url, resp) { if (!offOK()) return; try { await (await caches.open(DATA_CACHE)).put(url, resp); } catch { /* storage full or blocked */ } }
+async function offGet(url, ignoreSearch) { if (!offOK()) return null; try { return (await (await caches.open(DATA_CACHE)).match(url, { ignoreSearch: !!ignoreSearch })) || null; } catch { return null; } }
+const offFiles = (cfg) => [...(cfg.files || []).map(f => f.url), cfg.cover, ...(cfg.custom || []).map(x => x.img)].map(u => httpsUrl(u || '')).filter(Boolean);
+async function offSave(cfg) {
+  if (!offOK()) return 0; const c = await caches.open(DATA_CACHE); let n = 0;
+  for (const u of offFiles(cfg)) { if (await c.match(u)) { n++; continue; } try { const r = await fetch(u, { mode: 'cors' }); if (r.ok) { await c.put(u, r); n++; } } catch { /* not reachable now; tried again next open */ } }
+  return n;
+}
+async function offForget(cfg, hosted) {
+  if (!offOK()) return; const c = await caches.open(DATA_CACHE);
+  for (const u of offFiles(cfg)) await c.delete(u);
+  if (hosted) for (const req of await c.keys()) if (req.url.includes(`slug=eq.${hosted.slug}`) || req.url.includes(`event_id=eq.${hosted.id}`)) await c.delete(req);
+}
+// queued while offline, sent when the connection is back: RSVPs and messages to the host
+const outbox = () => LS.get('outbox', []) || [];
+function outboxAdd(x) { LS.set('outbox', outbox().concat([{ ...x, at: Date.now() }])); }
+let flushing = false;
+async function flushOutbox() {
+  if (flushing || navigator.onLine === false) return; const xs = outbox(); if (!xs.length) return; flushing = true; const left = []; let sent = 0;
+  for (const x of xs) {
+    try {
+      if (x.kind === 'rsvp') { await sendRSVP(x.row); const m = LS.get('rsvp:' + x.row.event_id); if (m) { delete m.pending; LS.set('rsvp:' + x.row.event_id, m); } }
+      else if (x.kind === 'msg') { const c = await sb(); const { data, error } = await c.from('event_messages').insert(x.row).select('id').single(); if (error) throw error; notifyEmail('message', data.id); }
+      sent++;
+    } catch (e) { if (!(e && e.status >= 400 && e.status < 500)) left.push(x); } // refused (4xx): dropped, not retried forever
+  }
+  LS.set('outbox', left); flushing = false;
+  if (sent) { toast(t('Sent what you saved while offline')); document.querySelectorAll('[data-rsvp-pending]').forEach(el => el.remove()); }
+}
+const isNetErr = (e) => navigator.onLine === false || !(e && e.status);
+function offlineRowHTML(cfg, opts) {
+  if (!offOK() || opts.preview) return '';
+  const key = opts.hosted ? opts.hosted.slug : syncKey(cfg);
+  return `<div class="off-row" data-slot="offline"><label class="tool"><input type="checkbox" data-offline ${offOn(key) ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${t('Save for offline')}</label><small class="muted" data-offline-st></small></div>`;
+}
+function wireOffline(cfg, art, opts) {
+  const html = document.documentElement; const set = () => html.classList.toggle('is-offline', navigator.onLine === false); set();
+  if (!wireOffline.on) { wireOffline.on = true; addEventListener('offline', set); addEventListener('online', () => { set(); flushOutbox(); }); }
+  if (opts.preview) return;
+  const key = opts.hosted ? opts.hosted.slug : syncKey(cfg);
+  const stEl = () => art.querySelector('[data-offline-st]');
+  const status = (n) => { const el = stEl(); if (!el) return; el.textContent = !offOn(key) ? t('Needs a connection to open') : navigator.onLine === false ? t('Showing the copy saved on this device') : t('Saved on this device · {n} files', { n }); };
+  const save = () => { if (!offOn(key)) return status(0); if (navigator.onLine === false) return status(0); offSave(cfg).then(status).catch(() => status(0)); };
+  save(); flushOutbox();
+  addEventListener('online', () => { if (!document.body.contains(art)) return; if (LS.get('signedIn') && cfg.tools.mytrip) syncPush(cfg); save(); });
+  addEventListener('offline', () => { if (document.body.contains(art)) { status(0); art._offMap && art._offMap(); } });
+  art.addEventListener('change', (e) => { if (!e.target.matches('[data-offline]')) return; const on = e.target.checked; LS.set('offline:' + key, on);
+    if (on) { if (opts.hosted) fetchHosted(opts.hosted.slug).catch(() => {}); save(); } else offForget(cfg, opts.hosted).then(() => status(0)); });
+  // documents: with no connection, open the saved copy
+  art.addEventListener('click', (e) => {
+    const a = e.target.closest('.docs a[href], .doc-files a[href]'); if (!a || navigator.onLine !== false) return;
+    e.preventDefault(); const dl = a.hasAttribute('download'); const w = dl ? null : window.open('', '_blank');
+    offGet(a.href, true).then(r => r ? r.blob() : null).then(b => {
+      if (!b) { if (w) w.close(); toast(t('This document isn’t saved on this device')); return; }
+      const u = URL.createObjectURL(b); if (w) w.location.href = u; else { const x = document.createElement('a'); x.href = u; x.download = a.getAttribute('download') || 'document'; x.click(); }
+    });
+  });
+  // Nearby with no connection: the map can't load; the hotel and saved spots with their addresses instead
+  const offMap = () => { const el = art.querySelector('[data-slot="map-off"]'); if (!el) return; el.innerHTML = navigator.onLine === false ? `<p class="muted off-msg"><b>${t('Offline')}</b> · ${t('The map needs a connection. Open in Google Maps works with its offline maps.')}</p>${spotsHTML(cfg)}` : ''; };
+  art._offMap = offMap; offMap(); addEventListener('online', offMap);
 }
 async function fetchHosted(slug) {
   if (!SLUG_RE.test(slug)) return null;
@@ -2553,7 +2632,7 @@ function hostedProblem(msg, retry) {
 }
 function rsvpFormHTML(cfg, hosted) {
   const mine = LS.get('rsvp:' + hosted.id);
-  if (mine && !mine.editing) return `<div class="rsvp-done"><p><b>${esc(t('Thanks, {n}.', { n: mine.name }))}</b> ${esc(mine.attending ? t('We’ve got you down as coming.') : t('We’ve let the host know you can’t make it.'))}</p><button type="button" class="btn sm" data-rsvp="again">${t('Change my reply')}</button></div>`;
+  if (mine && !mine.editing) return `<div class="rsvp-done"><p><b>${esc(t('Thanks, {n}.', { n: mine.name }))}</b> ${esc(mine.attending ? t('We’ve got you down as coming.') : t('We’ve let the host know you can’t make it.'))}</p>${mine.pending ? `<p class="hint" data-rsvp-pending>${esc(t('Saved on this device. It will be sent when you’re back online.'))}</p>` : ''}<button type="button" class="btn sm" data-rsvp="again">${t('Change my reply')}</button></div>`;
   const prev = mine || {};
   return `<form class="rsvp" novalidate onsubmit="return false">
     <div class="field"><label for="rs-name">${t('Your name')}</label><input id="rs-name" maxlength="120" autocomplete="name" value="${esc(prev.name || '')}" required></div>
@@ -2607,7 +2686,10 @@ function wireHosted(cfg, art, hosted, opts = {}) {
       LS.set('rsvp:' + hosted.id, { name, email, attending, guests, note, group, at: Date.now() });
       if (group) { const u = art._gm && art._gm.user; if (u) setMyGroup(hosted.id, group, u).then(() => art._gmLoad && art._gmLoad()).catch(() => {}); else LS.set('grpPick:' + hosted.id, group); }
       slot.innerHTML = rsvpFormHTML(cfg, hosted);
-    } catch { b.disabled = false; msg.textContent = t('Couldn’t send your reply. Check your connection and try again.'); }
+    } catch (err) {
+      if (isNetErr(err)) { outboxAdd({ kind: 'rsvp', row: { event_id: hosted.id, name, email: email || null, attending, guests, note: note || null, ...(group ? { group_id: group } : {}) } }); LS.set('rsvp:' + hosted.id, { name, email, attending, guests, note, group, at: Date.now(), pending: true }); slot.innerHTML = rsvpFormHTML(cfg, hosted); return; }
+      b.disabled = false; msg.textContent = t('Couldn’t send your reply. Check your connection and try again.');
+    }
   });
 }
 
@@ -2634,6 +2716,7 @@ async function signInSubmit(root, after) {
   const inp = root.querySelector('#si-email'); const hint = root.querySelector('.signin .hint'); const btn = root.querySelector('[data-si="send"]');
   const email = (inp.value || '').trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { hint.textContent = 'Enter the email address you want to sign in with.'; inp.focus(); return; }
+  if (navigator.onLine === false) { hint.textContent = t('Offline') + ' · ' + t('Sign in when you’re back online.'); return; }
   btn.disabled = true; hint.textContent = 'Sending…';
   try { if (after) after(); await sendMagicLink(email); LS.set('signinEmail', email); root.querySelector('.signin').outerHTML = `<div class="signin sent"><p><b>Check your email.</b> We sent a sign-in link to ${esc(email)}. Open it on this device to finish.</p><button type="button" class="link" data-si="retry">Use a different email</button></div>`; }
   catch (e) { btn.disabled = false; hint.textContent = /rate|too many|seconds/i.test(e.message || '') ? 'Sign-in email limit reached for now. Use Continue with Google, or try the email link again in an hour.' : 'Couldn’t send the link. ' + (e.message || 'Try again.'); }
@@ -3321,7 +3404,7 @@ const gpRow = (x, v) => ({ id: x.id, name: (x.displayName && x.displayName.text)
 function gpQueryKey(f) { if (f.q) return `q:${f.q.toLowerCase()}:${f.diet}`; return f.diet ? `diet:${f.cat}:${f.diet}` : f.cuisine && f.cat === 'restaurant' ? `cuisine:${f.cuisine}` : `cat:${f.cat}`; }
 function gpSearch(cfg, f, center) {
   const v = center || cfg.venue; const qk = gpQueryKey(f); const key = `gq1:${osmKey(v.lat, v.lon)}${v.r ? ':r' + v.r : ''}:${qk}`;
-  const c = LS.get(key); if (c && Date.now() - c.t < G_TTL) return Promise.resolve(c.d);
+  const c = LS.get(key); if (c && (Date.now() - c.t < G_TTL || navigator.onLine === false)) return Promise.resolve(c.d);
   if (memo.has(key)) return memo.get(key);
   const cat = GP_CATS.find(x => x[0] === f.cat) || GP_CATS[0]; const rad = v.r || cat[3]; const circle = { center: { latitude: v.lat, longitude: v.lon }, radius: rad };
   let req;
@@ -3336,7 +3419,8 @@ function gpSearch(cfg, f, center) {
     req = gFetch('https://places.googleapis.com/v1/places:searchNearby', { includedTypes: types, maxResultCount: 20, locationRestriction: { circle } }, GP_LIST_MASK);
   }
   const from = v.anchor || v; // an area search still measures distance from the venue (or the trip stop)
-  const p = req.then(j => { const d = (j.places || []).map(x => gpRow(x, from)).filter(x => x.lat != null && (f.q || distM(v.lat, v.lon, x.lat, x.lon) <= rad * (v.r ? 1.2 : 1.8))); LS.set(key, { t: Date.now(), d }); return d; });
+  const p = req.then(j => { const d = (j.places || []).map(x => gpRow(x, from)).filter(x => x.lat != null && (f.q || distM(v.lat, v.lon, x.lat, x.lon) <= rad * (v.r ? 1.2 : 1.8))); LS.set(key, { t: Date.now(), d }); return d; })
+    .catch(e => { if (c && !/places 4/.test(e.message)) return c.d; throw e; }); // offline: the last list
   memo.set(key, p); p.catch(() => memo.delete(key)); return p;
 }
 function gpDetails(id, session) {
@@ -3372,7 +3456,7 @@ function gpHTML(cfg, art, rows) {
   ${f.q ? `<p class="gp-q"><span>${esc(t('Results for “{q}”', { q: f.q }))}</span> <button type="button" class="link" data-gp-q-clear>${t('Clear search')}</button></p>` : ''}
   <p class="pf-count muted small" role="status" aria-live="polite">${esc(list.length === 1 ? t('1 place') : t('{n} places', { n: list.length }))}${active ? ` · <button type="button" class="link" data-gp-clear>${t('Clear filters')}</button>` : ''}</p>
   ${list.length ? `<ul class="plist rich places">${list.map(r => `<li class="has-star"><button type="button" class="place-row" data-gplace="${esc(r.id)}"><div><b>${esc(r.name)}</b>${r.rating ? `<span class="rt">${gRatingHTML(r)}</span>` : ''}<span>${esc([r.type, priceSym(cfg, r.price)].filter(Boolean).join(' · '))}</span>${r.open != null ? `<span class="tags">${r.open ? `<em class="open">${t('Open now')}</em>` : `<em class="closed">${t('Closed now')}</em>`}</span>` : ''}</div><span class="dist">${esc(fmtDist(r.d, v.cc))}<small>${r.d < 2500 ? walkTxt(r.d) : art._fromHotel ? t('from your hotel') : t('from the venue')}</small></span></button>${starBtnHTML(cfg, r.id, r.name)}</li>`).join('')}</ul>`
-    : `<p class="muted">${t('Nothing matches these filters.')} ${active ? `<button type="button" class="link" data-gp-clear>${t('Clear filters')}</button>` : ''}</p>`}
+    : navigator.onLine === false ? `<p class="muted off-msg"><b>${t('Offline')}</b> · ${t('Searching places needs a connection. Your saved spots are in My trip.')}</p>` : `<p class="muted">${t('Nothing matches these filters.')} ${active ? `<button type="button" class="link" data-gp-clear>${t('Clear filters')}</button>` : ''}</p>`}
   <p class="muted small g-attr">${t('Places and ratings from Google')}</p>`}`;
 }
 const gPlanPlace = (d) => ({ src: 'g', ref: d.id, name: d.name, lat: d.lat, lon: d.lon, rating: d.rating, count: d.count, addr: d.addr, hours: d.hours, type: d.ptype ? placeType([d.ptype], '') : placeType(d.types, '') });

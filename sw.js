@@ -1,8 +1,10 @@
 // 1LinkTrip service worker: app shell offline. Same-origin files are network-first, so deploys show up on the next open.
 // Bump VERSION on every deploy anyway: it clears old caches and triggers the in-page 'Updated' prompt.
-const VERSION = 'ep-2026-11-12u';
+const VERSION = 'ep-2026-11-12v';
 const SHELL = ['./', './index.html', './app.js', './styles.css', './home.css', './airports.js', './examples.js', './osm-snapshots.js', './qrcode.js', './i18n.js', './supabase-config.js', './google-config.js',
   './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './icon.svg'];
+// The page's own data kept for offline (config, updates, documents, photos): written by the page, kept across versions.
+const DATA = 'ep-data';
 // Static third-party libraries and fonts the page needs to render. Data APIs (weather, Overpass, geocoding, map tiles) are never cached here.
 const STATIC_HOSTS = [/^https:\/\/unpkg\.com\/leaflet@/, /^https:\/\/cdn\.jsdelivr\.net\/npm\/lz-string@/, /^https:\/\/fonts\.googleapis\.com\//, /^https:\/\/fonts\.gstatic\.com\//];
 
@@ -10,7 +12,7 @@ self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION && k !== DATA).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 const networkFirst = async (req) => {
   const c = await caches.open(VERSION);
@@ -33,5 +35,7 @@ self.addEventListener('fetch', (e) => {
   // our own files: network first so a new deploy shows up on the next open; the cache is the offline fallback
   if (same) { e.respondWith(networkFirst(req)); return; }
   if (STATIC_HOSTS.some(re => re.test(req.url))) { e.respondWith(staleWhileRevalidate(req, e)); return; }
-  // everything else (weather, Overpass, Nominatim, tiles): straight to the network
+  // a trip's documents and photos (Supabase Storage): the network, else the copy saved for offline
+  if (/\/storage\/v1\/object\/public\//.test(url.pathname)) { e.respondWith(fetch(req).catch(async () => (await (await caches.open(DATA)).match(req.url, { ignoreSearch: true })) || Response.error())); return; }
+  // everything else (weather, Overpass, Nominatim, map tiles — never cached): straight to the network
 });

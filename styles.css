@@ -968,3 +968,11 @@ body.doc-dragging::after { content: 'Drop to upload a document'; position: fixed
 .b-save small { font-size: inherit; opacity: .8; } .b-save .ok { color: #1B7F3B; font-weight: 600; }
 .b-save.dirty span { color: #9A3412; font-weight: 600; }
 .b-save .btn.sm { padding: 4px 10px; font-size: .78rem; }
+
+/* offline: an "Offline" tag at the top, a Save for offline switch in My trip, and Nearby's list instead of the map */
+html.is-offline body::before { content: 'Offline'; position: fixed; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 1002; font: 700 .72rem/1 var(--sans, system-ui, sans-serif); letter-spacing: .04em; text-transform: uppercase; color: #fff; background: #5B6472; padding: 6px 10px; border-radius: 999px; pointer-events: none; }
+.off-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 14px; }
+.off-row .tool { background: var(--chip, #EEF1F4); }
+.off-row small { font-size: .8rem; }
+.map-off:empty { display: none; } .map-off { margin-bottom: 12px; }
+.off-msg b { color: var(--ink, #12141B); }
