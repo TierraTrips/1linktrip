@@ -2989,14 +2989,35 @@ function pageSave(pid, patch) {
   if (i >= 0) xs[i] = e; else xs.unshift(e);
   LS.set('pages', xs.slice(0, 60));
 }
-function pageRemove(pid) { LS.set('pages', pagesAll().filter(x => x.pid !== pid)); }
+// Deleting a page only drops it from this device's list. A page with a short link stays on the server (links you shared keep
+// working), so its id is remembered here to keep it out of the "On your account" list too.
+function pageRemove(pid) {
+  const xs = pagesAll(); const x = xs.find(p => p.pid === pid);
+  if (x && x.hosted && x.hosted.id) { const h = LS.get('hiddenHosted') || []; if (!h.includes(x.hosted.id)) LS.set('hiddenHosted', [x.hosted.id, ...h].slice(0, 200)); }
+  LS.set('pages', xs.filter(p => p.pid !== pid));
+}
+// In-app "are you sure?" (window.confirm is suppressed in installed iOS web apps and some in-app browsers, where it just returns false).
+// Resolves true only on the destructive button; Cancel, Escape and a tap on the backdrop resolve false.
+function confirmDlg({ title, body = '', ok = 'Delete', cancel = 'Cancel' }) {
+  return new Promise((resolve) => {
+    let d = $('#confirmdlg');
+    if (!d) { d = document.createElement('dialog'); d.id = 'confirmdlg'; d.className = 'confirm-dlg'; d.setAttribute('aria-labelledby', 'confirmdlg-h'); d.setAttribute('aria-describedby', 'confirmdlg-b'); document.body.appendChild(d); }
+    if (typeof d.showModal !== 'function') { d.remove(); resolve(confirm(body ? `${title} ${body}` : title)); return; }
+    d.innerHTML = `<form method="dialog" class="cf-in"><h2 id="confirmdlg-h">${esc(title)}</h2>${body ? `<p id="confirmdlg-b">${esc(body)}</p>` : ''}
+      <div class="btns cf-b"><button type="submit" class="btn" value="cancel" autofocus>${esc(cancel)}</button><button type="submit" class="btn danger" value="ok">${esc(ok)}</button></div></form>`;
+    d.returnValue = '';
+    d.onclick = (e) => { if (e.target === d) d.close('cancel'); }; // backdrop
+    d.onclose = () => { d.onclose = null; resolve(d.returnValue === 'ok'); };
+    d.showModal();
+  });
+}
 function duplicateCfg(cfg) { const c = normalize(clone(cfg)); c.title = (c.title || 'Untitled') + ' (copy)'; return c; }
 function myPagesHTML() {
   const xs = pagesAll().slice().sort((a, b) => b.updated - a.updated); if (!xs.length) return '';
   const cur = LS.get('draftId');
   return `<section class="land-mine" id="my-pages"><h2>My pages <small class="muted">on this device</small></h2><ul class="mp-list">${xs.slice(0, 12).map(x => { const c = normalize(clone(x.cfg)); const open = x.hosted ? shortURL(x.hosted.slug) : x.url;
     return `<li style="${themeStyle(c.theme)}"><i class="mp-dot" aria-hidden="true"></i><div class="mp-t"><b>${esc(c.title || 'Untitled')}</b><span>${esc([TYPE_LABEL[c.type] || c.type, c.start ? dateRange(c.start, c.end) : '', x.hosted ? 'short link' : open ? 'shared' : 'draft', x.pid === cur ? 'open in editor' : ''].filter(Boolean).join(' · '))}</span></div>
-      <div class="mp-b">${open ? `<a class="btn sm" href="${esc(open)}">Open</a>` : ''}<a class="btn sm ${open ? '' : 'primary'}" href="#page=${esc(x.pid)}">Edit</a><a class="btn sm ghost" href="#dup=${esc(x.pid)}">Duplicate</a><button type="button" class="btn sm ghost" data-mp-del="${esc(x.pid)}" aria-label="Remove ${esc(c.title)} from this list">Remove</button></div></li>`; }).join('')}</ul>
+      <div class="mp-b">${open ? `<a class="btn sm" href="${esc(open)}">Open</a>` : ''}<a class="btn sm ${open ? '' : 'primary'}" href="#page=${esc(x.pid)}">Edit</a><a class="btn sm ghost" href="#dup=${esc(x.pid)}">Duplicate</a><button type="button" class="btn sm ghost" data-mp-del="${esc(x.pid)}" aria-label="Delete ${esc(c.title || 'Untitled')} from this list">Delete</button></div></li>`; }).join('')}</ul>
     <div data-slot="acct-pages"></div></section>`;
 }
 function renderExamples() {
@@ -3015,11 +3036,15 @@ function samplesHTML() {
 }
 function wireLanding() {
   const m = $('.land'); if (!m) return;
-  m.addEventListener('click', (e) => { const b = e.target.closest('[data-mp-del]'); if (!b) return; const x = pagesAll().find(p => p.pid === b.dataset.mpDel); if (x && confirm(`Remove “${x.cfg.title}” from this list? Links you already shared keep working.`)) { pageRemove(x.pid); if (LS.get('draftId') === x.pid) { LS.del('draftId'); LS.del('draft'); LS.del('draftHosted'); } renderLanding(); } });
+  m.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-mp-del]'); if (!b) return; const x = pagesAll().find(p => p.pid === b.dataset.mpDel); if (!x) return;
+    if (!await confirmDlg({ title: `Delete “${(x.cfg && x.cfg.title) || 'Untitled'}”?`, body: 'Links you already shared keep working.', ok: 'Delete' })) return;
+    pageRemove(x.pid); if (LS.get('draftId') === x.pid) { LS.del('draftId'); LS.del('draft'); LS.del('draftHosted'); } renderLanding();
+  });
   // pages on the account (other devices) when signed in
   if (LS.get('signedIn') && SB) sbUser().then(async (u) => {
     if (!u) return; const c = await sb(); const { data } = await c.from('events').select('id,slug,config,updated_at').eq('owner', u.id).order('updated_at', { ascending: false }).limit(20);
-    const local = new Set(pagesAll().filter(x => x.hosted).map(x => x.hosted.id)); const rows = (data || []).filter(r => !local.has(r.id)); const slot = $('[data-slot="acct-pages"]');
+    const local = new Set([...pagesAll().filter(x => x.hosted).map(x => x.hosted.id), ...(LS.get('hiddenHosted') || [])]); const rows = (data || []).filter(r => !local.has(r.id)); const slot = $('[data-slot="acct-pages"]');
     if (!rows.length || !slot) return;
     slot.innerHTML = `<h3 class="sub-h">On your account</h3><ul class="mp-list">${rows.map(r => { const c = normalize(r.config); return `<li style="${themeStyle(c.theme)}"><i class="mp-dot"></i><div class="mp-t"><b>${esc(c.title)}</b><span>${esc([TYPE_LABEL[c.type] || c.type, c.start ? dateRange(c.start, c.end) : '', 'short link'].filter(Boolean).join(' · '))}</span></div><div class="mp-b"><a class="btn sm" href="${esc(shortURL(r.slug))}">Open</a><a class="btn sm" href="#mine/${esc(r.id)}">Replies</a></div></li>`; }).join('')}</ul>`;
   }).catch(() => {});

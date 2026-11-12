@@ -677,6 +677,14 @@ dialog.place-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .mp-t { display: grid; gap: 2px; min-width: 0; } .mp-t b { font: 700 1.05rem/1.2 var(--display); } .mp-t span { color: var(--slate); font-size: .86rem; }
 .mp-b { grid-column: 2; display: flex; flex-wrap: wrap; gap: 6px; }
 @media (min-width: 760px) { .mp-list li { grid-template-columns: auto 1fr auto; } .mp-b { grid-column: auto; } }
+/* in-app "are you sure?" dialog (confirmDlg) */
+dialog.confirm-dlg { width: min(400px, calc(100vw - 32px)); background: var(--paper); color: var(--ink); }
+.cf-in { padding: 22px 20px 18px; display: grid; gap: 8px; }
+.cf-in h2 { font: 600 1.3rem/1.25 var(--brand); letter-spacing: -.01em; margin: 0; overflow-wrap: anywhere; }
+.cf-in p { margin: 0; color: var(--slate); }
+.cf-b { justify-content: flex-end; margin-top: 12px; }
+.cf-b .btn { min-height: 44px; min-width: 96px; }
+.btn.danger { background: var(--route-ink); border-color: var(--route-ink); color: #fff; }
 
 /* add to itinerary + the guest's own itinerary */
 .plan-add { display: grid; gap: 8px; margin: 4px 0; padding: 12px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 8%, transparent); }
