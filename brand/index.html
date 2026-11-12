@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PlanEZR · Brand directions</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#ECEAE6">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,400..800,100&family=Figtree:wght@400..700&family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=Public+Sans:wght@400..700&family=IBM+Plex+Mono:wght@500&family=Unbounded:wght@500..800&family=Manrope:wght@400..700&family=Bricolage+Grotesque:opsz,wght@12..96,700..800&family=Instrument+Sans:wght@400..600&display=swap">
+<style>
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:#ECEAE6;color:#1d1d1f;font:15px/1.45 'Public Sans',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1240px;margin:0 auto;padding:28px 18px 60px}
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:22px}
+.top h1{font:700 1.05rem 'Public Sans',sans-serif;margin:0;letter-spacing:-.01em}
+.top span{font:500 .72rem 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#77736c}
+.cap{font:500 .66rem/1.2 'IBM Plex Mono',monospace;letter-spacing:.09em;text-transform:uppercase;color:#77736c;margin:0 0 8px}
+
+/* ---------- current ---------- */
+.current{display:flex;align-items:center;gap:16px;background:#fff;border-radius:16px;padding:14px 16px;margin-bottom:26px;flex-wrap:wrap}
+.current .cap{margin:0;flex-basis:100%}
+.cur-thumb{display:flex;align-items:center;gap:14px;flex:1 1 300px;min-width:0}
+.cur-thumb img{width:56px;height:56px;border-radius:13px;flex:none;box-shadow:0 0 0 1px #0001}
+.cur-mini{background:#E7E9EE;border-radius:12px;padding:12px 14px;flex:1;min-width:0}
+.cur-brand{display:flex;align-items:center;gap:7px;font:700 .82rem 'Bricolage Grotesque',sans-serif;color:#12141B;margin-bottom:6px}
+.cur-brand i{width:18px;height:12px;border-radius:2px;background:#3048F0;display:block;-webkit-mask:radial-gradient(circle at 0 50%,#0000 2.5px,#000 3px) left/51% 100% no-repeat,radial-gradient(circle at 100% 50%,#0000 2.5px,#000 3px) right/51% 100% no-repeat;mask:radial-gradient(circle at 0 50%,#0000 2.5px,#000 3px) left/51% 100% no-repeat,radial-gradient(circle at 100% 50%,#0000 2.5px,#000 3px) right/51% 100% no-repeat}
+.cur-mini b{display:block;font:800 1.15rem/1 'Bricolage Grotesque',sans-serif;letter-spacing:-.03em;color:#12141B}
+.cur-mini b em{font-style:normal;color:#3048F0}
+.cur-sw{display:flex;gap:6px}
+.cur-sw i{width:26px;height:26px;border-radius:50%;box-shadow:inset 0 0 0 1px #0002}
+
+/* ---------- grid ---------- */
+.dirs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;align-items:start}
+@media (max-width:1060px){.dirs{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:720px){.dirs{grid-template-columns:1fr;gap:34px}}
+.dir{background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 1px 0 #0000000d,0 20px 40px -30px #0006}
+.dir-head{display:flex;align-items:baseline;gap:10px;padding:16px 18px 0}
+.dir-head .ltr{font:500 .72rem 'IBM Plex Mono',monospace;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--ink);color:var(--bg);flex:none;align-self:center}
+.dir-head h2{margin:0;font-size:1.25rem;letter-spacing:-.01em;line-height:1.1}
+.lockup{margin:14px 18px 0;border-radius:16px;background:var(--bg);display:flex;align-items:center;justify-content:center;gap:12px;padding:30px 12px}
+.lockup svg.mark{width:52px;height:52px;flex:none}
+.wm{font-size:2.15rem;line-height:1;color:var(--ink);white-space:nowrap}
+.sect{padding:16px 18px 0}
+.sw{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.sw div{display:flex;flex-direction:column;gap:5px;min-width:0}
+.sw i{display:block;height:42px;border-radius:10px;box-shadow:inset 0 0 0 1px #0000001a}
+.sw b{font:500 .74rem 'Public Sans',sans-serif;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sw code{font:500 .62rem 'IBM Plex Mono',monospace;color:#77736c;letter-spacing:.02em}
+.fonts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.fonts div{background:#f5f4f1;border-radius:12px;padding:10px 12px;min-width:0}
+.fonts .s{font-size:1.75rem;line-height:1;color:var(--ink);display:block;margin-bottom:6px}
+.fonts small{font:500 .62rem 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#77736c;display:block}
+.fonts strong{font:600 .8rem 'Public Sans',sans-serif;color:#333}
+.show{display:flex;gap:14px;align-items:flex-end;justify-content:center;padding:18px 18px 22px;flex-wrap:wrap}
+.icon-col{display:flex;flex-direction:column;align-items:center;gap:8px}
+.appicon{width:76px;height:76px;border-radius:18px;display:block;box-shadow:0 10px 20px -12px #0007}
+.icon-col span{font:500 .7rem 'Public Sans',sans-serif;color:#555}
+
+/* ---------- phone ---------- */
+.phone{width:min(300px,100%);border-radius:38px;padding:9px;background:#151515;box-shadow:0 24px 40px -26px #000a}
+.screen{border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink);position:relative}
+.sb{display:flex;justify-content:space-between;align-items:center;padding:10px 20px 2px;font:600 .68rem 'Public Sans',sans-serif}
+.sb .isl{width:74px;height:20px;border-radius:12px;background:#111}
+.sb .bat{display:flex;gap:3px;align-items:center}.sb .bat i{width:16px;height:8px;border:1.3px solid currentColor;border-radius:3px;display:block;opacity:.85}
+.nav{display:flex;justify-content:space-between;align-items:center;padding:10px 16px}
+.nav .bm{display:flex;align-items:center;gap:7px}
+.nav .bm svg{width:24px;height:24px}
+.nav .bm span{font-size:1.02rem;line-height:1}
+.nav .share{font-size:.72rem;font-weight:600;border:1.3px solid currentColor;border-radius:999px;padding:4px 10px;opacity:.8}
+.hero{padding:14px 16px 20px;position:relative}
+.hero h3{margin:0 0 10px;position:relative}
+.hero p{margin:0 0 14px;font-size:.8rem;line-height:1.4;position:relative}
+.cta{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0 20px;font-weight:700;font-size:.9rem;position:relative}
+.fine{display:block;margin-top:9px;font-size:.68rem;opacity:.7;position:relative}
+.feat{list-style:none;margin:0;padding:6px 16px 22px}
+.feat li{display:flex;gap:11px;align-items:center}
+.feat svg{width:18px;height:18px;flex:none}
+.feat b{display:block;font-size:.86rem;line-height:1.2}
+.feat small{display:block;font-size:.7rem;line-height:1.3;opacity:.72}
+
+/* ====== A · Golden Hour ====== */
+.dA{--bg:#FFF4E6;--ink:#163F48;--sun:#F4A62A;--clay:#D9603B;--sea:#2B7A86}
+.dA .dir-head h2,.dA .wm,.dA .hero h3,.dA .fonts .s.d{font-family:'Fraunces',serif;font-variation-settings:'SOFT' 100}
+.dA .wm{font-weight:650;letter-spacing:-.02em}.dA .wm em{font-style:italic;font-weight:500;color:var(--clay)}
+.dA .fonts .s.b{font-family:'Figtree',sans-serif;font-weight:500}
+.dA .screen{font-family:'Figtree',sans-serif}
+.dA .nav .bm span{font:650 1.05rem 'Fraunces',serif;font-variation-settings:'SOFT' 100}.dA .nav .bm span em{font-style:italic;font-weight:500;color:var(--clay)}
+.dA .hero{background:radial-gradient(120% 70% at 85% 0%,#FFD48A 0%,#FFE7C2 38%,transparent 70%)}
+.dA .hero h3{font-weight:600;font-size:1.9rem;line-height:1.02;letter-spacing:-.025em}
+.dA .hero h3 em{font-style:italic;font-weight:500;color:var(--clay)}
+.dA .cta{background:var(--clay);color:#FFF4E6;border-radius:999px}
+.dA .feat{display:grid;gap:8px}
+.dA .feat li{background:#fff;border-radius:16px;padding:10px 12px;box-shadow:0 1px 0 #163F4812}
+.dA .feat .ic{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;flex:none}
+.dA .feat li:nth-child(odd) .ic{background:#FCE3B8;color:#9A5A08}
+.dA .feat li:nth-child(even) .ic{background:#D6ECEC;color:var(--sea)}
+.dA .feat li:last-child .ic{background:var(--clay);color:#fff}
+
+/* ====== B · Field Map ====== */
+.dB{--bg:#EEF1E8;--ink:#1F3A2E;--sage:#9DB39A;--route:#E2572F;--contour:#CCD8C5}
+.dB .dir-head h2,.dB .wm,.dB .hero h3,.dB .fonts .s.d{font-family:'Newsreader',serif}
+.dB .wm{font-weight:500;letter-spacing:-.015em}.dB .wm em{font-style:italic}
+.dB .wm .z{font:500 .6em 'IBM Plex Mono',monospace;letter-spacing:.04em;color:var(--route);vertical-align:.32em;margin-left:1px}
+.dB .fonts .s.b{font-family:'Public Sans',sans-serif;font-weight:500}
+.dB .screen{font-family:'Public Sans',sans-serif}
+.dB .nav .bm span{font:500 1.08rem 'Newsreader',serif}.dB .nav .bm span em{font-style:italic}
+.dB .nav .bm span .z{font:500 .62rem 'IBM Plex Mono',monospace;color:var(--route);vertical-align:.3em}
+.dB .hero .topo{position:absolute;inset:0;width:100%;height:100%;opacity:.75}
+.dB .hero h3{font-weight:500;font-size:1.95rem;line-height:1.03;letter-spacing:-.02em}
+.dB .hero h3 em{font-style:italic}
+.dB .cta{background:var(--ink);color:var(--bg);border-radius:10px}
+.dB .coord{font:500 .6rem 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#5f7a6b;display:block;margin-bottom:8px;position:relative}
+.dB .feat{position:relative;padding-left:16px}
+.dB .feat::before{content:"";position:absolute;left:26px;top:22px;bottom:44px;border-left:2px dashed var(--route)}
+.dB .feat li{padding:8px 0;position:relative}
+.dB .feat .stop{width:22px;height:22px;border-radius:50%;background:var(--bg);border:2px solid var(--ink);display:grid;place-items:center;flex:none;position:relative;z-index:1}
+.dB .feat .stop svg{width:12px;height:12px}
+.dB .feat li:last-child .stop{background:var(--route);border-color:var(--route);color:#fff}
+.dB .feat li+li{border-top:1px solid var(--contour);margin-left:33px;padding-left:0}
+.dB .feat li+li .stop{margin-left:-33px}
+
+/* ====== C · Trailhead ====== */
+.dC{--bg:#0D4448;--ink:#F7EBDD;--coral:#FF7657;--lagoon:#7FD3C6;--deep:#072B2E}
+.dC .dir-head h2,.dC .fonts .s.d{font-family:'Unbounded',sans-serif;font-weight:700}
+.dC .dir-head h2{font-size:1.08rem;color:#1d1d1f}
+.dC .dir-head .ltr{background:var(--coral);color:#fff}
+.dC .wm{font:700 1.75rem 'Unbounded',sans-serif;letter-spacing:-.03em}.dC .wm em{font-style:normal;color:var(--coral)}
+.dC .fonts .s.d{color:#0D4448;font-size:1.45rem}.dC .fonts .s.b{font-family:'Manrope',sans-serif;font-weight:600;color:#0D4448}
+.dC .screen{font-family:'Manrope',sans-serif}
+.dC .nav .bm span{font:700 .92rem 'Unbounded',sans-serif;letter-spacing:-.03em}.dC .nav .bm span em{font-style:normal;color:var(--coral)}
+.dC .hero{padding-bottom:62px}
+.dC .hero h3{font:700 1.55rem/1.08 'Unbounded',sans-serif;letter-spacing:-.035em}
+.dC .hero h3 em{font-style:normal;color:var(--coral)}
+.dC .hero .ridge{position:absolute;left:0;right:0;bottom:-1px;width:100%;height:46px}
+.dC .cta{background:var(--coral);color:#2A0E06;border-radius:14px}
+.dC .feat{background:var(--ink);color:var(--deep);display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:14px 14px 18px}
+.dC .feat li{flex-direction:column;align-items:flex-start;gap:8px;background:#fff;border-radius:16px;padding:12px}
+.dC .feat li:last-child{grid-column:1/-1;flex-direction:row;align-items:center;background:var(--bg);color:var(--ink)}
+.dC .feat .ic{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;background:#E3F5F1;color:var(--bg)}
+.dC .feat li:last-child .ic{background:var(--coral);color:#2A0E06}
+.dC .feat b{font-weight:800}
+
+@media (max-width:400px){.wrap{padding:20px 12px 48px}.wm{font-size:1.9rem}.dC .wm{font-size:1.5rem}.lockup svg.mark{width:44px;height:44px}}
+@media (prefers-reduced-motion:no-preference){.dir{animation:rise .6s cubic-bezier(.2,.7,.2,1) both}.dir:nth-child(2){animation-delay:.08s}.dir:nth-child(3){animation-delay:.16s}@keyframes rise{from{opacity:0;transform:translateY(14px)}}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- feature icons, stroke = currentColor -->
+    <symbol id="i-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+    <symbol id="i-bed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18V6M3 14h18v4M21 14v-2a3 3 0 0 0-3-3h-7v5"/><circle cx="7" cy="11" r="1.6"/></symbol>
+    <symbol id="i-food" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 21V3c-2.2 1.2-3.5 3.6-3.5 7v3H17"/></symbol>
+    <symbol id="i-do" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></symbol>
+    <symbol id="i-plan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.3"/><circle cx="4.5" cy="12" r="1.3"/><circle cx="4.5" cy="18" r="1.3"/></symbol>
+
+    <!-- A mark: sun setting on the sea -->
+    <clipPath id="a-clip"><rect x="0" y="0" width="40" height="24.5"/></clipPath>
+    <symbol id="m-a" viewBox="0 0 40 40"><circle cx="20" cy="23" r="12" fill="#F4A62A" clip-path="url(#a-clip)"/><path d="M5 28.5q3.75-3 7.5 0t7.5 0t7.5 0t7.5 0" fill="none" stroke="#2B7A86" stroke-width="2.8" stroke-linecap="round"/><path d="M9 34q2.75-2.4 5.5 0t5.5 0t5.5 0t5.5 0" fill="none" stroke="#D9603B" stroke-width="2.8" stroke-linecap="round"/></symbol>
+
+    <!-- B mark: dotted route to a pin -->
+    <symbol id="m-b" viewBox="0 0 40 40"><path d="M8.5 31.5C15 32 13 21 20 21.5s8 2.8 9.6-.6" fill="none" stroke="#E2572F" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="0.1 5"/><circle cx="8.5" cy="31.5" r="3.6" fill="#1F3A2E"/><path d="M30 5.5a7.2 7.2 0 0 1 7.2 7.2c0 5.3-7.2 11.8-7.2 11.8s-7.2-6.5-7.2-11.8A7.2 7.2 0 0 1 30 5.5z" fill="#1F3A2E"/><circle cx="30" cy="12.7" r="2.7" fill="#EEF1E8"/></symbol>
+
+    <!-- C mark: ridge line with coral sun -->
+    <symbol id="m-c" viewBox="0 0 40 40"><circle cx="27.5" cy="11.5" r="5" fill="#FF7657"/><path d="M3.5 32 14.5 15.5 21 24.5 25.5 19 36.5 32z" fill="#7FD3C6"/><path d="M14.5 15.5 18 20.4 15.6 22.2 13.4 19.6 11 21.5z" fill="#F7EBDD"/></symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <header class="top"><h1>PlanEZR · Brand directions</h1><span>Mock · not live</span></header>
+
+  <section class="current" aria-label="Current">
+    <p class="cap">Current</p>
+    <div class="cur-thumb">
+      <img src="../icon-192.png" alt="Current app icon">
+      <div class="cur-mini">
+        <div class="cur-brand"><i></i>PlanEZR</div>
+        <b><em>One link</em> for your guests’ whole trip.</b>
+      </div>
+    </div>
+    <div class="cur-sw" aria-label="Current palette"><i style="background:#3048F0"></i><i style="background:#E7E9EE"></i><i style="background:#12141B"></i></div>
+  </section>
+
+  <div class="dirs">
+
+    <!-- ================= A ================= -->
+    <article class="dir dA">
+      <div class="dir-head"><span class="ltr">A</span><h2>Golden Hour</h2></div>
+      <div class="lockup"><svg class="mark" aria-hidden="true"><use href="#m-a"/></svg><span class="wm">Plan<em>EZR</em></span></div>
+      <div class="sect"><p class="cap">Palette</p>
+        <div class="sw">
+          <div><i style="background:#F4A62A"></i><b>Sun</b><code>#F4A62A</code></div>
+          <div><i style="background:#D9603B"></i><b>Clay</b><code>#D9603B</code></div>
+          <div><i style="background:#2B7A86"></i><b>Sea</b><code>#2B7A86</code></div>
+          <div><i style="background:#163F48"></i><b>Deep</b><code>#163F48</code></div>
+          <div><i style="background:#FFF4E6"></i><b>Shell</b><code>#FFF4E6</code></div>
+        </div>
+      </div>
+      <div class="sect"><p class="cap">Type</p>
+        <div class="fonts">
+          <div><span class="s d">Aa</span><small>Display</small><strong>Fraunces Soft</strong></div>
+          <div><span class="s b">Aa</span><small>Text</small><strong>Figtree</strong></div>
+        </div>
+      </div>
+      <div class="show">
+        <div class="phone"><div class="screen">
+          <div class="sb"><span>9:41</span><span class="isl"></span><span class="bat"><i></i></span></div>
+          <div class="nav"><span class="bm"><svg aria-hidden="true"><use href="#m-a"/></svg><span>Plan<em>EZR</em></span></span><span class="share">Share</span></div>
+          <div class="hero">
+            <h3><em>One link</em> for your guests’ whole trip.</h3>
+            <p>Add your event and the venue. Guests get your schedule, plus how to get there and where to stay.</p>
+            <span class="cta">Create a page</span>
+            <span class="fine">Free. No account needed.</span>
+          </div>
+          <ul class="feat">
+            <li><span class="ic"><svg><use href="#i-go"/></svg></span><span><b>Getting there</b><small>Nearest airports and fares</small></span></li>
+            <li><span class="ic"><svg><use href="#i-bed"/></svg></span><span><b>Hotels</b><small>Places to stay nearby</small></span></li>
+            <li><span class="ic"><svg><use href="#i-food"/></svg></span><span><b>Food</b><small>Restaurants and bars nearby</small></span></li>
+            <li><span class="ic"><svg><use href="#i-do"/></svg></span><span><b>Things to do</b><small>Tours, sights, activities</small></span></li>
+            <li><span class="ic"><svg><use href="#i-plan"/></svg></span><span><b>Full itinerary</b><small>Bookings and schedule in one place</small></span></li>
+          </ul>
+        </div></div>
+        <div class="icon-col"><svg class="appicon" viewBox="0 0 76 76" aria-label="App icon A"><rect width="76" height="76" rx="18" fill="#FFF4E6"/><use href="#m-a" x="10" y="8" width="56" height="56"/></svg><span>App icon</span></div>
+      </div>
+    </article>
+
+    <!-- ================= B ================= -->
+    <article class="dir dB">
+      <div class="dir-head"><span class="ltr">B</span><h2>Field Map</h2></div>
+      <div class="lockup"><svg class="mark" aria-hidden="true"><use href="#m-b"/></svg><span class="wm"><em>Plan</em><span class="z">EZR</span></span></div>
+      <div class="sect"><p class="cap">Palette</p>
+        <div class="sw">
+          <div><i style="background:#1F3A2E"></i><b>Forest</b><code>#1F3A2E</code></div>
+          <div><i style="background:#9DB39A"></i><b>Sage</b><code>#9DB39A</code></div>
+          <div><i style="background:#E2572F"></i><b>Route</b><code>#E2572F</code></div>
+          <div><i style="background:#CCD8C5"></i><b>Contour</b><code>#CCD8C5</code></div>
+          <div><i style="background:#EEF1E8"></i><b>Paper</b><code>#EEF1E8</code></div>
+        </div>
+      </div>
+      <div class="sect"><p class="cap">Type</p>
+        <div class="fonts">
+          <div><span class="s d"><em>Aa</em></span><small>Display</small><strong>Newsreader</strong></div>
+          <div><span class="s b">Aa</span><small>Text · Labels</small><strong>Public Sans · Plex Mono</strong></div>
+        </div>
+      </div>
+      <div class="show">
+        <div class="phone"><div class="screen">
+          <div class="sb"><span>9:41</span><span class="isl"></span><span class="bat"><i></i></span></div>
+          <div class="nav"><span class="bm"><svg aria-hidden="true"><use href="#m-b"/></svg><span><em>Plan</em><span class="z">EZR</span></span></span><span class="share">Share</span></div>
+          <div class="hero">
+            <svg class="topo" viewBox="0 0 300 260" preserveAspectRatio="xMaxYMin slice" aria-hidden="true" fill="none" stroke="#CCD8C5" stroke-width="1.2">
+              <path d="M180 0c10 40 70 50 120 40"/><path d="M150 0c8 60 90 78 150 66"/><path d="M118 0c4 82 110 108 182 94"/><path d="M86 0c-4 104 128 140 214 124"/><path d="M52 0c-14 130 150 176 248 156"/><path d="M262 0c-4 14 12 22 38 16"/>
+            </svg>
+            <span class="coord">GETTING EVERYONE THERE</span>
+            <h3><em>One link</em> for your guests’ whole trip.</h3>
+            <p>Add your event and the venue. Guests get your schedule, plus how to get there and where to stay.</p>
+            <span class="cta">Create a page</span>
+            <span class="fine">Free. No account needed.</span>
+          </div>
+          <ul class="feat">
+            <li><span class="stop"><svg><use href="#i-go"/></svg></span><span><b>Getting there</b><small>Nearest airports and fares</small></span></li>
+            <li><span class="stop"><svg><use href="#i-bed"/></svg></span><span><b>Hotels</b><small>Places to stay nearby</small></span></li>
+            <li><span class="stop"><svg><use href="#i-food"/></svg></span><span><b>Food</b><small>Restaurants and bars nearby</small></span></li>
+            <li><span class="stop"><svg><use href="#i-do"/></svg></span><span><b>Things to do</b><small>Tours, sights, activities</small></span></li>
+            <li><span class="stop"><svg><use href="#i-plan"/></svg></span><span><b>Full itinerary</b><small>Bookings and schedule in one place</small></span></li>
+          </ul>
+        </div></div>
+        <div class="icon-col"><svg class="appicon" viewBox="0 0 76 76" aria-label="App icon B"><rect width="76" height="76" rx="18" fill="#EEF1E8"/><g fill="none" stroke="#CCD8C5" stroke-width="1.4"><path d="M-4 20c20 6 40-10 84 4"/><path d="M-4 58c26-8 46 10 84-2"/></g><use href="#m-b" x="10" y="10" width="56" height="56"/></svg><span>App icon</span></div>
+      </div>
+    </article>
+
+    <!-- ================= C ================= -->
+    <article class="dir dC">
+      <div class="dir-head"><span class="ltr">C</span><h2>Trailhead</h2></div>
+      <div class="lockup"><svg class="mark" aria-hidden="true"><use href="#m-c"/></svg><span class="wm">Plan<em>EZR</em></span></div>
+      <div class="sect"><p class="cap">Palette</p>
+        <div class="sw">
+          <div><i style="background:#0D4448"></i><b>Teal</b><code>#0D4448</code></div>
+          <div><i style="background:#FF7657"></i><b>Coral</b><code>#FF7657</code></div>
+          <div><i style="background:#7FD3C6"></i><b>Lagoon</b><code>#7FD3C6</code></div>
+          <div><i style="background:#072B2E"></i><b>Night</b><code>#072B2E</code></div>
+          <div><i style="background:#F7EBDD"></i><b>Sand</b><code>#F7EBDD</code></div>
+        </div>
+      </div>
+      <div class="sect"><p class="cap">Type</p>
+        <div class="fonts">
+          <div><span class="s d">Aa</span><small>Display</small><strong>Unbounded</strong></div>
+          <div><span class="s b">Aa</span><small>Text</small><strong>Manrope</strong></div>
+        </div>
+      </div>
+      <div class="show">
+        <div class="phone"><div class="screen">
+          <div class="sb"><span>9:41</span><span class="isl"></span><span class="bat"><i></i></span></div>
+          <div class="nav"><span class="bm"><svg aria-hidden="true"><use href="#m-c"/></svg><span>Plan<em>EZR</em></span></span><span class="share">Share</span></div>
+          <div class="hero">
+            <h3><em>One link</em> for your guests’ whole trip.</h3>
+            <p>Add your event and the venue. Guests get your schedule, plus how to get there and where to stay.</p>
+            <span class="cta">Create a page</span>
+            <span class="fine">Free. No account needed.</span>
+            <svg class="ridge" viewBox="0 0 300 46" preserveAspectRatio="none" aria-hidden="true"><path d="M0 46V30l40-18 30 14 46-24 38 22 30-10 50 20 34-14 32 14v12z" fill="#F7EBDD"/></svg>
+          </div>
+          <ul class="feat">
+            <li><span class="ic"><svg><use href="#i-go"/></svg></span><span><b>Getting there</b><small>Airports and fares</small></span></li>
+            <li><span class="ic"><svg><use href="#i-bed"/></svg></span><span><b>Hotels</b><small>Places to stay</small></span></li>
+            <li><span class="ic"><svg><use href="#i-food"/></svg></span><span><b>Food</b><small>Restaurants and bars</small></span></li>
+            <li><span class="ic"><svg><use href="#i-do"/></svg></span><span><b>Things to do</b><small>Tours and sights</small></span></li>
+            <li><span class="ic"><svg><use href="#i-plan"/></svg></span><span><b>Full itinerary</b><small>Bookings and schedule in one place</small></span></li>
+          </ul>
+        </div></div>
+        <div class="icon-col"><svg class="appicon" viewBox="0 0 76 76" aria-label="App icon C"><rect width="76" height="76" rx="18" fill="#0D4448"/><use href="#m-c" x="10" y="10" width="56" height="56"/></svg><span>App icon</span></div>
+      </div>
+    </article>
+
+  </div>
+</div>
+</body>
+</html>
