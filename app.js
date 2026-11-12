@@ -3283,7 +3283,11 @@ function wireMap(cfg, art, opts) {
     if (st.gmode) drawPins(); else if (st.data) layers();
     if (st.saved.length) a.savedPins(st.saved);
     if (st.hotels.length) a.hotelPins(st.hotels);
+    view(); // a view asked for before the map existed (the guest's hotel, a stop) is applied now
   };
+  // the last view asked for: applied as soon as the map exists (Google Maps can take seconds on a phone)
+  const view = (w) => { if (w) st.want = w; const a = st.adapter, x = st.want; if (!a || !x) return; st.want = null; st.area = null; if (areaBtn) areaBtn.hidden = true;
+    if (x.pts) a.fit(x.pts); else a.center(x.lat, x.lon, x.z); };
   const popup = (x) => `<b>${esc(x.name)}</b><br>${esc(t('{d} from the venue', { d: fmtDist(x.d, v.cc) }))}`;
   const layers = () => {
     const a = st.adapter, d = st.data; if (!a || !d || st.gmode) return;
@@ -3322,14 +3326,14 @@ function wireMap(cfg, art, opts) {
     onPoi: (fn) => { st.poi = fn; if (st.adapter) st.adapter.onPoi(fn); },
     setSaved: (items) => { st.saved = items; if (st.adapter && st.adapter.savedPins) st.adapter.savedPins(items); },
     setHotels: (items) => { st.hotels = items; if (st.adapter && st.adapter.hotelPins) st.adapter.hotelPins(items); },
-    fit: (pts) => { const go = () => { st.area = null; if (areaBtn) areaBtn.hidden = true; if (st.adapter) st.adapter.fit(pts); }; st.adapter ? go() : setTimeout(go, 1500); },
-    centerOn: (lat, lon, z) => { const go = () => st.adapter && st.adapter.center(lat, lon, z || 15); st.adapter ? go() : setTimeout(go, 1500); },
+    fit: (pts) => view({ pts }),
+    centerOn: (lat, lon, z) => view({ lat, lon, z: z || 15 }),
     setFood: (items) => { st.food = items; const g = st.groups.food; if (g) g.g.set(items.map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)) }))); },
-    center: (lat, lon, z) => { st.area = null; const go = () => { st.area = null; if (areaBtn) areaBtn.hidden = true; if (st.adapter) st.adapter.center(lat, lon, z || 14); }; st.adapter ? go() : setTimeout(go, 1500); }, // a programmatic move is a new starting area
+    center: (lat, lon, z) => view({ lat, lon, z: z || 14 }), // a programmatic move is a new starting area
     onArea: (fn) => { st.areaFns.push(fn); },
     searchedArea: (a) => { st.area = a; if (areaBtn) areaBtn.hidden = true; },
     _view: () => viewArea(),
-    focus: (p) => { if (p.lat == null) return; showTab(art, 'nearby', opts); const go = () => { if (st.adapter) st.adapter.center(p.lat, p.lon, 17); }; st.adapter ? go() : setTimeout(go, 1500); el.scrollIntoView({ block: 'center' }); },
+    focus: (p) => { if (p.lat == null) return; showTab(art, 'nearby', opts); view({ lat: p.lat, lon: p.lon, z: 17 }); el.scrollIntoView({ block: 'center' }); },
   };
 }
 
