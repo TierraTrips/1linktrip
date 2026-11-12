@@ -4153,13 +4153,34 @@ function docItems(cfg, d, scope) {
     if (secs.length > 1) s0.text = secs.map(x => (x === s0 ? '' : x.title + '\n') + x.text).join('\n\n').slice(0, 3000);
     if (s0.title || s0.text) add('custom', { ...s0, target: scope === 'new-custom' ? '' : scope });
   } else if (scope === 'auto') secs.forEach(x => add('custom', x));
-  return out.filter(x => x.title || x.text || x.date).slice(0, 120);
+  return docTidy(cfg, out.filter(x => x.title || x.text || x.date)).slice(0, 120);
+}
+// fewer, cleaner items: exact/trivial duplicates merged; on a trip, a day's untimed activities become one item for that day
+const normT = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+function docTidy(cfg, xs) {
+  const seen = new Map(); const out = [];
+  xs.forEach(x => {
+    const k = [x.sec, x.key, x.target || '', normT(x.title) || normT(x.text), /^(schedule|route)$/.test(x.sec) ? x.date : '', x.sec === 'schedule' ? x.time : ''].join('|'); const y = seen.get(k);
+    if (y) { ['text', 'url', 'end', 'country'].forEach(f => { if (!y[f] && x[f]) y[f] = x[f]; }); return; }
+    seen.set(k, x); out.push(x);
+  });
+  if (!isTrip(cfg)) return out;
+  const byDay = {}; out.forEach(x => { if (x.sec === 'schedule' && x.date && !x.time && (!x.kind || x.kind === 'activity')) (byDay[x.date] = byDay[x.date] || []).push(x); });
+  const gone = new Set();
+  Object.values(byDay).forEach(g => {
+    if (g.length < 2) return; const titles = g.map(x => x.title || String(x.text || '').split('\n')[0]).filter(Boolean); const all = titles.join(' · ');
+    const h = g[0]; const notes = g.map(x => x.title && x.text ? `${x.title}: ${x.text}` : '');
+    h.title = all.length <= 110 ? all : `${titles.slice(0, 2).join(' · ')} + ${titles.length - 2} more`;
+    h.text = [all.length > 110 ? all : '', ...notes].filter(Boolean).join('\n');
+    h.kind = g.some(x => x.kind === 'activity') ? 'activity' : ''; g.slice(1).forEach(x => gone.add(x));
+  });
+  return out.filter(x => !gone.has(x));
 }
 // where an item can go, and its label
 function docSecLabel(c, sec, it) {
   if (sec === 'basics') return 'Basics';
   if (sec === 'route') return 'Route';
-  if (sec === 'schedule') return isTrip(c) ? 'Day by day' : 'Schedule';
+  if (sec === 'schedule') return isTrip(c) ? 'Itinerary' : 'Schedule';
   if (sec === 'notes') return 'Notes for guests';
   if (sec === 'about') return 'About';
   if (sec === 'bring') return 'Must-bring items';
@@ -4185,12 +4206,38 @@ const docFields = (it) => {
     default: return [['text', '', it.kind === 'links' ? 'ro' : /lines/.test(it.kind || '') || (it.text || '').length > 80 ? 'long' : 'text']];
   }
 };
-function docReviewHTML(c, items) {
+const drGroupKey = (c, it) => it.sec === 'custom' ? 'custom:' + (it.target || '') : it.sec.startsWith('field:') ? 'field:' + (((TYPE_CARDS[c.type] || []).find(x => x[3].includes(it.sec.slice(6))) || [''])[0]) : it.sec.replace(/:.*$/, '');
+const drLive = (c, st) => st.items.filter(x => !x.gone && !(st.off || {})[drGroupKey(c, x)]);
+const drKeyLabel = (c, it) => it.key === 'dates' ? (isTrip(c) ? 'Trip dates' : 'Dates') : it.key === 'title' ? 'Title' : 'Venue';
+function drGroupName(c, G, items) {
+  const it = items[G.idx[0]];
+  if (G.sec.startsWith('access:')) return 'Access and arrival';
+  if (G.sec.startsWith('field:')) { const tc = (TYPE_CARDS[c.type] || []).find(x => x[3].includes(G.sec.slice(6))); return tc ? tc[1] : docSecLabel(c, G.sec, it); }
+  if (G.sec === 'custom' && !it.target && G.idx.length > 1) return 'New custom sections';
+  return docSecLabel(c, G.sec, it);
+}
+function drGroupCount(c, G, items) {
+  const n = G.idx.length;
+  if (G.sec === 'route') return n === 1 ? '1 city' : `${n} cities`;
+  if (G.sec === 'schedule') return n === 1 ? '1 item' : `${n} items`;
+  if (G.sec === 'basics') return G.idx.map(i => drKeyLabel(c, items[i]).toLowerCase()).join(', ');
+  return String(n);
+}
+function drLine(c, it) {
+  const one = (x) => String(x || '').split('\n')[0].trim().slice(0, 90);
+  if (it.sec === 'basics') return `${drKeyLabel(c, it)}: ${it.key === 'dates' ? dateRange(it.date, it.end) : one(it.title)}`;
+  if (it.sec === 'route') return [one(it.title), it.date ? dateRange(it.date, it.end || it.date) : ''].filter(Boolean).join(' · ');
+  if (it.sec === 'schedule') return [it.date ? fmt(it.date, { month: 'short', day: 'numeric' }) : '', it.time ? fmtTime(it.time) : '', one(it.title || it.text)].filter(Boolean).join(' · ');
+  if (it.sec === 'about' && it.key === 'host') return 'Hosted by ' + one(it.text);
+  return one(it.title || it.text) || '—';
+}
+function docReviewHTML(c, items, st = {}) {
   const order = ['basics', 'route', 'schedule', 'notes', 'about', 'bring', 'custom'];
   const rank = (s) => { const i = order.indexOf(s); return i < 0 ? (s.startsWith('field:') ? 6.5 : 6.7) : i; };
-  const groups = []; items.forEach((it, i) => { if (it.gone) return; const g = it.sec === 'custom' ? 'custom:' + (it.target || '') : it.sec.replace(/:.*$/, (m) => it.sec.startsWith('field:') ? ':' + ((TYPE_CARDS[c.type] || []).find(x => x[3].includes(it.sec.slice(6))) || [''])[0] : ''); let G = groups.find(x => x.g === g); if (!G) groups.push(G = { g, sec: it.sec, idx: [] }); G.idx.push(i); });
+  const groups = []; items.forEach((it, i) => { if (it.gone) return; const g = drGroupKey(c, it); let G = groups.find(x => x.g === g); if (!G) groups.push(G = { g, sec: it.sec, idx: [] }); G.idx.push(i); });
   groups.sort((a, b) => rank(a.sec) - rank(b.sec));
-  const n = items.filter(x => !x.gone).length;
+  const off = st.off || {}, open = st.open || {}, ed = st.edit == null ? -1 : st.edit;
+  const n = items.filter(x => !x.gone && !off[drGroupKey(c, x)]).length;
   const fld = (it, i, [k, label, kind]) => {
     const id = `dr${i}-${k}`; const v = it[k] || ''; const lab = label ? `<label for="${id}">${esc(label)}</label>` : '';
     if (kind === 'ro') return `<div class="field wide"><p class="dr-ro">${esc(v)}</p></div>`;
@@ -4198,11 +4245,14 @@ function docReviewHTML(c, items) {
     const ty = kind === 'when' ? (isDate(v) || !v ? 'date' : 'datetime-local') : kind === 'url' ? 'url' : kind;
     return `<div class="field${kind === 'text' || kind === 'url' ? ' wide' : ''}">${lab}<input id="${id}" type="${ty}" data-dr="${i}" data-dk="${k}" value="${esc(v)}"${label ? '' : ` aria-label="${esc(docSecLabel(c, it.sec, it))}"`}></div>`;
   };
-  return `<div class="dr" data-sheet="doc-review">${groups.map(G => `<h3 class="sub-h">${esc(docSecLabel(c, G.sec, items[G.idx[0]]))}${G.sec === 'route' && stopsOf(c).length ? ' <small class="muted">(replaces the current route)</small>' : ''}</h3>
-    ${G.idx.map(i => { const it = items[i]; const tg = it.sec === 'basics' ? [] : docMoveTargets(c, it, it.home);
-      return `<div class="dr-item"><div class="dr-top">${tg.length ? `<select data-dr-sec="${i}" aria-label="Put it in">${tg.map(s => `<option value="${esc(s)}" ${s === it.sec ? 'selected' : ''}>${esc(docSecLabel(c, s, s === 'custom' && s === it.sec ? it : null))}</option>`).join('')}</select>` : `<span class="dr-k">${esc(it.key === 'dates' ? (isTrip(c) ? 'Trip dates' : 'Dates') : it.key === 'title' ? 'Title' : 'Venue')}</span>`}<button type="button" class="ic del dr-x" data-dr-del="${i}" aria-label="Remove">×</button></div>
-        <div class="dr-f">${docFields(it).map(f => fld(it, i, f)).join('')}</div></div>`; }).join('')}`).join('')}
-    <div class="btns"><button type="button" class="btn primary" data-doc-apply ${n ? '' : 'disabled'}>${esc(`Apply (${n})`)}</button><button type="button" class="btn ghost" data-doc-cancel>Cancel</button></div></div>`;
+  const editHTML = (i) => { const it = items[i]; const tg = it.sec === 'basics' ? [] : docMoveTargets(c, it, it.home);
+    return `<li class="dr-item" data-dr-at="${i}"><div class="dr-top">${tg.length ? `<select data-dr-sec="${i}" aria-label="Put it in">${tg.map(s => `<option value="${esc(s)}" ${s === it.sec ? 'selected' : ''}>${esc(docSecLabel(c, s, s === 'custom' && s === it.sec ? it : null))}</option>`).join('')}</select>` : `<span class="dr-k">${esc(drKeyLabel(c, it))}</span>`}<button type="button" class="ic del dr-x" data-dr-del="${i}" aria-label="Remove">×</button></div>
+      <div class="dr-f">${docFields(it).map(f => fld(it, i, f)).join('')}</div><button type="button" class="link dr-done" data-dr-edit="-1">Done</button></li>`; };
+  return `<div class="dr" data-sheet="doc-review"><p class="dr-lead">Found in your document. Untick anything you don't want, or tap a row to see it.</p>
+    <div class="dr-gs">${groups.map(G => { const on = !off[G.g], op = !!open[G.g]; const name = drGroupName(c, G, items);
+      return `<div class="dr-g${on ? '' : ' off'}${op ? ' open' : ''}" data-dr-g="${esc(G.g)}"><div class="dr-gh"><input type="checkbox" class="dr-on" data-dr-gon="${esc(G.g)}" ${on ? 'checked' : ''} aria-label="Add ${esc(name)}"><button type="button" class="dr-gt" data-dr-open="${esc(G.g)}" aria-expanded="${op}"><span class="dr-gn"><b>${esc(name)}</b> · ${esc(drGroupCount(c, G, items))}${G.sec === 'route' && stopsOf(c).length ? '<small class="muted">Replaces the current route</small>' : ''}</span><i class="dr-chev" aria-hidden="true"></i></button></div>
+        ${op ? `<ul class="dr-lines">${G.idx.map(i => i === ed ? editHTML(i) : `<li><button type="button" class="dr-line" data-dr-edit="${i}">${esc(drLine(c, items[i]))}</button></li>`).join('')}</ul>` : ''}</div>`; }).join('')}</div>
+    <div class="btns"><button type="button" class="btn primary" data-doc-apply ${n ? '' : 'disabled'}>${st.key && st.key !== 'main' ? 'Add' : 'Add to page'}</button><button type="button" class="btn ghost" data-doc-cancel>Cancel</button></div></div>`;
 }
 // apply the reviewed items to a copy of the page (async: route stops and the venue are looked up on the map)
 async function docApply(cfg, items) {
@@ -4269,7 +4319,7 @@ function docBlockHTML(key) {
   if (!SB) return '';
   const files = main ? [] : (c.files || []).filter(f => f.sec === key);
   let inner = '';
-  if (st && st.phase === 'review') inner = docReviewHTML(c, st.items);
+  if (st && st.phase === 'review') inner = docReviewHTML(c, st.items, st);
   else if (st && st.phase === 'signin') inner = `<div class="bk-signin"><p><b>Sign in to upload documents.</b></p>${signInFormHTML('')}</div>`;
   else if (main && st && (st.phase === 'pick' || st.phase === 'busy')) inner = `<p class="doc-name"><b>${esc(st.file.name || 'Document')}</b> <small class="muted">${esc(fmtSize(st.file.size))}</small></p>
       <div class="field"><label for="doc-into">Put it in</label><select id="doc-into" data-doc-into>${docIntoOptions(c)}</select></div>
@@ -4310,7 +4360,7 @@ async function docRead(key, scope, file) {
     const items = docItems(B.cfg, j.data, scope); items.forEach(x => { x.home = x.sec; x.homeTarget = x.target || ''; });
     if (DU.key !== key) return;
     if (!items.length) { DU = { key, phase: key === 'main' ? 'pick' : 'done', file, msg: 'Nothing found to fill in. Try Attach for guests.' }; docPaint(key); return; }
-    DU = { key, phase: 'review', file, scope, items, msg: '', attachNew: scope === 'new-custom' }; docPaint(key);
+    DU = { key, phase: 'review', file, scope, items, msg: '', attachNew: scope === 'new-custom', off: {}, open: {}, edit: -1 }; docPaint(key);
   } catch (e) {
     if (e.signin) return docSignIn(key);
     DU = { key, phase: key === 'main' ? 'pick' : 'done', file, msg: e.message || 'Couldn’t read it.' }; docPaint(key);
@@ -4345,7 +4395,8 @@ function wireDocs(root) {
     if (i.matches('[data-doc-fill]') && i.files && i.files[0]) { const f = i.files[0]; i.value = ''; docRead(key, key, f); return; }
     if (i.matches('[data-doc-attach]') && i.files && i.files[0]) { const f = i.files[0]; i.value = ''; docAttach(key, key, f); return; }
     if (i.matches('[data-doc-into]') && DU) DU.into = i.value;
-    if (i.dataset.drSec != null && DU && DU.items) { const it = DU.items[+i.dataset.drSec]; if (!it) return; it.sec = i.value; it.target = it.sec === 'custom' && it.home === 'custom' ? it.homeTarget || '' : ''; docPaint(key); }
+    if (i.dataset.drSec != null && DU && DU.items) { const it = DU.items[+i.dataset.drSec]; if (!it) return; it.sec = i.value; it.target = it.sec === 'custom' && it.home === 'custom' ? it.homeTarget || '' : ''; DU.open = { ...(DU.open || {}), [drGroupKey(B.cfg, it)]: true }; docPaint(key); }
+    if (i.dataset.drGon != null && DU && DU.items) { DU.off = { ...(DU.off || {}), [i.dataset.drGon]: !i.checked }; docPaint(key); }
   });
   root.addEventListener('input', (e) => { const i = e.target; if (i.dataset.dr == null || !DU || !DU.items) return; const it = DU.items[+i.dataset.dr]; if (it) it[i.dataset.dk] = i.value; e.stopPropagation(); }, true);
   root.addEventListener('click', (e) => {
@@ -4361,14 +4412,16 @@ function wireDocs(root) {
       return;
     }
     if ('docCancel' in d) { DU = null; docPaint(key); return; }
-    if (d.drDel != null && DU && DU.items) { DU.items[+d.drDel].gone = true; docPaint(key); return; }
+    if (d.drDel != null && DU && DU.items) { DU.items[+d.drDel].gone = true; DU.edit = -1; docPaint(key); return; }
+    if (d.drOpen != null && DU && DU.items) { const o = DU.open = DU.open || {}; o[d.drOpen] = !o[d.drOpen]; if (!o[d.drOpen] && DU.edit >= 0 && drGroupKey(B.cfg, DU.items[DU.edit]) === d.drOpen) DU.edit = -1; docPaint(key); return; }
+    if (d.drEdit != null && DU && DU.items) { DU.edit = +d.drEdit; docPaint(key); if (DU.edit >= 0) { const f = document.querySelector(`[data-doc-key="${CSS.escape(key)}"] [data-dr-at="${DU.edit}"] :is(input,textarea)`); if (f) f.focus({ preventScroll: true }); } return; }
     if ('docApply' in d && DU && DU.items) {
-      const st = DU; b.disabled = true; const m = box.querySelector('[data-doc-msg]'); if (m) m.textContent = st.items.some(x => !x.gone && (x.sec === 'route' || x.key === 'venue')) ? 'Finding places…' : 'Applying…';
+      const st = DU; const use = drLive(B.cfg, st); if (!use.length) return; b.disabled = true; const m = box.querySelector('[data-doc-msg]'); if (m) m.textContent = use.some(x => x.sec === 'route' || x.key === 'venue') ? 'Finding places…' : 'Adding…';
       (async () => {
-        const undo = clone(B.cfg); let next = await docApply(B.cfg, st.items);
-        if (st.attachNew) { const made = st.items.find(x => x.made); if (made) { try { const f = await docUpload(st.file); next.files = (next.files || []).concat(fileEntry(f, made.made)); } catch { /* the section is still made */ } } }
+        const undo = clone(B.cfg); let next = await docApply(B.cfg, use);
+        if (st.attachNew) { const made = use.find(x => x.made); if (made) { try { const f = await docUpload(st.file); next.files = (next.files || []).concat(fileEntry(f, made.made)); } catch { /* the section is still made */ } } }
         if (DU !== st) return;
-        B.cfg = next; DU = { key, phase: 'done', msg: 'Applied.', undo }; changed(true); if (typeof renderHostNote === 'function') renderHostNote();
+        B.cfg = next; DU = { key, phase: 'done', msg: 'Added. Everything stays editable in its section.', undo }; changed(true); toast('Added to the page'); if (typeof renderHostNote === 'function') renderHostNote();
       })().catch(err => { b.disabled = false; if (m) m.textContent = err.message || 'Couldn’t apply that.'; });
       return;
     }

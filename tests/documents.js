@@ -62,6 +62,10 @@ function fakeSupabase(user) {
     return { ctx, page, errors };
   };
   const pdf = (name = 'japan-itinerary.pdf', size = 2000) => ({ name, mimeType: 'application/pdf', buffer: Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(size, 32)]) });
+  // the review is a summary: one row per section; tap a row to list its items, tap an item to edit just that one
+  const openRow = async (page, scope, name) => { const b = page.locator(`${scope} .dr-gt`, { hasText: name }).first(); if ((await b.getAttribute('aria-expanded')) !== 'true') await b.click(); await page.waitForTimeout(80); };
+  const editLine = async (page, scope, re) => { const i = await page.$$eval(`${scope} .dr-line`, (bs, src) => { const r = new RegExp(src); const b = bs.find(x => r.test(x.textContent)); return b ? b.dataset.drEdit : null; }, re.source); if (i == null) throw new Error('no line ' + re); await page.click(`${scope} [data-dr-edit="${i}"]`); await page.waitForTimeout(80); return i; };
+  const rows = (page, scope) => page.$$eval(`${scope} .dr-gt .dr-gn`, xs => xs.map(x => x.childNodes[0].textContent + x.childNodes[1].textContent));
   const draft = async (page) => { await page.waitForTimeout(450); return page.evaluate(() => JSON.parse(localStorage.getItem('ep:draft'))); }; // the builder saves 300 ms after a change
 
   // ---------- old pages: identical rendering, config unchanged ----------
@@ -124,17 +128,22 @@ function fakeSupabase(user) {
     await page.setInputFiles('#sheet [data-doc-fill]', pdf()); await page.waitForSelector('#sheet [data-sheet="doc-review"]');
     const req = await page.evaluate(() => window.__ai[0]);
     ok(req.mode === 'doc' && req.section === 'route' && req.type === 'Trip' && req.files[0].media_type === 'application/pdf', `request ${JSON.stringify(req)}`);
-    const groups = await page.$$eval('#sheet .dr .sub-h', hs => hs.map(h => h.textContent));
-    ok(groups[0] === 'Basics' && /^Route/.test(groups[1]) && groups.length === 2, `route review groups: ${groups.join(' | ')}`);
-    ok((await page.$$('#sheet .dr-item')).length === 4, 'trip dates + 3 stops to review');
+    const groups = await rows(page, '#sheet');
+    ok(groups.join(' | ') === 'Basics · trip dates | Route · 3 cities', `route review summary: ${groups.join(' | ')}`);
+    ok((await page.$$('#sheet .dr-line, #sheet .dr-item, #sheet [data-dr]')).length === 0, 'summary only: no item lines or edit fields until a row is tapped');
+    ok(await page.textContent('#sheet [data-doc-apply]') === 'Add' && await page.$$eval('#sheet [data-dr-gon]', xs => xs.every(x => x.checked)), 'one Add button, every row ticked');
     if (SHOTS) await page.locator('#sheet').screenshot({ path: `${SHOTS}/doc-route-review-390.png` });
     ok((await overflow(page)).length === 0, 'route review @390: no overflow');
-    // remove Osaka (×), rename Kyoto
-    const osaka = await page.$$eval('#sheet [data-dk="title"]', is => is.find(i => i.value === 'Osaka').dataset.dr);
+    // open Route → its cities as plain lines; tap Osaka → only Osaka's fields; remove it; rename Kyoto
+    await openRow(page, '#sheet', 'Route');
+    ok((await page.$$eval('#sheet .dr-line', bs => bs.map(b => b.textContent))).join('|') === 'Tokyo · Apr 1–5, 2027|Kyoto · Apr 5–8, 2027|Osaka · Apr 8–10, 2027' && !(await page.$('#sheet [data-dr]')), 'Route row lists its cities read-only');
+    if (SHOTS) await page.locator('#sheet').screenshot({ path: `${SHOTS}/doc-route-rows-390.png` });
+    const osaka = await editLine(page, '#sheet', /Osaka/);
+    ok((await page.$$('#sheet .dr-item')).length === 1 && (await page.$$('#sheet [data-dr]')).length === 3, 'tapping a city opens only that city\'s fields');
     await page.click(`#sheet [data-dr-del="${osaka}"]`); await page.waitForTimeout(100);
-    const kyoto = await page.$$eval('#sheet [data-dk="title"]', is => is.find(i => i.value === 'Kyoto').dataset.dr);
+    const kyoto = await editLine(page, '#sheet', /Kyoto/);
     await page.fill(`#sheet [data-dr="${kyoto}"][data-dk="title"]`, 'Kyoto (Gion)');
-    ok(/Apply \(3\)/.test(await page.textContent('#sheet [data-doc-apply]')), 'Apply counts what is left');
+    ok((await rows(page, '#sheet')).join(' | ') === 'Basics · trip dates | Route · 2 cities', 'the row count follows the edits');
     await page.click('#sheet [data-doc-apply]'); await page.waitForSelector('#sheet [data-doc-undo]');
     let c = await draft(page);
     ok(c.stops.map(s => s.name).join() === 'Tokyo,Kyoto (Gion)' && c.stops[0].from === '2027-04-01' && c.stops[1].to === '2027-04-08', `route filled: ${JSON.stringify(c.stops.map(s => [s.name, s.from, s.to]))}`);
@@ -170,18 +179,20 @@ function fakeSupabase(user) {
     const c0 = await draft(page);
     await page.click('[data-doc-go="fill"]'); await page.waitForSelector('[data-doc-key="main"] [data-sheet="doc-review"]');
     ok((await page.evaluate(() => window.__ai.at(-1).section)) === '', 'Sort automatically asks for the whole document');
-    const g2 = await page.$$eval('[data-doc-key="main"] .dr .sub-h', hs => hs.map(h => h.textContent.replace(/ \(.*$/, '')));
-    ok(['Route', 'Day by day', 'Notes for guests', 'About', 'Must-bring items', 'Emergency contacts', 'New custom section'].filter(x => g2.includes(x)).length >= 6, `grouped by section: ${g2.join(' | ')}`);
+    const g2 = await page.$$eval('[data-doc-key="main"] .dr-gt b', hs => hs.map(h => h.textContent));
+    ok(!(await page.$('[data-doc-key="main"] [data-dr]')), 'main review starts as a summary (no edit fields)');
+    ok(['Route', 'Itinerary', 'Notes for guests', 'About', 'Must-bring items', 'Emergency contacts', 'New custom section'].filter(x => g2.includes(x)).length >= 6, `grouped by section: ${g2.join(' | ')}`);
     ok((await overflow(page)).length === 0, 'main review @390: no overflow');
     if (SHOTS) await page.locator('[data-doc-key="main"]').screenshot({ path: `${SHOTS}/doc-main-review-390.png` });
-    // move "Tsukiji outer market" from Day by day to Notes for guests
-    const ts = await page.$$eval('[data-doc-key="main"] [data-dk="title"]', is => is.find(i => i.value === 'Tsukiji outer market').dataset.dr);
+    // move "Tsukiji outer market" from Itinerary to Notes for guests
+    await openRow(page, '[data-doc-key="main"]', 'Itinerary'); const ts = await editLine(page, '[data-doc-key="main"]', /Tsukiji/);
     await page.selectOption(`[data-dr-sec="${ts}"]`, 'notes'); await page.waitForTimeout(100);
     ok(await page.$eval(`[data-dr-sec="${ts}"]`, s => s.value) === 'notes', 'item moved to Notes for guests');
     // remove the hotel, edit the train
-    const ht = await page.$$eval('[data-doc-key="main"] [data-dk="title"]', is => is.find(i => /Park Hotel/.test(i.value)).dataset.dr);
+    const ht = await editLine(page, '[data-doc-key="main"]', /Park Hotel/);
     await page.click(`[data-dr-del="${ht}"]`); await page.waitForTimeout(100);
-    const tr = await page.$$eval('[data-doc-key="main"] [data-dk="title"]', is => is.find(i => /Shinkansen/.test(i.value)).dataset.dr);
+    const tr = await editLine(page, '[data-doc-key="main"]', /Shinkansen/);
+    ok((await page.$$('[data-doc-key="main"] .dr-item')).length === 1, 'one item open at a time');
     await page.fill(`[data-dr="${tr}"][data-dk="time"]`, '10:33');
     await page.click('[data-doc-key="main"] [data-doc-apply]'); await page.waitForSelector('[data-doc-key="main"] [data-doc-undo]');
     c = await draft(page);
@@ -197,9 +208,16 @@ function fakeSupabase(user) {
     await page.setInputFiles('[data-doc-pick]', pdf()); await page.waitForSelector('#doc-into');
     await page.selectOption('#doc-into', 'schedule'); await page.click('[data-doc-go="fill"]'); await page.waitForSelector('[data-doc-key="main"] [data-sheet="doc-review"]');
     ok((await page.evaluate(() => window.__ai.at(-1).section)) === 'schedule', 'one section → section "schedule" asked');
-    const g3 = await page.$$eval('[data-doc-key="main"] .dr .sub-h', hs => hs.map(h => h.textContent));
-    ok(g3.join() === 'Day by day', `only Day by day items: ${g3.join()}`);
-    await page.click('[data-doc-key="main"] [data-doc-cancel]');
+    const g3 = await page.$$eval('[data-doc-key="main"] .dr-gt b', hs => hs.map(h => h.textContent));
+    ok(g3.join() === 'Itinerary', `only Itinerary items: ${g3.join()}`);
+    // untick a row → Add applies nothing from it
+    const c3 = await draft(page);
+    await page.uncheck('[data-doc-key="main"] [data-dr-gon="schedule"]'); await page.waitForTimeout(80);
+    ok(await page.$eval('[data-doc-key="main"] [data-doc-apply]', b => b.disabled), 'unticking the only row disables Add');
+    await page.check('[data-doc-key="main"] [data-dr-gon="schedule"]'); await page.waitForTimeout(80);
+    await page.click('[data-doc-key="main"] [data-doc-apply]'); await page.waitForSelector('[data-doc-key="main"] [data-doc-undo]');
+    ok((await draft(page)).schedule.length > c3.schedule.length && /Added/.test(await page.textContent('[data-doc-key="main"] [data-doc-msg]')), 'one tap on Add to page applies the ticked rows');
+    await page.click('[data-doc-key="main"] [data-doc-undo]'); await page.waitForTimeout(200);
 
     // New custom section: Fill → a section from the document, with the file attached
     await page.setInputFiles('[data-doc-pick]', pdf('Visa notes.pdf')); await page.waitForSelector('#doc-into');
@@ -221,6 +239,13 @@ function fakeSupabase(user) {
     c = await draft(page); ok(!c.files.some(f => f.id === fid), 'Remove takes it off the page');
     ok(await page.evaluate((u) => window.__rm.length === 1 && window.__rm[0].startsWith(u + '/'), USER.id), 'and deletes the stored file');
     await page.click('#sheet [data-b="close"]'); await page.waitForTimeout(200);
+    // less noise: duplicates merged; a day-by-day trip plan → one itinerary item per day (timed bookings stay separate)
+    const tidy = await page.evaluate((c) => window.__ep.docItems(c, { schedule: [
+      { date: '2027-04-02', time: '', title: 'Senso-ji temple', note: '', kind: 'activity' }, { date: '2027-04-02', time: '', title: 'Senso-ji Temple.', note: 'Go early', kind: 'activity' },
+      { date: '2027-04-02', time: '', title: 'Nakamise street snacks', note: '', kind: 'activity' }, { date: '2027-04-02', time: '', title: 'Ueno park', note: '', kind: 'activity' },
+      { date: '2027-04-02', time: '19:00', title: 'Dinner at Kanda Matsuya', note: '', kind: 'reservation' }, { date: '2027-04-03', time: '', title: 'Ghibli Museum', note: '', kind: 'activity' },
+      { date: '2027-04-03', time: '', title: 'Ghibli Museum', note: '', kind: 'activity' } ], faqs: [{ question: 'Money', answer: 'Cash' }, { question: 'money', answer: 'Cash' }] }, 'auto').map(x => [x.sec, x.title, x.time, x.text].join('/')), await draft(page));
+    ok(JSON.stringify(tidy) === JSON.stringify(['schedule/Senso-ji temple · Nakamise street snacks · Ueno park//Senso-ji temple: Go early', 'schedule/Dinner at Kanda Matsuya/19:00/', 'schedule/Ghibli Museum//', 'notes/Money//Cash']), `tidy items ${JSON.stringify(tidy)}`);
     ok(errors.length === 0, `no page errors ${errors.join(' ')}`);
     cfgAfter = await draft(page);
     await ctx.close();
