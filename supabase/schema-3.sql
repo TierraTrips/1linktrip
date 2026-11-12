@@ -1,0 +1,235 @@
+-- 1LinkTrip schema, part 3: guest ↔ host messages, guest groups, updates sent to chosen groups.
+-- Paste into Supabase Dashboard → SQL Editor → New query → Run. Safe to run more than once.
+-- Needs part 1 (events, rsvps, announcements). Does not need part 2.
+--
+--   event_groups         groups a host defines for a page (Wedding party, VIPs, Full marathon…)
+--   event_group_members  who is in each group, by page + lowercased email (host adds a list, or guests pick at RSVP)
+--   event_messages       one thread per signed-in guest per page; the guest and the page owner write in it
+--   announcements        + group_ids: empty = everyone; otherwise only those groups (and the owner) can read it
+--   rsvps                + group_id: the group a guest picked when replying
+--
+-- Who can read what is decided here, on the server, by Row Level Security:
+--   • a guest reads only their own thread, their own group memberships, and updates for everyone or for their groups
+--   • only the page owner reads the inbox, manages groups and members, and sends updates to groups
+-- Membership is matched on the signed-in account's CONFIRMED email (auth.users.email_confirmed_at), lowercased.
+-- Later features (e.g. private blocks) can reuse ep_private.in_groups(event_id, group_ids) the same way.
+
+create extension if not exists pgcrypto;
+
+-- ---------- tables ----------
+create table if not exists public.event_groups (
+  id          uuid primary key default gen_random_uuid(),
+  event_id    uuid not null references public.events (id) on delete cascade,
+  name        text not null check (char_length(btrim(name)) between 1 and 60),
+  self_pick   boolean not null default false,
+  sort        smallint not null default 0,
+  created_at  timestamptz not null default now(),
+  unique (event_id, id)
+);
+create unique index if not exists event_groups_event_name_idx on public.event_groups (event_id, lower(btrim(name)));
+
+create table if not exists public.event_group_members (
+  event_id    uuid not null,
+  group_id    uuid not null,
+  email       text not null check (email = lower(btrim(email)) and char_length(email) between 3 and 254 and position('@' in email) > 1),
+  added_by    text not null default 'host' check (added_by in ('host', 'guest')),
+  created_at  timestamptz not null default now(),
+  primary key (group_id, email),
+  foreign key (event_id, group_id) references public.event_groups (event_id, id) on delete cascade
+);
+create index if not exists event_group_members_event_email_idx on public.event_group_members (event_id, email);
+
+create table if not exists public.event_messages (
+  id           uuid primary key default gen_random_uuid(),
+  event_id     uuid not null references public.events (id) on delete cascade,
+  guest        uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  from_host    boolean not null default false,
+  guest_email  text,
+  guest_name   text check (guest_name is null or char_length(guest_name) <= 120),
+  body         text not null check (char_length(btrim(body)) between 1 and 2000),
+  notified_at  timestamptz,
+  created_at   timestamptz not null default now()
+);
+create index if not exists event_messages_thread_idx on public.event_messages (event_id, guest, created_at);
+
+alter table public.announcements add column if not exists group_ids uuid[] not null default '{}';
+alter table public.announcements add column if not exists notified_at timestamptz;
+do $$ begin
+  alter table public.announcements add constraint announcements_group_ids_len check (cardinality(group_ids) <= 30);
+exception when duplicate_object then null; end $$;
+
+alter table public.rsvps add column if not exists group_id uuid references public.event_groups (id) on delete set null;
+
+-- ---------- private helpers (this schema is not exposed by the API) ----------
+create schema if not exists ep_private;
+revoke all on schema ep_private from public;
+grant usage on schema ep_private to anon, authenticated;
+
+-- the signed-in person's confirmed email, lowercased; null when signed out or not confirmed
+create or replace function ep_private.my_email() returns text
+language sql stable security definer set search_path = '' as $$
+  select lower(u.email) from auth.users u where u.id = auth.uid() and u.email_confirmed_at is not null
+$$;
+
+create or replace function ep_private.owns_event(eid uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.events e where e.id = eid and e.owner = auth.uid())
+$$;
+
+create or replace function ep_private.event_published(eid uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.events e where e.id = eid and e.published)
+$$;
+
+-- the page is published and its owner turned on "Let guests message you"
+create or replace function ep_private.messages_open(eid uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.events e where e.id = eid and e.published and (e.config ->> 'guestMessages') = 'true')
+$$;
+
+-- the signed-in person is in at least one of these groups of this page
+create or replace function ep_private.in_groups(eid uuid, gids uuid[]) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.event_group_members m
+                 where m.event_id = eid and m.group_id = any (gids) and m.email = ep_private.my_email())
+$$;
+
+create or replace function ep_private.is_member(gid uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.event_group_members m where m.group_id = gid and m.email = ep_private.my_email())
+$$;
+
+-- a group guests may choose for themselves, on a published page
+create or replace function ep_private.group_pickable(gid uuid, eid uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.event_groups g join public.events e on e.id = g.event_id
+                 where g.id = gid and g.event_id = eid and g.self_pick and e.published)
+$$;
+
+-- every id in the list is a group of this page
+create or replace function ep_private.groups_of_event(eid uuid, gids uuid[]) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select coalesce(cardinality(gids), 0) = 0
+      or not exists (select 1 from unnest(gids) x(id)
+                     where not exists (select 1 from public.event_groups g where g.id = x.id and g.event_id = eid))
+$$;
+
+-- the guest has written in this thread at least once (the host replies; the host never starts a thread)
+create or replace function ep_private.thread_exists(eid uuid, gid uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.event_messages m where m.event_id = eid and m.guest = gid and not m.from_host)
+$$;
+
+-- messages: the server fills in who wrote it and when; a guest can send at most 30 an hour per page
+create or replace function public.event_messages_fill() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  new.created_at := now();
+  new.notified_at := null;
+  if new.from_host then
+    new.guest_email := null; new.guest_name := null;
+  else
+    new.guest := auth.uid();
+    new.guest_email := ep_private.my_email();
+    new.guest_name := nullif(btrim(coalesce(new.guest_name, '')), '');
+    if (select count(*) from public.event_messages m
+        where m.event_id = new.event_id and m.guest = new.guest and not m.from_host and m.created_at > now() - interval '1 hour') >= 30 then
+      raise exception 'Too many messages. Try again later.' using errcode = 'P0001';
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists event_messages_fill on public.event_messages;
+create trigger event_messages_fill before insert on public.event_messages
+  for each row execute function public.event_messages_fill();
+
+-- ---------- row level security ----------
+alter table public.event_groups        enable row level security;
+alter table public.event_group_members enable row level security;
+alter table public.event_messages      enable row level security;
+
+-- groups: the owner sees and manages all; guests see groups they may pick and groups they are in
+drop policy if exists "event_groups_select" on public.event_groups;
+create policy "event_groups_select" on public.event_groups
+  for select to anon, authenticated
+  using (ep_private.owns_event(event_id)
+         or (self_pick and ep_private.event_published(event_id))
+         or ep_private.is_member(id));
+
+drop policy if exists "event_groups_write_owner" on public.event_groups;
+create policy "event_groups_write_owner" on public.event_groups
+  for all to authenticated
+  using (ep_private.owns_event(event_id))
+  with check (ep_private.owns_event(event_id));
+
+-- members: the owner sees and manages all; a guest sees their own rows and may join or leave a group they can pick
+drop policy if exists "event_group_members_select" on public.event_group_members;
+create policy "event_group_members_select" on public.event_group_members
+  for select to authenticated
+  using (ep_private.owns_event(event_id) or email = ep_private.my_email());
+
+drop policy if exists "event_group_members_insert" on public.event_group_members;
+create policy "event_group_members_insert" on public.event_group_members
+  for insert to authenticated
+  with check (ep_private.owns_event(event_id)
+              or (added_by = 'guest' and email = ep_private.my_email() and ep_private.group_pickable(group_id, event_id)));
+
+drop policy if exists "event_group_members_delete" on public.event_group_members;
+create policy "event_group_members_delete" on public.event_group_members
+  for delete to authenticated
+  using (ep_private.owns_event(event_id) or (added_by = 'guest' and email = ep_private.my_email()));
+
+-- messages: a guest reads their own thread; the owner reads every thread on their pages
+drop policy if exists "event_messages_select" on public.event_messages;
+create policy "event_messages_select" on public.event_messages
+  for select to authenticated
+  using (guest = (select auth.uid()) or ep_private.owns_event(event_id));
+
+drop policy if exists "event_messages_insert_guest" on public.event_messages;
+create policy "event_messages_insert_guest" on public.event_messages
+  for insert to authenticated
+  with check (not from_host and guest = (select auth.uid())
+              and ep_private.my_email() is not null and ep_private.messages_open(event_id));
+
+drop policy if exists "event_messages_insert_host" on public.event_messages;
+create policy "event_messages_insert_host" on public.event_messages
+  for insert to authenticated
+  with check (from_host and ep_private.owns_event(event_id) and ep_private.thread_exists(event_id, guest));
+
+-- announcements (replaces the part-1 read and write policies): updates for everyone stay public on published
+-- pages; updates for chosen groups are readable only by members of those groups and by the owner
+drop policy if exists "announcements_select" on public.announcements;
+create policy "announcements_select" on public.announcements
+  for select to anon, authenticated
+  using (ep_private.owns_event(event_id)
+         or (ep_private.event_published(event_id)
+             and (cardinality(group_ids) = 0 or ep_private.in_groups(event_id, group_ids))));
+
+drop policy if exists "announcements_insert_owner" on public.announcements;
+create policy "announcements_insert_owner" on public.announcements
+  for insert to authenticated
+  with check (ep_private.owns_event(event_id) and ep_private.groups_of_event(event_id, group_ids));
+
+drop policy if exists "announcements_update_owner" on public.announcements;
+create policy "announcements_update_owner" on public.announcements
+  for update to authenticated
+  using (ep_private.owns_event(event_id))
+  with check (ep_private.owns_event(event_id) and ep_private.groups_of_event(event_id, group_ids));
+
+-- rsvps (replaces the part-1 insert policy): a picked group must be one guests may pick on that page
+drop policy if exists "rsvps_insert_published" on public.rsvps;
+create policy "rsvps_insert_published" on public.rsvps
+  for insert to anon, authenticated
+  with check (ep_private.event_published(event_id)
+              and (group_id is null or ep_private.group_pickable(group_id, event_id)));
+
+-- ---------- grants (new tables are not exposed automatically in this project) ----------
+revoke all on public.event_groups, public.event_group_members, public.event_messages from anon, authenticated;
+grant select                         on public.event_groups        to anon;
+grant select, insert, update, delete on public.event_groups        to authenticated;
+grant select, insert, delete         on public.event_group_members to authenticated;
+grant select, insert                 on public.event_messages      to authenticated;
+
+revoke all on all functions in schema ep_private from public;
+grant execute on all functions in schema ep_private to anon, authenticated;
+revoke execute on function public.event_messages_fill() from public, anon, authenticated;
