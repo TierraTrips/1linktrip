@@ -1869,7 +1869,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   sh.addEventListener('close', () => { B.card = null; if (DU && DU.key !== 'main') DU = null; buildForm(); });
   sh.addEventListener('click', (e) => { if (e.target === sh) sh.close(); });
   wireInputs(sh.querySelector('.sheet-in'));
-  DU = null; PH = null; wireDocs(sh.querySelector('.sheet-in')); wireDocs($('.b-form')); docAIKnown(); wirePhotos(sh.querySelector('.sheet-in')); wirePhotos($('.b-form'));
+  DU = null; PH = null; wireDocs(sh.querySelector('.sheet-in')); wireDocs($('.b-form')); wirePageDrop(); docAIKnown(); wirePhotos(sh.querySelector('.sheet-in')); wirePhotos($('.b-form'));
   if (typeof wirePubHost === 'function') wirePubHost();
   if (SB && (LS.get('signedIn') || B.hosted)) msgReady().then(ok => { if (ok && B && !$('[data-card="msgs"]')) buildForm(); }); // no network for signed-out drafts
   if (LS.get('signedIn') && SB) aiModes().then(m => { if (m.includes('translate') && B && !$('[data-card="langs"]')) buildForm(); });
@@ -4274,13 +4274,29 @@ function docBlockHTML(key) {
   else if (main && st && (st.phase === 'pick' || st.phase === 'busy')) inner = `<p class="doc-name"><b>${esc(st.file.name || 'Document')}</b> <small class="muted">${esc(fmtSize(st.file.size))}</small></p>
       <div class="field"><label for="doc-into">Put it in</label><select id="doc-into" data-doc-into>${docIntoOptions(c)}</select></div>
       <div class="btns"><button type="button" class="btn primary" data-doc-go="fill" data-doc-fillbtn ${DOC_AI ? '' : 'hidden'} ${st.phase === 'busy' ? 'disabled' : ''}>Fill from document</button><button type="button" class="btn" data-doc-go="attach" ${st.phase === 'busy' ? 'disabled' : ''}>Attach for guests</button><button type="button" class="btn ghost" data-doc-cancel>Cancel</button></div>`;
+  else if (!main && st && st.phase === 'pick') inner = `<p class="doc-name"><b>${esc(st.file.name || 'Document')}</b> <small class="muted">${esc(fmtSize(st.file.size))}</small></p>
+      <div class="btns"><button type="button" class="btn sm primary" data-doc-go="fill" data-doc-fillbtn ${DOC_AI ? '' : 'hidden'}>Fill from document</button><button type="button" class="btn sm" data-doc-go="attach">Attach for guests</button><button type="button" class="btn sm ghost" data-doc-cancel>Cancel</button></div>`;
   const msg = st && st.msg ? st.msg : '';
   const undo = st && st.phase === 'done' && st.undo ? ' <button type="button" class="btn sm" data-doc-undo>Undo</button>' : '';
   const pickers = main
-    ? (!st || st.phase === 'done' ? `<label class="btn file-pick doc-pick">✦ Upload a document<input type="file" accept="${DOC_ACCEPT}" data-doc-pick hidden></label>` : '')
-    : (!st || st.phase === 'done' || st.phase === 'busy' ? `<p class="doc-h">Upload a document</p><div class="doc-btns"><label class="btn sm file-pick${st && st.phase === 'busy' ? ' busy' : ''}" data-doc-fillbtn ${DOC_AI ? '' : 'hidden'}>Fill from document<input type="file" accept="${DOC_ACCEPT}" data-doc-fill hidden></label><label class="btn sm file-pick">Attach for guests<input type="file" accept="${DOC_ACCEPT}" data-doc-attach hidden></label></div>` : '');
+    ? (!st || st.phase === 'done' ? `<div class="doc-drop" data-doc-drop><label class="btn file-pick doc-pick">✦ Upload a document<input type="file" accept="${DOC_ACCEPT}" data-doc-pick hidden></label><span class="doc-or muted small">or drop a file here</span></div>` : '')
+    : (!st || st.phase === 'done' || st.phase === 'busy' ? `<p class="doc-h">Upload a document</p><div class="doc-drop" data-doc-drop><div class="doc-btns"><label class="btn sm file-pick${st && st.phase === 'busy' ? ' busy' : ''}" data-doc-fillbtn ${DOC_AI ? '' : 'hidden'}>Fill from document<input type="file" accept="${DOC_ACCEPT}" data-doc-fill hidden></label><label class="btn sm file-pick">Attach for guests<input type="file" accept="${DOC_ACCEPT}" data-doc-attach hidden></label></div><span class="doc-or muted small">or drop a file here</span></div>` : '');
   const list = files.length ? `<ul class="doc-files">${files.map(f => `<li><span class="doc-ic" aria-hidden="true">${f.type === 'pdf' ? 'PDF' : 'IMG'}</span><a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${esc(f.name)}</a><button type="button" class="link" data-doc-del="${f.id}" aria-label="Remove ${esc(f.name)}">Remove</button></li>`).join('')}</ul>` : '';
   return `<div class="doc-up${main ? ' doc-main-up' : ''}" data-doc-key="${esc(key)}">${pickers}${list}${inner}<p class="hint" data-doc-msg role="status" aria-live="polite">${esc(msg)}${undo}</p></div>`;
+}
+// a file dropped anywhere else on the builder goes to the main "Upload a document"
+function wirePageDrop() {
+  if (wirePageDrop.on) return; wirePageDrop.on = true;
+  const live = () => !!document.querySelector('[data-doc-key="main"]');
+  const other = (e) => e.target.closest && e.target.closest('[data-doc-drop],[data-ph-drop]');
+  document.addEventListener('dragover', (e) => { if (!dragFiles(e) || !live() || other(e)) { if (other(e)) document.body.classList.remove('doc-dragging'); return; } e.preventDefault(); document.body.classList.add('doc-dragging'); });
+  document.addEventListener('dragleave', (e) => { if (!e.relatedTarget || e.relatedTarget === document.documentElement) document.body.classList.remove('doc-dragging'); });
+  document.addEventListener('drop', (e) => {
+    document.body.classList.remove('doc-dragging'); if (!dragFiles(e) || !live() || other(e)) return; e.preventDefault();
+    const f = e.dataTransfer.files[0]; if (!f) return; const sh = $('#sheet');
+    const go = () => { docDropped('main', f); const el = document.querySelector('[data-doc-key="main"]'); if (el) el.scrollIntoView({ block: 'center' }); };
+    if (sh && sh.open) { sh.addEventListener('close', () => setTimeout(go, 0), { once: true }); sh.close(); } else go();
+  });
 }
 function docPaint(key) { const el = document.querySelector(`[data-doc-key="${CSS.escape(key)}"]`); if (el) el.outerHTML = docBlockHTML(key); }
 const docSignIn = (key) => { DU = { key, phase: 'signin' }; docPaint(key); };
@@ -4314,8 +4330,15 @@ async function docAttach(key, sec, file, { newCustom } = {}) {
     DU = { key, phase: key === 'main' ? 'pick' : 'done', file, msg: e.message || 'Upload failed.' }; docPaint(key);
   }
 }
+// a dropped file starts the same flow as picking one: the main block asks "Put it in", a section asks Fill or Attach
+function docDropped(key, file) { if (!file) return; DU = { key, phase: 'pick', file, into: key === 'main' ? 'auto' : key }; docPaint(key); }
+const dragFiles = (e) => !!(e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files'));
 function wireDocs(root) {
   if (!root || root._docs) return; root._docs = true;
+  const zone = (e) => e.target.closest && e.target.closest('[data-doc-drop]');
+  root.addEventListener('dragover', (e) => { const z = zone(e); if (!z || !dragFiles(e)) return; e.preventDefault(); z.classList.add('over'); });
+  root.addEventListener('dragleave', (e) => { const z = zone(e); if (z && !z.contains(e.relatedTarget)) z.classList.remove('over'); });
+  root.addEventListener('drop', (e) => { const z = zone(e); if (!z) return; e.preventDefault(); z.classList.remove('over'); document.body.classList.remove('doc-dragging'); const box = z.closest('[data-doc-key]'); if (box) docDropped(box.dataset.docKey, e.dataTransfer && e.dataTransfer.files[0]); });
   root.addEventListener('change', (e) => {
     const i = e.target; const box = i.closest && i.closest('[data-doc-key]'); if (!box) return; const key = box.dataset.docKey;
     if (i.matches('[data-doc-pick]') && i.files && i.files[0]) { DU = { key, phase: 'pick', file: i.files[0], into: 'auto' }; docPaint(key); return; }
