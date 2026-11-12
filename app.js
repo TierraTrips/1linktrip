@@ -728,6 +728,39 @@ function wirePacking(cfg, art) {
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
 }
 
+// ---------- shopping list (guest-side): things to buy at the destination, optional city (route stop) and note ----------
+// Stored per trip in localStorage like packing; signed-in guests' lists sync with the rest of My trip.
+const shopKey = (cfg) => 'shop:' + eventKey(cfg).slice(6);
+const shopLoad = (cfg) => LS.get(shopKey(cfg), []) || [];
+const shopSave = (cfg, xs) => { LS.set(shopKey(cfg), xs); if (typeof syncPush === 'function' && LS.get('signedIn')) syncPush(cfg); };
+function shopSecHTML(cfg) {
+  const ss = stopsOf(cfg);
+  return `<section class="ev-sec" id="sec-shop"><details class="pack-wrap"><summary><h2 class="sec-h">${t('Shopping list')}</h2><span class="pack-sum" data-slot="shop-sum"></span></summary><div data-slot="shop-list"></div>
+    <div class="shop-add"><input data-shop-text placeholder="${t('Add something to buy')}" aria-label="${t('Add something to buy')}" maxlength="80">${ss.length > 1 ? `<select data-shop-city aria-label="${t('City')}"><option value="">${t('Any city')}</option>${ss.map(x => `<option value="${esc(x.name)}">${esc(x.name)}</option>`).join('')}</select>` : ''}<input data-shop-note placeholder="${t('Note (optional)')}" aria-label="${t('Note (optional)')}" maxlength="120"><button type="button" class="btn" data-shop-add>${t('Add')}</button></div></details></section>`;
+}
+function shopListHTML(cfg) {
+  const xs = shopLoad(cfg); if (!xs.length) return `<p class="muted small">${t('Nothing on the list yet.')}</p>`;
+  const order = xs.filter(x => !x.done).concat(xs.filter(x => x.done)); // checked items sink to the bottom
+  return `<ul class="pack shop">${order.map(x => `<li class="${x.done ? 'done' : ''}"><label><input type="checkbox" data-shop="${esc(x.id)}" ${x.done ? 'checked' : ''}><span class="shop-t"><span>${esc(x.text)}</span>${x.city ? ` <em class="shop-city">${esc(x.city)}</em>` : ''}${x.note ? `<small>${esc(x.note)}</small>` : ''}</span></label><button type="button" class="pack-x" data-shop-del="${esc(x.id)}" aria-label="${t('Remove')} ${esc(x.text)}">×</button></li>`).join('')}</ul>`;
+}
+function wireShopping(cfg, art) {
+  const sec = art.querySelector('#sec-shop'); if (!sec) return;
+  const list = sec.querySelector('[data-slot="shop-list"]'), sum = sec.querySelector('[data-slot="shop-sum"]');
+  const render = () => { list.innerHTML = shopListHTML(cfg); const xs = shopLoad(cfg); const n = xs.filter(x => x.done).length;
+    sum.innerHTML = xs.length ? `${esc(t('{n} of {m} bought', { n, m: xs.length }))}<i><b style="width:${Math.round(100 * n / xs.length)}%"></b></i>` : ''; };
+  art._shop = render; render();
+  sec.addEventListener('change', (e) => { const id = e.target.dataset.shop; if (id == null) return; const xs = shopLoad(cfg); const x = xs.find(y => y.id === id); if (!x) return; x.done = e.target.checked; shopSave(cfg, xs); render(); });
+  const txt = sec.querySelector('[data-shop-text]'), note = sec.querySelector('[data-shop-note]'), city = sec.querySelector('[data-shop-city]');
+  const add = () => { const text = txt.value.trim(); if (!text) { txt.focus(); return; } const xs = shopLoad(cfg);
+    xs.push({ id: 'sh' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), text: text.slice(0, 80), city: city ? city.value : '', note: note.value.trim().slice(0, 120), done: false });
+    shopSave(cfg, xs); txt.value = ''; note.value = ''; render(); txt.focus(); };
+  sec.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-shop-del]'); if (b) { shopSave(cfg, shopLoad(cfg).filter(x => x.id !== b.dataset.shopDel)); render(); return; }
+    if (e.target.closest('[data-shop-add]')) add();
+  });
+  [txt, note].forEach(i => i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }));
+}
+
 // ---------- booking providers: every outbound booking link goes through bookingLink() ----------
 // mode: 'link' opens the provider's site; 'inapp' is reserved for a future in-app booking flow per provider.
 const PROVIDERS = {
@@ -1194,7 +1227,7 @@ let LANG = 'en';
 const I18N = window.EP_I18N || {};
 const t = (s, vars) => { let r = (I18N[LANG] && I18N[LANG][s]) || s; if (vars) r = r.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? ''); return r; };
 
-const TOOLS = [['weather', 'Weather'], ['travel', 'Travel'], ['stay', 'Stay'], ['nearby', 'Nearby'], ['tours', 'Things to do'], ['mytrip', 'My trip'], ['packing', 'Packing list']];
+const TOOLS = [['weather', 'Weather'], ['travel', 'Travel'], ['stay', 'Stay'], ['nearby', 'Nearby'], ['tours', 'Things to do'], ['mytrip', 'My trip'], ['packing', 'Packing list'], ['shopping', 'Shopping list']];
 const TYPE_DEFAULTS = {
   Trip: { theme: { accent: '#1E7FA8', font: 'serif', mode: 'light' }, off: [], order: ['route', 'schedule', 'about', 'details', 'weather', 'access', 'rsvp'] },
   Wedding: { theme: { accent: '#0B7A75', font: 'serif', mode: 'light' }, off: [] },
@@ -1207,7 +1240,7 @@ const TYPE_DEFAULTS = {
   'Sporting event': { theme: { accent: '#C2185B', font: 'condensed', mode: 'dark' }, off: ['stay', 'packing'] }
 };
 const typeDefaults = (type) => TYPE_DEFAULTS[type] || { theme: { accent: LAGOON, font: 'field', mode: 'light' }, off: [] };
-const defaultTools = (type) => Object.fromEntries(TOOLS.map(([k]) => [k, !typeDefaults(type).off.includes(k)]));
+const defaultTools = (type) => Object.fromEntries(TOOLS.map(([k]) => [k, k === 'shopping' ? type === 'Trip' : !typeDefaults(type).off.includes(k)])); // shopping list: trips only by default
 const TYPE_ICONS = {
   Wedding: '<circle cx="9" cy="14" r="5"/><circle cx="15" cy="14" r="5"/><path d="M10 5l2-2 2 2-2 2z"/>',
   Race: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
@@ -1328,7 +1361,7 @@ const TAB_ICONS = {
 };
 function tabsFor(cfg) {
   const v = cfg.venue, T = cfg.tools;
-  return TABS.filter(([k]) => k === 'event' || (k === 'travel' && v && (T.travel || T.stay)) || (k === 'nearby' && v && (T.nearby || T.tours)) || (k === 'mytrip' && cfg.start && (T.mytrip || T.packing)));
+  return TABS.filter(([k]) => k === 'event' || (k === 'travel' && v && (T.travel || T.stay)) || (k === 'nearby' && v && (T.nearby || T.tours)) || (k === 'mytrip' && cfg.start && (T.mytrip || T.packing || T.shopping)));
 }
 const sec = (id, title, body, cls = '') => body ? `<section class="ev-sec ${cls}" id="sec-${id}" data-sec="${id}"><h2 class="sec-h">${esc(title)}</h2><div class="sec-b">${body}</div></section>` : '';
 function notesHTML(cfg) {
@@ -1473,6 +1506,7 @@ function myTripTabHTML(cfg) {
   if (T.mytrip) out.push(sec('plan', t('Your itinerary'), planHTML(cfg)));
   if (T.mytrip && cfg.venue) out.push(sec('spots', t('Saved spots'), spotsHTML(cfg)));
   if (T.mytrip) out.push(sec('itinerary', t('Your bookings'), bookingsHTML(cfg)));
+  if (T.shopping) out.push(shopSecHTML(cfg));
   if (T.packing) out.push(`<section class="ev-sec" id="sec-packing"><details class="pack-wrap"><summary><h2 class="sec-h">${t('Packing list')}</h2><span class="pack-sum" data-slot="pack-sum"></span></summary><div data-slot="pack-list"></div><div class="pack-add"><input placeholder="${t('Add an item')}" aria-label="${t('Add an item')}" maxlength="80"><button type="button" class="btn" data-pack-add>${t('Add')}</button></div></details>${docsHTML(cfg, ['bring'])}</section>`);
   return out.join('');
 }
@@ -1557,7 +1591,7 @@ function wireEvent(cfg, art, seq, air, opts) {
   // one open menu at a time; tapping elsewhere closes it
   art.addEventListener('toggle', (e) => { if (e.target.matches('details.menu') && e.target.open) $$('details.menu[open]', art).forEach(d => { if (d !== e.target) d.open = false; }); }, true);
   if (!document._menuCloser) { document._menuCloser = true; document.addEventListener('click', (e) => { if (!e.target.closest('details.menu')) $$('details.menu[open]').forEach(d => { d.open = false; }); }); }
-  wireItin(cfg, art); wirePacking(cfg, art);
+  wireItin(cfg, art); wirePacking(cfg, art); wireShopping(cfg, art);
   if (!v) wirePlan(cfg, art, null);
   art.querySelector('[data-lang]')?.addEventListener('change', (e) => setGuestLang(e.target.value));
   if (!v) return;
@@ -3902,7 +3936,8 @@ async function syncUser() { if (!SB || !LS.get('signedIn') || syncOff()) return 
 const syncPush = debounce(async (cfg) => {
   const u = await syncUser(); if (!u) return; const c = await sb(); const key = syncKey(cfg);
   const rows = withIds(cfg).map(x => ({ id: x.id, page_key: key, kind: 'booking', item: x, updated_at: new Date().toISOString() }))
-    .concat(planLoad(cfg).map(x => ({ id: x.id, page_key: key, kind: 'place', item: x, updated_at: new Date().toISOString() })));
+    .concat(planLoad(cfg).map(x => ({ id: x.id, page_key: key, kind: 'place', item: x, updated_at: new Date().toISOString() })))
+    .concat(shopLoad(cfg).map(x => ({ id: x.id, page_key: key, kind: 'place', item: { ...x, shop: true }, updated_at: new Date().toISOString() })));
   if (rows.length) { const { error } = await c.from('trip_items').upsert(rows, { onConflict: 'owner,id' }); if (tableMissing(error)) { LS.set('syncOff', Date.now()); return; } }
   let q = c.from('trip_items').delete().eq('page_key', key); if (rows.length) q = q.not('id', 'in', `(${rows.map(r => '"' + r.id.replace(/"/g, '') + '"').join(',')})`);
   await q;
@@ -3912,9 +3947,9 @@ async function syncPull(cfg, art) {
   const { data, error } = await c.from('trip_items').select('id,page_key,kind,item,source').in('page_key', [key, 'inbox']);
   if (error) { if (tableMissing(error)) LS.set('syncOff', Date.now()); return; }
   const mine = (data || []).filter(r => r.page_key === key); const inbox = (data || []).filter(r => r.page_key === 'inbox');
-  const bk = withIds(cfg), pl = planLoad(cfg); const have = new Set(bk.map(x => x.id).concat(pl.map(x => x.id))); let added = 0;
-  mine.forEach(r => { if (have.has(r.id) || !r.item) return; if (r.kind === 'place') pl.push({ ...r.item, id: r.id }); else bk.push({ ...r.item, id: r.id }); added++; });
-  if (added) { LS.set(itinKey(cfg), bk); planSave(cfg, pl); art._planChanged && art._planChanged(); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); }
+  const bk = withIds(cfg), pl = planLoad(cfg), sh = shopLoad(cfg); const have = new Set(bk.map(x => x.id).concat(pl.map(x => x.id), sh.map(x => x.id))); let added = 0;
+  mine.forEach(r => { if (have.has(r.id) || !r.item) return; if (r.kind === 'place' && r.item.shop) { const { shop, ...x } = r.item; sh.push({ ...x, id: r.id }); } else if (r.kind === 'place') pl.push({ ...r.item, id: r.id }); else bk.push({ ...r.item, id: r.id }); added++; });
+  if (added) { LS.set(shopKey(cfg), sh); art._shop && art._shop(); LS.set(itinKey(cfg), bk); planSave(cfg, pl); art._planChanged && art._planChanged(); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); }
   if (added || !mine.length) syncPush(cfg); // first sync uploads what this device already had
   const slot = art.querySelector('#sec-plan .sec-b');
   if (inbox.length && slot) {
