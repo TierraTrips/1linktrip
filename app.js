@@ -880,7 +880,7 @@ function renderLanding() {
         <div><dt>Food</dt><dd>Restaurants and bars in the area.</dd></div>
         <div><dt>Things to do</dt><dd>Tours, sights and activities.</dd></div>
         <div><dt>Event details</dt><dd>RSVP, dress code, packet pickup and more.</dd></div>
-        <div><dt>Itinerary</dt><dd>Their bookings and your schedule in one place.</dd></div>
+        <div><dt>Full itinerary</dt><dd>Their bookings and your schedule in one place.</dd></div>
       </dl>
     </section>
   </main>`;
