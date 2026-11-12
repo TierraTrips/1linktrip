@@ -855,7 +855,7 @@ function renderLanding() {
   const draft = LS.get('draft');
   $('#app').innerHTML = `
   <main class="land home">
-    <header class="land-top"><a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>Eventpages</a><span class="land-nav">${LS.get('signedIn') ? '<a class="link" href="#mine">My pages</a>' : ''}<a class="btn primary top-cta" href="#setup" aria-hidden="true" tabindex="-1">Create a page</a></span></header>
+    <header class="land-top"><a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>Eventpages</a><span class="land-nav">${LS.get('signedIn') ? '<a class="link" href="#mine">My pages</a>' : ''}<button type="button" class="btn sm" id="share-app">Share</button><a class="btn primary top-cta" href="#setup" aria-hidden="true" tabindex="-1">Create a page</a></span></header>
     <section class="land-hero">
       <div class="land-copy">
         <h1><em>One link</em> for your guests’ whole trip.</h1>
@@ -889,6 +889,11 @@ function homeScroll() { const top = $('.land.home .land-top'); if (top) top.clas
 addEventListener('scroll', homeScroll, { passive: true });
 function wireHomeHeader() {
   if (homeIO) { homeIO.disconnect(); homeIO = null; }
+  $('#share-app')?.addEventListener('click', async () => { // share Eventpages itself (installed home-screen app has no browser share icon)
+    const url = siteBase();
+    if (navigator.share) { try { await navigator.share({ title: 'Eventpages', text: 'One link for your guests’ whole trip.', url }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+    copy(url);
+  });
   const top = $('.land.home .land-top'), cta = top && top.querySelector('.top-cta'), hero = $('#hero-cta'); if (!cta || !hero) return;
   const set = (show) => { top.classList.toggle('show-cta', show); cta.setAttribute('aria-hidden', show ? 'false' : 'true'); cta.tabIndex = show ? 0 : -1; };
   if (!('IntersectionObserver' in window)) { set(true); return; }

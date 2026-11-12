@@ -10,3 +10,4 @@
 .land.home .land-hero { grid-template-columns: 1fr; padding-bottom: 24px; }
 @media (min-width: 860px) { .land.home .land-hero { grid-template-columns: 1fr; padding: 48px 0 40px; } .land.home .land-copy { max-width: 760px; } }
 @media (prefers-reduced-motion: reduce) { .land.home .top-cta, .land.home .land-top.show-cta .top-cta { transition: none; } }
+.land.home .land-top { gap: 10px; } .land.home #share-app { flex: none; }
