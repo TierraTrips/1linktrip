@@ -1,4 +1,4 @@
-/* PlanEZR — static event microsite builder. No backend: events live in the URL hash. */
+/* 1LinkTrip — static event microsite builder. No backend: events live in the URL hash. */
 (() => {
 'use strict';
 
@@ -317,8 +317,8 @@ const TRAINLINE_CC = new Set(['gb', 'fr', 'de', 'it', 'es', 'nl', 'be', 'at', 'c
 const venueLine = (v) => v ? [v.name, v.address && !v.address.startsWith(v.name) ? v.address : (v.address && v.address !== v.name ? v.address : '')].filter(Boolean).join(', ') : '';
 const placeLabel = (v) => [v.city, v.cc === 'us' ? v.region : v.country].filter(Boolean).join(', ');
 
-// brand lockup: a dotted route ending at a pin, then the plain wordmark "PlanEZR"
-const BRAND = '<svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true" focusable="false"><path d="M8.5 31.5C15 32 13 21 20 21.5s8 2.8 9.6-.6" fill="none" stroke="#E35B47" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="0.1 5"/><circle cx="8.5" cy="31.5" r="3.6" fill="currentColor"/><path d="M30 5.5a7.2 7.2 0 0 1 7.2 7.2c0 5.3-7.2 11.8-7.2 11.8s-7.2-6.5-7.2-11.8A7.2 7.2 0 0 1 30 5.5z" fill="currentColor"/><circle cx="30" cy="12.7" r="2.7" fill="#EDF4F1"/></svg><span class="wm">PlanEZR</span>';
+// brand lockup: one tilted chain link (three solid sides, the fourth a dotted coral leg back to the start dot), then "1LinkTrip" with a coral 1
+const BRAND = '<svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true" focusable="false"><g transform="rotate(-45 20 20)"><path d="M13 27.2 H27 A7.2 7.2 0 0 0 27 12.8 H13" fill="none" stroke="#0F4A50" stroke-width="4.2" stroke-linecap="round"/><path d="M13 12.8 A7.2 7.2 0 0 0 13 27.2" fill="none" stroke="#E35B47" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="0.1 4.4"/><circle cx="13" cy="27.2" r="3.6" fill="#0F4A50"/></g></svg><span class="wm"><span class="one">1</span>LinkTrip</span>';
 // ---------- event model ----------
 const FONTS = {
   field: { label: 'Field', css: "'Newsreader', Georgia, serif", gf: null },
@@ -399,7 +399,7 @@ function icsText(cfg, url) {
   const now = icsStamp(new Date()); const uidBase = Math.abs([...cfg.title + cfg.start].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7));
   const ev = (uid, title, s, e, desc) => ['BEGIN:VEVENT', `UID:${uid}-${uidBase}@eventpages`, `DTSTAMP:${now}`, ...(typeof s === 'string' ? [`DTSTART;VALUE=DATE:${s.replace(/-/g, '')}`, `DTEND;VALUE=DATE:${e.replace(/-/g, '')}`] : [`DTSTART:${icsStamp(s)}`, `DTEND:${icsStamp(e)}`]), `SUMMARY:${escI(title)}`, `LOCATION:${escI(venueLine(cfg.venue))}`, `DESCRIPTION:${escI(desc)}`, `URL:${url}`, 'END:VEVENT'];
   const { s, e } = eventSpan(cfg);
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//PlanEZR//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', `X-WR-CALNAME:${escI(cfg.title)}`];
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//1LinkTrip//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', `X-WR-CALNAME:${escI(cfg.title)}`];
   lines.push(...ev('main', cfg.title, s, e, [cfg.tagline, url].filter(Boolean).join('\n\n')));
   cfg.schedule.filter(x => x.date && x.time && x.title).forEach((x, i) => {
     const st = wallToUTC(`${x.date}T${x.time}`, cfg.tz);
@@ -588,7 +588,7 @@ function itinICS(cfg) {
   const items = itinLoad(cfg).filter(x => x.start); const now = icsStamp(new Date());
   const esc2 = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
   const loc = (s) => s.replace(/[-:]/g, '') + (s.length === 16 ? '00' : '');
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//PlanEZR//Itinerary//EN', 'CALSCALE:GREGORIAN', `X-WR-CALNAME:${esc2('My trip · ' + cfg.title)}`];
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//1LinkTrip//Itinerary//EN', 'CALSCALE:GREGORIAN', `X-WR-CALNAME:${esc2('My trip · ' + cfg.title)}`];
   items.forEach((x, i) => {
     const allDay = x.start.length === 10; const fLinks = x.kind === 'flight' ? flightLinks(x.flight) : {};
     let end = x.end || (allDay ? addDays(x.start, 1) : null);
@@ -855,7 +855,7 @@ async function copy(text) {
 // ---------- landing ----------
 function renderLanding() {
   LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
-  document.title = 'PlanEZR — one link for your guests’ whole trip';
+  document.title = '1LinkTrip — one link for your guests’ whole trip';
   const draft = LS.get('draft');
   $('#app').innerHTML = `
   <main class="land home">
@@ -893,9 +893,9 @@ function homeScroll() { const top = $('.land.home .land-top'); if (top) top.clas
 addEventListener('scroll', homeScroll, { passive: true });
 function wireHomeHeader() {
   if (homeIO) { homeIO.disconnect(); homeIO = null; }
-  $('#share-app')?.addEventListener('click', async () => { // share PlanEZR itself (installed home-screen app has no browser share icon)
+  $('#share-app')?.addEventListener('click', async () => { // share 1LinkTrip itself (installed home-screen app has no browser share icon)
     const url = siteBase();
-    if (navigator.share) { try { await navigator.share({ title: 'PlanEZR', text: 'One link for your guests’ whole trip.', url }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+    if (navigator.share) { try { await navigator.share({ title: '1LinkTrip', text: 'One link for your guests’ whole trip.', url }); return; } catch (e) { if (e.name === 'AbortError') return; } }
     copy(url);
   });
   const top = $('.land.home .land-top'), cta = top && top.querySelector('.top-cta'), hero = $('#hero-cta'); if (!cta || !hero) return;
@@ -919,7 +919,7 @@ async function pinPlace(k, btn) {
 }
 // ---------- router ----------
 function renderBroken() {
-  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a></header><section class="broken"><h1>This link is incomplete.</h1><p class="lede">The event is stored inside the link, and part of it is missing. Ask whoever sent it to copy the whole link again.</p><a class="btn primary" href="#">Go to PlanEZR</a></section></main>`;
+  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a></header><section class="broken"><h1>This link is incomplete.</h1><p class="lede">The event is stored inside the link, and part of it is missing. Ask whoever sent it to copy the whole link again.</p><a class="btn primary" href="#">Go to 1LinkTrip</a></section></main>`;
 }
 
 // ================= v2: defaults, guest tabs, editor gallery, setup flow =================
@@ -1379,7 +1379,7 @@ function wireItin(cfg, art) {
 
 function renderViewer(cfg, { exampleId, tab } = {}) {
   LANG = guestLangPick(cfg); document.documentElement.lang = LANG; document.documentElement.dir = RTL.has(LANG) ? 'rtl' : 'ltr';
-  document.title = (cfg.title || 'Event') + ' · PlanEZR';
+  document.title = (cfg.title || 'Event') + ' · 1LinkTrip';
   const packed = location.hash.split('&t=')[0].slice(3);
   const editHref = exampleId ? `#edit-ex=${exampleId}` : `#edit=${packed}`;
   $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#">${BRAND}</a>${exampleId ? `<span class="vbar-note">${t('Example page')}</span>` : ''}<a class="btn sm" href="${editHref}">${exampleId ? t('Customize this') : t('Edit a copy')}</a></div><div id="ev-root"></div></div>`;
@@ -1394,7 +1394,7 @@ function renderViewer(cfg, { exampleId, tab } = {}) {
 let B = null; // builder state
 function renderBuilder(cfg, source, hosted, pid) {
   LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
-  document.title = 'Edit your page · PlanEZR';
+  document.title = 'Edit your page · 1LinkTrip';
   B = { cfg: normalize(cfg), venueResults: [], tab: 'edit', card: null, hosted: hosted && hosted.id ? hosted : null };
   LS.set('draftHosted', B.hosted); B.pid = pid || newPid(); LS.set('draftId', B.pid); LS.set('draft', B.cfg); pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted });
   $('#app').innerHTML = `
@@ -1615,7 +1615,7 @@ async function pickVenue(r) {
 let SU = null;
 function renderSetup() {
   LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
-  document.title = 'Create a page · PlanEZR';
+  document.title = 'Create a page · 1LinkTrip';
   SU = { step: 0, cfg: blankEvent('Party'), results: [], q: '', msg: '' }; LS.del('draftHosted'); LS.set('draftId', newPid());
   B = { cfg: SU.cfg, venueResults: [] };
   $('#app').innerHTML = `<div class="setup"><div class="su-main"></div><div class="su-preview"><div class="su-tag">Preview</div><div class="b-frame" id="su-frame"></div></div></div>`;
@@ -1970,7 +1970,7 @@ async function renderHosted(slug, tab) {
   if (!row) return hostedProblem(t('This page isn’t available. It may have been removed or hidden by its organizer.'));
   const osm = row.config && row.config.osm; const cfg = normalize(row.config); const hosted = { id: row.id, slug: row.slug, url: shortURL(row.slug) };
   if (osm && cfg.venue && Array.isArray(osm.food)) memo.set(osmKey(cfg.venue.lat, cfg.venue.lon), Promise.resolve(osm));
-  document.title = (cfg.title || 'Event') + ' · PlanEZR';
+  document.title = (cfg.title || 'Event') + ' · 1LinkTrip';
   LANG = guestLangPick(cfg); document.documentElement.lang = LANG; document.documentElement.dir = RTL.has(LANG) ? 'rtl' : 'ltr';
   $('.vbar').insertAdjacentHTML('beforeend', `${langSelectHTML(cfg)}<a class="btn sm" href="#edit=${packEvent(cfg)}">${t('Edit a copy')}</a>`);
   renderEvent(translatedView(cfg, LANG), $('#ev-root'), { tab, hosted, shareUrl: hosted.url, src: cfg });
@@ -1979,7 +1979,7 @@ async function renderHosted(slug, tab) {
   window.scrollTo(0, 0);
 }
 function hostedProblem(msg, retry) {
-  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a></header><section class="broken"><h1>${esc(msg)}</h1>${retry ? `<button class="btn primary" onclick="location.reload()">${t('Try again')}</button>` : `<a class="btn primary" href="${esc(siteBase())}">${t('Go to PlanEZR')}</a>`}</section></main>`;
+  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a></header><section class="broken"><h1>${esc(msg)}</h1>${retry ? `<button class="btn primary" onclick="location.reload()">${t('Try again')}</button>` : `<a class="btn primary" href="${esc(siteBase())}">${t('Go to 1LinkTrip')}</a>`}</section></main>`;
   $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
 }
 function rsvpFormHTML(cfg, hosted) {
@@ -2138,7 +2138,7 @@ function renderHostNote() {
 
 // ---------- organizer: My pages, replies, updates ----------
 async function renderMine(id, notice) {
-  LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr'; document.title = 'My pages · PlanEZR';
+  LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr'; document.title = 'My pages · 1LinkTrip';
   const shell = (inner) => { $('#app').innerHTML = `<main class="mine"><header class="land-top"><a class="brand" href="#">${BRAND}</a><nav class="mine-nav"><a href="#mine">My pages</a><a class="btn sm primary" href="#setup">New page</a></nav></header><div class="mine-in">${notice ? `<p class="b-note">${esc(notice)}</p>` : ''}${inner}</div></main>`; };
   if (!SB) return shell('<h1>Hosting isn’t set up</h1>');
   shell('<p class="muted">Loading…</p>');
@@ -2607,7 +2607,7 @@ function myPagesHTML() {
     <div data-slot="acct-pages"></div></section>`;
 }
 function renderExamples() {
-  document.title = 'Example pages · PlanEZR'; scrollTo(0, 0);
+  document.title = 'Example pages · 1LinkTrip'; scrollTo(0, 0);
   $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a><span class="land-nav"><a class="btn primary" href="#setup">Create a page</a></span></header>${samplesHTML()}</main>`;
 }
 function samplesHTML() {
@@ -2950,7 +2950,7 @@ function placeAutocomplete(input, opts) {
   ul.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; e.stopPropagation(); if (b.dataset.acPick) pick(b.dataset.acPick); else if ('acText' in b.dataset) { close(); seq++; opts.onText && opts.onText(input.value.trim()); } });
   return true;
 }
-// a Google place as an PlanEZR venue
+// a Google place as a 1LinkTrip venue
 function gpVenue(id, session) {
   return gFetch(`https://places.googleapis.com/v1/places/${enc(id)}${session ? '?sessionToken=' + enc(session) : ''}`, null, 'id,displayName,formattedAddress,location,addressComponents,types').then(gpToVenue);
 }
@@ -3016,7 +3016,7 @@ async function aiImport(body) {
 const isoDay = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '') ? s : '';
 const isoTime = (s) => /^\d{2}:\d{2}$/.test(s || '') ? s : '';
 const httpsUrl = (u) => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ''; } catch { return ''; } };
-// the function's event JSON → an PlanEZR config (venue resolved separately)
+// the function's event JSON → a 1LinkTrip config (venue resolved separately)
 function aiEventToCfg(d) {
   const type = TYPES.includes(d.type) ? d.type : 'Party'; const c = blankEvent(type);
   c.title = cleanText(d.title, 80); c.tagline = cleanText(d.tagline, 140); c.host = cleanText(d.host, 120);

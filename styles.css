@@ -1,4 +1,4 @@
-/* PlanEZR · "Field Map", Lagoon palette: Lagoon #0F4A50 · Seafoam #8FBDB6 · Route #E35B47 · Contour #C5DDD8 · Paper #EDF4F1.
+/* 1LinkTrip · "Field Map", Lagoon palette: Lagoon #0F4A50 · Seafoam #8FBDB6 · Route #E35B47 · Contour #C5DDD8 · Paper #EDF4F1.
    Old var names kept: --fog = page paper, --ink = lagoon text, --gate = the primary action color (lagoon),
    --forest = the brand color (now lagoon; the name predates the palette switch).
    Route coral is for marks and large type only; small coral text uses --route-ink (AA on paper). */
@@ -31,12 +31,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .toast, #toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); background: var(--ink); color: #fff; padding: .7em 1.2em; border-radius: 999px; font-weight: 600; opacity: 0; pointer-events: none; transition: .2s; z-index: 9999; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-/* brand lockup: route-to-pin mark + the wordmark "PlanEZR", set plain in Newsreader on one baseline */
-.brand { display: inline-flex; align-items: center; gap: .4em; font: 600 1.3rem/1 var(--brand); text-decoration: none; letter-spacing: -.01em; color: var(--ink); }
-.brand.sm { font-size: 1.12rem; }
-.brand-mark { width: 30px; height: 30px; flex: none; color: var(--forest); }
-.brand.sm .brand-mark { width: 26px; height: 26px; }
+/* brand lockup: the chain-link mark + the wordmark "1LinkTrip" in heavy Public Sans with a coral 1 (brand/1linktrip, direction B).
+   The 1 is Route coral only where the wordmark is >= 18.67px bold (WCAG AA large text, 3.2:1 on paper); smaller lockups use --route-ink. */
+.brand { display: inline-flex; align-items: center; gap: .31em; font: 760 1.17rem/1 var(--sans); text-decoration: none; letter-spacing: -.035em; color: var(--ink); }
+.brand.sm { font-size: 1.05rem; }
+.brand-mark { width: 25px; height: 25px; flex: none; color: var(--forest); }
+.brand.sm .brand-mark { width: 22px; height: 22px; }
 .brand .wm { white-space: nowrap; }
+.brand .wm .one { color: var(--route); margin-right: .035em; }
+.brand.sm .wm .one { color: var(--route-ink); }
 
 /* ================= landing ================= */
 .land { max-width: 1160px; margin: 0 auto; padding: 0 20px 40px; }

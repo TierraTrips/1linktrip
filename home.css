@@ -48,4 +48,4 @@
    wordmark steps aside for it once it shows, leaving the route mark */
 .land.home .land-top:not(.show-cta) .top-cta { position: absolute; right: 20px; }
 @media (max-width: 379px) { .land.home .land-top.show-cta .brand .wm { display: none; } }
-@media (min-width: 860px) { .land-top .brand { font-size: 1.5rem; } .land-top .brand .brand-mark { width: 34px; height: 34px; } }
+@media (min-width: 860px) { .land-top .brand { font-size: 1.35rem; } .land-top .brand .brand-mark { width: 29px; height: 29px; } }

@@ -1,6 +1,6 @@
 {
-  "name": "PlanEZR",
-  "short_name": "PlanEZR",
+  "name": "1LinkTrip",
+  "short_name": "1LinkTrip",
   "description": "One link for your guests’ whole trip.",
   "start_url": "./",
   "scope": "./",
