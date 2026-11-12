@@ -322,11 +322,11 @@ const placeLabel = (v) => [v.city, v.cc === 'us' ? v.region : v.country].filter(
 const BRAND = '<svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true" focusable="false"><g transform="rotate(-45 20 20)"><path d="M13 27.2 H27 A7.2 7.2 0 0 0 27 12.8 H13" fill="none" stroke="#0F4A50" stroke-width="4.2" stroke-linecap="round"/><path d="M13 12.8 A7.2 7.2 0 0 0 13 27.2" fill="none" stroke="#E35B47" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="0.1 4.4"/><circle cx="13" cy="27.2" r="3.6" fill="#0F4A50"/></g></svg><span class="wm"><span class="one">1</span>LinkTrip</span>';
 // ---------- event model ----------
 const FONTS = {
-  field: { label: 'Field', css: "'Newsreader', Georgia, serif", gf: null },
-  grotesk: { label: 'Grotesk', css: "'Bricolage Grotesque', system-ui, sans-serif", gf: 'Bricolage+Grotesque:opsz,wght@12..96,400..800' },
-  serif: { label: 'Editorial serif', css: "'Fraunces', Georgia, serif", gf: 'Fraunces:opsz,wght@9..144,400..800' },
-  classic: { label: 'Classic', css: "'Cormorant Garamond', Georgia, serif", gf: 'Cormorant+Garamond:wght@500;600;700' },
-  condensed: { label: 'Poster', css: "'Big Shoulders Display', 'Arial Narrow', sans-serif", gf: 'Big+Shoulders+Display:wght@600..900' },
+  field: { label: 'Classic', css: "'Newsreader', Georgia, serif", gf: null },
+  grotesk: { label: 'Modern', css: "'Bricolage Grotesque', system-ui, sans-serif", gf: 'Bricolage+Grotesque:opsz,wght@12..96,400..800' },
+  serif: { label: 'Elegant', css: "'Fraunces', Georgia, serif", gf: 'Fraunces:opsz,wght@9..144,400..800' },
+  classic: { label: 'Formal', css: "'Cormorant Garamond', Georgia, serif", gf: 'Cormorant+Garamond:wght@500;600;700' },
+  condensed: { label: 'Bold', css: "'Big Shoulders Display', 'Arial Narrow', sans-serif", gf: 'Big+Shoulders+Display:wght@600..900' },
   wide: { label: 'Wide', css: "'Unbounded', system-ui, sans-serif", gf: 'Unbounded:wght@400..800' }
 };
 const TYPES = ['Wedding', 'Conference', 'Concert', 'Performance', 'Race', 'Hyrox', 'Sporting event', 'Festival', 'Bachelor party', 'Bachelorette party', 'Birthday', 'Reunion', 'Retreat', 'Meetup', 'Party', 'Other', 'Trip'];
@@ -1848,7 +1848,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   sh.addEventListener('close', () => { B.card = null; if (DU && DU.key !== 'main') DU = null; buildForm(); });
   sh.addEventListener('click', (e) => { if (e.target === sh) sh.close(); });
   wireInputs(sh.querySelector('.sheet-in'));
-  DU = null; wireDocs(sh.querySelector('.sheet-in')); wireDocs($('.b-form')); docAIKnown();
+  DU = null; PH = null; wireDocs(sh.querySelector('.sheet-in')); wireDocs($('.b-form')); docAIKnown(); wirePhotos(sh.querySelector('.sheet-in')); wirePhotos($('.b-form'));
   if (typeof wirePubHost === 'function') wirePubHost();
   if (SB && (LS.get('signedIn') || B.hosted)) msgReady().then(ok => { if (ok && B && !$('[data-card="msgs"]')) buildForm(); }); // no network for signed-out drafts
   if (LS.get('signedIn') && SB) aiModes().then(m => { if (m.includes('translate') && B && !$('[data-card="langs"]')) buildForm(); });
@@ -1961,13 +1961,13 @@ function renderSheet() {
   else if (id === 'custom') body = `${c.custom.map((x, i) => `<div class="rowed cs-row"><input data-cs="${i}" data-k="title" value="${esc(x.title)}" placeholder="Title" aria-label="Title" maxlength="80" required>
     <textarea data-cs="${i}" data-k="text" rows="4" placeholder="Text" aria-label="Text" maxlength="3000">${esc(x.text)}</textarea>
     <div class="two"><input data-cs="${i}" data-k="label" value="${esc(x.label)}" placeholder="Link name" aria-label="Link name" maxlength="80"><input data-cs="${i}" data-k="url" type="url" value="${esc(x.url)}" placeholder="Link, https://…" aria-label="Link"></div>
-    <div class="cover-row">${httpsUrl(x.img) ? `<img src="${esc(x.img)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<input data-cs="${i}" data-k="img" type="url" value="${esc(x.img)}" placeholder="Photo link, https://…" aria-label="Photo link"></div>
+    ${SB ? photoCtlHTML('cs:' + i, x.img, `<input data-cs="${i}" data-k="img" type="url" value="${esc(x.img)}" placeholder="or a photo link, https://…" aria-label="Photo link">`) : `<div class="cover-row">${httpsUrl(x.img) ? `<img src="${esc(x.img)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<input data-cs="${i}" data-k="img" type="url" value="${esc(x.img)}" placeholder="Photo link, https://…" aria-label="Photo link"></div>`}
     ${docBlockHTML(customSid(x))}
     <button type="button" class="ic del" data-cdel="${i}" aria-label="Delete ${esc(x.title || 'section')}">Delete</button></div>`).join('')}
     <button type="button" class="btn sm" data-b="add-custom">+ Add section</button>`;
   else if (id === 'langs') body = langsCardHTML(c);
   else if (id === 'about') body = `${aboutSiteHTML(c)}${fieldWrap('Hosted by', `<input id="f-host" data-f="host" value="${esc(c.host)}">`, 'f-host')}${fieldWrap('About', `<textarea id="f-desc" data-f="description" rows="6">${esc(c.description)}</textarea>`, 'f-desc')}`;
-  else if (id === 'look') body = `${fieldWrap('Cover photo link', `<input id="f-cover" data-f="cover" type="url" value="${esc(c.cover)}" placeholder="https://…/photo.jpg">`, 'f-cover')}
+  else if (id === 'look') body = `${coverFieldHTML(c)}
     <div class="field"><label>Color</label><div class="swatches">${SWATCHES.map(s => `<button type="button" class="sw ${s.toLowerCase() === c.theme.accent.toLowerCase() ? 'on' : ''}" style="background:${s}" data-sw="${s}" aria-label="Color ${s}"></button>`).join('')}<input type="color" data-t="accent" value="${esc(c.theme.accent)}" aria-label="Custom color"></div></div>
     <div class="field"><label>Title font</label><div class="fonts">${Object.entries(FONTS).map(([k, x]) => `<button type="button" class="fontb ${k === c.theme.font ? 'on' : ''}" data-font="${k}" style="font-family:${esc(x.css)}">${x.label}</button>`).join('')}</div></div>
     <div class="field"><label>Background</label><div class="seg2"><button type="button" data-theme-mode="light" class="${c.theme.mode !== 'dark' ? 'on' : ''}">Light</button><button type="button" data-theme-mode="dark" class="${c.theme.mode === 'dark' ? 'on' : ''}">Dark</button></div></div>`;
@@ -4019,11 +4019,11 @@ const bringInPacking = (cfg) => !!(cfg.start && cfg.tools.packing);
 const detailDocSecs = (cfg) => ['notes', ...(TYPE_CARDS[cfg.type] || []).map(x => x[0]).filter(x => x !== 'route'), ...(bringInPacking(cfg) ? [] : ['bring'])];
 
 // uploads: PDFs up to 10 MB as they are; photos re-encoded to a ~300 KB JPEG on the phone first
-async function shrinkPhoto(f, max = 300e3) {
+async function shrinkPhoto(f, max = 300e3, maxSide = 1600) {
   const url = URL.createObjectURL(f);
   try {
     const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Use a PDF or a photo.')); i.src = url; });
-    let side = Math.min(1600, Math.max(img.naturalWidth, img.naturalHeight)), q = 0.82, blob = null;
+    let side = Math.min(maxSide, Math.max(img.naturalWidth, img.naturalHeight)), q = 0.82, blob = null;
     for (let n = 0; n < 8; n++) {
       const k = side / Math.max(img.naturalWidth, img.naturalHeight); const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
       const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
@@ -4039,9 +4039,9 @@ async function docPrepare(f) {
   if (!/^image\//.test(f.type)) throw new Error('Use a PDF or a photo.');
   return { blob: await shrinkPhoto(f), type: 'image/jpeg', name: (f.name || 'Photo').replace(/\.\w+$/, '') + '.jpg', kind: 'image' };
 }
-async function docUpload(f) {
+async function docUpload(f, prepared) {
   const user = await myGuestUser(); if (!user) { const e = new Error('signin'); e.signin = true; throw e; }
-  const p = await docPrepare(f); const id = Math.random().toString(36).slice(2, 8);
+  const p = prepared || await docPrepare(f); const id = Math.random().toString(36).slice(2, 8);
   const safe = p.name.normalize('NFKD').replace(/[^\w.-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(-80) || 'document';
   const path = `${user.id}/${Date.now().toString(36)}-${id}-${safe}`;
   const c = await sb(); const { error } = await c.storage.from(DOC_BUCKET).upload(path, p.blob, { contentType: p.type, cacheControl: '31536000', upsert: false });
@@ -4056,6 +4056,45 @@ async function docRemoteDelete(f) { // best effort: only files under this user's
 }
 const fileEntry = (f, sec) => ({ id: f.id, sec, name: f.name, url: f.url, type: f.type, size: f.size }); // same key order as normFiles
 const fmtSize = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+
+// ---- photos: cover (Design) and a custom section's photo — Upload / drop / link ----
+const PH_LIMIT = { cover: [500e3, 1600], cs: [300e3, 1600] };
+let PH = null; // { key, phase: 'busy'|'signin', msg }
+function photoCtlHTML(key, url, linkInput) {
+  const st = PH && PH.key === key ? PH : null;
+  return `<div class="ph-up" data-ph-key="${esc(key)}">${httpsUrl(url) ? `<img class="ph-img" src="${esc(url)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
+    <div class="ph-drop" data-ph-drop><label class="btn sm file-pick${st && st.phase === 'busy' ? ' busy' : ''}">${httpsUrl(url) ? 'Replace photo' : 'Upload photo'}<input type="file" accept="image/*" data-ph-file hidden></label><span class="ph-or muted small">or drop a photo here</span>${httpsUrl(url) ? '<button type="button" class="link" data-ph-clear>Remove photo</button>' : ''}</div>
+    ${linkInput}
+    <p class="hint" data-ph-msg role="status" aria-live="polite">${esc(st && st.msg || '')}</p>${st && st.phase === 'signin' ? `<div class="bk-signin"><p><b>Sign in to upload photos.</b></p>${signInFormHTML('')}</div>` : ''}</div>`;
+}
+function phSet(key, url) { const c = B.cfg; if (key === 'cover') c.cover = url; else { const x = c.custom[+key.slice(3)]; if (x) x.img = url; } }
+function phPaint(key) { const el = document.querySelector(`[data-ph-key="${CSS.escape(key)}"]`); if (!el) return; if (B.card) renderSheet(); else buildForm(); }
+async function phUpload(key, file) {
+  if (!file) return;
+  if (!/^image\//.test(file.type)) { PH = { key, msg: 'Use a photo (JPG, PNG, HEIC).' }; return phPaint(key); }
+  if (!LS.get('signedIn')) { PH = { key, phase: 'signin' }; return phPaint(key); }
+  PH = { key, phase: 'busy', msg: 'Uploading…' }; phPaint(key);
+  try {
+    const [max, side] = PH_LIMIT[key === 'cover' ? 'cover' : 'cs'];
+    const blob = await shrinkPhoto(file, max, side);
+    const f = await docUpload(file, { blob, type: 'image/jpeg', name: (file.name || 'photo').replace(/\.\w+$/, '') + '.jpg', kind: 'image' });
+    phSet(key, f.url); PH = null; changed(true);
+  } catch (e) { PH = e.signin ? { key, phase: 'signin' } : { key, msg: e.message || 'Upload failed.' }; phPaint(key); }
+}
+function wirePhotos(root) {
+  if (!root || root._ph) return; root._ph = true;
+  root.addEventListener('change', (e) => { const i = e.target; if (!i.matches || !i.matches('[data-ph-file]')) return; const box = i.closest('[data-ph-key]'); const f = i.files && i.files[0]; i.value = ''; if (box && f) phUpload(box.dataset.phKey, f); });
+  root.addEventListener('click', (e) => {
+    const box = e.target.closest('[data-ph-key]'); if (!box) return; const key = box.dataset.phKey;
+    const sio = e.target.closest('[data-si-oauth]'); if (sio) { oauthSignIn(sio.dataset.siOauth); LS.set('afterSignIn', '#page=' + B.pid); return; }
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.si === 'send') { signInSubmit(box, () => LS.set('afterSignIn', '#page=' + B.pid)); return; }
+    if ('phClear' in b.dataset) { phSet(key, ''); PH = null; changed(true); }
+  });
+  root.addEventListener('dragover', (e) => { const z = e.target.closest && e.target.closest('[data-ph-drop]'); if (!z) return; e.preventDefault(); z.classList.add('over'); });
+  root.addEventListener('dragleave', (e) => { const z = e.target.closest && e.target.closest('[data-ph-drop]'); if (z) z.classList.remove('over'); });
+  root.addEventListener('drop', (e) => { const z = e.target.closest && e.target.closest('[data-ph-drop]'); if (!z) return; e.preventDefault(); z.classList.remove('over'); const f = [...(e.dataTransfer && e.dataTransfer.files || [])].find(x => /^image\//.test(x.type)) || (e.dataTransfer && e.dataTransfer.files[0]); const box = z.closest('[data-ph-key]'); if (box && f) phUpload(box.dataset.phKey, f); });
+}
 
 // ---- reading a document into reviewable items ----
 // item = { sec, key, title, text, date, time, end, url, kind, raw, target }; sec decides where it goes and can be changed in the review
@@ -4442,16 +4481,29 @@ function sectionOrder(cfg) {
 const sectionShown = (cfg, id) => id === 'weather' ? !!cfg.tools.weather : !cfg.off[id];
 function setSectionShown(cfg, id, on) { if (id === 'weather') cfg.tools.weather = on; else cfg.off[id] = !on; }
 const sameTheme = (a, b) => a.accent.toLowerCase() === b.accent.toLowerCase() && a.font === b.font && (a.mode || 'light') === (b.mode || 'light');
+// Design: one dropdown per setting, each with a small preview; display names only (stored values unchanged)
+const PRESET_LABEL = { Classic: 'Classic', Garden: 'Natural', Romance: 'Romantic', Sunset: 'Bright', Gold: 'Elegant', Night: 'Night', Stadium: 'Bold', Trail: 'Outdoors' };
+const COLOR_NAME = { '#0f4a50': 'Dark teal', '#0b7a75': 'Teal', '#ff6b35': 'Orange', '#c2185b': 'Rose', '#6d28d9': 'Purple', '#b8860b': 'Gold', '#1f2937': 'Charcoal', '#2e7d32': 'Green' };
+const colorName = (hex) => COLOR_NAME[String(hex || '').toLowerCase()] || 'Custom';
+function coverFieldHTML(c) {
+  const link = `<input id="f-cover" data-f="cover" type="url" value="${esc(c.cover)}" placeholder="${SB ? 'or a photo link, https://…' : 'Photo link, https://…'}" aria-label="Cover photo link">`;
+  return `<div class="field"><label for="f-cover">Cover photo</label>${SB ? photoCtlHTML('cover', c.cover, link) : `<div class="cover-row">${c.cover ? `<img src="${esc(c.cover)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${link}</div>${c.cover ? '<button type="button" class="link" data-b="cover-clear">Remove photo</button>' : ''}`}</div>`;
+}
 function designHTML(c) {
   const th = c.theme; const order = sectionOrder(c);
   const lab = Object.fromEntries(EVENT_SECTIONS);
   lab.schedule = schedTitle(c); (c.custom || []).forEach(x => { lab[customSid(x)] = x.title; });
-  return `<div class="field"><label>Style</label><div class="presets">${THEME_PRESETS.map(([n, p]) => `<button type="button" class="preset ${sameTheme(th, p) ? 'on' : ''} ${p.mode === 'dark' ? 'dark' : ''}" data-preset="${esc(n)}" style="--pa:${p.accent};font-family:${esc(FONTS[p.font].css)}"><i aria-hidden="true"></i><span>${esc(n)}</span></button>`).join('')}</div></div>
-    <div class="field"><label for="f-accent-hex">Color</label><div class="swatches">${SWATCHES.map(s => `<button type="button" class="sw ${s.toLowerCase() === th.accent.toLowerCase() ? 'on' : ''}" style="background:${s}" data-sw="${s}" aria-label="Color ${s}"></button>`).join('')}<label class="custom-c"><input type="color" data-t="accent" value="${esc(th.accent)}" aria-label="Pick any color"><span>Custom</span></label><input id="f-accent-hex" class="hex" data-hex value="${esc(th.accent)}" maxlength="7" spellcheck="false" aria-label="Color code"></div></div>
-    <div class="field"><label for="f-cover">Cover photo</label><div class="cover-row">${c.cover ? `<img src="${esc(c.cover)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<input id="f-cover" data-f="cover" type="url" value="${esc(c.cover)}" placeholder="Photo link, https://…"></div>${c.cover ? '<button type="button" class="link" data-b="cover-clear">Remove photo</button>' : ''}</div>
-    <details class="tr-review" data-acc="design-more" ${B && B.moreOpen ? 'open' : ''}><summary><b>More options</b> <small class="muted">Font, background, sections</small></summary><div class="acc-b" style="padding:12px 0 0">
-    <div class="field"><label>Title font</label><div class="fonts">${Object.entries(FONTS).map(([k, x]) => `<button type="button" class="fontb ${k === th.font ? 'on' : ''}" data-font="${k}" style="font-family:${esc(x.css)}">${x.label}</button>`).join('')}</div></div>
-    <div class="field"><label>Background</label><div class="seg2"><button type="button" data-theme-mode="light" class="${th.mode !== 'dark' ? 'on' : ''}">Light</button><button type="button" data-theme-mode="dark" class="${th.mode === 'dark' ? 'on' : ''}">Dark</button></div></div>
+  const pre = THEME_PRESETS.find(([, p]) => sameTheme(th, p)); const known = !!COLOR_NAME[th.accent.toLowerCase()]; const custom = !known || (B && B.customColor);
+  const sel = (id, key, prev, opts) => `<div class="dsel">${prev}<select id="${id}" data-d="${key}">${opts}</select></div>`;
+  return `<div class="dgrid">
+    <div class="field"><label for="d-style">Style</label>${sel('d-style', 'preset', `<span class="dprev${th.mode === 'dark' ? ' dark' : ''}" style="--pa:${esc(th.accent)};--pc:#fff;font-family:${esc(FONTS[th.font].css)}" aria-hidden="true">Aa</span>`, `${pre ? '' : '<option value="" selected>Custom</option>'}${THEME_PRESETS.map(([n]) => `<option value="${esc(n)}" ${pre && pre[0] === n ? 'selected' : ''}>${esc(PRESET_LABEL[n] || n)}</option>`).join('')}`)}</div>
+    <div class="field"><label for="d-color">Color</label>${sel('d-color', 'color', `<span class="ddot" style="background:${esc(th.accent)}" aria-hidden="true"></span>`, `${SWATCHES.map(x => `<option value="${x}" ${!custom && x.toLowerCase() === th.accent.toLowerCase() ? 'selected' : ''}>${esc(colorName(x))}</option>`).join('')}<option value="custom" ${custom ? 'selected' : ''}>Custom…</option>`)}</div>
+    <div class="field"><label for="d-font">Title font</label>${sel('d-font', 'font', `<span class="dprev" style="font-family:${esc(FONTS[th.font].css)}" aria-hidden="true">Aa</span>`, Object.entries(FONTS).map(([k, x]) => `<option value="${k}" ${k === th.font ? 'selected' : ''}>${esc(x.label)}</option>`).join(''))}</div>
+    <div class="field"><label for="d-mode">Background</label>${sel('d-mode', 'mode', `<span class="ddot${th.mode === 'dark' ? ' dk' : ' lt'}" aria-hidden="true"></span>`, `<option value="light" ${th.mode !== 'dark' ? 'selected' : ''}>Light</option><option value="dark" ${th.mode === 'dark' ? 'selected' : ''}>Dark</option>`)}</div>
+  </div>
+  ${custom ? `<div class="field"><div class="swatches custom-row"><label class="custom-c"><input type="color" data-t="accent" value="${esc(th.accent)}" aria-label="Pick any color"><span>Pick</span></label><input id="f-accent-hex" class="hex" data-hex value="${esc(th.accent)}" maxlength="7" spellcheck="false" aria-label="Color code"></div></div>` : ''}
+    ${coverFieldHTML(c)}
+    <details class="tr-review" data-acc="design-more" ${B && B.moreOpen ? 'open' : ''}><summary><b>More options</b> <small class="muted">Sections</small></summary><div class="acc-b" style="padding:12px 0 0">
     <div class="field"><label>Sections</label>
       <ol class="order">${order.map((id, i) => `<li class="${sectionShown(c, id) ? '' : 'off'}"><label class="chk"><input type="checkbox" data-sec-on="${id}" ${sectionShown(c, id) ? 'checked' : ''}> ${esc(lab[id])}</label><span class="mv"><button type="button" data-sec-mv="${id}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move ${esc(lab[id])} up">↑</button><button type="button" data-sec-mv="${id}" data-dir="1" ${i === order.length - 1 ? 'disabled' : ''} aria-label="Move ${esc(lab[id])} down">↓</button></span></li>`).join('')}</ol></div>
     <div class="btns"><button type="button" class="btn sm ghost" data-b="type-defaults">Reset to ${esc(c.type)} defaults</button></div></div></details>`;
@@ -4466,6 +4518,14 @@ function designClick(b, cfg) {
   return false;
 }
 function designInput(i, cfg) {
+  const dk = i.dataset.d;
+  if (dk) {
+    if (dk === 'preset') { const p = THEME_PRESETS.find(x => x[0] === i.value); if (p) { cfg.theme = { ...cfg.theme, ...p[1] }; loadFont(p[1].font); if (B) B.customColor = false; changed(true); } }
+    else if (dk === 'color') { if (i.value === 'custom') { if (B) B.customColor = true; } else { cfg.theme.accent = i.value; if (B) B.customColor = false; } changed(true); }
+    else if (dk === 'font' && FONTS[i.value]) { cfg.theme.font = i.value; loadFont(i.value); changed(true); }
+    else if (dk === 'mode') { cfg.theme.mode = i.value === 'dark' ? 'dark' : 'light'; changed(true); }
+    return true;
+  }
   if (i.dataset.secOn) { setSectionShown(cfg, i.dataset.secOn, i.checked); changed(true); return true; }
   if (i.dataset.hex != null) { const v = i.value.trim(); if (/^#[0-9a-f]{6}$/i.test(v)) { cfg.theme.accent = v; const cp = i.closest('.swatches')?.querySelector('[data-t="accent"]'); if (cp) cp.value = v; changed(); } return true; }
   return false;
