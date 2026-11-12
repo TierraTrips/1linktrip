@@ -129,7 +129,8 @@ function fakeSupabase(user) {
     const req = await page.evaluate(() => window.__ai[0]);
     ok(req.mode === 'doc' && req.section === 'route' && req.type === 'Trip' && req.files[0].media_type === 'application/pdf', `request ${JSON.stringify(req)}`);
     const groups = await rows(page, '#sheet');
-    ok(groups.join(' | ') === 'Basics · trip dates | Route · 3 cities', `route review summary: ${groups.join(' | ')}`);
+    ok(groups.join(' | ') === 'Route · 3 cities', `route review summary: ${groups.join(' | ')}`);
+    ok((await page.textContent('#sheet .dr-dates')).replace(/\s+/g, ' ').trim() === 'Trip dates Apr 1–10, 2027Edit', `trip dates on top: ${await page.textContent('#sheet .dr-dates')}`);
     ok((await page.$$('#sheet .dr-line, #sheet .dr-item, #sheet [data-dr]')).length === 0, 'summary only: no item lines or edit fields until a row is tapped');
     ok(await page.textContent('#sheet [data-doc-apply]') === 'Add' && await page.$$eval('#sheet [data-dr-gon]', xs => xs.every(x => x.checked)), 'one Add button, every row ticked');
     if (SHOTS) await page.locator('#sheet').screenshot({ path: `${SHOTS}/doc-route-review-390.png` });
@@ -143,7 +144,7 @@ function fakeSupabase(user) {
     await page.click(`#sheet [data-dr-del="${osaka}"]`); await page.waitForTimeout(100);
     const kyoto = await editLine(page, '#sheet', /Kyoto/);
     await page.fill(`#sheet [data-dr="${kyoto}"][data-dk="title"]`, 'Kyoto (Gion)');
-    ok((await rows(page, '#sheet')).join(' | ') === 'Basics · trip dates | Route · 2 cities', 'the row count follows the edits');
+    ok((await rows(page, '#sheet')).join(' | ') === 'Route · 2 cities', 'the row count follows the edits');
     await page.click('#sheet [data-doc-apply]'); await page.waitForSelector('#sheet [data-doc-undo]');
     let c = await draft(page);
     ok(c.stops.map(s => s.name).join() === 'Tokyo,Kyoto (Gion)' && c.stops[0].from === '2027-04-01' && c.stops[1].to === '2027-04-08', `route filled: ${JSON.stringify(c.stops.map(s => [s.name, s.from, s.to]))}`);
@@ -245,7 +246,7 @@ function fakeSupabase(user) {
       { date: '2027-04-02', time: '', title: 'Nakamise street snacks', note: '', kind: 'activity' }, { date: '2027-04-02', time: '', title: 'Ueno park', note: '', kind: 'activity' },
       { date: '2027-04-02', time: '19:00', title: 'Dinner at Kanda Matsuya', note: '', kind: 'reservation' }, { date: '2027-04-03', time: '', title: 'Ghibli Museum', note: '', kind: 'activity' },
       { date: '2027-04-03', time: '', title: 'Ghibli Museum', note: '', kind: 'activity' } ], faqs: [{ question: 'Money', answer: 'Cash' }, { question: 'money', answer: 'Cash' }] }, 'auto').map(x => [x.sec, x.title, x.time, x.text].join('/')), await draft(page));
-    ok(JSON.stringify(tidy) === JSON.stringify(['schedule/Senso-ji temple · Nakamise street snacks · Ueno park//Senso-ji temple: Go early', 'schedule/Dinner at Kanda Matsuya/19:00/', 'schedule/Ghibli Museum//', 'notes/Money//Cash']), `tidy items ${JSON.stringify(tidy)}`);
+    ok(JSON.stringify(tidy.filter(x => !x.startsWith('basics'))) === JSON.stringify(['schedule/Senso-ji temple · Nakamise street snacks · Ueno park//Senso-ji temple: Go early', 'schedule/Dinner at Kanda Matsuya/19:00/', 'schedule/Ghibli Museum//', 'notes/Money//Cash']), `tidy items ${JSON.stringify(tidy)}`);
     ok(errors.length === 0, `no page errors ${errors.join(' ')}`);
     cfgAfter = await draft(page);
     await ctx.close();

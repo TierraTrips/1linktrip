@@ -1016,3 +1016,5 @@ html.is-offline body::before { content: 'Offline'; position: fixed; top: max(12p
 .bookings .bk-via { display: block; color: var(--muted, var(--slate)); font-size: .86rem; }
 .gp-none { margin: 10px 0 0; }
 .hotel-chips { margin: 0 0 8px; } .hotel-chips .chip small { font-weight: 500; opacity: .75; margin-left: 2px; }
+.dr-dates { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--field, #F8FBFA); border: 1px solid var(--rule, #E1E4EA); }
+.dr-dates .dr-lines { padding: 0; width: 100%; }

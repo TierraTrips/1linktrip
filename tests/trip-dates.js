@@ -42,6 +42,22 @@ const DOC = { start_date: '2027-04-01', end_date: '2027-04-15', schedule: [
   ok(days.some(([h, xs]) => /^Day 3 /.test(h) && xs.some(x => /Ghibli/.test(x))), 'misdated page item shown on Day 3');
   ok(days.some(([h, xs]) => /^Day 5 /.test(h) && xs.some(x => /Sumo/.test(x))), 'swapped date on Day 5');
   const un = days.find(([h]) => h === 'Unscheduled'); ok(un && un[1].join() === 'Buy a Suica card,Something far away' && days.at(-1)[0] === 'Unscheduled', 'Unscheduled at the end');
+  // trip dates come from the route + flights: one misread date ("6/2" read as June 2) can't shrink the trip
+  const doc2 = { start_date: '2027-06-02', end_date: '2027-06-03', stops: [{ city: 'Tokyo', country: 'Japan', arrive: '2027-04-01', leave: '2027-04-08' }, { city: 'Osaka', country: 'Japan', arrive: '2027-04-08', leave: '2027-04-15' }],
+    schedule: [{ date: '2027-04-01', time: '11:00', title: 'Flight LAX → HND', note: '', kind: 'reservation' }, { date: '2027-06-04', time: '', title: 'Fushimi Inari', note: '', kind: 'activity' }, { date: '2027-04-15', time: '17:00', title: 'Flight KIX → LAX', note: '', kind: 'reservation' }] };
+  const it2 = await page.evaluate((d) => window.__ep.docItems(window.__ep.unpackEvent(window.__ep.packEvent({ v: 2, type: 'Trip', title: 'Japan', start: '2027-06-02', end: '2027-06-03' })), d, 'auto').map(x => [x.sec, x.key, x.title, x.date, x.end]), doc2);
+  const dt = it2.find(x => x[1] === 'dates');
+  ok(dt && dt[3] === '2027-04-01' && dt[4] === '2027-04-15', `trip dates from route + flights: ${JSON.stringify(dt)}`);
+  ok(it2.find(x => x[2] === 'Fushimi Inari')[3] === '2027-04-06', `a day/month-swapped item re-read inside the trip: ${JSON.stringify(it2.find(x => x[2] === 'Fushimi Inari'))}`);
+  // the review shows the trip dates first, editable
+  const same = await page.evaluate((d) => window.__ep.docItems(window.__ep.unpackEvent(window.__ep.packEvent({ v: 2, type: 'Trip', title: 'Japan', start: '2027-04-01', end: '2027-04-15' })), d, 'auto').some(x => x.key === 'dates'), doc2);
+  ok(same, 'trip dates are listed for review even when they already match');
+  // a page whose stored dates don't cover its own route shows the route's span (and Day N from it)
+  const bad = { ...BASECFG, start: '2027-06-02', end: '2027-06-03', schedule: [{ date: '2027-04-02', time: '', title: 'Tsukiji', note: '' }] };
+  await page.goto(BASE + '#e=' + await page.evaluate((c) => window.__ep.packEvent(c), bad)); await page.waitForSelector('.stub');
+  const stub = await page.textContent('.stub-cell b');
+  ok(/Apr 1/.test(stub) && /15/.test(stub), `header shows the route's span: ${stub}`);
+  ok(/^Day 2 /.test(await page.$eval('#sec-schedule .day-h', h => h.textContent)), 'Day numbers follow it');
   ok(errors.length === 0, `no page errors ${errors.join(' ')}`);
   await browser.close();
   console.log(fails.length ? `\n${fails.length} failed` : '\nall passed');

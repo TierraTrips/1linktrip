@@ -1551,7 +1551,13 @@ function eventTabHTML(cfg) {
 // first route stop's point instead (the destination name stays as written). Stops without a map point are found by city.
 const isCoarseVenue = (v) => !!v && (!v.city || (!!v.country && v.name.trim().toLowerCase() === v.country.trim().toLowerCase()));
 function tripView(cfg) {
-  if (!isTrip(cfg)) return cfg; const v = cfg.venue; const s = stopsOf(cfg).find(x => x.lat != null);
+  if (!isTrip(cfg)) return cfg;
+  const ds = stopsOf(cfg).flatMap(x => [x.from, x.to]).filter(isoDay).sort();
+  if (ds.length >= 2 && cfg.start) { const rs = ds[0], re = ds[ds.length - 1], s0 = cfg.start.slice(0, 10), e0 = (cfg.end || cfg.start).slice(0, 10);
+    if (rs < s0 || re > e0) { // the stored dates don't cover the route: mostly-overlapping → widen; barely (a misread date) → the route's own span
+      const ov = Math.max(0, daysBetween(rs > s0 ? rs : s0, re < e0 ? re : e0)); const keep = ov * 2 >= daysBetween(rs, re);
+      cfg = { ...cfg, start: keep && s0 < rs ? s0 : rs, end: keep && e0 > re ? e0 : re }; } }
+  const v = cfg.venue; const s = stopsOf(cfg).find(x => x.lat != null);
   if (!s || (v && !isCoarseVenue(v))) return cfg;
   return { ...cfg, venue: { ...(v || {}), name: v ? v.name : s.name, address: s.address || s.name, lat: s.lat, lon: s.lon, city: s.city || s.name, region: s.region || '', country: s.country || (v && v.country) || '', cc: s.cc || (v && v.cc) || '', pinName: s.name, zoom: 13 } };
 }
@@ -3980,6 +3986,12 @@ const isoDay = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '') ? s : '';
 // A trip date that falls outside the trip (wrong year, or month and day swapped) is moved to the reading that fits;
 // strict: an import with no fitting reading gives '' (Unscheduled); otherwise the date is kept as written.
 const realDay = (d) => { try { return ymd(asUTC(d)) === d; } catch { return false; } };
+function tripSpan(dates) {
+  const ds = dates.filter(d => isoDay(d) && realDay(d)).sort(); if (!ds.length) return null; const med = ds[Math.floor((ds.length - 1) / 2)];
+  const near = (d) => Math.abs(daysBetween(med, d)) <= 45;
+  const fixed = ds.map(d => { if (near(d)) return d; const [y, m, dd] = d.split('-'); const alt = [`${med.slice(0, 4)}-${m}-${dd}`, ...(+dd <= 12 ? [`${y}-${dd}-${m}`, `${med.slice(0, 4)}-${dd}-${m}`] : [])].filter(realDay); return alt.find(near) || null; }).filter(Boolean).sort();
+  return fixed.length ? [fixed[0], fixed[fixed.length - 1]] : null;
+}
 function fitTripDate(start, end, d, strict = true) {
   if (!d || !start || !isoDay(start.slice(0, 10))) return d || '';
   const s = start.slice(0, 10), e = (isoDay((end || '').slice(0, 10)) || s), lo = addDays(s, -3), hi = addDays(e, 3);
@@ -4548,14 +4560,23 @@ const docScopeSection = (c, scope) => scope === 'auto' ? '' : /^c-|^new-custom$/
 function docItems(cfg, d, scope) {
   d = d || {}; const out = []; const want = (s) => scope === 'auto' || scope === s;
   const add = (sec, o) => out.push({ sec, key: '', title: '', text: '', date: '', time: '', end: '', url: '', ...o });
-  const C = aiEventToCfg({ ...d, type: cfg.type, start_date: isoDay(d.start_date) || cfg.start.slice(0, 10) });
-  const stops = (Array.isArray(d.stops) ? d.stops : []).slice(0, 20).map(x => ({ title: cleanText(x && x.city, 80), country: cleanText(x && x.country, 60), date: isoDay(x && x.arrive), end: isoDay(x && x.leave) })).filter(x => x.title);
   const tripish = isTrip(cfg) || scope === 'route';
+  // a trip runs from its first leg / departure to its last leg / return: the model's start/end only count when they
+  // agree with that (one misread date, e.g. 6/2 for 2/6, can't shrink the trip to "Jun 2–3")
+  const rawStops = (Array.isArray(d.stops) ? d.stops : []).slice(0, 20);
+  const legDays = tripish ? rawStops.flatMap(x => [isoDay(x && x.arrive), isoDay(x && x.leave)]).filter(Boolean) : [];
+  const itemDays = tripish ? (Array.isArray(d.schedule) ? d.schedule : []).map(x => isoDay(x && x.date)).filter(Boolean) : [];
+  // the route sets the span (else the model's dates, else the items'); items just outside it (a flight the day before) widen it
+  let span = legDays.length >= 2 ? tripSpan(legDays) : isoDay(d.start_date) ? [isoDay(d.start_date), isoDay(d.end_date) >= isoDay(d.start_date) ? isoDay(d.end_date) : isoDay(d.start_date)] : itemDays.length >= 2 ? tripSpan(itemDays) : null;
+  if (span) itemDays.forEach(x => { if (x < span[0] && daysBetween(x, span[0]) <= 3) span = [x, span[1]]; if (x > span[1] && daysBetween(span[1], x) <= 3) span = [span[0], x]; });
+  if (span) d = { ...d, start_date: span[0], start_time: '', end_date: span[1], end_time: '' };
+  const C = aiEventToCfg({ ...d, type: cfg.type, start_date: isoDay(d.start_date) || cfg.start.slice(0, 10) });
+  const stops = rawStops.map(x => ({ title: cleanText(x && x.city, 80), country: cleanText(x && x.country, 60), date: span ? fitTripDate(span[0], span[1], isoDay(x && x.arrive), false) : isoDay(x && x.arrive), end: span ? fitTripDate(span[0], span[1], isoDay(x && x.leave), false) : isoDay(x && x.leave) })).filter(x => x.title);
   if (scope === 'auto' && !cfg.title.trim() && C.title) add('basics', { key: 'title', title: C.title });
   if (want('route') || scope === 'auto') {
     let s = isoDay(d.start_date) ? C.start : (tripish && stops[0] ? stops[0].date : ''); let e = isoDay(d.end_date) ? C.end : (tripish && stops.length ? stops[stops.length - 1].end : '');
     if (tripish) { s = (s || '').slice(0, 10); e = (e || '').slice(0, 10); } // trips run by the day
-    if (s && (s.slice(0, 10) !== cfg.start.slice(0, 10) || (e || '').slice(0, 10) !== (cfg.end || '').slice(0, 10))) add('basics', { key: 'dates', date: s, end: e && e.slice(0, 10) >= s.slice(0, 10) ? e : '' });
+    if (s && (tripish || s.slice(0, 10) !== cfg.start.slice(0, 10) || (e || '').slice(0, 10) !== (cfg.end || '').slice(0, 10))) add('basics', { key: 'dates', date: s, end: e && e.slice(0, 10) >= s.slice(0, 10) ? e : '' });
   }
   if (tripish && want('route')) stops.forEach(x => add('route', x));
   if (scope === 'auto' && !cfg.venue && !stops.length && cleanText(d.venue_name, 140)) add('basics', { key: 'venue', title: cleanText(d.venue_name, 140), text: cleanText(d.venue_address, 200) });
@@ -4658,7 +4679,8 @@ function drLine(c, it) {
 function docReviewHTML(c, items, st = {}) {
   const order = ['basics', 'route', 'schedule', 'notes', 'about', 'bring', 'custom'];
   const rank = (s) => { const i = order.indexOf(s); return i < 0 ? (s.startsWith('field:') ? 6.5 : 6.7) : i; };
-  const groups = []; items.forEach((it, i) => { if (it.gone) return; const g = drGroupKey(c, it); let G = groups.find(x => x.g === g); if (!G) groups.push(G = { g, sec: it.sec, idx: [] }); G.idx.push(i); });
+  const di = isTrip(c) ? items.findIndex(x => !x.gone && x.key === 'dates') : -1;
+  const groups = []; items.forEach((it, i) => { if (it.gone || i === di) return; const g = drGroupKey(c, it); let G = groups.find(x => x.g === g); if (!G) groups.push(G = { g, sec: it.sec, idx: [] }); G.idx.push(i); });
   groups.sort((a, b) => rank(a.sec) - rank(b.sec));
   const off = st.off || {}, open = st.open || {}, ed = st.edit == null ? -1 : st.edit;
   const n = items.filter(x => !x.gone && !off[drGroupKey(c, x)]).length;
@@ -4672,7 +4694,8 @@ function docReviewHTML(c, items, st = {}) {
   const editHTML = (i) => { const it = items[i]; const tg = it.sec === 'basics' ? [] : docMoveTargets(c, it, it.home);
     return `<li class="dr-item" data-dr-at="${i}"><div class="dr-top">${tg.length ? `<select data-dr-sec="${i}" aria-label="Put it in">${tg.map(s => `<option value="${esc(s)}" ${s === it.sec ? 'selected' : ''}>${esc(docSecLabel(c, s, s === 'custom' && s === it.sec ? it : null))}</option>`).join('')}</select>` : `<span class="dr-k">${esc(drKeyLabel(c, it))}</span>`}<button type="button" class="ic del dr-x" data-dr-del="${i}" aria-label="Remove">×</button></div>
       <div class="dr-f">${docFields(it).map(f => fld(it, i, f)).join('')}</div><button type="button" class="link dr-done" data-dr-edit="-1">Done</button></li>`; };
-  return `<div class="dr" data-sheet="doc-review"><p class="dr-lead">Found in your document. Untick anything you don't want, or tap a row to see it.</p>
+  const dates = di < 0 ? '' : ed === di ? `<div class="dr-dates"><ul class="dr-lines">${editHTML(di)}</ul></div>` : `<div class="dr-dates"><span><b>Trip dates</b> ${esc(dateRange(items[di].date, items[di].end))}</span><button type="button" class="link" data-dr-edit="${di}">Edit</button></div>`;
+  return `<div class="dr" data-sheet="doc-review"><p class="dr-lead">Found in your document. Untick anything you don't want, or tap a row to see it.</p>${dates}
     <div class="dr-gs">${groups.map(G => { const on = !off[G.g], op = !!open[G.g]; const name = drGroupName(c, G, items);
       return `<div class="dr-g${on ? '' : ' off'}${op ? ' open' : ''}" data-dr-g="${esc(G.g)}"><div class="dr-gh"><input type="checkbox" class="dr-on" data-dr-gon="${esc(G.g)}" ${on ? 'checked' : ''} aria-label="Add ${esc(name)}"><button type="button" class="dr-gt" data-dr-open="${esc(G.g)}" aria-expanded="${op}"><span class="dr-gn"><b>${esc(name)}</b> · ${esc(drGroupCount(c, G, items))}${G.sec === 'route' && stopsOf(c).length ? '<small class="muted">Replaces the current route</small>' : ''}</span><i class="dr-chev" aria-hidden="true"></i></button></div>
         ${op ? `<ul class="dr-lines">${G.idx.map(i => i === ed ? editHTML(i) : `<li><button type="button" class="dr-line" data-dr-edit="${i}">${esc(drLine(c, items[i]))}</button></li>`).join('')}</ul>` : ''}</div>`; }).join('')}</div>
