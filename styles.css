@@ -1018,3 +1018,7 @@ html.is-offline body::before { content: 'Offline'; position: fixed; top: max(12p
 .hotel-chips { margin: 0 0 8px; } .hotel-chips .chip small { font-weight: 500; opacity: .75; margin-left: 2px; }
 .dr-dates { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--field, #F8FBFA); border: 1px solid var(--rule, #E1E4EA); }
 .dr-dates .dr-lines { padding: 0; width: 100%; }
+/* viewer bar (brand, Example page, Edit a copy): part of the page, not floating — it scrolls away with the cover on
+   phones and sits above the tabs on wide screens, so it never covers the header, the tabs or the content */
+.vbar { position: absolute; }
+@media (min-width: 760px) { .vbar { position: relative; top: 0; left: 0; right: 0; padding: 10px 14px; background: var(--fog, #F3F5F4); } .vbar .brand, .vbar .btn { background: #fff; } .viewer .ev-hero-in { padding-top: 40px; } }
