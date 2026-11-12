@@ -149,7 +149,7 @@ const shot = async (loc, name) => { if (SHOTS) await loc.screenshot({ path: `${S
     const sent = await page.evaluate(() => window.__db.event_messages.find(m => m.body === 'Can I bring my dog?'));
     ok(sent.guest === GUEST.id && sent.guest_name === 'Gia Park' && sent.event_id === EID, 'guest message saved to their own thread with their name');
     await page.waitForFunction(() => /Sent/.test(document.querySelector('#sec-gm [data-gm-msg]')?.textContent || ''));
-    await page.waitForTimeout(300);
+    for (let i = 0; i < 30 && !posted.notify.length; i++) await page.waitForTimeout(100);
     ok(posted.notify.length === 1 && posted.notify[0].kind === 'message', 'email notification requested once the notify function answers');
     await page.locator('#sec-gm').screenshot(SHOTS ? { path: `${SHOTS}/guest-event-compose.png` } : {});
     await page.click('[data-tab-go="mytrip"][role="tab"]'); await page.waitForSelector('#sec-gmt .msg-list');
@@ -195,6 +195,7 @@ const shot = async (loc, name) => { if (SHOTS) await loc.screenshot({ path: `${S
     await page.waitForSelector(`details.thr[data-thr="${GUEST.id}"][open] .msg.out`);
     ok((await page.$$('#mine-msgs .dot')).length === 1, 'opening a thread marks it read; the reply keeps it open');
     await shot(page.locator(`details.thr[data-thr="${GUEST.id}"]`), 'host-thread-reply');
+    for (let i = 0; i < 30 && !posted.notify.some(x => x.kind === 'message'); i++) await page.waitForTimeout(100); // the email request is fire-and-forget
     ok(posted.notify.some(x => x.kind === 'message'), 'reply asks for an email to the guest');
 
     // groups editor
@@ -233,6 +234,7 @@ const shot = async (loc, name) => { if (SHOTS) await loc.screenshot({ path: `${S
     await page.fill('#an-body', 'Ceremony starts at 4 sharp.'); await page.click('[data-an="post"]');
     await page.waitForFunction(() => window.__db.announcements.some(a => /4 sharp/.test(a.body)));
     ok((await page.evaluate(() => window.__db.announcements.find(a => /4 sharp/.test(a.body)).group_ids)).length === 0, 'Everyone: saved with no groups');
+    for (let i = 0; i < 30 && posted.notify.filter(x => x.kind === 'announcement').length < 2; i++) await page.waitForTimeout(100);
     ok(posted.notify.filter(x => x.kind === 'announcement').length === 2, 'each update asks for its email once');
     await page.click('.gm-on'); await page.waitForTimeout(200);
     ok(await page.evaluate(() => window.__db.events[0].config.guestMessages === false), 'switching messages off saves to the page');
