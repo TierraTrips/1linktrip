@@ -1394,7 +1394,7 @@ function aboutHTML(cfg) {
   if (cfg.off.about || !(cfg.description || cfg.host)) return '';
   return `${cfg.host ? `<p class="host"><span class="lbl">${t('Hosted by')}</span> ${esc(cfg.host)}</p>` : ''}${cfg.description.split(/\n\s*\n/).filter(Boolean).map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}`;
 }
-const scheduleSecHTML = (cfg) => sec('schedule', t(schedTitle(cfg)), scheduleHTML(cfg) + (cfg.off.schedule ? '' : docsHTML(cfg, ['schedule'])) + (routeInItin(cfg) && !cfg.off.route ? docsHTML(cfg, ['route']).replace(/^<ul class="docs/, '<ul class="route-docs docs') : ''));
+const scheduleSecHTML = (cfg) => sec('schedule', t(schedTitle(cfg)), scheduleHTML(cfg) + (cfg.off.schedule ? '' : docsHTML(cfg, ['schedule'])) + (routeInItin(cfg) && !cfg.off.route ? docsHTML(cfg, ['route']).replace(/^<ul class="docs/, '<ul class="route-docs docs') : ''), isTrip(cfg) ? 'itin' : '');
 // trips show their route (cities + dates) as the Itinerary's legs instead of a separate Route section
 const routeInItin = (cfg) => isTrip(cfg) && stopsOf(cfg).length > 0;
 // which leg a day belongs to: the stop whose stay covers it (leave day → next stop), else the nearest dated stop; -1 when no stop has dates
@@ -1408,9 +1408,9 @@ function legOf(ss, d) {
 function legsHTML(cfg, ss, days, dayHTML) {
   const by = ss.map(() => []), rest = []; const nb = tabsFor(cfg).some(x => x[0] === 'nearby');
   days.forEach(e => { const i = e[0] ? legOf(ss, e[0]) : -1; (i >= 0 ? by[i] : rest).push(e); });
-  const head = (s, i) => { const inner = `<span class="route-n">${i + 1}</span><span><b>${esc(s.name)}</b>${stopRange(s) ? `<small>${esc(stopRange(s))}</small>` : ''}</span>`;
-    return s.lat != null && nb ? `<button type="button" class="route-stop leg-h" data-route-stop="${i}">${inner}</button>` : `<div class="route-stop leg-h">${inner}</div>`; };
-  return `<ol class="route legs">${ss.map((s, i) => `<li class="leg">${head(s, i)}${by[i].length ? `<div class="leg-days">${by[i].map(dayHTML).join('')}</div>` : ''}</li>`).join('')}</ol>${rest.map(dayHTML).join('')}`;
+  const head = (s, i) => { const inner = `<span class="leg-t"><b>${esc(s.name)}</b>${stopRange(s) ? `<small>${esc(stopRange(s))}</small>` : ''}</span>`;
+    return s.lat != null && nb ? `<button type="button" class="leg-h" data-route-stop="${i}">${inner}<i class="leg-go" aria-hidden="true">›</i></button>` : `<div class="leg-h">${inner}</div>`; };
+  return `<ol class="legs">${ss.map((s, i) => `<li class="leg">${head(s, i)}${by[i].length ? `<div class="leg-days">${by[i].map(dayHTML).join('')}</div>` : ''}</li>`).join('')}</ol>${rest.map(dayHTML).join('')}`;
 }
 // one schedule: the organizer's items, with the guest's own bookings mixed in
 function scheduleHTML(cfg) {
@@ -1424,7 +1424,8 @@ function scheduleHTML(cfg) {
   const all = (view === 'event' ? evs : evs.concat(mine)).sort((a, b) => (a.start || '9999').slice(0, 10).localeCompare((b.start || '9999').slice(0, 10)) || key(a).localeCompare(key(b)));
   const days = {}; all.forEach(x => (days[(x.start || '').slice(0, 10)] = days[(x.start || '').slice(0, 10)] || []).push(x));
   const tm = (s) => fmtTime((s || '').slice(11, 16));
-  const dayHTML = ([d, xs]) => `<div class="day"><h3 class="day-h">${d ? `${isTrip(cfg) && cfg.start && d >= cfg.start.slice(0, 10) ? `<span class="dayn">${esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 }))}</span> ` : ''}${esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' }))}${!legs && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? ` <span class="day-city">${esc(stopFor(cfg, d).name)}</span>` : ''}` : t(isTrip(cfg) ? 'Unscheduled' : 'Anytime')}</h3><ol class="tl">${xs.map(x => {
+  const tripHead = (d) => d ? `${cfg.start && d >= cfg.start.slice(0, 10) ? esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 })) + ' · ' : ''}${esc(fmt(d, { weekday: 'short', month: 'short', day: 'numeric' }))}${!legs && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? ` <span class="day-city">${esc(stopFor(cfg, d).name)}</span>` : ''}` : t('Unscheduled');
+  const dayHTML = ([d, xs]) => `<div class="day"><h3 class="day-h">${isTrip(cfg) ? tripHead(d) : d ? `${isTrip(cfg) && cfg.start && d >= cfg.start.slice(0, 10) ? `<span class="dayn">${esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 }))}</span> ` : ''}${esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' }))}${!legs && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? ` <span class="day-city">${esc(stopFor(cfg, d).name)}</span>` : ''}` : t(isTrip(cfg) ? 'Unscheduled' : 'Anytime')}</h3><ol class="tl">${xs.map(x => {
     // trips: one clean line per item; its details open with a tap
     const more = (title, body) => body ? `<details class="tl-d"><summary><b>${title}</b><i class="tl-dot" aria-hidden="true"></i><span class="sr">${t('Details')}</span></summary><span>${body}</span></details>` : `<b>${title}</b>`;
     if (x.ev && isTrip(cfg)) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"><time>${esc(tm(x.start))}</time><div>${more(esc(x.name), x.note ? esc(x.note) : '')}</div></li>`;
