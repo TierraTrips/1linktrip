@@ -1259,6 +1259,7 @@ function normalize(c) {
   c.off = c.off || {}; c.notes = Array.isArray(c.notes) ? c.notes : []; c.schedule = Array.isArray(c.schedule) ? c.schedule : [];
   c.x = c.x && typeof c.x === 'object' ? c.x : {}; c.bring = typeof c.bring === 'string' ? c.bring : '';
   c.custom = normCustom(c.custom);
+  if (c.files !== undefined) { c.files = normFiles(c.files); if (!c.files.length) delete c.files; } // attached documents (only on pages that have some)
   c.lang = typeof c.lang === 'string' && /^[a-z]{2,3}$/.test(c.lang) ? c.lang : 'en';
   c.langs = Array.isArray(c.langs) ? c.langs.filter(l => typeof l === 'string' && /^[a-z]{2,3}$/.test(l) && l !== c.lang).slice(0, 12) : [];
   if (c.tr && typeof c.tr === 'object') { const tr = {}; for (const [l, m] of Object.entries(c.tr)) { if (!/^[a-z]{2,3}$/.test(l) || !m || typeof m !== 'object') continue; tr[l] = {}; for (const [k, e] of Object.entries(m)) if (e && typeof e.t === 'string' && typeof e.h === 'string') tr[l][k] = { h: e.h, t: e.t.slice(0, 6000), ...(e.o ? { o: true } : {}) }; } c.tr = tr; } else c.tr = {};
@@ -1291,19 +1292,22 @@ function customSecHTML(cfg, sid) {
   const img = httpsUrl(x.img), url = httpsUrl(x.url);
   const body = (img ? `<img class="cs-img" src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '')
     + (x.text || '').split(/\n\s*\n/).filter(p => p.trim()).map(p => `<p>${esc(p.trim()).replace(/\n/g, '<br>')}</p>`).join('')
-    + (url ? `<ul class="links"><li><a href="${esc(url)}" target="_blank" rel="noopener noreferrer"><b>${esc((x.label || '').trim() || hostOf(url))}</b>${(x.label || '').trim() ? `<span>${esc(hostOf(url))}</span>` : ''}${arrow}</a></li></ul>` : '');
+    + (url ? `<ul class="links"><li><a href="${esc(url)}" target="_blank" rel="noopener noreferrer"><b>${esc((x.label || '').trim() || hostOf(url))}</b>${(x.label || '').trim() ? `<span>${esc(hostOf(url))}</span>` : ''}${arrow}</a></li></ul>` : '')
+    + docsHTML(cfg, [sid]);
   return sec(sid, x.title, body, 'cs');
 }
 function needToKnowHTML(cfg) {
   const parts = [];
   if (!cfg.off.details) parts.push(typeInfoHTML(cfg, { skipBlock: !!(cfg.venue && cfg.tools.stay) }));
   if (!cfg.off.notes) parts.push(notesHTML(cfg));
+  parts.push(docsHTML(cfg, detailDocSecs(cfg).filter(k => k === 'notes' ? !cfg.off.notes : !cfg.off.details)));
   return parts.filter(Boolean).join('');
 }
 function aboutHTML(cfg) {
   if (cfg.off.about || !(cfg.description || cfg.host)) return '';
   return `${cfg.host ? `<p class="host"><span class="lbl">${t('Hosted by')}</span> ${esc(cfg.host)}</p>` : ''}${cfg.description.split(/\n\s*\n/).filter(Boolean).map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}`;
 }
+const scheduleSecHTML = (cfg) => sec('schedule', t(schedTitle(cfg)), scheduleHTML(cfg) + (cfg.off.schedule ? '' : docsHTML(cfg, ['schedule'])));
 // one schedule: the organizer's items, with the guest's own bookings mixed in
 function scheduleHTML(cfg) {
   const evs = cfg.off.schedule ? [] : cfg.schedule.filter(x => x.title).map(x => ({ ev: true, start: (x.date || '') + (x.date && x.time ? 'T' + x.time : ''), name: x.title, note: x.note, kind: x.kind || '' }));
@@ -1399,17 +1403,17 @@ function myTripTabHTML(cfg) {
   const T = cfg.tools; const out = [];
   if (T.mytrip) out.push(sec('plan', t('Your itinerary'), planHTML(cfg)));
   if (T.mytrip) out.push(sec('itinerary', t('Your bookings'), bookingsHTML(cfg)));
-  if (T.packing) out.push(`<section class="ev-sec" id="sec-packing"><details class="pack-wrap"><summary><h2 class="sec-h">${t('Packing list')}</h2><span class="pack-sum" data-slot="pack-sum"></span></summary><div data-slot="pack-list"></div><div class="pack-add"><input placeholder="${t('Add an item')}" aria-label="${t('Add an item')}" maxlength="80"><button type="button" class="btn" data-pack-add>${t('Add')}</button></div></details></section>`);
+  if (T.packing) out.push(`<section class="ev-sec" id="sec-packing"><details class="pack-wrap"><summary><h2 class="sec-h">${t('Packing list')}</h2><span class="pack-sum" data-slot="pack-sum"></span></summary><div data-slot="pack-list"></div><div class="pack-add"><input placeholder="${t('Add an item')}" aria-label="${t('Add an item')}" maxlength="80"><button type="button" class="btn" data-pack-add>${t('Add')}</button></div></details>${docsHTML(cfg, ['bring'])}</section>`);
   return out.join('');
 }
 function eventTabHTML(cfg) {
   const parts = {
-    route: () => sec('route', t('Route'), routeGuestHTML(cfg)),
-    about: () => sec('about', t('About'), aboutHTML(cfg)),
+    route: () => sec('route', t('Route'), routeGuestHTML(cfg) + (cfg.off.route ? '' : docsHTML(cfg, ['route']))),
+    about: () => sec('about', t('About'), aboutHTML(cfg) + (cfg.off.about ? '' : docsHTML(cfg, ['about']))),
     details: () => sec('details', t('Need to know'), needToKnowHTML(cfg)),
     rsvp: () => '<div data-slot="rsvp-wrap"></div>',
     access: () => `<div data-slot="access-wrap">${accessHTML(cfg, null)}</div>`,
-    schedule: () => `<div data-slot="schedule-wrap">${sec('schedule', t(schedTitle(cfg)), scheduleHTML(cfg))}</div>`,
+    schedule: () => `<div data-slot="schedule-wrap">${scheduleSecHTML(cfg)}</div>`,
     weather: () => cfg.venue && cfg.start && cfg.tools.weather ? sec('weather', t('Weather'), `<div data-slot="weather"><div class="skel" role="status"><span></span><span></span><em>${t('Loading weather…')}</em></div></div>`) : '',
   };
   return sectionOrder(cfg).map(id => parts[id] ? parts[id]() : customSecHTML(cfg, id)).join('');
@@ -1466,7 +1470,7 @@ function showTab(art, k, opts = {}) {
 function wireEvent(cfg, art, seq, air, opts) {
   const v = cfg.venue; const T = cfg.tools; const alive = () => seq === renderSeq && document.body.contains(art);
   const slot = (n) => art.querySelector(`[data-slot="${n}"]`);
-  const renderSchedule = () => { const w = slot('schedule-wrap'); if (w) w.innerHTML = sec('schedule', t(schedTitle(cfg)), scheduleHTML(cfg)); };
+  const renderSchedule = () => { const w = slot('schedule-wrap'); if (w) w.innerHTML = scheduleSecHTML(cfg); };
   art._renderSchedule = renderSchedule;
   art.addEventListener('click', (e) => {
     const a = e.target.closest('[data-act],[data-food],[data-tmode],[data-tab-go],[data-sched],[data-more]'); if (!a) return;
@@ -1785,9 +1789,10 @@ function renderBuilder(cfg, source, hosted, pid) {
     if (a.dataset.act === 'qr') openQR(B.cfg, $('#pub-url').value);
   });
   const sh = $('#sheet');
-  sh.addEventListener('close', () => { B.card = null; buildForm(); });
+  sh.addEventListener('close', () => { B.card = null; if (DU && DU.key !== 'main') DU = null; buildForm(); });
   sh.addEventListener('click', (e) => { if (e.target === sh) sh.close(); });
   wireInputs(sh.querySelector('.sheet-in'));
+  DU = null; wireDocs(sh.querySelector('.sheet-in')); wireDocs($('.b-form')); docAIKnown();
   if (typeof wirePubHost === 'function') wirePubHost();
   if (SB && (LS.get('signedIn') || B.hosted)) msgReady().then(ok => { if (ok && B && !$('[data-card="msgs"]')) buildForm(); }); // no network for signed-out drafts
   if (LS.get('signedIn') && SB) aiModes().then(m => { if (m.includes('translate') && B && !$('[data-card="langs"]')) buildForm(); });
@@ -1866,6 +1871,7 @@ function buildForm() {
   <details class="acc" data-acc="design" ${open.has('design') ? 'open' : ''}><summary><span class="st ok" aria-hidden="true" style="background:${esc(c.theme.accent)};border-color:${esc(c.theme.accent)}"></span><b>Design</b><small>${esc([FONTS[c.theme.font]?.label, c.theme.mode === 'dark' ? 'Dark' : 'Light', c.cover ? 'Cover photo' : ''].filter(Boolean).join(' · '))}</small></summary><div class="acc-b">
     ${designHTML(c)}
   </div></details>
+  ${docBlockHTML('main')}
   <h2 class="b-h">Add to your page</h2>
   ${cards.type.length ? `<p class="grp">${TYPE_GROUP[c.type]}</p><div class="cards">${cards.type.map(x => cardBtn(c, x)).join('')}</div>` : ''}
   <p class="grp">For any event</p><div class="cards">${cards.common.map(x => cardBtn(c, x)).join('')}</div>
@@ -1884,7 +1890,7 @@ function venueFieldHTML(c) {
     : `<div class="field"><label for="vq">${isTrip(c) ? 'Destination' : 'Venue'}</label><div class="search"><input id="vq" placeholder="${isTrip(c) ? 'City or region' : 'Venue name or address'}" value="${esc(B.vq || '')}"><button type="button" class="btn" data-b="search">Search</button></div></div>
       <ul class="vres">${B.venueResults.map((r, i) => `<li><button type="button" data-pick="${i}"><b>${esc(r.name)}</b><span>${esc(r.display)}</span></button></li>`).join('')}</ul>${B.vmsg ? `<p class="hint">${esc(B.vmsg)}</p>` : ''}`;
 }
-function openCard(id) { if (id === 'custom' && !B.cfg.custom.length) B.cfg.custom.push(blankCustom()); B.card = id; renderSheet(); const sh = $('#sheet'); if (!sh.open) sh.showModal(); }
+function openCard(id) { if (id === 'custom' && !B.cfg.custom.length) B.cfg.custom.push(blankCustom()); if (DU && DU.key !== 'main') DU = null; B.card = id; renderSheet(); const sh = $('#sheet'); if (!sh.open) sh.showModal(); }
 function renderSheet() {
   const c = B.cfg; const id = B.card; const form = $('#sheet .sheet-in'); if (!form || !id) return;
   const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id); const cc = allCards(c).common.find(x => x[0] === id) || COMMON_CARDS.find(x => x[0] === id);
@@ -1900,6 +1906,7 @@ function renderSheet() {
     <textarea data-cs="${i}" data-k="text" rows="4" placeholder="Text" aria-label="Text" maxlength="3000">${esc(x.text)}</textarea>
     <div class="two"><input data-cs="${i}" data-k="label" value="${esc(x.label)}" placeholder="Link name" aria-label="Link name" maxlength="80"><input data-cs="${i}" data-k="url" type="url" value="${esc(x.url)}" placeholder="Link, https://…" aria-label="Link"></div>
     <div class="cover-row">${httpsUrl(x.img) ? `<img src="${esc(x.img)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<input data-cs="${i}" data-k="img" type="url" value="${esc(x.img)}" placeholder="Photo link, https://…" aria-label="Photo link"></div>
+    ${docBlockHTML(customSid(x))}
     <button type="button" class="ic del" data-cdel="${i}" aria-label="Delete ${esc(x.title || 'section')}">Delete</button></div>`).join('')}
     <button type="button" class="btn sm" data-b="add-custom">+ Add section</button>`;
   else if (id === 'langs') body = langsCardHTML(c);
@@ -1911,6 +1918,7 @@ function renderSheet() {
   else if (id === 'bring') body = fieldWrap('Guests must bring', `<textarea id="f-bring" data-f="bring" rows="5" placeholder="One per line">${esc(c.bring)}</textarea>`, 'f-bring');
   else if (typeof extraCardBody === 'function') body = extraCardBody(id, c);
   const head = title;
+  if (id !== 'custom' && docCardOk(c, id)) body += docBlockHTML(id);
   setTimeout(() => { if (id === 'route') wireRouteAC(c); if (id === 'msgs') loadCardGroups(); }, 0);
   form.innerHTML = `<div class="grab" aria-hidden="true"></div><h2>${esc(head)}<button type="button" class="x" data-b="close" aria-label="Close">×</button></h2><div class="sheet-b">${body}</div><button type="button" class="btn primary big" data-b="close">Done</button>`;
 }
@@ -2233,8 +2241,9 @@ function accessHTML(cfg, osm) {
     const v = cfg.venue; const sts = ['subway', 'rail', 'tram', 'ferry', 'bus'].flatMap(k => osm.transit[k] || []).filter(x => x.wheelchair === 'yes' || x.wheelchair === 'limited').sort((x, y) => x.d - y.d).slice(0, 3);
     if (sts.length) st = `<h3 class="sub-h">${t('Step-free stations nearby')}</h3><ul class="plist">${sts.map(x => `<li><div><b>${esc(x.name)}</b><span>${esc(t(x.wheelchair === 'yes' ? 'Step-free' : 'Partly step-free'))}${x.line ? ' · ' + esc(x.line.split(';').join(' · ')) : ''}</span></div><span class="dist">${esc(fmtDist(x.d, v.cc))}<small>${walkTxt(x.d)}</small></span></li>`).join('')}</ul>`;
   }
-  if (!rows.length && !st) return '';
-  return sec('access', t('Access and arrival'), `${rows.length ? `<ul class="links">${rows.join('')}</ul>` : ''}${st}`);
+  const docs = docsHTML(cfg, ['access']);
+  if (!rows.length && !st && !docs) return '';
+  return sec('access', t('Access and arrival'), `${rows.length ? `<ul class="links">${rows.join('')}</ul>` : ''}${st}${docs}`);
 }
 
 function extraClick(b, cfg) { if (b.dataset.act === 'qr') openQR(cfg); }
@@ -2461,7 +2470,7 @@ async function authReturn() {
   const p = LS.get('pendingPublish'); LS.del('pendingPublish');
   if (p && p.cfg) { LS.set('draft', p.cfg); LS.set('draftHosted', p.hosted || null); history.replaceState(null, '', siteBase() + '#new'); renderBuilder(p.cfg, null, p.hosted || null, LS.get('draftId') || undefined); publish({ host: true }); return; }
   const back = LS.get('afterSignIn'); LS.del('afterSignIn');
-  if (back && back !== '#mine' && /^#(mine|new|setup)/.test(back)) { history.replaceState(null, '', siteBase() + back); return route(); }
+  if (back && back !== '#mine' && /^#(mine|new|setup|page=[\w-]+$)/.test(back)) { history.replaceState(null, '', siteBase() + back); return route(); }
   if (back && /^\?e=[a-z0-9-]+(#t=[a-z]+)?$/.test(back)) { history.replaceState(null, '', siteBase() + back); return route(); } // a guest signed in on a hosted page
   history.replaceState(null, '', siteBase() + '#mine'); renderMine('');
 }
@@ -3474,7 +3483,7 @@ function aiEventToCfg(d) {
   c.description = String(d.description || '').replace(/<[^>]*>/g, '').slice(0, 3000).trim();
   const sd = isoDay(d.start_date); if (sd) c.start = sd + (isoTime(d.start_time) ? 'T' + d.start_time : '');
   const ed = isoDay(d.end_date); if (ed && ed >= c.start.slice(0, 10)) c.end = ed + (isoTime(d.end_time) && hasTime(c.start) ? 'T' + d.end_time : '');
-  c.schedule = (d.schedule || []).slice(0, 80).map(x => ({ date: isoDay(x.date) || c.start.slice(0, 10), time: isoTime(x.time), title: cleanText(x.title, 120), note: cleanText(x.note, 200) })).filter(x => x.title);
+  c.schedule = (d.schedule || []).slice(0, 80).map(x => ({ date: isoDay(x.date) || c.start.slice(0, 10), time: isoTime(x.time), title: cleanText(x.title, 120), note: cleanText(x.note, 200), ...(PLAN_KINDS[x.kind] ? { kind: x.kind } : {}) })).filter(x => x.title);
   c.notes = (d.faqs || []).slice(0, 30).map(x => ({ label: cleanText(x.question, 120), text: cleanText(x.answer, 600), url: '' })).filter(x => x.label)
     .concat((d.links || []).slice(0, 20).map(x => ({ label: cleanText(x.label, 80), text: '', url: httpsUrl(x.url) })).filter(x => x.label && x.url));
   const w = {}; const hb = (d.hotel_blocks || [])[0];
@@ -3865,6 +3874,309 @@ function wireAIEdit() {
   });
 }
 
+// ================= documents: "Upload a document" (fill a section from a PDF/photo via ai-import mode:"doc", or attach it for guests) =================
+// cfg.files = [{ id, sec, name, url, type: 'pdf'|'image', size }]; sec = the card it was attached in ('route', 'schedule', 'notes', 'about',
+// 'bring', 'access', a type card id like 'block') or a custom section ('c-<id>'). Files live in the public 'event-files' bucket under <user id>/.
+const DOC_BUCKET = 'event-files';
+const DOC_ACCEPT = 'application/pdf,.pdf,image/*';
+const DOC_CARDS = ['route', 'schedule', 'notes', 'about', 'bring', 'access'];
+const docCardOk = (c, id) => DOC_CARDS.includes(id) || /^c-/.test(id) || (TYPE_CARDS[c.type] || []).some(x => x[0] === id && id !== 'route');
+function normFiles(xs) {
+  const seen = new Set();
+  return (Array.isArray(xs) ? xs : []).filter(x => x && typeof x === 'object').slice(0, 40).map((x, i) => {
+    let id = typeof x.id === 'string' && /^[a-z0-9]{1,12}$/.test(x.id) ? x.id : 'f' + i; while (seen.has(id)) id += 'x'; seen.add(id);
+    return { id, sec: typeof x.sec === 'string' && /^[a-z][\w-]{0,30}$/i.test(x.sec) ? x.sec : 'notes', name: cleanText(x.name, 120) || 'Document', url: httpsUrl(x.url), type: x.type === 'image' ? 'image' : 'pdf', size: Math.max(0, Math.round(+x.size || 0)) };
+  }).filter(x => x.url);
+}
+// guest page: the documents attached to these cards, as a list with View / Download
+const tl = (key, en) => LANG === 'en' ? en : t(key);
+function docsHTML(cfg, secs) {
+  const fs = (cfg.files || []).filter(f => secs.includes(f.sec)); if (!fs.length) return '';
+  const dl = (f) => f.url + (f.url.includes('?') ? '&' : '?') + 'download=' + encodeURIComponent(f.name);
+  return `<ul class="docs">${fs.map(f => `<li><a class="doc-main" href="${esc(f.url)}" target="_blank" rel="noopener noreferrer"><span class="doc-ic" aria-hidden="true">${f.type === 'pdf' ? 'PDF' : 'IMG'}</span><b>${esc(f.name)}</b></a><span class="doc-a"><a class="mini-b" href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${esc(tl('View document', 'View'))}</a><a class="mini-b" href="${esc(dl(f))}" download="${esc(f.name)}">${esc(t('Download'))}</a></span></li>`).join('')}</ul>`;
+}
+const bringInPacking = (cfg) => !!(cfg.start && cfg.tools.packing);
+const detailDocSecs = (cfg) => ['notes', ...(TYPE_CARDS[cfg.type] || []).map(x => x[0]).filter(x => x !== 'route'), ...(bringInPacking(cfg) ? [] : ['bring'])];
+
+// uploads: PDFs up to 10 MB as they are; photos re-encoded to a ~300 KB JPEG on the phone first
+async function shrinkPhoto(f, max = 300e3) {
+  const url = URL.createObjectURL(f);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Use a PDF or a photo.')); i.src = url; });
+    let side = Math.min(1600, Math.max(img.naturalWidth, img.naturalHeight)), q = 0.82, blob = null;
+    for (let n = 0; n < 8; n++) {
+      const k = side / Math.max(img.naturalWidth, img.naturalHeight); const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+      blob = await new Promise(res => c.toBlob(res, 'image/jpeg', q)); if (blob.size <= max) break;
+      if (q > 0.6) q -= 0.11; else side = Math.round(side * 0.8);
+    }
+    return blob;
+  } finally { URL.revokeObjectURL(url); }
+}
+const isPdf = (f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '');
+async function docPrepare(f) {
+  if (isPdf(f)) { if (f.size > 10 * 1024 * 1024) throw new Error('That PDF is too large (10 MB max).'); return { blob: f, type: 'application/pdf', name: f.name || 'Document.pdf', kind: 'pdf' }; }
+  if (!/^image\//.test(f.type)) throw new Error('Use a PDF or a photo.');
+  return { blob: await shrinkPhoto(f), type: 'image/jpeg', name: (f.name || 'Photo').replace(/\.\w+$/, '') + '.jpg', kind: 'image' };
+}
+async function docUpload(f) {
+  const user = await myGuestUser(); if (!user) { const e = new Error('signin'); e.signin = true; throw e; }
+  const p = await docPrepare(f); const id = Math.random().toString(36).slice(2, 8);
+  const safe = p.name.normalize('NFKD').replace(/[^\w.-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(-80) || 'document';
+  const path = `${user.id}/${Date.now().toString(36)}-${id}-${safe}`;
+  const c = await sb(); const { error } = await c.storage.from(DOC_BUCKET).upload(path, p.blob, { contentType: p.type, cacheControl: '31536000', upsert: false });
+  if (error) throw new Error(error.message || 'Upload failed.');
+  return { id, name: cleanText(f.name || p.name, 120), url: c.storage.from(DOC_BUCKET).getPublicUrl(path).data.publicUrl, type: p.kind, size: p.blob.size };
+}
+async function docRemoteDelete(f) { // best effort: only files under this user's own folder
+  try { const user = await myGuestUser(); const pre = `${SB.url}/storage/v1/object/public/${DOC_BUCKET}/`; if (!user || !f.url.startsWith(pre)) return;
+    const path = decodeURIComponent(f.url.slice(pre.length).split('?')[0]); if (!path.startsWith(user.id + '/')) return;
+    if ((B.cfg.files || []).some(x => x.url === f.url)) return; // still used elsewhere on this page
+    const c = await sb(); await c.storage.from(DOC_BUCKET).remove([path]); } catch { /* the page no longer links it */ }
+}
+const fileEntry = (f, sec) => ({ id: f.id, sec, name: f.name, url: f.url, type: f.type, size: f.size }); // same key order as normFiles
+const fmtSize = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+
+// ---- reading a document into reviewable items ----
+// item = { sec, key, title, text, date, time, end, url, kind, raw, target }; sec decides where it goes and can be changed in the review
+const cleanLong = (s, n) => String(s ?? '').replace(/<[^>]*>/g, '').replace(/\r/g, '').replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, n);
+const docScopeSection = (c, scope) => scope === 'auto' ? '' : /^c-|^new-custom$/.test(scope) ? 'custom' : DOC_CARDS.includes(scope) ? scope : 'details';
+function docItems(cfg, d, scope) {
+  d = d || {}; const out = []; const want = (s) => scope === 'auto' || scope === s;
+  const add = (sec, o) => out.push({ sec, key: '', title: '', text: '', date: '', time: '', end: '', url: '', ...o });
+  const C = aiEventToCfg({ ...d, type: cfg.type, start_date: isoDay(d.start_date) || cfg.start.slice(0, 10) });
+  const stops = (Array.isArray(d.stops) ? d.stops : []).slice(0, 20).map(x => ({ title: cleanText(x && x.city, 80), country: cleanText(x && x.country, 60), date: isoDay(x && x.arrive), end: isoDay(x && x.leave) })).filter(x => x.title);
+  const tripish = isTrip(cfg) || scope === 'route';
+  if (scope === 'auto' && !cfg.title.trim() && C.title) add('basics', { key: 'title', title: C.title });
+  if (want('route') || scope === 'auto') {
+    let s = isoDay(d.start_date) ? C.start : (tripish && stops[0] ? stops[0].date : ''); let e = isoDay(d.end_date) ? C.end : (tripish && stops.length ? stops[stops.length - 1].end : '');
+    if (tripish) { s = (s || '').slice(0, 10); e = (e || '').slice(0, 10); } // trips run by the day
+    if (s && (s.slice(0, 10) !== cfg.start.slice(0, 10) || (e || '').slice(0, 10) !== (cfg.end || '').slice(0, 10))) add('basics', { key: 'dates', date: s, end: e && e.slice(0, 10) >= s.slice(0, 10) ? e : '' });
+  }
+  if (tripish && want('route')) stops.forEach(x => add('route', x));
+  if (scope === 'auto' && !cfg.venue && !stops.length && cleanText(d.venue_name, 140)) add('basics', { key: 'venue', title: cleanText(d.venue_name, 140), text: cleanText(d.venue_address, 200) });
+  if (want('schedule')) C.schedule.forEach(x => add('schedule', { date: x.date, time: x.time, title: x.title, text: x.note, kind: x.kind || '' }));
+  if (want('notes')) C.notes.forEach(x => add('notes', { title: x.label, text: x.text, url: x.url }));
+  if (want('about')) { if (C.host) add('about', { key: 'host', text: C.host }); if (C.description) add('about', { text: cleanLong(d.description, 3000) || C.description }); }
+  const tc = (TYPE_CARDS[cfg.type] || []).find(x => x[0] === scope); const sp = typeSpec(cfg);
+  if (sp && (scope === 'auto' || tc)) {
+    const X = C.x[cfg.type] || {};
+    sp.fields.filter(f => (tc ? tc[3] : Object.keys(X)).includes(f[0]) && filled(f[2], X[f[0]])).forEach(f => {
+      const v = X[f[0]]; add('field:' + f[0], { text: typeof v === 'string' ? v : v && v.q ? v.q : Array.isArray(v) ? v.map(l => `${l.label} ${l.url}`).join('\n') : '', raw: v, kind: f[2] });
+    });
+  }
+  if (want('bring') && d.bring) { const lines = String(d.bring).split('\n').map(x => cleanText(x.replace(/^[-•*]\s*/, ''), 120)).filter(Boolean).slice(0, 40); if (lines.length) add('bring', { text: lines.join('\n') }); }
+  if (want('access') && d.access && typeof d.access === 'object') ACCESS_FIELDS.forEach(([k]) => { const v = cleanText(d.access[k], 300); if (v) add('access:' + k, { text: v }); });
+  const secs = (Array.isArray(d.sections) ? d.sections : []).map(x => ({ title: cleanText(x && x.title, 80), text: cleanLong(x && x.text, 3000) })).filter(x => x.title || x.text);
+  if (/^c-|^new-custom$/.test(scope)) {
+    const s0 = secs[0] || { title: cleanText(d.title, 80), text: cleanLong(d.description, 3000) || C.notes.map(n => [n.label, n.text].filter(Boolean).join(': ')).join('\n') };
+    if (secs.length > 1) s0.text = secs.map(x => (x === s0 ? '' : x.title + '\n') + x.text).join('\n\n').slice(0, 3000);
+    if (s0.title || s0.text) add('custom', { ...s0, target: scope === 'new-custom' ? '' : scope });
+  } else if (scope === 'auto') secs.forEach(x => add('custom', x));
+  return out.filter(x => x.title || x.text || x.date).slice(0, 120);
+}
+// where an item can go, and its label
+function docSecLabel(c, sec, it) {
+  if (sec === 'basics') return 'Basics';
+  if (sec === 'route') return 'Route';
+  if (sec === 'schedule') return isTrip(c) ? 'Day by day' : 'Schedule';
+  if (sec === 'notes') return 'Notes for guests';
+  if (sec === 'about') return 'About';
+  if (sec === 'bring') return 'Must-bring items';
+  if (sec === 'custom') { const x = it && it.target && c.custom.find(y => customSid(y) === it.target); return x ? (x.title.trim() || 'Custom section') : 'New custom section'; }
+  let m;
+  if ((m = sec.match(/^field:(\w+)$/))) { const tc = (TYPE_CARDS[c.type] || []).find(x => x[3].includes(m[1])); const f = (typeSpec(c) || { fields: [] }).fields.find(x => x[0] === m[1]); const fl = f ? (EDIT_LABEL[m[1]] || f[1]) : m[1]; return tc && tc[3].length > 1 ? `${tc[1]} · ${fl}` : (tc ? tc[1] : fl); }
+  if ((m = sec.match(/^access:(\w+)$/))) return 'Access · ' + ((ACCESS_FIELDS.find(x => x[0] === m[1]) || [])[1] || m[1]);
+  return sec;
+}
+const docMoveTargets = (c, it, home) => {
+  const base = [...(isTrip(c) ? ['route'] : []), 'schedule', 'notes', 'custom', 'about', 'bring'];
+  return [...new Set([...(home && !base.includes(home) ? [home] : []), ...base])];
+};
+const docFields = (it) => {
+  switch (it.sec) {
+    case 'basics': return it.key === 'title' ? [['title', 'Title', 'text']] : it.key === 'dates' ? [['date', 'Starts', 'when'], ['end', 'Ends', 'when']] : [['title', 'Venue', 'text'], ['text', 'Address', 'text']];
+    case 'route': return [['title', 'City or place', 'text'], ['date', 'Arrive', 'date'], ['end', 'Leave', 'date']];
+    case 'schedule': return [['date', 'Date', 'date'], ['time', 'Time', 'time'], ['title', 'What', 'text'], ['text', 'Note', 'text']];
+    case 'notes': return [['title', 'Title', 'text'], ['text', 'Text', 'long'], ['url', 'Link', 'url']];
+    case 'custom': return [['title', 'Title', 'text'], ['text', 'Text', 'long']];
+    case 'about': return [['text', it.key === 'host' ? 'Hosted by' : 'About', it.key === 'host' ? 'text' : 'long']];
+    case 'bring': return [['text', 'One per line', 'long']];
+    default: return [['text', '', it.kind === 'links' ? 'ro' : /lines/.test(it.kind || '') || (it.text || '').length > 80 ? 'long' : 'text']];
+  }
+};
+function docReviewHTML(c, items) {
+  const order = ['basics', 'route', 'schedule', 'notes', 'about', 'bring', 'custom'];
+  const rank = (s) => { const i = order.indexOf(s); return i < 0 ? (s.startsWith('field:') ? 6.5 : 6.7) : i; };
+  const groups = []; items.forEach((it, i) => { if (it.gone) return; const g = it.sec === 'custom' ? 'custom:' + (it.target || '') : it.sec.replace(/:.*$/, (m) => it.sec.startsWith('field:') ? ':' + ((TYPE_CARDS[c.type] || []).find(x => x[3].includes(it.sec.slice(6))) || [''])[0] : ''); let G = groups.find(x => x.g === g); if (!G) groups.push(G = { g, sec: it.sec, idx: [] }); G.idx.push(i); });
+  groups.sort((a, b) => rank(a.sec) - rank(b.sec));
+  const n = items.filter(x => !x.gone).length;
+  const fld = (it, i, [k, label, kind]) => {
+    const id = `dr${i}-${k}`; const v = it[k] || ''; const lab = label ? `<label for="${id}">${esc(label)}</label>` : '';
+    if (kind === 'ro') return `<div class="field wide"><p class="dr-ro">${esc(v)}</p></div>`;
+    if (kind === 'long') return `<div class="field wide">${lab}<textarea id="${id}" data-dr="${i}" data-dk="${k}" rows="3"${label ? '' : ` aria-label="${esc(docSecLabel(c, it.sec, it))}"`}>${esc(v)}</textarea></div>`;
+    const ty = kind === 'when' ? (isDate(v) || !v ? 'date' : 'datetime-local') : kind === 'url' ? 'url' : kind;
+    return `<div class="field${kind === 'text' || kind === 'url' ? ' wide' : ''}">${lab}<input id="${id}" type="${ty}" data-dr="${i}" data-dk="${k}" value="${esc(v)}"${label ? '' : ` aria-label="${esc(docSecLabel(c, it.sec, it))}"`}></div>`;
+  };
+  return `<div class="dr" data-sheet="doc-review">${groups.map(G => `<h3 class="sub-h">${esc(docSecLabel(c, G.sec, items[G.idx[0]]))}${G.sec === 'route' && stopsOf(c).length ? ' <small class="muted">(replaces the current route)</small>' : ''}</h3>
+    ${G.idx.map(i => { const it = items[i]; const tg = it.sec === 'basics' ? [] : docMoveTargets(c, it, it.home);
+      return `<div class="dr-item"><div class="dr-top">${tg.length ? `<select data-dr-sec="${i}" aria-label="Put it in">${tg.map(s => `<option value="${esc(s)}" ${s === it.sec ? 'selected' : ''}>${esc(docSecLabel(c, s, s === 'custom' && s === it.sec ? it : null))}</option>`).join('')}</select>` : `<span class="dr-k">${esc(it.key === 'dates' ? (isTrip(c) ? 'Trip dates' : 'Dates') : it.key === 'title' ? 'Title' : 'Venue')}</span>`}<button type="button" class="ic del dr-x" data-dr-del="${i}" aria-label="Remove">×</button></div>
+        <div class="dr-f">${docFields(it).map(f => fld(it, i, f)).join('')}</div></div>`; }).join('')}`).join('')}
+    <div class="btns"><button type="button" class="btn primary" data-doc-apply ${n ? '' : 'disabled'}>${esc(`Apply (${n})`)}</button><button type="button" class="btn ghost" data-doc-cancel>Cancel</button></div></div>`;
+}
+// apply the reviewed items to a copy of the page (async: route stops and the venue are looked up on the map)
+async function docApply(cfg, items) {
+  const next = clone(cfg); const live = items.filter(x => !x.gone); const xd = () => (next.x[next.type] = next.x[next.type] || {});
+  const route = live.filter(x => x.sec === 'route' && cleanText(x.title, 80));
+  if (route.length) {
+    next.stops = await Promise.all(route.map(async (x) => { const name = cleanText(x.title, 80); const r = await aiResolveVenue(name, x.country || '').catch(() => null);
+      const s = { name, from: isoDay(x.date), to: isoDay(x.end) && (!isoDay(x.date) || x.end >= x.date) ? x.end : '' };
+      return r && r.lat != null ? { name, address: r.address, lat: r.lat, lon: r.lon, city: r.city || name, region: r.region, country: r.country, cc: r.cc, from: s.from, to: s.to } : s; }));
+    const f0 = next.stops.find(s => s.lat != null);
+    if (!next.venue && f0) { next.venue = { name: f0.name, address: f0.address, lat: f0.lat, lon: f0.lon, city: f0.city, region: f0.region, country: f0.country, cc: f0.cc }; next.tz = await lookupTZ(f0.lat, f0.lon).catch(() => ''); }
+  }
+  for (const x of live) {
+    const title = cleanText(x.title, 120), text = cleanLong(x.text, 3000), date = isoDay(x.date), time = isoTime(x.time); let m;
+    if (x.sec === 'basics') {
+      if (x.key === 'title' && title) next.title = title.slice(0, 80);
+      if (x.key === 'dates') { const s = isWhen(x.date || '') ? x.date : ''; if (s) { next.start = s; next.end = isWhen(x.end || '') && x.end.slice(0, 10) >= s.slice(0, 10) ? x.end : ''; } }
+      if (x.key === 'venue' && title && !next.venue) { const r = await aiResolveVenue(title, cleanText(x.text, 200)).catch(() => null); if (r) { next.venue = { name: r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc }; next.tz = await lookupTZ(r.lat, r.lon).catch(() => ''); } }
+    } else if (x.sec === 'schedule') {
+      const it = { date: date || next.start.slice(0, 10), time, title: title || cleanText(text, 120), note: title ? cleanText(text, 200) : '', ...(PLAN_KINDS[x.kind] ? { kind: x.kind } : {}) };
+      if (it.title && !next.schedule.some(y => y.date === it.date && y.time === it.time && y.title === it.title)) next.schedule.push(it);
+    } else if (x.sec === 'notes') { const label = title || cleanText(text, 60); if (label && !next.notes.some(y => y.label === label && (y.text || '') === (title ? cleanText(text, 600) : ''))) next.notes.push({ label, text: title ? cleanText(text, 600) : '', url: httpsUrl(x.url || '') }); }
+    else if (x.sec === 'custom') {
+      const tgt = x.target && next.custom.find(y => customSid(y) === x.target);
+      if (tgt) { if (title) tgt.title = title.slice(0, 80); if (text) tgt.text = text; }
+      else { const cs = { ...blankCustom(), title: (title || cleanText(text, 60) || 'Info').slice(0, 80), text: title ? text : '' }; next.custom.push(cs); x.made = customSid(cs); }
+    } else if (x.sec === 'about') {
+      if (x.key === 'host') { const h = cleanText(text || title, 120); if (h) next.host = h; }
+      else { const body = [title, text].filter(Boolean).join('\n'); if (body && !next.description.includes(body)) next.description = (next.description ? next.description.trim() + '\n\n' : '') + body; next.description = next.description.slice(0, 5000); }
+    } else if (x.sec === 'bring') {
+      const have = new Set(next.bring.split('\n').map(y => y.trim().toLowerCase()).filter(Boolean));
+      const add = [title, text].filter(Boolean).join('\n').split('\n').map(y => cleanText(y, 120)).filter(y => y && !have.has(y.toLowerCase()));
+      if (add.length) next.bring = [next.bring.trim(), ...add].filter(Boolean).join('\n');
+    } else if ((m = x.sec.match(/^field:(\w+)$/))) {
+      const f = (typeSpec(next) || { fields: [] }).fields.find(y => y[0] === m[1]); if (!f) continue; const k = f[2];
+      if (k === 'links') { if (Array.isArray(x.raw)) xd()[m[1]] = x.raw; }
+      else if (k === 'place') { if (text) xd()[m[1]] = x.raw && x.raw.q === text ? x.raw : { q: cleanText(text, 160) }; }
+      else if (k === 'date') { if (isDate(text)) xd()[m[1]] = text; }
+      else if (k === 'time') { if (isTime(text)) xd()[m[1]] = text; }
+      else if (k === 'datetime') { if (isWhen(text)) xd()[m[1]] = text; }
+      else if (k === 'url') { if (httpsUrl(text)) xd()[m[1]] = httpsUrl(text); }
+      else if (text) xd()[m[1]] = k === 'lines' ? text : cleanText(text, 1000);
+    } else if ((m = x.sec.match(/^access:(\w+)$/))) { if (text) next.access = { ...(next.access || {}), [m[1]]: cleanText(text, 300) }; }
+  }
+  if (next.end && next.start && next.end.slice(0, 10) < next.start.slice(0, 10)) next.end = '';
+  return normalize(next);
+}
+
+// ---- the control: in each section sheet, and once on the main page ----
+let DU = null; // { key, phase: 'pick'|'busy'|'signin'|'review'|'done', file, into, items, msg, undo, scope, attachNew }
+let DOC_AI = null; // does the deployed function read documents? (null = not known yet)
+function docAIKnown() {
+  if (DOC_AI !== null || !SB) return;
+  DOC_AI = false;
+  (LS.get('signedIn') ? aiModes().then(m => m.includes('doc')) : aiReady()).then(ok => { DOC_AI = !!ok; if (ok) $$('[data-doc-fillbtn]').forEach(b => { b.hidden = false; }); }).catch(() => {});
+}
+function docIntoOptions(c) {
+  const cards = allCards(c);
+  const opts = [...cards.type, ...cards.common].filter(x => docCardOk(c, x[0]));
+  return `<option value="auto">Sort automatically</option>${opts.map(x => `<option value="${x[0]}">${esc(x[1])}</option>`).join('')}${c.custom.filter(x => x.title.trim()).map(x => `<option value="${customSid(x)}">${esc(x.title)}</option>`).join('')}<option value="new-custom">New custom section</option>`;
+}
+function docBlockHTML(key) {
+  const c = B.cfg; const main = key === 'main'; const st = DU && DU.key === key ? DU : null;
+  if (!SB) return '';
+  const files = main ? [] : (c.files || []).filter(f => f.sec === key);
+  let inner = '';
+  if (st && st.phase === 'review') inner = docReviewHTML(c, st.items);
+  else if (st && st.phase === 'signin') inner = `<div class="bk-signin"><p><b>Sign in to upload documents.</b></p>${signInFormHTML('')}</div>`;
+  else if (main && st && (st.phase === 'pick' || st.phase === 'busy')) inner = `<p class="doc-name"><b>${esc(st.file.name || 'Document')}</b> <small class="muted">${esc(fmtSize(st.file.size))}</small></p>
+      <div class="field"><label for="doc-into">Put it in</label><select id="doc-into" data-doc-into>${docIntoOptions(c)}</select></div>
+      <div class="btns"><button type="button" class="btn primary" data-doc-go="fill" data-doc-fillbtn ${DOC_AI ? '' : 'hidden'} ${st.phase === 'busy' ? 'disabled' : ''}>Fill from document</button><button type="button" class="btn" data-doc-go="attach" ${st.phase === 'busy' ? 'disabled' : ''}>Attach for guests</button><button type="button" class="btn ghost" data-doc-cancel>Cancel</button></div>`;
+  const msg = st && st.msg ? st.msg : '';
+  const undo = st && st.phase === 'done' && st.undo ? ' <button type="button" class="btn sm" data-doc-undo>Undo</button>' : '';
+  const pickers = main
+    ? (!st || st.phase === 'done' ? `<label class="btn file-pick doc-pick">✦ Upload a document<input type="file" accept="${DOC_ACCEPT}" data-doc-pick hidden></label>` : '')
+    : (!st || st.phase === 'done' || st.phase === 'busy' ? `<p class="doc-h">Upload a document</p><div class="doc-btns"><label class="btn sm file-pick${st && st.phase === 'busy' ? ' busy' : ''}" data-doc-fillbtn ${DOC_AI ? '' : 'hidden'}>Fill from document<input type="file" accept="${DOC_ACCEPT}" data-doc-fill hidden></label><label class="btn sm file-pick">Attach for guests<input type="file" accept="${DOC_ACCEPT}" data-doc-attach hidden></label></div>` : '');
+  const list = files.length ? `<ul class="doc-files">${files.map(f => `<li><span class="doc-ic" aria-hidden="true">${f.type === 'pdf' ? 'PDF' : 'IMG'}</span><a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${esc(f.name)}</a><button type="button" class="link" data-doc-del="${f.id}" aria-label="Remove ${esc(f.name)}">Remove</button></li>`).join('')}</ul>` : '';
+  return `<div class="doc-up${main ? ' doc-main-up' : ''}" data-doc-key="${esc(key)}">${pickers}${list}${inner}<p class="hint" data-doc-msg role="status" aria-live="polite">${esc(msg)}${undo}</p></div>`;
+}
+function docPaint(key) { const el = document.querySelector(`[data-doc-key="${CSS.escape(key)}"]`); if (el) el.outerHTML = docBlockHTML(key); }
+const docSignIn = (key) => { DU = { key, phase: 'signin' }; docPaint(key); };
+async function docRead(key, scope, file) {
+  if (!LS.get('signedIn')) return docSignIn(key);
+  const keep = DU && DU.key === key ? DU : {};
+  DU = { ...keep, key, phase: 'busy', file, scope, msg: 'Reading…' }; docPaint(key);
+  try {
+    const part = await bookingFile(file);
+    const j = await aiImport({ mode: 'doc', files: [part], type: B.cfg.type, section: docScopeSection(B.cfg, scope) });
+    const items = docItems(B.cfg, j.data, scope); items.forEach(x => { x.home = x.sec; x.homeTarget = x.target || ''; });
+    if (DU.key !== key) return;
+    if (!items.length) { DU = { key, phase: key === 'main' ? 'pick' : 'done', file, msg: 'Nothing found to fill in. Try Attach for guests.' }; docPaint(key); return; }
+    DU = { key, phase: 'review', file, scope, items, msg: '', attachNew: scope === 'new-custom' }; docPaint(key);
+  } catch (e) {
+    if (e.signin) return docSignIn(key);
+    DU = { key, phase: key === 'main' ? 'pick' : 'done', file, msg: e.message || 'Couldn’t read it.' }; docPaint(key);
+  }
+}
+async function docAttach(key, sec, file, { newCustom } = {}) {
+  if (!LS.get('signedIn')) return docSignIn(key);
+  DU = { key, phase: key === 'main' ? 'busy' : 'busy', file, msg: 'Uploading…' }; docPaint(key);
+  try {
+    const f = await docUpload(file); const cfg = B.cfg; const undo = clone(cfg);
+    if (newCustom) { const cs = { ...blankCustom(), title: cleanText((file.name || 'Document').replace(/\.\w+$/, '').replace(/[_-]+/g, ' '), 80) || 'Document' }; cfg.custom.push(cs); sec = customSid(cs); }
+    cfg.files = (cfg.files || []).concat(fileEntry(f, sec));
+    DU = { key, phase: 'done', msg: key === 'main' ? `Attached to ${docSecLabel(cfg, /^c-/.test(sec) ? 'custom' : sec, { target: sec })}.` : 'Attached.', undo: key === 'main' ? undo : null };
+    changed(true);
+  } catch (e) {
+    if (e.signin) return docSignIn(key);
+    DU = { key, phase: key === 'main' ? 'pick' : 'done', file, msg: e.message || 'Upload failed.' }; docPaint(key);
+  }
+}
+function wireDocs(root) {
+  if (!root || root._docs) return; root._docs = true;
+  root.addEventListener('change', (e) => {
+    const i = e.target; const box = i.closest && i.closest('[data-doc-key]'); if (!box) return; const key = box.dataset.docKey;
+    if (i.matches('[data-doc-pick]') && i.files && i.files[0]) { DU = { key, phase: 'pick', file: i.files[0], into: 'auto' }; docPaint(key); return; }
+    if (i.matches('[data-doc-fill]') && i.files && i.files[0]) { const f = i.files[0]; i.value = ''; docRead(key, key, f); return; }
+    if (i.matches('[data-doc-attach]') && i.files && i.files[0]) { const f = i.files[0]; i.value = ''; docAttach(key, key, f); return; }
+    if (i.matches('[data-doc-into]') && DU) DU.into = i.value;
+    if (i.dataset.drSec != null && DU && DU.items) { const it = DU.items[+i.dataset.drSec]; if (!it) return; it.sec = i.value; it.target = it.sec === 'custom' && it.home === 'custom' ? it.homeTarget || '' : ''; docPaint(key); }
+  });
+  root.addEventListener('input', (e) => { const i = e.target; if (i.dataset.dr == null || !DU || !DU.items) return; const it = DU.items[+i.dataset.dr]; if (it) it[i.dataset.dk] = i.value; e.stopPropagation(); }, true);
+  root.addEventListener('click', (e) => {
+    const box = e.target.closest('[data-doc-key]'); if (!box) return; const key = box.dataset.docKey;
+    const sio = e.target.closest('[data-si-oauth]'); if (sio) { oauthSignIn(sio.dataset.siOauth); LS.set('afterSignIn', '#page=' + B.pid); return; }
+    const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
+    if (d.si === 'send') { signInSubmit(box, () => LS.set('afterSignIn', '#page=' + B.pid)); return; }
+    if (d.si === 'retry') { docSignIn(key); return; }
+    if (d.docGo && DU && DU.file) {
+      const into = (box.querySelector('[data-doc-into]') || {}).value || DU.into || 'auto';
+      if (d.docGo === 'fill') docRead(key, into, DU.file);
+      else docAttach(key, into === 'auto' ? 'notes' : into, DU.file, { newCustom: into === 'new-custom' });
+      return;
+    }
+    if ('docCancel' in d) { DU = null; docPaint(key); return; }
+    if (d.drDel != null && DU && DU.items) { DU.items[+d.drDel].gone = true; docPaint(key); return; }
+    if ('docApply' in d && DU && DU.items) {
+      const st = DU; b.disabled = true; const m = box.querySelector('[data-doc-msg]'); if (m) m.textContent = st.items.some(x => !x.gone && (x.sec === 'route' || x.key === 'venue')) ? 'Finding places…' : 'Applying…';
+      (async () => {
+        const undo = clone(B.cfg); let next = await docApply(B.cfg, st.items);
+        if (st.attachNew) { const made = st.items.find(x => x.made); if (made) { try { const f = await docUpload(st.file); next.files = (next.files || []).concat(fileEntry(f, made.made)); } catch { /* the section is still made */ } } }
+        if (DU !== st) return;
+        B.cfg = next; DU = { key, phase: 'done', msg: 'Applied.', undo }; changed(true); if (typeof renderHostNote === 'function') renderHostNote();
+      })().catch(err => { b.disabled = false; if (m) m.textContent = err.message || 'Couldn’t apply that.'; });
+      return;
+    }
+    if ('docUndo' in d && DU && DU.undo) { B.cfg = DU.undo; DU = { key, phase: 'done', msg: 'Undone.' }; changed(true); return; }
+    if (d.docDel) {
+      const cfg = B.cfg; const f = (cfg.files || []).find(x => x.id === d.docDel); if (!f) return;
+      confirmDlg({ title: `Remove “${f.name}”?`, ok: 'Remove' }).then(yes => { if (!yes) return; cfg.files = cfg.files.filter(x => x !== f); if (!cfg.files.length) delete cfg.files; changed(true); docRemoteDelete(f); });
+    }
+  });
+}
+
 // ================= guest languages: the organizer's own text, translated (ai-import mode:"translate") =================
 // cfg.lang = the language the organizer writes in; cfg.langs = guest languages; cfg.tr[lang][path] = { h: hash of the source text, t: translation, o: organizer override }.
 // Only fields whose source text changed (hash) are sent again. Names, places, dates, codes and links are left alone by the function.
@@ -4119,5 +4431,5 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
