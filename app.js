@@ -1410,7 +1410,8 @@ function legsHTML(cfg, ss, days, dayHTML) {
 }
 // one schedule: the organizer's items, with the guest's own bookings mixed in
 function scheduleHTML(cfg) {
-  const evs = cfg.off.schedule ? [] : cfg.schedule.filter(x => x.title).map(x => ({ ev: true, start: (x.date || '') + (x.date && x.time ? 'T' + x.time : ''), name: x.title, note: x.note, kind: x.kind || '' }));
+  const fit = (d) => isTrip(cfg) && d ? fitTripDate(cfg.start, cfg.end, d, false) : d || '';
+  const evs = cfg.off.schedule ? [] : cfg.schedule.filter(x => x.title).map(x => { const d = fit(x.date); return { ev: true, start: d + (d && x.time ? 'T' + x.time : ''), name: x.title, note: x.note, kind: x.kind || '' }; });
   const mine = cfg.tools.mytrip ? itinLoad(cfg).map((x, i) => ({ ...x, i })).concat(planLoad(cfg).filter(x => x.day).map(x => ({ kind: '', name: x.name, start: x.day + (x.time ? 'T' + x.time : ''), confNo: x.booked ? x.conf : '', note: x.note }))) : [];
   const legs = routeInItin(cfg) && !cfg.off.route ? stopsOf(cfg) : null;
   if (!evs.length && !mine.length && !legs) return '';
@@ -1419,10 +1420,15 @@ function scheduleHTML(cfg) {
   const all = (view === 'event' ? evs : evs.concat(mine)).sort((a, b) => (a.start || '9999').slice(0, 10).localeCompare((b.start || '9999').slice(0, 10)) || key(a).localeCompare(key(b)));
   const days = {}; all.forEach(x => (days[(x.start || '').slice(0, 10)] = days[(x.start || '').slice(0, 10)] || []).push(x));
   const tm = (s) => fmtTime((s || '').slice(11, 16));
-  const dayHTML = ([d, xs]) => `<div class="day"><h3 class="day-h">${d ? `${isTrip(cfg) && cfg.start && d >= cfg.start.slice(0, 10) ? `<span class="dayn">${esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 }))}</span> ` : ''}${esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' }))}${!legs && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? ` <span class="day-city">${esc(stopFor(cfg, d).name)}</span>` : ''}` : t('Anytime')}</h3><ol class="tl">${xs.map(x => {
+  const dayHTML = ([d, xs]) => `<div class="day"><h3 class="day-h">${d ? `${isTrip(cfg) && cfg.start && d >= cfg.start.slice(0, 10) ? `<span class="dayn">${esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 }))}</span> ` : ''}${esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' }))}${!legs && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? ` <span class="day-city">${esc(stopFor(cfg, d).name)}</span>` : ''}` : t(isTrip(cfg) ? 'Unscheduled' : 'Anytime')}</h3><ol class="tl">${xs.map(x => {
+    // trips: one clean line per item; its details open with a tap
+    const more = (title, body) => body ? `<details class="tl-d"><summary><b>${title}</b><i class="tl-dot" aria-hidden="true"></i><span class="sr">${t('Details')}</span></summary><span>${body}</span></details>` : `<b>${title}</b>`;
+    if (x.ev && isTrip(cfg)) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"><time>${esc(tm(x.start))}</time><div>${more(esc(x.name), x.note ? esc(x.note) : '')}</div></li>`;
     if (x.ev) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"><time>${esc(tm(x.start)) || (isTrip(cfg) ? '' : '—')}</time><div><b>${esc(x.name)}${x.kind && x.kind !== 'activity' ? ` <em class="kind">${esc(t(PLAN_KINDS[x.kind] || ''))}</em>` : ''}</b>${x.note ? `<span>${esc(x.note)}</span>` : ''}</div></li>`;
     const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
     const until = x.end ? (x.end.slice(0, 10) !== (x.start || '').slice(0, 10) ? t('until {d}', { d: fmt(x.end.slice(0, 10), { month: 'short', day: 'numeric' }) }) : t('until {d}', { d: tm(x.end) })) : '';
+    if (isTrip(cfg)) { const det = esc([t(ITIN_KINDS[x.kind] || ''), until, x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · ')) + (fl.status ? ' ' + ext(fl.status, t('Flight status') + ' ↗', 'tl-link') : '');
+      return `<li class="mine"><time>${esc(tm(x.start)) || '—'}</time><div>${more(`${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))} <em class="yours">${t('Yours')}</em>`, det)}</div></li>`; }
     return `<li class="mine"><time>${esc(tm(x.start)) || '—'}</time><div><b>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))} <em class="yours">${t('Yours')}</em></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), until, x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>${fl.status ? ext(fl.status, t('Flight status') + ' ↗', 'tl-link') : ''}</div></li>`;
   }).join('')}</ol></div>`;
   return `${mine.length ? `<div class="seg2 sched-seg" role="group"><button type="button" data-sched="all" class="${view === 'all' ? 'on' : ''}" aria-pressed="${view === 'all'}">${t('Everything')}</button><button type="button" data-sched="event" class="${view === 'event' ? 'on' : ''}" aria-pressed="${view === 'event'}">${t('Event only')}</button></div>` : ''}
@@ -3761,6 +3767,17 @@ async function aiImport(body) {
   return j;
 }
 const isoDay = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '') ? s : '';
+// A trip date that falls outside the trip (wrong year, or month and day swapped) is moved to the reading that fits;
+// strict: an import with no fitting reading gives '' (Unscheduled); otherwise the date is kept as written.
+const realDay = (d) => { try { return ymd(asUTC(d)) === d; } catch { return false; } };
+function fitTripDate(start, end, d, strict = true) {
+  if (!d || !start || !isoDay(start.slice(0, 10))) return d || '';
+  const s = start.slice(0, 10), e = (isoDay((end || '').slice(0, 10)) || s), lo = addDays(s, -3), hi = addDays(e, 3);
+  if (d >= lo && d <= hi) return d;
+  const [y, m, dd] = d.split('-'); const ys = [...new Set([s.slice(0, 4), e.slice(0, 4), y])]; const c = [];
+  ys.forEach(yy => { c.push(`${yy}-${m}-${dd}`); if (+dd <= 12) c.push(`${yy}-${dd}-${m}`); });
+  return c.find(x => realDay(x) && x >= lo && x <= hi) || (strict ? '' : d);
+}
 const isoTime = (s) => /^\d{2}:\d{2}$/.test(s || '') ? s : '';
 const httpsUrl = (u) => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ''; } catch { return ''; } };
 // the function's event JSON → a 1LinkTrip config (venue resolved separately)
@@ -3770,7 +3787,8 @@ function aiEventToCfg(d) {
   c.description = String(d.description || '').replace(/<[^>]*>/g, '').slice(0, 3000).trim();
   const sd = isoDay(d.start_date); if (sd) c.start = sd + (isoTime(d.start_time) ? 'T' + d.start_time : '');
   const ed = isoDay(d.end_date); if (ed && ed >= c.start.slice(0, 10)) c.end = ed + (isoTime(d.end_time) && hasTime(c.start) ? 'T' + d.end_time : '');
-  c.schedule = (d.schedule || []).slice(0, 80).map(x => ({ date: isoDay(x.date) || c.start.slice(0, 10), time: isoTime(x.time), title: cleanText(x.title, 120), note: cleanText(x.note, 200), ...(PLAN_KINDS[x.kind] ? { kind: x.kind } : {}) })).filter(x => x.title);
+  const trip = d.type === 'Trip';
+  c.schedule = (d.schedule || []).slice(0, 80).map(x => ({ date: trip ? fitTripDate(c.start, c.end, isoDay(x.date)) : isoDay(x.date) || c.start.slice(0, 10), time: isoTime(x.time), title: cleanText(x.title, 120), note: cleanText(x.note, 200), ...(PLAN_KINDS[x.kind] ? { kind: x.kind } : {}) })).filter(x => x.title);
   c.notes = (d.faqs || []).slice(0, 30).map(x => ({ label: cleanText(x.question, 120), text: cleanText(x.answer, 600), url: '' })).filter(x => x.label)
     .concat((d.links || []).slice(0, 20).map(x => ({ label: cleanText(x.label, 80), text: '', url: httpsUrl(x.url) })).filter(x => x.label && x.url));
   const w = {}; const hb = (d.hotel_blocks || [])[0];
@@ -4129,9 +4147,9 @@ function editRule(cfg, path) {
   if (path === 'theme.mode') return { ok: (v) => v === 'light' || v === 'dark', label: 'Background' };
   if (path === 'theme.font') return { ok: (v) => !!FONTS[v], label: 'Title font' };
   if ((m = path.match(/^tools\.(\w+)$/)) && TOOLS.some(x => x[0] === m[1])) return { ok: (v) => typeof v === 'boolean', label: 'Show ' + m[1] };
-  if ((m = path.match(/^off\.(about|schedule|details|notes|rsvp|access)$/))) return { ok: (v) => typeof v === 'boolean', label: 'Hide ' + m[1] };
+  if ((m = path.match(/^off\.(about|schedule|details|notes|rsvp|access|route|c-[\w-]+)$/))) return { ok: (v) => typeof v === 'boolean', label: 'Hide ' + m[1] };
   if ((m = path.match(/^schedule\[(\d+)\]\.(date|time|title|note|kind)$/)) && cfg.schedule[+m[1]]) return { ok: m[2] === 'date' ? (v) => isDate(v) : m[2] === 'time' ? (v) => typeof v === 'string' && isTime(v) : m[2] === 'kind' ? (v) => ['activity', 'reservation', 'note'].includes(v) : strOk(200), label: `${schedTitle(cfg)} · ${cfg.schedule[+m[1]].title || 'item ' + (+m[1] + 1)} · ${m[2]}` };
-  if (path === 'schedule[]') return { add: true, ok: (v) => v && typeof v === 'object' && strOk(200)(v.title || '') && !!v.title && (!v.date || isDate(v.date)) && isTime(v.time || ''), fix: (v) => ({ date: v.date || cfg.start.slice(0, 10), time: v.time || '', title: cleanText(v.title, 200), note: cleanText(v.note || '', 200) }), label: `${schedTitle(cfg)} · new item` };
+  if (path === 'schedule[]') return { add: true, ok: (v) => v && typeof v === 'object' && strOk(200)(v.title || '') && !!v.title && (!v.date || isDate(v.date)) && isTime(v.time || ''), fix: (v) => ({ date: v.date || (isTrip(cfg) ? '' : cfg.start.slice(0, 10)), time: v.time || '', title: cleanText(v.title, 200), note: cleanText(v.note || '', 200), ...(PLAN_KINDS[v.kind] ? { kind: v.kind } : {}) }), label: `${schedTitle(cfg)} · new item` };
   if ((m = path.match(/^schedule\[(\d+)\]$/)) && cfg.schedule[+m[1]]) return { remove: true, label: `${schedTitle(cfg)} · ${cfg.schedule[+m[1]].title}` };
   if ((m = path.match(/^notes\[(\d+)\]\.(label|text|url)$/)) && cfg.notes[+m[1]]) return { ok: m[2] === 'url' ? (v) => v === '' || !!httpsUrl(v) : strOk(600), label: `Notes · ${cfg.notes[+m[1]].label} · ${m[2]}` };
   if (path === 'notes[]') return { add: true, ok: (v) => v && typeof v === 'object' && !!v.label && strOk(120)(v.label), fix: (v) => ({ label: cleanText(v.label, 120), text: cleanText(v.text || '', 600), url: httpsUrl(v.url || '') }), label: 'Notes · new' };
@@ -4139,11 +4157,20 @@ function editRule(cfg, path) {
   if ((m = path.match(/^x\.([A-Za-z ]+)\.(\w+)$/)) && m[1] === cfg.type) {
     const f = (typeSpec(cfg) || { fields: [] }).fields.find(x => x[0] === m[2]); if (!f) return null;
     const kind = f[2]; const ok = kind === 'links' ? (v) => Array.isArray(v) && v.every(l => l && strOk(80)(l.label) && httpsUrl(l.url)) : kind === 'place' ? (v) => v && typeof v === 'object' && strOk(160)(v.q || '') : kind === 'date' ? (v) => isDate(v) : kind === 'time' ? (v) => isTime(v) : kind === 'datetime' ? (v) => isWhen(v) : kind === 'url' ? (v) => v === '' || !!httpsUrl(v) : strOk(1000);
-    return { ok, label: f[1], fix: kind === 'place' ? (v) => ({ q: cleanText(v.q, 160) }) : null };
+    return { ok: (v) => v === '' || ok(v), clear: true, label: f[1], fix: kind === 'place' ? (v) => v === '' ? '' : { q: cleanText(v.q, 160) } : null };
   }
   if ((m = path.match(/^stops\[(\d+)\]\.(from|to)$/)) && (cfg.stops || [])[+m[1]]) return { ok: (v) => v === '' || isDate(v), label: `Route · ${cfg.stops[+m[1]].name} · ${m[2] === 'from' ? 'arrive' : 'leave'}` };
+  // a renamed city loses its map point; the page finds the new one by name
+  if ((m = path.match(/^stops\[(\d+)\]\.name$/)) && (cfg.stops || [])[+m[1]]) return { ok: (v) => typeof v === 'string' && !!v.trim() && v.length <= 80, label: `Route · ${cfg.stops[+m[1]].name}`, after: (next, i = +m[1]) => { const s = next.stops[i]; ['lat', 'lon', 'address', 'city', 'region'].forEach(k => delete s[k]); } };
+  if (path === 'stops[]') return { add: true, ok: (v) => v && typeof v === 'object' && typeof v.name === 'string' && !!v.name.trim() && (!v.from || isDate(v.from)) && (!v.to || isDate(v.to)), fix: (v) => ({ name: cleanText(v.name, 80), from: v.from || '', to: v.to || '' }), label: 'Route · new city' };
+  if ((m = path.match(/^stops\[(\d+)\]$/)) && (cfg.stops || [])[+m[1]]) return { remove: true, label: `Route · ${cfg.stops[+m[1]].name}${stopRange(cfg.stops[+m[1]]) ? ' · ' + stopRange(cfg.stops[+m[1]]) : ''}` };
+  if ((m = path.match(/^custom\[(\d+)\]\.(title|text|label|url|img)$/)) && (cfg.custom || [])[+m[1]]) return { ok: m[2] === 'url' || m[2] === 'img' ? (v) => v === '' || !!httpsUrl(v) : m[2] === 'text' ? strOk(3000) : strOk(120), fix: m[2] === 'text' ? (v) => cleanLong(v, 3000) : null, label: `${cfg.custom[+m[1]].title || 'Section'} · ${m[2]}` };
+  if (path === 'custom[]') return { add: true, ok: (v) => v && typeof v === 'object' && !!(v.title || '').trim() && strOk(120)(v.title), fix: (v) => ({ ...blankCustom(), title: cleanText(v.title, 80), text: cleanLong(v.text || '', 3000) }), label: 'New section' };
+  if ((m = path.match(/^custom\[(\d+)\]$/)) && (cfg.custom || [])[+m[1]]) return { remove: true, label: `Section · ${cfg.custom[+m[1]].title || 'untitled'}` };
+  if ((m = path.match(/^files\[(\d+)\]$/)) && (cfg.files || [])[+m[1]]) return { remove: true, label: `Document · ${cfg.files[+m[1]].name}` };
   return null;
 }
+const showVal = (x) => x == null || x === '' ? '—' : typeof x === 'object' ? (Array.isArray(x) ? x.map(l => l.label).join(', ') : x.q || JSON.stringify(x)) : String(x).slice(0, 300);
 function getPath(o, path) { return path.split(/\.|\[|\]/).filter(Boolean).reduce((a, k) => a == null ? undefined : a[k], o); }
 function setPath(o, path, v) { const ks = path.split(/\.|\[|\]/).filter(Boolean); let a = o; ks.slice(0, -1).forEach(k => { if (a[k] == null) a[k] = {}; a = a[k]; }); a[ks[ks.length - 1]] = v; }
 // validate the model's changes against the page; returns { next, rows, rejected }
@@ -4153,16 +4180,17 @@ function planEdits(cfg, changes) {
     const rule = editRule(cfg, String(ch.path || '')); let v;
     try { v = ch.value_json === '' || ch.value_json == null ? '' : JSON.parse(ch.value_json); } catch { rejected.push(ch.path); continue; }
     if (!rule) { rejected.push(ch.path); continue; }
-    if (ch.op === 'remove') { if (!rule.remove) { rejected.push(ch.path); continue; } removals.push(ch.path); rows.push({ label: rule.label, before: '—', after: 'removed' }); continue; }
-    if (ch.op === 'add') { if (!rule.add || !rule.ok(v)) { rejected.push(ch.path); continue; } const val = rule.fix(v); const arr = ch.path.slice(0, -2); next[arr].push(val); rows.push({ label: rule.label, before: '—', after: Object.values(val).filter(Boolean).join(' · ') }); continue; }
+    if (ch.op === 'remove' && !rule.remove && (rule.clear || /^(tagline|bring|cover|description)$/.test(ch.path))) { const before = getPath(cfg, ch.path); if (before == null || before === '') continue; setPath(next, ch.path, ''); rows.push({ label: rule.label, before: showVal(before), after: '', rm: true }); continue; }
+    if (ch.op === 'remove') { if (!rule.remove) { rejected.push(ch.path); continue; } if (removals.includes(ch.path)) continue; removals.push(ch.path); rows.push({ label: rule.label, before: rule.label.split(' · ').slice(1).join(' · ') || rule.label, after: '', rm: true }); continue; }
+    if (ch.op === 'add') { if (!rule.add || !rule.ok(v)) { rejected.push(ch.path); continue; } const val = rule.fix(v); const arr = ch.path.slice(0, -2); (next[arr] = next[arr] || []).push(val); rows.push({ label: rule.label, before: '—', after: [val.title, val.label, val.name, val.date, val.time, val.from, val.to, val.text, val.note].filter(Boolean).join(' · ').slice(0, 200) }); continue; }
     if (rule.add || rule.remove || !rule.ok(v)) { rejected.push(ch.path); continue; }
     const val = rule.fix ? rule.fix(v) : typeof v === 'string' ? (ch.path === 'description' || ch.path === 'bring' ? v.replace(/<[^>]*>/g, '') : cleanText(v, 1000)) : v;
-    const before = getPath(cfg, ch.path); setPath(next, ch.path, val);
-    const show = (x) => x == null || x === '' ? '—' : typeof x === 'object' ? (Array.isArray(x) ? x.map(l => l.label).join(', ') : x.q || JSON.stringify(x)) : String(x);
-    rows.push({ label: rule.label, before: show(before), after: show(val) });
+    const before = getPath(cfg, ch.path); setPath(next, ch.path, val); if (rule.after) rule.after(next);
+    rows.push({ label: rule.label, before: showVal(before), after: showVal(val) });
   }
-  // remove from the end so indexes stay valid
+  // remove from the end so indexes stay valid (per list)
   removals.map(p => p.match(/^(\w+)\[(\d+)\]$/)).sort((a, b) => +b[2] - +a[2]).forEach(m => next[m[1]].splice(+m[2], 1));
+  if (next.files && !next.files.length) delete next.files;
   if (next.end && next.start && next.end.slice(0, 10) < next.start.slice(0, 10)) next.end = '';
   return { next: normalize(next), rows, rejected };
 }
@@ -4185,7 +4213,7 @@ function wireAIEdit() {
         const plan = planEdits(B.cfg, j.data && j.data.changes); pending = plan;
         if (!plan.rows.length) { msg.textContent = plan.rejected.length ? 'Those changes aren’t something the editor can apply. Try rephrasing.' : 'Nothing to change.'; return; }
         msg.textContent = (j.data.summary ? cleanText(j.data.summary, 200) + ' ' : '') + (plan.rejected.length ? `(${plan.rejected.length} change${plan.rejected.length > 1 ? 's' : ''} skipped)` : '');
-        prev.innerHTML = `<ul class="ai-diff">${plan.rows.map(r => `<li><b>${esc(r.label)}</b><span class="was">${esc(r.before)}</span><span class="arr">→</span><span class="now">${esc(r.after)}</span></li>`).join('')}</ul><div class="btns"><button type="button" class="btn primary" data-ai-edit-apply>Apply</button><button type="button" class="btn ghost" data-ai-edit-cancel>Cancel</button></div>`;
+        prev.innerHTML = `<ul class="ai-diff">${plan.rows.map(r => r.rm ? `<li class="rm"><b>${esc(r.label.split(' · ')[0])}</b><s class="was">${esc(r.before)}</s><span class="now rm-t">Removed</span></li>` : `<li><b>${esc(r.label)}</b><span class="was">${esc(r.before)}</span><span class="arr">→</span><span class="now">${esc(r.after)}</span></li>`).join('')}</ul><div class="btns"><button type="button" class="btn primary" data-ai-edit-apply>Apply</button><button type="button" class="btn ghost" data-ai-edit-cancel>Cancel</button></div>`;
       } catch (err) { msg.textContent = err.signin ? 'Sign in (My pages) to use AI edits.' : (err.message || 'Couldn’t do that.'); }
       finally { b.disabled = false; }
     }
@@ -4319,7 +4347,7 @@ function docItems(cfg, d, scope) {
   }
   if (tripish && want('route')) stops.forEach(x => add('route', x));
   if (scope === 'auto' && !cfg.venue && !stops.length && cleanText(d.venue_name, 140)) add('basics', { key: 'venue', title: cleanText(d.venue_name, 140), text: cleanText(d.venue_address, 200) });
-  if (want('schedule')) C.schedule.forEach(x => add('schedule', { date: x.date, time: x.time, title: x.title, text: x.note, kind: x.kind || '' }));
+  if (want('schedule')) C.schedule.forEach(x => isTrip(cfg) && scope === 'auto' && !x.date ? add('notes', { title: x.title, text: x.note }) : add('schedule', { date: x.date, time: x.time, title: x.title, text: x.note, kind: x.kind || '' }));
   if (want('notes')) C.notes.forEach(x => add('notes', { title: x.label, text: x.text, url: x.url }));
   if (want('about')) { if (C.host) add('about', { key: 'host', text: C.host }); if (C.description) add('about', { text: cleanLong(d.description, 3000) || C.description }); }
   const tc = (TYPE_CARDS[cfg.type] || []).find(x => x[0] === scope); const sp = typeSpec(cfg);
@@ -4457,7 +4485,7 @@ async function docApply(cfg, items) {
       if (x.key === 'dates') { const s = isWhen(x.date || '') ? x.date : ''; if (s) { next.start = s; next.end = isWhen(x.end || '') && x.end.slice(0, 10) >= s.slice(0, 10) ? x.end : ''; } }
       if (x.key === 'venue' && title && !next.venue) { const r = await aiResolveVenue(title, cleanText(x.text, 200)).catch(() => null); if (r) { next.venue = { name: r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc }; next.tz = await lookupTZ(r.lat, r.lon).catch(() => ''); } }
     } else if (x.sec === 'schedule') {
-      const it = { date: date || next.start.slice(0, 10), time, title: title || cleanText(text, 120), note: title ? cleanText(text, 200) : '', ...(PLAN_KINDS[x.kind] ? { kind: x.kind } : {}) };
+      const it = { date: isTrip(next) ? fitTripDate(next.start, next.end, date) : date || next.start.slice(0, 10), time, title: title || cleanText(text, 120), note: title ? cleanText(text, 200) : '', ...(PLAN_KINDS[x.kind] ? { kind: x.kind } : {}) };
       if (it.title && !next.schedule.some(y => y.date === it.date && y.time === it.time && y.title === it.title)) next.schedule.push(it);
     } else if (x.sec === 'notes') { const label = title || cleanText(text, 60); if (label && !next.notes.some(y => y.label === label && (y.text || '') === (title ? cleanText(text, 600) : ''))) next.notes.push({ label, text: title ? cleanText(text, 600) : '', url: httpsUrl(x.url || '') }); }
     else if (x.sec === 'custom') {
@@ -4541,7 +4569,7 @@ async function docRead(key, scope, file) {
   DU = { ...keep, key, phase: 'busy', file, scope, msg: 'Reading…' }; docPaint(key);
   try {
     const part = await bookingFile(file);
-    const j = await aiImport({ mode: 'doc', files: [part], type: B.cfg.type, section: docScopeSection(B.cfg, scope) });
+    const j = await aiImport({ mode: 'doc', files: [part], type: B.cfg.type, section: docScopeSection(B.cfg, scope), ...(isDate(B.cfg.start.slice(0, 10)) ? { trip_start: B.cfg.start.slice(0, 10), trip_end: (B.cfg.end || '').slice(0, 10) } : {}) });
     const items = docItems(B.cfg, j.data, scope); items.forEach(x => { x.home = x.sec; x.homeTarget = x.target || ''; });
     if (DU.key !== key) return;
     if (!items.length) { DU = { key, phase: key === 'main' ? 'pick' : 'done', file, msg: 'Nothing found to fill in. Try Attach for guests.' }; docPaint(key); return; }

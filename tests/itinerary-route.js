@@ -65,9 +65,13 @@ const JAPAN = {
     ok(L[1].items.join('|') === 'Shinkansen to Kyoto|Fushimi Inari at dawn', `@${w} Kyoto items (leave day → next city) ${L[1].items.join('|')}`);
     ok(L[2].items.join('|') === 'Dotonbori food crawl|Fly home from KIX', `@${w} Osaka items (last day stays) ${L[2].items.join('|')}`);
     const after = await page.$$eval('#sec-schedule .legs ~ .day', ds => ds.map(d => d.textContent));
-    ok(after.length === 1 && /Anytime/.test(after[0]) && /Pick up JR passes/.test(after[0]), `@${w} undated items after the legs ${JSON.stringify(after)}`);
+    ok(after.length === 1 && /Unscheduled/.test(after[0]) && /Pick up JR passes/.test(after[0]), `@${w} undated items after the legs ${JSON.stringify(after)}`);
     ok(!!(await page.$('#sec-schedule .route-docs li')) && await page.$eval('#sec-schedule .route-docs b', e => e.textContent) === 'Route map.pdf', `@${w} route document inside the Itinerary`);
     ok(await page.$eval('#sec-schedule .day-h', e => !e.querySelector('.day-city')), `@${w} no repeated city tag on days inside a leg`);
+    const det = () => page.$eval('#sec-schedule details.tl-d', d => ({ open: d.open, vis: d.querySelector(':scope > span').checkVisibility(), title: d.querySelector('summary b').textContent }));
+    let d0 = await det(); ok(d0.title === 'Shinkansen to Kyoto' && !d0.open && !d0.vis, `@${w} an item's note is tucked behind a tap`);
+    await page.click('#sec-schedule details.tl-d summary'); d0 = await det(); ok(d0.open && d0.vis, `@${w} tap shows it inline`);
+    await page.click('#sec-schedule details.tl-d summary');
     const of = await overflow(page); ok(of.length === 0, `@${w} no overflow ${of.join(' ')}`);
     if (SHOTS) { await page.locator('#sec-schedule').scrollIntoViewIfNeeded(); await page.locator('#sec-schedule').screenshot({ path: `${SHOTS}/itin-route-${w}.png` }); }
     if (w === 390) {
