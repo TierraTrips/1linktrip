@@ -1,0 +1,32 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>1LinkTrip domain setup</title><meta name="robots" content="noindex">
+<style>body{font:16px/1.45 -apple-system,system-ui,sans-serif;margin:0;padding:20px;background:#E7E9EE;color:#111}
+.card{background:#fff;border-radius:16px;padding:16px;margin:14px 0}h3{margin:0 0 8px}ol{margin:0;padding-left:20px}li{margin:6px 0}
+.row{display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap}.row span{flex:0 0 90px;color:#555;font-size:14px}
+.row code{flex:1;min-width:160px;font:14px ui-monospace,Menlo,monospace;background:#F1F2F5;border-radius:8px;padding:8px;overflow-wrap:anywhere}
+button{font:600 14px -apple-system,system-ui,sans-serif;padding:8px 12px;border:0;border-radius:8px;background:#0F6E72;color:#fff}
+.note{font-size:14px;color:#555}a{color:#0F6E72}</style></head>
+<body><h2 style="margin:0 0 4px">Point 1linktrip.com at the site</h2><div class="note">Namecheap, about 5 minutes. Changes can take up to an hour to spread.</div>
+
+<div class="card"><h3>1. 1linktrip.com → Advanced DNS</h3><ol>
+<li>Namecheap → <b>Domain List</b> → <b>1linktrip.com</b> → <b>Manage</b> → <b>Advanced DNS</b>.</li>
+<li>Delete the default records under <b>Host Records</b> (the parking page CNAME and URL Redirect).</li>
+<li>Add these (<b>Add New Record</b>, TTL Automatic). Four <b>A Record</b>s, Host <code>@</code>:</li></ol>
+<div class="row"><span>A @</span><code>185.199.108.153</code><button>Copy</button></div>
+<div class="row"><span>A @</span><code>185.199.109.153</code><button>Copy</button></div>
+<div class="row"><span>A @</span><code>185.199.110.153</code><button>Copy</button></div>
+<div class="row"><span>A @</span><code>185.199.111.153</code><button>Copy</button></div>
+<ol start="4"><li>One <b>CNAME Record</b>, Host <code>www</code>:</li></ol>
+<div class="row"><span>CNAME www</span><code>bbbot0209.github.io.</code><button>Copy</button></div>
+<ol start="5"><li>Save (green check on each row).</li></ol></div>
+
+<div class="card"><h3>2. onelinktrip.com → redirect</h3><ol>
+<li>Domain List → <b>onelinktrip.com</b> → <b>Manage</b>.</li>
+<li>Find <b>Redirect Domain</b> → <b>Add Redirect</b>.</li>
+<li>Source URL <code>onelinktrip.com</code>, Destination below → Save. Repeat with Source <code>www.onelinktrip.com</code>.</li></ol>
+<div class="row"><span>Destination</span><code>https://1linktrip.com</code><button>Copy</button></div></div>
+
+<div class="card"><h3>3. Text bbbot "DNS done"</h3><div class="note">I'll switch the site over once it resolves and send the last few settings (sign-in, maps key, email) on one page.</div></div>
+
+<script>document.querySelectorAll('.row button').forEach(b=>b.onclick=async()=>{const v=b.previousElementSibling.textContent;try{await navigator.clipboard.writeText(v)}catch(e){}b.textContent='Copied ✓';setTimeout(()=>b.textContent='Copy',1500)})</script>
+</body></html>
