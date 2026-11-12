@@ -2045,13 +2045,14 @@ async function sendMagicLink(email) {
 // Social sign-in: add a provider here and switch it on in supabase-config.js (EP_AUTH_PROVIDERS)
 const OAUTH = [['google', 'Continue with Google'], ['apple', 'Sign in with Apple']];
 const oauthOn = () => OAUTH.filter(([k]) => window.EP_AUTH_PROVIDERS && window.EP_AUTH_PROVIDERS[k]);
-async function oauthSignIn(provider, before) {
-  if (before) before();
+// A plain link to Supabase's authorize endpoint (implicit flow, same URL signInWithOAuth builds): the tap itself
+// navigates, so it can't silently stall in an installed iPhone app or while the sign-in library is still loading.
+const oauthURL = (provider) => `${SB.url}/auth/v1/authorize?provider=${encodeURIComponent(provider)}&redirect_to=${encodeURIComponent(siteBase())}`;
+function oauthSignIn(provider, before) {
+  try { if (before) before(); } catch { /* storage full: sign-in still works, the draft stays saved locally */ }
   LS.set('afterSignIn', location.hash || '#mine');
-  const c = await sb(); const { error } = await c.auth.signInWithOAuth({ provider, options: { redirectTo: siteBase() } });
-  if (error) throw error;
 }
-const signInFormHTML = (msg, email = '') => `<div class="signin">${oauthOn().length ? `<div class="oauth">${oauthOn().map(([k, l]) => `<button type="button" class="btn oauth-${k}" data-si-oauth="${k}">${esc(l)}</button>`).join('')}</div><p class="or muted small">or get a link by email</p>` : ''}
+const signInFormHTML = (msg, email = '') => `<div class="signin">${oauthOn().length ? `<div class="oauth">${oauthOn().map(([k, l]) => `<a class="btn oauth-${k}" data-si-oauth="${k}" href="${esc(oauthURL(k))}">${esc(l)}</a>`).join('')}</div><p class="or muted small">or get a link by email</p>` : ''}
     <div class="field"><label for="si-email">Your email</label><div class="search"><input id="si-email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" value="${esc(email)}"><button type="button" class="btn primary" data-si="send">Send link</button></div></div>
     <p class="hint" role="status" aria-live="polite">${esc(msg || 'We’ll email you a one-time sign-in link. No password.')}</p></div>`;
 async function signInSubmit(root, after) {
@@ -2122,7 +2123,7 @@ function wirePubHost() {
   const dlg = $('#pub'); if (!dlg || dlg._host) return; dlg._host = true;
   dlg.addEventListener('click', (e) => {
     const b = e.target.closest('[data-ph],[data-si],[data-si-oauth]'); if (!b) return;
-    if (b.dataset.siOauth) oauthSignIn(b.dataset.siOauth, () => LS.set('pendingPublish', { cfg: B.cfg, hosted: B.hosted })).catch(err => { const h = dlg.querySelector('.signin .hint'); if (h) h.textContent = 'Couldn’t start sign-in. ' + (err.message || ''); });
+    if (b.dataset.siOauth) oauthSignIn(b.dataset.siOauth, () => LS.set('pendingPublish', { cfg: B.cfg, hosted: B.hosted }));
     if (b.dataset.ph === 'go') hostNow();
     if (b.dataset.si === 'send') signInSubmit(dlg, () => LS.set('pendingPublish', { cfg: B.cfg, hosted: B.hosted }));
     if (b.dataset.si === 'retry') { B.pub = { state: 'signin' }; renderPubHost(); }
@@ -2147,7 +2148,7 @@ async function renderMine(id, notice) {
   if (!user) {
     LS.del('signedIn');
     shell(`<h1>My pages</h1><p class="lede">Sign in to see your short links, RSVPs and updates.</p>${signInFormHTML('', LS.get('signinEmail') || '')}`);
-    const m = $('.mine'); m.addEventListener('click', (e) => { const b = e.target.closest('[data-si],[data-si-oauth]'); if (!b) return; if (b.dataset.siOauth) { oauthSignIn(b.dataset.siOauth).catch(() => {}); return; } if (b.dataset.si === 'send') signInSubmit(m); if (b.dataset.si === 'retry') renderMine(id); });
+    const m = $('.mine'); m.addEventListener('click', (e) => { const b = e.target.closest('[data-si],[data-si-oauth]'); if (!b) return; if (b.dataset.siOauth) { oauthSignIn(b.dataset.siOauth); return; } if (b.dataset.si === 'send') signInSubmit(m); if (b.dataset.si === 'retry') renderMine(id); });
     m.addEventListener('keydown', (e) => { if (e.target.id === 'si-email' && e.key === 'Enter') { e.preventDefault(); signInSubmit(m); } });
     return;
   }
