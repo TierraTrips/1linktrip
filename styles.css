@@ -1,10 +1,11 @@
-/* PlanEZR · "Field Map". Palette: Forest #1F3A2E · Sage #9DB39A · Route #E2572F · Contour #CCD8C5 · Paper #EEF1E8.
-   Old var names kept: --fog = page paper, --ink = forest text, --gate = the primary action color (forest).
-   Route orange is for marks and large type only (3.3:1 on paper); small orange text uses --route-ink (4.9:1). */
+/* PlanEZR · "Field Map", Lagoon palette: Lagoon #0F4A50 · Seafoam #8FBDB6 · Route #E35B47 · Contour #C5DDD8 · Paper #EDF4F1.
+   Old var names kept: --fog = page paper, --ink = lagoon text, --gate = the primary action color (lagoon),
+   --forest = the brand color (now lagoon; the name predates the palette switch).
+   Route coral is for marks and large type only; small coral text uses --route-ink (AA on paper). */
 :root {
-  --forest: #1F3A2E; --sage: #9DB39A; --route: #E2572F; --route-ink: #B5401D; --contour: #CCD8C5;
-  --fog: #EEF1E8; --ink: #1F3A2E; --slate: #4F6356; --paper: #FFFFFF; --gate: #1F3A2E; --rule: #D3DCCD;
-  --field: #FAFBF7; --tint: #E3EADC; --well: #DCE3D6;
+  --forest: #0F4A50; --sage: #8FBDB6; --route: #E35B47; --route-ink: #B4402F; --contour: #C5DDD8;
+  --fog: #EDF4F1; --ink: #0F4A50; --slate: #41655F; --paper: #FFFFFF; --gate: #0F4A50; --rule: #CCDDD9;
+  --field: #F8FBFA; --tint: #DDEBE7; --well: #D4E3DF;
   --sans: 'Public Sans', system-ui, -apple-system, sans-serif;
   --brand: 'Newsreader', Georgia, serif;
   --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -30,27 +31,24 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .toast, #toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); background: var(--ink); color: #fff; padding: .7em 1.2em; border-radius: 999px; font-weight: 600; opacity: 0; pointer-events: none; transition: .2s; z-index: 9999; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-/* brand lockup: route-to-pin mark + "Plan" (Newsreader italic) + superscript "EZR" (Plex Mono, route orange) */
-.brand { display: inline-flex; align-items: center; gap: .4em; font: 500 1.3rem/1 var(--brand); text-decoration: none; letter-spacing: -.015em; color: var(--ink); }
+/* brand lockup: route-to-pin mark + the wordmark "PlanEZR", set plain in Newsreader on one baseline */
+.brand { display: inline-flex; align-items: center; gap: .4em; font: 600 1.3rem/1 var(--brand); text-decoration: none; letter-spacing: -.01em; color: var(--ink); }
 .brand.sm { font-size: 1.12rem; }
 .brand-mark { width: 30px; height: 30px; flex: none; color: var(--forest); }
 .brand.sm .brand-mark { width: 26px; height: 26px; }
 .brand .wm { white-space: nowrap; }
-.brand .wm em { font-style: italic; }
-.brand .wm .z { font: 500 .56em var(--mono); letter-spacing: .04em; color: var(--route-ink); vertical-align: .55em; margin-left: 1px; }
 
 /* ================= landing ================= */
 .land { max-width: 1160px; margin: 0 auto; padding: 0 20px 40px; }
 .land-top { display: flex; justify-content: space-between; align-items: center; padding: 18px 0; }
 .land-hero { display: grid; gap: 40px; padding: 28px 0 56px; align-items: center; }
 .land-copy h1 { font: 500 clamp(2.6rem, 10vw, 5.2rem)/.98 var(--brand); letter-spacing: -.025em; margin: 0 0 .4em; font-variation-settings: 'opsz' 72; text-wrap: balance; }
-.land-copy h1 em { font-style: italic; color: var(--ink); }
-.lede { font-size: 1.13rem; color: #34493E; max-width: 34em; margin: 0 0 1.6em; }
+.lede { font-size: 1.13rem; color: #2A5852; max-width: 34em; margin: 0 0 1.6em; }
 .land-copy .btns { margin-bottom: 1em; }
 .land-ex h2, .land-what h2 { font: 600 1.5rem var(--brand); letter-spacing: -.02em; margin: 0 0 18px; }
 .ex-grid { display: grid; gap: 14px; }
 .ex-card { display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: 14px; text-decoration: none; background: var(--paper); border-radius: var(--r); padding: 10px 16px 10px 10px; transition: transform .15s, box-shadow .15s; }
-.ex-card:hover { transform: translateY(-2px); box-shadow: 0 14px 30px -18px rgba(31,58,46,.4); }
+.ex-card:hover { transform: translateY(-2px); box-shadow: 0 14px 30px -18px rgba(15,74,80,.4); }
 .ex-img { width: 92px; height: 92px; border-radius: 10px; background: #ccd center/cover; }
 .ex-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ex-body b { font: 700 1.2rem/1.15 var(--display); }
@@ -60,7 +58,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .land-what dl { display: grid; gap: 0; margin: 0; border-top: 1.5px solid var(--ink); }
 .land-what dl > div { display: grid; grid-template-columns: 8.5em 1fr; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--rule); }
 .land-what dt { font: 600 1rem var(--brand); }
-.land-what dd { margin: 0; color: #34493E; }
+.land-what dd { margin: 0; color: #2A5852; }
 .land-foot { margin-top: 40px; color: var(--slate); font-size: .85rem; }
 .broken { padding: 60px 0; } .broken h1 { font: 500 2.4rem/1 var(--brand); }
 @media (min-width: 860px) {
@@ -77,18 +75,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
   container-type: inline-size; background: var(--bg); color: var(--ink); min-height: 100vh; padding-bottom: 30px; }
 .ev.dark { --bg: #0F1116; --card: #181B22; --ink: #EDEFF3; --muted: #9AA1AF; --line: #2A2E37; --chip: #22262E; }
 .ev { --btn-r: 999px; }
-/* Default theme ("Field Map"): pages whose accent is Forest get the paper/contour palette, a contour-line hero and
-   orange route dots. Any other accent an organizer picks keeps the neutral look above, so custom colors and older
-   links render as before. The match is on the inline style themeStyle() writes; `i` makes it case-insensitive. */
-.ev[style*="--accent:#1F3A2E" i] { --bg: #EEF1E8; --card: #FFFFFF; --ink: #1F3A2E; --muted: #4F6356; --line: #DCE4D6; --chip: #E3EADC;
-  --tear: #E2572F; --btn-r: 10px; }
-.ev.dark[style*="--accent:#1F3A2E" i] { --bg: #102019; --card: #182B22; --ink: #EEF1E8; --muted: #A9BBA7; --line: #2A4034; --chip: #22382D;
-  --accent: #9DB39A !important; --on-accent: #1F3A2E !important; }
-.ev[style*="--accent:#1F3A2E" i] .ev-hero:not(.has-cover) { background:
-  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 360' preserveAspectRatio='xMaxYMin slice' fill='none' stroke='%239DB39A' stroke-width='1.3' opacity='.38'%3E%3Cpath d='M330 0c18 70 140 96 270 74'/%3E%3Cpath d='M270 0c12 108 168 142 330 120'/%3E%3Cpath d='M206 0c6 150 208 196 394 172'/%3E%3Cpath d='M140 0c-8 196 248 256 460 224'/%3E%3Cpath d='M74 0c-26 246 290 318 526 280'/%3E%3Cpath d='M8 0c-40 290 330 382 592 340'/%3E%3Cpath d='M520 0c-6 24 22 40 80 30'/%3E%3C/svg%3E") right top/auto 100% no-repeat, var(--accent); }
-.ev[style*="--accent:#1F3A2E" i] .sec-h::before { width: 10px; height: 10px; border-radius: 50%; background: var(--card); box-shadow: 0 0 0 2.5px var(--route); }
-.ev[style*="--accent:#1F3A2E" i] .ev-title { font-weight: 500; letter-spacing: -.02em; }
-.ev[style*="--accent:#1F3A2E" i] .sec-h { font-weight: 600; }
+/* Default theme ("Field Map"): pages whose accent is Lagoon get the paper/contour palette, a contour-line hero and
+   coral route dots. Any other accent an organizer picks keeps the neutral look above, so custom colors and older
+   links render as before. The match is on the inline style themeStyle() writes; `i` makes it case-insensitive.
+   Pages saved with the earlier Forest default (#1F3A2E) are mapped to Lagoon in normalize(). */
+.ev[style*="--accent:#0F4A50" i] { --bg: #EDF4F1; --card: #FFFFFF; --ink: #0F4A50; --muted: #41655F; --line: #D3E3DF; --chip: #DDEBE7;
+  --tear: #E35B47; --btn-r: 10px; }
+.ev.dark[style*="--accent:#0F4A50" i] { --bg: #0B1E20; --card: #12292C; --ink: #EDF4F1; --muted: #A3C1BC; --line: #23403F; --chip: #1C3638;
+  --accent: #8FBDB6 !important; --on-accent: #0F4A50 !important; }
+.ev[style*="--accent:#0F4A50" i] .ev-hero:not(.has-cover) { background:
+  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 360' preserveAspectRatio='xMaxYMin slice' fill='none' stroke='%238FBDB6' stroke-width='1.3' opacity='.38'%3E%3Cpath d='M330 0c18 70 140 96 270 74'/%3E%3Cpath d='M270 0c12 108 168 142 330 120'/%3E%3Cpath d='M206 0c6 150 208 196 394 172'/%3E%3Cpath d='M140 0c-8 196 248 256 460 224'/%3E%3Cpath d='M74 0c-26 246 290 318 526 280'/%3E%3Cpath d='M8 0c-40 290 330 382 592 340'/%3E%3Cpath d='M520 0c-6 24 22 40 80 30'/%3E%3C/svg%3E") right top/auto 100% no-repeat, var(--accent); }
+.ev[style*="--accent:#0F4A50" i] .sec-h::before { width: 10px; height: 10px; border-radius: 50%; background: var(--card); box-shadow: 0 0 0 2.5px var(--route); }
+.ev[style*="--accent:#0F4A50" i] .ev-title { font-weight: 500; letter-spacing: -.02em; }
+.ev[style*="--accent:#0F4A50" i] .sec-h { font-weight: 600; }
 .ev .lbl { color: var(--muted); }
 .ev .muted { color: var(--muted); }
 .ev-hero { position: relative; min-height: 300px; display: flex; align-items: flex-end; background: var(--accent); color: var(--on-accent); overflow: hidden; }
@@ -295,7 +294,7 @@ legend { float: left; font: 600 1.1rem var(--brand); padding: 0; margin-bottom: 
 .builder[data-tab="preview"] .b-preview { display: block; }
 .b-preview .ev { min-height: auto; }
 dialog { border: 0; border-radius: 18px; padding: 0; width: min(520px, calc(100vw - 24px)); box-shadow: 0 30px 60px -20px rgba(0,0,0,.5); }
-dialog::backdrop { background: rgba(31,58,46,.5); }
+dialog::backdrop { background: rgba(15,74,80,.5); }
 .pub { padding: 22px; display: grid; gap: 12px; }
 .pub h2 { font: 600 1.4rem var(--brand); margin: 0; } .pub p { margin: 0; }
 .pub textarea { width: 100%; font: .78rem/1.4 var(--mono); border: 1.5px solid var(--rule); border-radius: 10px; padding: 10px; background: var(--field); word-break: break-all; resize: none; }
@@ -448,7 +447,7 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .tools { display: flex; flex-wrap: wrap; gap: 6px; }
 .tool { display: inline-flex; align-items: center; gap: 8px; background: var(--paper); border-radius: 999px; padding: 7px 12px 7px 8px; font-size: .86rem; font-weight: 600; cursor: pointer; }
 .tool input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-.tool .sw { width: 30px; height: 18px; border-radius: 9px; background: #BFCBB9; position: relative; transition: background .15s; flex: none; }
+.tool .sw { width: 30px; height: 18px; border-radius: 9px; background: #B9CFCA; position: relative; transition: background .15s; flex: none; }
 .tool .sw::after { content: ''; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left .15s; }
 .tool input:checked + .sw { background: #2E7D32; } .tool input:checked + .sw::after { left: 14px; }
 .tool input:focus-visible + .sw { outline: 2px solid var(--gate); outline-offset: 2px; }
@@ -489,7 +488,7 @@ dialog.sheet { width: min(560px, 100vw); max-height: min(88vh, 900px); }
 .su-ticket b { font: 600 1.05rem/1.15 var(--brand); } .su-ticket span { font-size: .82rem; color: var(--slate); }
 .su-ticket .r b { font: 600 1.25rem var(--mono); color: var(--acc); }
 .su-ticket .lbl { font: 600 .6rem var(--mono); letter-spacing: .08em; text-transform: uppercase; }
-.ghost:not(.btn) { color: #A9B5A4 !important; }
+.ghost:not(.btn) { color: #A3BAB5 !important; }
 .su-main .btn.big { width: 100%; }
 .su-main .btn:disabled { opacity: .4; cursor: default; }
 .su-done { width: 60px; height: 60px; border-radius: 50%; background: #2E7D32; color: #fff; display: grid; place-items: center; font-size: 1.8rem; }
@@ -550,7 +549,7 @@ dialog.sheet { width: min(560px, 100vw); max-height: min(88vh, 900px); }
 
 /* phase C: hosted pages */
 .land-nav { display: flex; align-items: center; gap: 14px; }
-.pub-host { margin: 12px 0 4px; padding: 12px 14px; border-radius: 12px; background: var(--fog, #EEF1E8); font-size: .92rem; }
+.pub-host { margin: 12px 0 4px; padding: 12px 14px; border-radius: 12px; background: var(--fog, #EDF4F1); font-size: .92rem; }
 .pub-host p { margin: 0 0 8px; } .pub-host.ok { background: #E3F2E5; } .pub-host .signin .search input { min-width: 0; }
 .pub-host input { width: 100%; min-height: 44px; border: 1.5px solid var(--rule); border-radius: 10px; padding: .5em .7em; font-size: 16px; background: #fff; }
 .mono { font-family: var(--mono, monospace); }

@@ -16,7 +16,7 @@
 /* faint contour lines behind the hero, bleeding to the screen edge on the right */
 .land.home .land-hero { position: relative; isolation: isolate; }
 .land.home .land-hero::before { content: ''; position: absolute; z-index: -1; top: -70px; bottom: -10px; right: -20px; width: min(760px, 100vw);
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 420' preserveAspectRatio='xMaxYMin slice' fill='none' stroke='%23CCD8C5' stroke-width='1.4' opacity='.8'%3E%3Cpath d='M360 0c20 80 140 100 240 80'/%3E%3Cpath d='M300 0c16 120 180 156 300 132'/%3E%3Cpath d='M236 0c8 164 220 216 364 188'/%3E%3Cpath d='M172 0c-8 208 256 280 428 248'/%3E%3Cpath d='M104 0c-28 260 300 352 496 312'/%3E%3Cpath d='M36 0c-50 300 330 420 564 380'/%3E%3Cpath d='M524 0c-8 28 24 44 76 32'/%3E%3C/svg%3E") right top/cover no-repeat;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 420' preserveAspectRatio='xMaxYMin slice' fill='none' stroke='%23C5DDD8' stroke-width='1.4' opacity='.8'%3E%3Cpath d='M360 0c20 80 140 100 240 80'/%3E%3Cpath d='M300 0c16 120 180 156 300 132'/%3E%3Cpath d='M236 0c8 164 220 216 364 188'/%3E%3Cpath d='M172 0c-8 208 256 280 428 248'/%3E%3Cpath d='M104 0c-28 260 300 352 496 312'/%3E%3Cpath d='M36 0c-50 300 330 420 564 380'/%3E%3Cpath d='M524 0c-8 28 24 44 76 32'/%3E%3C/svg%3E") right top/cover no-repeat;
   -webkit-mask: linear-gradient(to right, transparent, #000 35%); mask: linear-gradient(to right, transparent, #000 35%); pointer-events: none; }
 .land.home .land-copy .lede { max-width: 30em; }
 .land.home #hero-cta { border-radius: 10px; }

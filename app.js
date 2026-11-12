@@ -317,8 +317,8 @@ const TRAINLINE_CC = new Set(['gb', 'fr', 'de', 'it', 'es', 'nl', 'be', 'at', 'c
 const venueLine = (v) => v ? [v.name, v.address && !v.address.startsWith(v.name) ? v.address : (v.address && v.address !== v.name ? v.address : '')].filter(Boolean).join(', ') : '';
 const placeLabel = (v) => [v.city, v.cc === 'us' ? v.region : v.country].filter(Boolean).join(', ');
 
-// brand lockup: a dotted route ending at a pin, then the wordmark "Plan" + superscript "EZR"
-const BRAND = '<svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true" focusable="false"><path d="M8.5 31.5C15 32 13 21 20 21.5s8 2.8 9.6-.6" fill="none" stroke="#E2572F" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="0.1 5"/><circle cx="8.5" cy="31.5" r="3.6" fill="currentColor"/><path d="M30 5.5a7.2 7.2 0 0 1 7.2 7.2c0 5.3-7.2 11.8-7.2 11.8s-7.2-6.5-7.2-11.8A7.2 7.2 0 0 1 30 5.5z" fill="currentColor"/><circle cx="30" cy="12.7" r="2.7" fill="#EEF1E8"/></svg><span class="wm"><em>Plan</em><span class="z">EZR</span></span>';
+// brand lockup: a dotted route ending at a pin, then the plain wordmark "PlanEZR"
+const BRAND = '<svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true" focusable="false"><path d="M8.5 31.5C15 32 13 21 20 21.5s8 2.8 9.6-.6" fill="none" stroke="#E35B47" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="0.1 5"/><circle cx="8.5" cy="31.5" r="3.6" fill="currentColor"/><path d="M30 5.5a7.2 7.2 0 0 1 7.2 7.2c0 5.3-7.2 11.8-7.2 11.8s-7.2-6.5-7.2-11.8A7.2 7.2 0 0 1 30 5.5z" fill="currentColor"/><circle cx="30" cy="12.7" r="2.7" fill="#EDF4F1"/></svg><span class="wm">PlanEZR</span>';
 // ---------- event model ----------
 const FONTS = {
   field: { label: 'Field', css: "'Newsreader', Georgia, serif", gf: null },
@@ -372,7 +372,8 @@ const typeSpec = (cfg) => TYPE_FIELDS[cfg.type] || null;
 const typeData = (cfg) => (cfg.x && cfg.x[cfg.type]) || {};
 const filled = (kind, val) => kind === 'links' ? (val || []).some(l => l.label && l.url) : kind === 'place' ? !!(val && val.q) : !!(val && String(val).trim());
 const hasTypeInfo = (cfg) => { const sp = typeSpec(cfg), d = typeData(cfg); return !!sp && sp.fields.some(([k, , kind]) => filled(kind, d[k])); };
-const SWATCHES = ['#1F3A2E', '#0B7A75', '#FF6B35', '#C2185B', '#6D28D9', '#B8860B', '#1F2937', '#2E7D32'];
+const LAGOON = '#0F4A50'; // default accent (brand Lagoon); replaced the earlier Forest #1F3A2E
+const SWATCHES = [LAGOON, '#0B7A75', '#FF6B35', '#C2185B', '#6D28D9', '#B8860B', '#1F2937', '#2E7D32'];
 
 const packEvent = (c) => LZString.compressToEncodedURIComponent(JSON.stringify(c));
 function unpackEvent(s) { try { const j = LZString.decompressFromEncodedURIComponent(s); return j ? normalize(JSON.parse(j)) : null; } catch { return null; } }
@@ -861,25 +862,25 @@ function renderLanding() {
     <header class="land-top"><a class="brand" href="#">${BRAND}</a><span class="land-nav">${LS.get('signedIn') ? '<a class="link" href="#mine">My pages</a>' : ''}<button type="button" class="btn sm" id="share-app">Share</button><a class="btn primary top-cta" href="#setup" aria-hidden="true" tabindex="-1">Create a page</a></span></header>
     <section class="land-hero">
       <div class="land-copy">
-        <h1><em>One link</em> for your guests’ whole trip.</h1>
-        <p class="lede">Add your event and the venue. Guests get your schedule, plus how to get there and where to stay.</p>
+        <h1>One link for your guests’ whole trip.</h1>
+        <p class="lede">Add your event and venue. Guests get your schedule, directions and places to stay.</p>
         <div class="btns"><a class="btn primary big" id="hero-cta" href="#setup">Create a page</a></div>
-        <p class="muted small">Free. No account needed. <a class="link" href="#examples">See examples</a></p>
+        <p class="muted small">Free, no account needed. <a class="link" href="#examples">See examples</a></p>
       </div>
     </section>
     ${myPagesHTML()}
     <section class="land-what">
       <h2>What your guests get</h2>
       <dl>
-        <div><dt>Weather</dt><dd>Forecast for the dates.</dd></div>
-        <div><dt>Map</dt><dd>The venue and what’s nearby.</dd></div>
-        <div><dt>Flights</dt><dd>Nearest airports and fares.</dd></div>
-        <div><dt>Hotels</dt><dd>Places to stay nearby.</dd></div>
-        <div><dt>Food</dt><dd>Restaurants and bars nearby.</dd></div>
-        <div><dt>Things to do</dt><dd>Tours, sights and activities nearby.</dd></div>
-        <div><dt>Event details</dt><dd>RSVP, packet pickup, dress code.</dd></div>
-        <div><dt>Full itinerary</dt><dd>Their bookings and your schedule in one place.</dd></div>
-        <div><dt>Getting around</dt><dd>Transit, directions, rides.</dd></div>
+        <div><dt>Weather</dt><dd>The forecast for your dates.</dd></div>
+        <div><dt>Map</dt><dd>The venue and what’s around it.</dd></div>
+        <div><dt>Flights</dt><dd>The nearest airports and fares.</dd></div>
+        <div><dt>Getting around</dt><dd>Directions, transit, rideshare and rental cars.</dd></div>
+        <div><dt>Hotels</dt><dd>Places to stay near the venue.</dd></div>
+        <div><dt>Food</dt><dd>Restaurants and bars in the area.</dd></div>
+        <div><dt>Things to do</dt><dd>Tours, sights and activities.</dd></div>
+        <div><dt>Event details</dt><dd>RSVP, dress code, packet pickup and more.</dd></div>
+        <div><dt>Itinerary</dt><dd>Their bookings and your schedule in one place.</dd></div>
       </dl>
     </section>
   </main>`;
@@ -932,14 +933,14 @@ const TYPE_DEFAULTS = {
   Trip: { theme: { accent: '#1E7FA8', font: 'serif', mode: 'light' }, off: [], order: ['route', 'schedule', 'about', 'details', 'weather', 'access', 'rsvp'] },
   Wedding: { theme: { accent: '#0B7A75', font: 'serif', mode: 'light' }, off: [] },
   Race: { theme: { accent: '#2E7D32', font: 'wide', mode: 'light' }, off: ['tours'] },
-  Conference: { theme: { accent: '#1F3A2E', font: 'field', mode: 'light' }, off: ['packing'] },
+  Conference: { theme: { accent: LAGOON, font: 'field', mode: 'light' }, off: ['packing'] },
   Concert: { theme: { accent: '#FF6B35', font: 'condensed', mode: 'dark' }, off: ['stay'] },
   Performance: { theme: { accent: '#6D28D9', font: 'classic', mode: 'light' }, off: ['stay'] },
   Hyrox: { theme: { accent: '#FFD100', font: 'condensed', mode: 'dark' }, off: ['tours'] },
   Festival: { theme: { accent: '#FF6B35', font: 'condensed', mode: 'dark' }, off: [] },
   'Sporting event': { theme: { accent: '#C2185B', font: 'condensed', mode: 'dark' }, off: ['stay', 'packing'] }
 };
-const typeDefaults = (type) => TYPE_DEFAULTS[type] || { theme: { accent: '#1F3A2E', font: 'field', mode: 'light' }, off: [] };
+const typeDefaults = (type) => TYPE_DEFAULTS[type] || { theme: { accent: LAGOON, font: 'field', mode: 'light' }, off: [] };
 const defaultTools = (type) => Object.fromEntries(TOOLS.map(([k]) => [k, !typeDefaults(type).off.includes(k)]));
 const TYPE_ICONS = {
   Wedding: '<circle cx="9" cy="14" r="5"/><circle cx="15" cy="14" r="5"/><path d="M10 5l2-2 2 2-2 2z"/>',
@@ -954,7 +955,7 @@ const TYPE_ICONS = {
   Party: '<path d="M4 20l5-14 9 9z"/><path d="M14 3v2M19 8h2M17.5 4.5l-1.4 1.4"/>',
 };
 const SETUP_TYPES = [['Wedding', 'Wedding', 'RSVP, room block, dress code', '#0B7A75'], ['Race', 'Race', 'Start, finish, packet pickup', '#2E7D32'],
-  ['Conference', 'Conference', 'Badges, agenda, speakers', '#1F3A2E'], ['Concert', 'Concert', 'Doors, set times, bag policy', '#FF6B35'],
+  ['Conference', 'Conference', 'Badges, agenda, speakers', LAGOON], ['Concert', 'Concert', 'Doors, set times, bag policy', '#FF6B35'],
   ['Festival', 'Festival', 'Stages, multi-day', '#B8860B'], ['Sporting event', 'Game day', 'Seats, tailgating, parking', '#C2185B'],
   ['Performance', 'Performance', 'Recital, show, call time', '#6D28D9'], ['Hyrox', 'Hyrox', 'Wave, check-in, bag drop', '#FFD100'],
   ['Party', 'Something else', 'Party, reunion, retreat', '#1F2937'], ['Trip', 'Vacation / Trip', 'Day by day, stays, packing', '#1E7FA8']];
@@ -1027,6 +1028,7 @@ function normalize(c) {
     c.notes = (c.notes || []).concat(notes); delete c.sections; delete c.links; c.v = 2;
   }
   c = { ...b, ...c, theme: { ...b.theme, ...(c.theme || {}) } };
+  if (/^#1f3a2e$/i.test(c.theme.accent || '')) c.theme.accent = LAGOON; // pages saved with the old Forest default
   c.tools = { ...defaultTools(c.type), ...(c.tools || {}) };
   c.off = c.off || {}; c.notes = Array.isArray(c.notes) ? c.notes : []; c.schedule = Array.isArray(c.schedule) ? c.schedule : [];
   c.x = c.x && typeof c.x === 'object' ? c.x : {}; c.bring = typeof c.bring === 'string' ? c.bring : '';
@@ -2605,13 +2607,13 @@ function myPagesHTML() {
     <div data-slot="acct-pages"></div></section>`;
 }
 function renderExamples() {
-  document.title = 'Examples · PlanEZR'; scrollTo(0, 0);
+  document.title = 'Example pages · PlanEZR'; scrollTo(0, 0);
   $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a><span class="land-nav"><a class="btn primary" href="#setup">Create a page</a></span></header>${samplesHTML()}</main>`;
 }
 function samplesHTML() {
   const ex = window.EXAMPLES; const order = ['japan-trip', 'tulum-wedding', 'chicago-10k', 'redrocks-concert', 'nyc-conference', 'sf-festival'].filter(id => ex[id]);
   const demoOf = (id) => Object.keys(DEMOS).find(k => DEMOS[k] === id);
-  return `<section class="land-ex" id="samples"><h2>Examples</h2>
+  return `<section class="land-ex" id="samples"><h2>Example pages</h2>
     <div class="ex-grid">${order.map(id => { const e = normalize(clone(ex[id])); const v = e.venue;
       return `<div class="ex-card" style="${themeStyle(e.theme)}"><a class="ex-hit" href="?demo=${demoOf(id)}" aria-label="Open ${esc(e.title)}"></a>
         <span class="ex-img" style="background-image:url('${esc(e.cover)}')"></span>
@@ -3540,7 +3542,7 @@ function tripClick(b, cfg) {
 
 // ================= customization: Design section, section order, type defaults =================
 const THEME_PRESETS = [
-  ['Classic', { accent: '#1F3A2E', font: 'field', mode: 'light' }], ['Garden', { accent: '#0B7A75', font: 'serif', mode: 'light' }],
+  ['Classic', { accent: LAGOON, font: 'field', mode: 'light' }], ['Garden', { accent: '#0B7A75', font: 'serif', mode: 'light' }],
   ['Romance', { accent: '#C2185B', font: 'classic', mode: 'light' }], ['Sunset', { accent: '#FF6B35', font: 'wide', mode: 'light' }],
   ['Gold', { accent: '#B8860B', font: 'classic', mode: 'dark' }], ['Night', { accent: '#6D28D9', font: 'condensed', mode: 'dark' }],
   ['Stadium', { accent: '#C2185B', font: 'condensed', mode: 'dark' }], ['Trail', { accent: '#2E7D32', font: 'wide', mode: 'light' }],
