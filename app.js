@@ -497,7 +497,7 @@ const VENDORS = [
 const ITIN_KINDS = { flight: 'Flight', hotel: 'Hotel', stay: 'Rental home', car: 'Rental car', food: 'Restaurant', train: 'Train', other: 'Other' };
 
 function parseReservation(text, refDate) {
-  const raw = String(text || ''); const r = { kind: '', name: '', start: '', end: '', address: '', confNo: '', link: '', flight: '', note: '' };
+  const raw = String(text || ''); const r = { kind: '', name: '', start: '', end: '', address: '', confNo: '', link: '', flight: '', note: '', ...(viaGuess(raw) ? { via: viaGuess(raw) } : {}) };
   if (!raw.trim()) return r;
   const lines = raw.split(/\r?\n/).map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
   const url = raw.match(/https?:\/\/[^\s<>"')]+/i); if (url) r.link = url[0].replace(/[.,;]+$/, '');
@@ -595,6 +595,15 @@ function airportSelHTML(cfg, air, ap, always) {
   return `<label class="pf-sel ap-sel"><span>${t('Flying into')}</span><select data-ap-sel>${air.map(a => `<option value="${esc(a.iata)}"${a.iata === ap.iata ? ' selected' : ''}>${esc(`${a.iata} · ${a.city || a.name} · ${fmtDist(a.d, v.cc)}`)}</option>`).join('')}</select></label>`;
 }
 const flightLinks = (f) => { const code = (f || '').replace(/\s+/g, '').toUpperCase(); if (!/^[A-Z0-9]{2}\d{1,4}$/.test(code)) return {}; const a = AIRLINES[code.slice(0, 2)]; return { status: `https://www.flightaware.com/live/flight/${code}`, manage: a && a[1] ? a[1] : '' }; };
+// "Booked through": where a booking was made. A Manage booking link only for sources whose trips page was checked to
+// load (Nov 2026); sites that block automated checks (Expedia, Hotels.com, Priceline, Trip.com, Costco) get no link.
+const BOOK_SOURCES = [['direct', 'Airline / hotel direct'], ['expedia', 'Expedia', '', /expedia/i], ['booking', 'Booking.com', 'https://secure.booking.com/mytrips.html', /booking\.com/i],
+  ['hotels', 'Hotels.com', '', /hotels\.com/i], ['airbnb', 'Airbnb', 'https://www.airbnb.com/trips', /airbnb/i], ['agoda', 'Agoda', 'https://www.agoda.com/account/bookings.html', /agoda/i],
+  ['kayak', 'Kayak', 'https://www.kayak.com/trips', /kayak/i], ['priceline', 'Priceline', '', /priceline/i], ['tripcom', 'Trip.com', '', /trip\.com/i], ['google', 'Google', '', /google (flights|travel|hotels)/i],
+  ['chase', 'Chase Travel', 'https://www.chase.com/travel', /chase travel|chase ultimate rewards/i], ['amex', 'Amex Travel', 'https://www.amextravel.com/', /amex travel|american express travel|amextravel/i], ['costco', 'Costco Travel', '', /costco travel/i],
+  ['agent', 'Travel agent', '', /travel agen/i], ['other', 'Other']];
+const viaOf = (x) => { const s0 = BOOK_SOURCES.find(b => b[0] === x.via); return s0 ? { key: s0[0], name: s0[0] === 'other' ? (x.viaOther || '').trim() : s0[0] === 'direct' ? '' : s0[1], url: s0[2] || '' } : null; };
+const viaGuess = (text) => { const s0 = BOOK_SOURCES.find(b => b[3] && b[3].test(String(text || ''))); return s0 ? s0[0] : ''; };
 function itinFormHTML(x, i, air = []) {
   const k = x.kind || '';
   const f = (key, label, type = 'text', ph = '', cls = '') => `<div class="field ${cls}"><label for="it-${key}">${t(label)}</label><input id="it-${key}" type="${type === 'datetime-local' && isDate(x[key] || '') ? 'date' : type}" data-it="${key}" value="${esc(x[key] || '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}></div>`;
@@ -607,6 +616,8 @@ function itinFormHTML(x, i, air = []) {
       ${f('start', k === 'flight' ? 'Departs' : 'Starts', 'datetime-local')}${f('end', k === 'flight' ? 'Arrives' : 'Ends', 'datetime-local')}
       ${f('address', 'Address', 'text', '', 'wide')}
       ${f('confNo', 'Confirmation')}${f('link', 'Link', 'url', 'https://…')}
+      <div class="field"><label for="it-via">${t('Booked through')}</label><select id="it-via" data-it="via"><option value="">${t('Choose')}</option>${BOOK_SOURCES.map(([v, l]) => `<option value="${v}" ${v === x.via ? 'selected' : ''}>${esc(t(l))}</option>`).join('')}</select></div>
+      ${f('viaOther', 'Where', 'text', t('Site or agency')).replace('<div class="field', `<div${x.via === 'other' ? '' : ' hidden'} class="field`)}
       ${f('note', 'Note', 'text', k === 'flight' ? t('Confirmation code, last name') : '', 'wide')}
     </div>
     <div class="btns"><button type="button" class="btn primary" data-itin-save="${i == null ? '' : i}">${t('Save')}</button><button type="button" class="btn ghost" data-itin-cancel>${t('Cancel')}</button>${i != null ? `<button type="button" class="btn ghost" data-itin-del="${i}">${t('Remove')}</button>` : ''}</div>
@@ -1507,8 +1518,9 @@ function bookingsHTML(cfg) {
   return `${air.length ? `<div class="ap-mine" data-slot="ap-mine">${airportSelHTML(cfg, air, chosenAirport(cfg, air), true)}</div>` : ''}${items.length ? `<ul class="plist rich bookings">${items.map((x, i) => {
     const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
     const when = x.start ? fmt(x.start.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' }) + (x.start.length > 10 ? ' · ' + fmtTime(x.start.slice(11, 16)) : '') : '';
-    const links = [fl.status ? ext(fl.status, t('Flight status'), 'mini-b') : '', fl.manage ? ext(fl.manage, t('Manage booking'), 'mini-b') : '', x.link ? ext(x.link, t('Open booking'), 'mini-b') : '', x.address ? ext(L.place(x.address), 'Google Maps', 'mini-b') : ''].join('');
-    return `<li><div><b>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when, x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>${x.note ? `<span>${esc(x.note)}</span>` : ''}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button></div></div></li>`;
+    const via = viaOf(x); const viaUrl = via && via.url;
+    const links = [fl.status ? ext(fl.status, t('Flight status'), 'mini-b') : '', viaUrl ? ext(viaUrl, `${t('Manage booking')} · ${via.name}`, 'mini-b') : fl.manage ? ext(fl.manage, t('Manage booking'), 'mini-b') : '', x.link ? ext(x.link, t('Open booking'), 'mini-b') : '', x.address ? ext(L.place(x.address), 'Google Maps', 'mini-b') : ''].join('');
+    return `<li><div><b>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${x.note ? `<span>${esc(x.note)}</span>` : ''}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button></div></div></li>`;
   }).join('')}</ul>` : ''}
   <div class="btns itin-btns"><button type="button" class="btn primary" data-itin-add>+ ${t('Add a booking')}</button>${items.length ? `<button type="button" class="btn" data-itin-ics>${t('Add to calendar')}</button>` : ''}</div><div data-slot="itin-form"></div>`;
 }
@@ -1820,6 +1832,7 @@ function wireItin(cfg, art) {
   };
   const fill = () => { const slot = formSlot(); slot.querySelectorAll('[data-it]').forEach(el => { if (document.activeElement !== el) el.value = draft[el.dataset.it] || ''; });
     ['flight', 'to'].forEach(k => { slot.querySelector(`[data-it="${k}"]`).closest('.field').hidden = draft.kind !== 'flight'; });
+    slot.querySelector('[data-it="viaOther"]').closest('.field').hidden = draft.via !== 'other';
     slot.querySelector('label[for="it-start"]').textContent = t(draft.kind === 'flight' ? 'Departs' : 'Starts'); slot.querySelector('label[for="it-end"]').textContent = t(draft.kind === 'flight' ? 'Arrives' : 'Ends');
     slot.querySelector('#it-note').placeholder = draft.kind === 'flight' ? t('Confirmation code, last name') : '';
     ['start', 'end'].forEach(k => { const el = slot.querySelector('#it-' + k); const ty = isDate(draft[k] || '') ? 'date' : 'datetime-local'; if (el.type !== ty) { el.type = ty; el.value = draft[k] || ''; } }); };
@@ -1883,7 +1896,7 @@ function wireItin(cfg, art) {
     if (x.dataset.rv != null) { const r = review[+x.dataset.rv]; if (!r) return; r[x.dataset.rk] = x.value; if (x.dataset.rk === 'kind') openReview(review); return; }
     if (!draft || !x.dataset.it) return;
     draft[x.dataset.it] = x.value;
-    if (x.dataset.it === 'kind') fill();
+    if (x.dataset.it === 'kind' || x.dataset.it === 'via') fill();
     if (x.dataset.it === 'flight') { // airline + number: the card names itself; status and manage links appear once saved
       const n = flightName(x.value); const ni = formSlot().querySelector('#it-name');
       if (n && (!draft.name || draft.name === autoName)) { draft.name = autoName = n; ni.value = n; }
@@ -4080,6 +4093,7 @@ function aiItemsToBookings(items) {
     const st = String(x.start || ''), en = String(x.end || '');
     const okDT = (s) => /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(s) ? s : '';
     return { kind: AI_KIND[x.type] || 'other', name: cleanText(x.name || x.provider, 120), start: okDT(st), end: okDT(en), address: cleanText(x.address, 200), confNo: cleanText(x.confirmation, 60),
+      ...(() => { const bt = cleanText(x.booked_through || '', 60); const k = viaGuess(bt) || viaGuess(x.link) || (bt && /direct/i.test(bt) ? 'direct' : ''); return k ? { via: k } : bt ? { via: 'other', viaOther: bt } : {}; })(),
       link: httpsUrl(x.link), flight: cleanText(x.flight_number, 12), to: AI_KIND[x.type] === 'flight' ? cleanText(x.to, 60) : '', note: cleanText([x.from && x.to ? `${x.from} → ${x.to}` : '', x.note].filter(Boolean).join(' · '), 300) };
   }).filter(x => x.name || x.start);
 }

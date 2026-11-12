@@ -154,7 +154,7 @@ const ITEMS_TOOL: Anthropic.Tool = {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["type", "name", "provider", "start", "end", "address", "confirmation", "flight_number", "from", "to", "note", "link"],
+          required: ["type", "name", "provider", "start", "end", "address", "confirmation", "flight_number", "from", "to", "note", "link", "booked_through"],
           properties: {
             type: { type: "string", enum: ITEM_TYPES },
             name: str("Short name, e.g. 'JAL 61 Tokyo → Osaka', 'Park Hyatt Kyoto', 'Hertz at LAX'"),
@@ -168,6 +168,7 @@ const ITEMS_TOOL: Anthropic.Tool = {
             to: str("Arrival airport/station code or city, or empty"),
             note: str("Seat, room type, party size, or other useful detail, or empty"),
             link: str("Manage-booking URL from the text, or empty"),
+            booked_through: str("Where it was booked when the confirmation says so: a booking site or agency (e.g. Expedia, Booking.com, Hotels.com, Airbnb, Agoda, Kayak, Priceline, Trip.com, Chase Travel, Amex Travel, Costco Travel, a travel agent), 'direct' for the airline/hotel's own confirmation, or empty"),
           },
         },
       },

@@ -173,7 +173,7 @@ const ITEMS_TOOL: Anthropic.Tool = {
         items: {
           type: &quot;object&quot;,
           additionalProperties: false,
-          required: [&quot;type&quot;, &quot;name&quot;, &quot;provider&quot;, &quot;start&quot;, &quot;end&quot;, &quot;address&quot;, &quot;confirmation&quot;, &quot;flight_number&quot;, &quot;from&quot;, &quot;to&quot;, &quot;note&quot;, &quot;link&quot;],
+          required: [&quot;type&quot;, &quot;name&quot;, &quot;provider&quot;, &quot;start&quot;, &quot;end&quot;, &quot;address&quot;, &quot;confirmation&quot;, &quot;flight_number&quot;, &quot;from&quot;, &quot;to&quot;, &quot;note&quot;, &quot;link&quot;, &quot;booked_through&quot;],
           properties: {
             type: { type: &quot;string&quot;, enum: ITEM_TYPES },
             name: str(&quot;Short name, e.g. 'JAL 61 Tokyo → Osaka', 'Park Hyatt Kyoto', 'Hertz at LAX'&quot;),
@@ -187,6 +187,7 @@ const ITEMS_TOOL: Anthropic.Tool = {
             to: str(&quot;Arrival airport/station code or city, or empty&quot;),
             note: str(&quot;Seat, room type, party size, or other useful detail, or empty&quot;),
             link: str(&quot;Manage-booking URL from the text, or empty&quot;),
+            booked_through: str(&quot;Where it was booked when the confirmation says so: a booking site or agency (e.g. Expedia, Booking.com, Hotels.com, Airbnb, Agoda, Kayak, Priceline, Trip.com, Chase Travel, Amex Travel, Costco Travel, a travel agent), 'direct' for the airline/hotel's own confirmation, or empty&quot;),
           },
         },
       },
