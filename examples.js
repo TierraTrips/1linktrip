@@ -17,6 +17,18 @@ window.EXAMPLES = {
     },
     cover: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Javits_Center_November_2022.jpg/1280px-Javits_Center_November_2022.jpg',
     theme: { accent: '#0F4A50', font: 'field', mode: 'light' },
+    custom: [{ id: 'wifi', title: 'Getting there', text: 'Take the 7 train to 34 St–Hudson Yards; the Javits Center is a short walk west. Leave time for the security line at the North Concourse.', label: '', url: '', img: '' }],
+    files: [{ id: 'nc1', sec: 'schedule', name: 'Program.pdf', url: 'https://1linktrip.com/examples/signal-noise-program.pdf', type: 'pdf', size: 32562 }],
+    demoTrip: {
+      itin: [
+        { id: 'dn1', kind: 'hotel', name: 'Hilton Garden Inn New York/Times Square Central', address: '136 W 42nd St, New York, NY', start: '2026-11-17T15:00', end: '2026-11-20T11:00', confNo: 'SAMPLE1', via: 'amex' }
+      ],
+      plan: [
+        { id: 'dns1', src: 'g', ref: 'ChIJifIePKtZwokRVZ-UdRGkZzs', name: "Joe's Pizza Broadway", lat: 40.75468, lon: -73.98703, addr: '1435 Broadway, New York', rating: 4.4, count: 27614, type: 'food', day: '' },
+        { id: 'dns2', src: 'g', ref: 'ChIJ5bQPhMdZwokRkTwKhVxhP1g', name: 'The High Line', lat: 40.74799, lon: -74.00476, addr: 'New York', rating: 4.7, count: 69078, type: 'activity', day: '2026-11-19', time: '18:00' },
+        { id: 'dns3', src: 'g', ref: 'ChIJL-CJmTFZwokRsPcqje_bn7w', name: 'Little Island', lat: 40.742, lon: -74.0103, addr: 'Pier 55, Hudson River Park, New York', rating: 4.7, count: 18113, type: 'activity', day: '' }
+      ]
+    },
     sections: ['about', 'typeinfo', 'schedule', 'weather', 'map', 'travel', 'stay', 'food', 'tours', 'around', 'links', 'packing', 'calendar'].map(id => ({ id, on: true })),
     schedule: [
       { date: '2026-11-18', time: '08:00', title: 'Badge pickup and coffee', note: 'North Concourse' },
@@ -51,6 +63,19 @@ window.EXAMPLES = {
     },
     cover: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/ff/Mexico_-_beach_by_Tulum%2C_2022.jpg/1280px-Mexico_-_beach_by_Tulum%2C_2022.jpg',
     theme: { accent: '#0B7A75', font: 'serif', mode: 'light' },
+    custom: [{ id: 'kids', title: 'Getting around Tulum', text: 'Taxis wait outside the hotels on the beach road; agree on the fare before you get in. Bikes are the easiest way between the beach and town.', label: '', url: '', img: '' }],
+    files: [{ id: 'tw1', sec: 'schedule', name: 'Wedding weekend.pdf', url: 'https://1linktrip.com/examples/maya-theo-weekend.pdf', type: 'pdf', size: 33583 }],
+    demoTrip: {
+      itin: [
+        { id: 'dw1', kind: 'flight', name: 'Flight into Tulum (TQO)', start: '2027-03-12T11:00', end: '2027-03-12T15:30', to: 'TQO', confNo: 'SAMPLE1', via: 'direct' },
+        { id: 'dw2', kind: 'hotel', name: 'Papaya Playa Project', address: 'Carr. Tulum-Boca Paila Km 4.5, Tulum Beach', start: '2027-03-12T15:00', end: '2027-03-15T11:00', confNo: 'SAMPLE2', via: 'booking' },
+        { id: 'dw3', kind: 'car', name: 'Rental car at Tulum airport', start: '2027-03-12T16:00', end: '2027-03-15T09:00', confNo: 'SAMPLE3', via: 'kayak' }
+      ],
+      plan: [
+        { id: 'dws1', src: 'g', ref: 'ChIJlVcVFcvQT48Rdbm9qF4Emow', name: 'Hartwood', lat: 20.14988, lon: -87.45937, addr: 'Carr. Tulum-Boca Paila Km 7.6, Tulum Beach', rating: 4.4, count: 1584, type: 'food', day: '2027-03-14', time: '19:30' }
+      ],
+      shop: [{ id: 'dwsh1', text: 'Sunscreen (reef-safe)', city: '', note: 'Required in the cenotes', done: false }]
+    },
     sections: ['about', 'typeinfo', 'schedule', 'links', 'weather', 'travel', 'stay', 'food', 'tours', 'around', 'map', 'packing', 'calendar'].map(id => ({ id, on: true })),
     schedule: [
       { date: '2027-03-12', time: '19:00', title: 'Welcome drinks', note: 'Casual. Sandals encouraged.' },
@@ -82,6 +107,16 @@ window.EXAMPLES = {
     },
     cover: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Buckingham_Fountain_%26_Chicago_skyline%2C_Aug_10.jpg/1280px-Buckingham_Fountain_%26_Chicago_skyline%2C_Aug_10.jpg',
     theme: { accent: '#2E7D32', font: 'wide', mode: 'light' },
+    custom: [{ id: 'course', title: 'After the race', text: 'Stay for the awards at the finish by the Adler Planetarium, then walk the lakefront trail back toward downtown.', label: '', url: '', img: '' }],
+    files: [{ id: 'ck1', sec: 'schedule', name: 'Course and race morning.pdf', url: 'https://1linktrip.com/examples/lakefront-10k-course.pdf', type: 'pdf', size: 33982 }],
+    demoTrip: {
+      itin: [
+        { id: 'dc1', kind: 'hotel', name: 'Hilton Chicago', address: '720 S Michigan Ave, Chicago, IL', start: '2027-05-15T15:00', end: '2027-05-17T11:00', confNo: 'SAMPLE1', via: 'direct' }
+      ],
+      plan: [
+        { id: 'dcs1', src: 'g', ref: 'ChIJbwD-GqYsDogRFT9FTurCL5U', name: 'Wildberry Pancakes & Cafe', lat: 41.88472, lon: -87.62286, addr: '130 E Randolph St, Chicago', rating: 4.6, count: 10156, type: 'food', day: '2027-05-16', time: '10:30' }
+      ]
+    },
     sections: ['about', 'typeinfo', 'schedule', 'map', 'weather', 'travel', 'stay', 'food', 'tours', 'around', 'packing', 'calendar'].map(id => ({ id, on: true })),
     schedule: [
       { date: '2027-05-15', time: '10:00', title: 'Packet pickup opens', note: 'Lower Hutchinson Field, until 5 PM' },
@@ -158,40 +193,84 @@ window.EXAMPLES = {
     v: 2,
     type: 'Trip',
     title: 'Japan in spring',
-    tagline: 'Tokyo, Kyoto and Osaka in ten days',
+    tagline: 'Tokyo, Kyoto, Osaka and back to Tokyo in ten days',
     host: '',
-    description: 'Cherry blossom season: four nights in Tokyo, three in Kyoto, two in Osaka. Shinkansen between cities.',
+    description: 'Cherry blossom season: three nights in Tokyo, three in Kyoto, one in Osaka and two more back in Tokyo. Shinkansen between cities.',
     start: '2027-04-02',
     end: '2027-04-11',
     tz: 'Asia/Tokyo',
     venue: { name: 'Tokyo', address: 'Shinjuku, Tokyo, Japan', lat: 35.68972, lon: 139.69222, city: 'Tokyo', region: 'Tokyo', country: 'Japan', cc: 'jp' },
     cover: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Torii_path_with_lantern_at_Fushimi_Inari_Taisha_Shrine%2C_Kyoto%2C_Japan.jpg/1280px-Torii_path_with_lantern_at_Fushimi_Inari_Taisha_Shrine%2C_Kyoto%2C_Japan.jpg',
     theme: { accent: '#C2185B', font: 'serif', mode: 'light' },
-    tools: { weather: true, travel: true, stay: true, nearby: true, tours: true, mytrip: true, packing: true },
+    tools: { weather: true, travel: true, stay: true, nearby: true, tours: true, mytrip: true, packing: true, shopping: true },
     off: { rsvp: true },
     schedule: [
-      { date: '2027-04-02', time: '15:30', title: 'Land at Haneda', note: 'Keikyu line to Shinagawa, then JR to Shinjuku', kind: 'activity' },
-      { date: '2027-04-02', time: '', title: 'Check in, Shinjuku hotel', note: 'Sample booking, conf. SAMPLE-0001', kind: 'reservation' },
-      { date: '2027-04-03', time: '', title: 'Shinjuku Gyoen for the cherry blossoms', note: 'Opens 9:00, small entry fee', kind: 'activity' },
-      { date: '2027-04-03', time: '19:00', title: 'Dinner in Omoide Yokocho', note: '', kind: 'activity' },
-      { date: '2027-04-04', time: '', title: 'Asakusa and Senso-ji, then a river cruise', note: '', kind: 'activity' },
-      { date: '2027-04-05', time: '', title: 'Day trip to Nikko', note: 'Get the Nikko pass at Asakusa station', kind: 'activity' },
-      { date: '2027-04-06', time: '10:00', title: 'Shinkansen to Kyoto', note: 'Nozomi from Tokyo station, about 2 h 15 min. Reserved seats.', kind: 'reservation' },
-      { date: '2027-04-06', time: '', title: 'Check in, Kyoto ryokan', note: 'Sample booking, conf. SAMPLE-0002', kind: 'reservation' },
-      { date: '2027-04-07', time: '07:00', title: 'Fushimi Inari before the crowds', note: '', kind: 'activity' },
-      { date: '2027-04-08', time: '', title: 'Arashiyama bamboo grove and Tenryu-ji', note: '', kind: 'activity' },
-      { date: '2027-04-09', time: '', title: 'Train to Osaka', note: 'JR Special Rapid, about 30 min', kind: 'activity' },
-      { date: '2027-04-09', time: '19:00', title: 'Dotonbori street food', note: '', kind: 'activity' },
-      { date: '2027-04-10', time: '', title: 'Osaka Castle park', note: '', kind: 'activity' },
-      { date: '2027-04-11', time: '', title: 'Fly home from Kansai', note: 'Leave Namba by 9:00 on the Nankai Rapi:t', kind: 'note' }
+      { date: '2027-04-02', time: '15:30', title: 'Land at Haneda', note: 'Keikyu line to Shimbashi, then a short walk to the hotel', kind: 'activity' },
+      { date: '2027-04-02', time: '18:00', title: 'Check in: Park Hotel Tokyo', note: 'Shiodome Media Tower, lobby on the 25th floor', kind: 'reservation' },
+      { date: '2027-04-03', time: '09:00', title: 'Shinjuku Gyoen for the cherry blossoms', note: 'Opens 9:00; small entry fee, no alcohol inside', kind: 'activity' },
+      { date: '2027-04-03', time: '19:00', title: 'Dinner in Omoide Yokocho', note: 'Tiny yakitori counters by Shinjuku station; cash only', kind: 'activity' },
+      { date: '2027-04-04', time: '10:00', title: 'Asakusa and Senso-ji', note: 'Nakamise street snacks on the way in', kind: 'activity' },
+      { date: '2027-04-04', time: '17:00', title: 'teamLab Planets', note: 'Toyosu; timed tickets, you walk barefoot through water', kind: 'reservation' },
+      { date: '2027-04-05', time: '10:00', title: 'Shinkansen to Kyoto', note: 'Nozomi from Tokyo station, about 2 h 15 min. Reserved seats.', kind: 'reservation' },
+      { date: '2027-04-05', time: '15:00', title: 'Check in: Hotel Granvia Kyoto', note: 'Inside Kyoto Station', kind: 'reservation' },
+      { date: '2027-04-06', time: '07:00', title: 'Fushimi Inari before the crowds', note: 'JR Nara line to Inari station, 5 minutes from Kyoto', kind: 'activity' },
+      { date: '2027-04-06', time: '12:30', title: 'Lunch at Nishiki Market', note: '', kind: 'activity' },
+      { date: '2027-04-07', time: '08:30', title: 'Arashiyama bamboo grove and Tenryu-ji', note: 'Coffee at % Arabica by the river', kind: 'activity' },
+      { date: '2027-04-08', time: '11:00', title: 'Train to Osaka', note: 'JR Special Rapid, about 30 min', kind: 'activity' },
+      { date: '2027-04-08', time: '15:00', title: 'Check in: Cross Hotel Osaka', note: 'Shinsaibashi, a short walk to Dotonbori', kind: 'reservation' },
+      { date: '2027-04-08', time: '19:00', title: 'Dotonbori street food', note: 'Takoyaki and okonomiyaki along the canal', kind: 'activity' },
+      { date: '2027-04-09', time: '09:00', title: 'Osaka Castle park', note: '', kind: 'activity' },
+      { date: '2027-04-09', time: '14:00', title: 'Shinkansen back to Tokyo', note: 'From Shin-Osaka, about 2 h 30 min', kind: 'reservation' },
+      { date: '2027-04-09', time: '17:30', title: 'Check in: Hotel Gracery Shinjuku', note: 'The one with Godzilla on the roof', kind: 'reservation' },
+      { date: '2027-04-10', time: '08:00', title: 'Tsukiji Outer Market breakfast', note: '', kind: 'activity' },
+      { date: '2027-04-11', time: '17:00', title: 'Fly home from Haneda', note: 'Leave the hotel by 14:00', kind: 'reservation' }
     ],
-    notes: [{ label: 'Money', text: 'Cash is still handy: get yen at a 7-Eleven ATM. Load a Suica or ICOCA card on your phone for trains.', url: '' }],
+    notes: [
+      { label: 'Money', text: 'Cash is still handy: get yen at a 7-Eleven ATM. Load a Suica or ICOCA card on your phone for trains.', url: '' },
+      { label: 'Luggage', text: 'Send big bags ahead between hotels with takkyubin (ask at the front desk) and travel light on the Shinkansen.', url: '' }
+    ],
+    custom: [
+      { id: 'getaround', title: 'Getting around', text: 'Trains do almost everything. A Suica card on your phone works on trains, buses and in convenience stores across all three cities.\n\nShinkansen seats: reserve them a few days ahead in cherry blossom season.', label: 'JR Pass and Shinkansen', url: 'https://japanrailpass.net/en/', img: '' },
+      { id: 'sos', title: 'Emergency numbers', text: 'Police 110\nAmbulance and fire 119\nJapan Visitor Hotline (24 h, English) +81 50 3816 2787', label: '', url: '', img: '' }
+    ],
+    files: [{ id: 'jp1', sec: 'route', name: 'Japan trip plan.pdf', url: 'https://1linktrip.com/examples/japan-trip-plan.pdf', type: 'pdf', size: 41670 }],
     stops: [
-      { name: 'Tokyo', address: 'Tokyo, Japan', lat: 35.68972, lon: 139.69222, city: 'Tokyo', region: 'Tokyo', country: 'Japan', cc: 'jp', from: '2027-04-02', to: '2027-04-06' },
-      { name: 'Kyoto', address: 'Kyoto, Japan', lat: 35.01164, lon: 135.76803, city: 'Kyoto', region: 'Kyoto', country: 'Japan', cc: 'jp', from: '2027-04-06', to: '2027-04-09' },
-      { name: 'Osaka', address: 'Osaka, Japan', lat: 34.69374, lon: 135.50218, city: 'Osaka', region: 'Osaka', country: 'Japan', cc: 'jp', from: '2027-04-09', to: '2027-04-11' }
+      { name: 'Tokyo', address: 'Tokyo, Japan', lat: 35.68972, lon: 139.69222, city: 'Tokyo', region: 'Tokyo', country: 'Japan', cc: 'jp', from: '2027-04-02', to: '2027-04-05' },
+      { name: 'Kyoto', address: 'Kyoto, Japan', lat: 35.01164, lon: 135.76803, city: 'Kyoto', region: 'Kyoto', country: 'Japan', cc: 'jp', from: '2027-04-05', to: '2027-04-08' },
+      { name: 'Osaka', address: 'Osaka, Japan', lat: 34.69374, lon: 135.50218, city: 'Osaka', region: 'Osaka', country: 'Japan', cc: 'jp', from: '2027-04-08', to: '2027-04-09' },
+      { name: 'Tokyo', address: 'Tokyo, Japan', lat: 35.68972, lon: 139.69222, city: 'Tokyo', region: 'Tokyo', country: 'Japan', cc: 'jp', from: '2027-04-09', to: '2027-04-11' }
     ],
     x: { Trip: { companions: '' } },
-    bring: 'Passport\nPower adapter (type A)\nComfortable walking shoes'
+    bring: 'Passport\nPower adapter (type A)\nComfortable walking shoes',
+    // sample My trip for the example page (shown until the visitor changes it; never copied into an edited page)
+    demoTrip: {
+      itin: [
+        { id: 'dm1', kind: 'flight', name: 'ANA · Los Angeles → Tokyo Haneda', start: '2027-04-01T12:30', end: '2027-04-02T16:20', to: 'HND', confNo: 'SAMPLE1', via: 'expedia' },
+        { id: 'dm2', kind: 'hotel', name: 'Park Hotel Tokyo', address: '1-7-1 Higashi-Shimbashi, Minato City, Tokyo', start: '2027-04-02T15:00', end: '2027-04-05T11:00', confNo: 'SAMPLE2', via: 'booking' },
+        { id: 'dm3', kind: 'train', name: 'Shinkansen Tokyo → Kyoto', start: '2027-04-05T10:00', end: '2027-04-05T12:15', confNo: 'SAMPLE3', via: 'direct' },
+        { id: 'dm4', kind: 'hotel', name: 'Hotel Granvia Kyoto', address: 'Kyoto Station, Shimogyo Ward, Kyoto', start: '2027-04-05T15:00', end: '2027-04-08T11:00', confNo: 'SAMPLE4', via: 'direct' },
+        { id: 'dm5', kind: 'hotel', name: 'Cross Hotel Osaka', address: '2-5-15 Shinsaibashisuji, Chuo Ward, Osaka', start: '2027-04-08T15:00', end: '2027-04-09T11:00', confNo: 'SAMPLE5', via: 'agoda' },
+        { id: 'dm6', kind: 'hotel', name: 'Hotel Gracery Shinjuku', address: '1-19-1 Kabukicho, Shinjuku City, Tokyo', start: '2027-04-09T15:00', end: '2027-04-11T11:00', confNo: 'SAMPLE6', via: 'booking' },
+        { id: 'dm7', kind: 'car', name: 'Toyota Rent-a-Car, Shinjuku-sanchome', address: '4-2-18 Shinjuku, Shinjuku City, Tokyo', start: '2027-04-10T09:00', end: '2027-04-10T20:00', confNo: 'SAMPLE7', via: 'direct' },
+        { id: 'dm8', kind: 'other', name: 'teamLab Planets tickets', address: '6-1-16 Toyosu, Koto City, Tokyo', start: '2027-04-04T17:00', confNo: 'SAMPLE8', via: 'direct' },
+        { id: 'dm9', kind: 'flight', name: 'ANA · Tokyo Haneda → Los Angeles', start: '2027-04-11T17:00', end: '2027-04-11T11:00', to: 'LAX', confNo: 'SAMPLE1', via: 'expedia' }
+      ],
+      plan: [
+        { id: 'ds1', src: 'g', ref: 'ChIJ8QwFX9qMGGARVm0p0caIeTk', name: 'Ichiran Shinjuku', lat: 35.69059, lon: 139.70281, addr: 'Peace Bldg. B1F, 3-34-11 Shinjuku, Tokyo', rating: 4.3, count: 7855, type: 'food', day: '' },
+        { id: 'ds2', src: 'g', ref: 'ChIJ508frs-MGGARnIKrb_tkai0', name: 'Fuunji Shinjuku', lat: 35.68683, lon: 139.69664, addr: '2-14-3 Yoyogi, Shibuya, Tokyo', rating: 4.3, count: 5791, type: 'food', day: '' },
+        { id: 'ds3', src: 'g', ref: 'ChIJVVVp3BaJGGARfAgSR2yEybw', name: 'Blue Bottle Coffee Kiyosumi-Shirakawa', lat: 35.67776, lon: 139.80059, addr: '1-4-8 Hirano, Koto City, Tokyo', rating: 4.1, count: 5102, type: 'food', day: '' },
+        { id: 'ds4', src: 'g', ref: 'ChIJW2cLzSGLGGARXAKXv6EkbqI', name: 'Tsukiji Outer Market', lat: 35.66477, lon: 139.77025, addr: 'Tsukiji 4-chome, Chuo City, Tokyo', rating: 4.2, count: 56400, type: 'food', day: '2027-04-10', time: '08:00' },
+        { id: 'ds5', src: 'g', ref: 'ChIJCWDv__-pAWARwLeeqs_cVew', name: '% Arabica Kyoto Arashiyama', lat: 35.01354, lon: 135.67644, addr: '3-47 Sagatenryuji Susukinobabacho, Ukyo Ward, Kyoto', rating: 4.2, count: 5828, type: 'food', day: '2027-04-07', time: '08:00' },
+        { id: 'ds6', src: 'g', ref: 'ChIJT8uMzZwIAWARnGzsARCjnrY', name: 'Nishiki Market', lat: 35.00503, lon: 135.76472, addr: 'Nakagyo Ward, Kyoto', rating: 4.3, count: 55557, type: 'food', day: '' },
+        { id: 'ds7', src: 'g', ref: 'ChIJXSJB5UHnAGARQcEjvngsHaw', name: 'Kuromon Market', lat: 34.66535, lon: 135.50624, addr: '2-4-1 Nipponbashi, Chuo Ward, Osaka', rating: 4.1, count: 21447, type: 'food', day: '' }
+      ],
+      shop: [
+        { id: 'dsh1', text: 'Matcha from Ippodo', city: 'Kyoto', note: 'A small tin for home', done: false },
+        { id: 'dsh2', text: 'Regional Kit Kats', city: 'Tokyo', note: '', done: false },
+        { id: 'dsh3', text: 'Kitchen knife from Kappabashi', city: 'Tokyo', note: '', done: false },
+        { id: 'dsh4', text: 'Furoshiki wrapping cloth', city: '', note: '', done: true }
+      ],
+      pack: { custom: [{ id: 'c:dm1', text: 'Coin purse (lots of ¥100 coins)' }, { id: 'c:dm2', text: 'Small towel (many restrooms have no paper towels)' }] }
+    }
   }
 };

@@ -13,6 +13,8 @@ const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
   const page = await ctx.newPage();
+  // the example's sample bookings would fold the rental part; this test starts from an empty My trip
+  await page.addInitScript(() => { let v; Object.defineProperty(window, 'EXAMPLES', { configurable: true, get: () => v, set: (x) => { Object.values(x).forEach(e => { delete e.demoTrip; }); v = x; } }); });
   await page.goto(BASE); await page.waitForFunction(() => window.__ep && window.AIRPORTS);
 
   // pure default logic

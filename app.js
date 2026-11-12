@@ -567,7 +567,10 @@ function parseReservation(text, refDate) {
   return r;
 }
 const itinKey = (cfg) => 'itin:' + eventKey(cfg).slice(6);
-const itinLoad = (cfg) => LS.get(itinKey(cfg), []) || [];
+// example pages carry a sample My trip (cfg.demoTrip): shown until the visitor changes it, then their own copy is kept
+// under the example's key (never a real trip's); an edited copy of an example never takes it along (renderBuilder)
+const demoOf = (cfg, k) => cfg && cfg.demoTrip && cfg.demoTrip[k] ? clone(cfg.demoTrip[k]) : null;
+const itinLoad = (cfg) => LS.get(itinKey(cfg), null) ?? demoOf(cfg, 'itin') ?? [];
 // "Flying into": the guest's arrival airport, one of the airports near the venue. One saved value per event (ap:<key>).
 // Default: their saved pick → a flight in their bookings that lands at one of them → the closest large airport → the closest.
 const apKey = (cfg) => 'ap:' + eventKey(cfg).slice(6);
@@ -709,7 +712,7 @@ function packContext(cfg, art) {
     intl, adapter, plugs: adapter && vp ? [...vp].join('/') : '', wx, beach: !!(v && /\b(beach|playa|plage|praia|spiaggia|strand)\b/i.test(`${v.name} ${v.address || ''}`)) };
 }
 function packItems(cfg, art) {
-  const st = LS.get(packKey(cfg), {}) || {}; const removed = st.removed || {}; const ctx = packContext(cfg, art);
+  const st = LS.get(packKey(cfg), null) ?? demoOf(cfg, 'pack') ?? {}; const removed = st.removed || {}; const ctx = packContext(cfg, art);
   const host = String(cfg.bring || '').split('\n').map(s => s.trim()).filter(Boolean).map((text, i) => ({ id: 'h:' + text.toLowerCase(), text, host: true }));
   const auto = PACK_RULES.filter(([, , when]) => { try { return when(ctx); } catch { return false; } }).map(([id, label]) => ({ id, text: typeof label === 'function' ? label(ctx) : t(label) }));
   const own = (st.custom || []).map(x => ({ id: x.id, text: x.text }));
@@ -730,20 +733,20 @@ function wirePacking(cfg, art) {
     sum.innerHTML = `${esc(t('{n} of {m} packed', { n, m: all.length }))}<i><b style="width:${all.length ? Math.round(100 * n / all.length) : 0}%"></b></i>`;
   };
   art._pack = render; render();
-  sec.addEventListener('change', (e) => { const id = e.target.dataset.pack; if (id == null) return; const st = LS.get(packKey(cfg), {}) || {}; st.done = st.done || {}; e.target.checked ? st.done[id] = true : delete st.done[id]; save(st); e.target.closest('li').classList.toggle('done', e.target.checked); render(); });
+  sec.addEventListener('change', (e) => { const id = e.target.dataset.pack; if (id == null) return; const st = LS.get(packKey(cfg), null) ?? demoOf(cfg, 'pack') ?? {}; st.done = st.done || {}; e.target.checked ? st.done[id] = true : delete st.done[id]; save(st); e.target.closest('li').classList.toggle('done', e.target.checked); render(); });
   sec.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-pack-del]'); if (b) { const id = b.dataset.packDel; const st = LS.get(packKey(cfg), {}) || {}; if (id.startsWith('c:')) st.custom = (st.custom || []).filter(x => x.id !== id); else (st.removed = st.removed || {})[id] = true; save(st); render(); return; }
+    const b = e.target.closest('[data-pack-del]'); if (b) { const id = b.dataset.packDel; const st = LS.get(packKey(cfg), null) ?? demoOf(cfg, 'pack') ?? {}; if (id.startsWith('c:')) st.custom = (st.custom || []).filter(x => x.id !== id); else (st.removed = st.removed || {})[id] = true; save(st); render(); return; }
     if (e.target.closest('[data-pack-add]')) add();
   });
   const inp = sec.querySelector('.pack-add input');
-  const add = () => { const text = inp.value.trim(); if (!text) return; const st = LS.get(packKey(cfg), {}) || {}; (st.custom = st.custom || []).push({ id: 'c:' + Date.now().toString(36), text }); save(st); inp.value = ''; render(); inp.focus(); };
+  const add = () => { const text = inp.value.trim(); if (!text) return; const st = LS.get(packKey(cfg), null) ?? demoOf(cfg, 'pack') ?? {}; (st.custom = st.custom || []).push({ id: 'c:' + Date.now().toString(36), text }); save(st); inp.value = ''; render(); inp.focus(); };
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
 }
 
 // ---------- shopping list (guest-side): things to buy at the destination, optional city (route stop) and note ----------
 // Stored per trip in localStorage like packing; signed-in guests' lists sync with the rest of My trip.
 const shopKey = (cfg) => 'shop:' + eventKey(cfg).slice(6);
-const shopLoad = (cfg) => LS.get(shopKey(cfg), []) || [];
+const shopLoad = (cfg) => LS.get(shopKey(cfg), null) ?? demoOf(cfg, 'shop') ?? [];
 const shopSave = (cfg, xs) => { LS.set(shopKey(cfg), xs); if (typeof syncPush === 'function' && LS.get('signedIn')) syncPush(cfg); };
 function shopSecHTML(cfg) {
   const ss = stopsOf(cfg);
@@ -1913,6 +1916,9 @@ function wireItin(cfg, art) {
 
 function renderViewer(cfg, { exampleId, tab } = {}) {
   LANG = guestLangPick(cfg); document.documentElement.lang = LANG; document.documentElement.dir = RTL.has(LANG) ? 'rtl' : 'ltr';
+  // examples ship translated into the interface languages (examples-tr.js, loaded only when needed)
+  if (exampleId && LANG !== srcLang(cfg) && window.EXAMPLES_TR === undefined) { window.EXAMPLES_TR = null; const sc = document.createElement('script'); sc.src = 'examples-tr.js'; sc.onload = sc.onerror = () => { if (!window.EXAMPLES_TR) window.EXAMPLES_TR = {}; route(); }; document.head.appendChild(sc); return; }
+  if (exampleId && window.EXAMPLES_TR && window.EXAMPLES_TR[exampleId]) cfg.tr = { ...window.EXAMPLES_TR[exampleId], ...(cfg.tr || {}) };
   document.title = (cfg.title || 'Event') + ' · 1LinkTrip';
   const packed = location.hash.split('&t=')[0].slice(3);
   const editHref = exampleId ? `#edit-ex=${exampleId}` : `#edit=${packed}`;
@@ -1929,7 +1935,7 @@ let B = null; // builder state
 function renderBuilder(cfg, source, hosted, pid) {
   LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
   document.title = 'Edit your page · 1LinkTrip';
-  B = { cfg: normalize(cfg), venueResults: [], tab: 'edit', card: null, hosted: hosted && hosted.id ? hosted : null };
+  B = { cfg: normalize(cfg), venueResults: [], tab: 'edit', card: null, hosted: hosted && hosted.id ? hosted : null }; delete B.cfg.demoTrip; // an example's sample My trip stays on the example
   LS.set('draftHosted', B.hosted); B.pid = pid || newPid(); LS.set('draftId', B.pid); LS.set('draft', B.cfg); pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted });
   $('#app').innerHTML = `
   <div class="builder" data-tab="edit">
@@ -3566,7 +3572,7 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
 // Stored per event in localStorage (account sync arrives with the itinerary table). Shown in My trip, merged into the
 // schedule / trip itinerary, and as gold ★ pins on the map. Tapping one opens the same place card.
 const planKey = (cfg) => 'plan:' + eventKey(cfg).slice(6);
-const planLoad = (cfg) => LS.get(planKey(cfg), []) || [];
+const planLoad = (cfg) => LS.get(planKey(cfg), null) ?? demoOf(cfg, 'plan') ?? [];
 const planSave = (cfg, xs) => { LS.set(planKey(cfg), xs); if (typeof syncPush === 'function' && LS.get('signedIn')) syncPush(cfg); };
 function planDays(cfg) {
   if (!cfg.start) return [];

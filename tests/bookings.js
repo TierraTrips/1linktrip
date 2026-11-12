@@ -14,6 +14,8 @@ const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
   const page = await ctx.newPage();
+  // start from an empty My trip (the example's sample bookings are covered by tests/examples.js)
+  await page.addInitScript(() => { let v; Object.defineProperty(window, 'EXAMPLES', { configurable: true, get: () => v, set: (x) => { Object.values(x).forEach(e => { delete e.demoTrip; }); v = x; } }); });
   await page.goto(BASE); await page.waitForFunction(() => window.__ep);
   // the AI function counts as deployed; the guest is signed out
   await page.evaluate(() => { localStorage.clear(); localStorage.setItem('ep:aiReady', JSON.stringify({ t: Date.now(), ok: true })); });

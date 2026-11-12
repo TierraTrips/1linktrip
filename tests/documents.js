@@ -76,7 +76,7 @@ function fakeSupabase(user) {
     await page.goto(BASE); await page.waitForFunction(() => window.__ep && window.EXAMPLES);
     const ids = await page.evaluate(() => Object.keys(window.EXAMPLES));
     for (const id of ids) {
-      const same = await page.evaluate((id) => { const c = window.EXAMPLES[id]; const u = window.__ep.unpackEvent(window.__ep.packEvent(c)); return !('files' in u); }, id);
+      const same = await page.evaluate((id) => { const c = window.EXAMPLES[id]; const u = window.__ep.unpackEvent(window.__ep.packEvent(c)); return 'files' in c || !('files' in u); }, id);
       ok(same, `${id}: no files key added by normalize`);
     }
     if (OLD_BASE) {
@@ -161,7 +161,7 @@ function fakeSupabase(user) {
     const up = await page.evaluate(() => window.__up[0]);
     ok(up.b === 'event-files' && up.path.startsWith(USER.id + '/') && /Japan-itinerary\.pdf$/.test(up.path) && up.type === 'application/pdf', `uploaded ${JSON.stringify(up)}`);
     c = await draft(page);
-    ok(c.files.length === 1 && c.files[0].sec === 'route' && c.files[0].name === 'Japan itinerary.pdf' && c.files[0].type === 'pdf' && c.files[0].url.startsWith(SBURL + '/storage/v1/object/public/event-files/' + USER.id + '/'), `config ${JSON.stringify(c.files)}`);
+    const f0 = c.files.filter(f => f.name === 'Japan itinerary.pdf'); ok(f0.length === 1 && f0[0].sec === 'route' && f0[0].type === 'pdf' && f0[0].url.startsWith(SBURL + '/storage/v1/object/public/event-files/' + USER.id + '/'), `config ${JSON.stringify(c.files)}`);
     // too-large PDF and a non-document are refused before upload
     await page.setInputFiles('#sheet [data-doc-attach]', pdf('big.pdf', 10.5 * 1024 * 1024)); await page.waitForFunction(() => /too large/.test(document.querySelector('#sheet [data-doc-key="route"] [data-doc-msg]').textContent));
     ok(await page.evaluate(() => window.__up.length) === 1, 'PDF over 10 MB refused');
@@ -266,7 +266,7 @@ function fakeSupabase(user) {
     for (const w of [390, 320]) {
       const { ctx, page } = await mk(w);
       await page.goto(BASE + '#e=' + packed); await page.waitForSelector('#sec-schedule .route-docs'); await page.waitForTimeout(500);
-      const d = await page.$eval('#sec-schedule .route-docs li', li => ({ name: li.querySelector('b').textContent, view: li.querySelectorAll('.doc-a a')[0].textContent, vh: li.querySelectorAll('.doc-a a')[0].href, dl: li.querySelectorAll('.doc-a a')[1].textContent, dh: li.querySelectorAll('.doc-a a')[1].href, tgt: li.querySelector('.doc-main').target }));
+      const d = await page.$eval('#sec-schedule .route-docs li:last-child', li => ({ name: li.querySelector('b').textContent, view: li.querySelectorAll('.doc-a a')[0].textContent, vh: li.querySelectorAll('.doc-a a')[0].href, dl: li.querySelectorAll('.doc-a a')[1].textContent, dh: li.querySelectorAll('.doc-a a')[1].href, tgt: li.querySelector('.doc-main').target }));
       ok(d.name === 'Japan itinerary.pdf' && d.view === 'View' && d.dl === 'Download' && d.tgt === '_blank' && /\?download=Japan%20itinerary\.pdf$/.test(d.dh) && d.vh.startsWith(SBURL), `@${w} route document ${JSON.stringify(d)}`);
       const cs = cfgAfter.custom.find(x => x.title === 'Emergency contacts' && cfgAfter.files.some(f => f.sec === 'c-' + x.id));
       ok(!!(await page.$(`#sec-c-${cs.id} .docs li`)), `@${w} custom section shows its document`);
@@ -275,7 +275,7 @@ function fakeSupabase(user) {
       if (w === 320) { // guest language: labels translated, file name as written
         await page.goto(BASE + '?lang=es#e=' + packed); await page.waitForSelector('#sec-schedule .route-docs'); await page.waitForTimeout(300);
         const es = await page.$$eval('#sec-schedule .route-docs .doc-a a', as => as.map(a => a.textContent).join('|'));
-        ok(es === 'Ver|Descargar', `es labels ${es}`);
+        ok(/^(Ver\|Descargar\|?)+$/.test(es), `es labels ${es}`);
       }
       await ctx.close();
     }
