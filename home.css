@@ -47,5 +47,16 @@
 /* header: the hidden "Create a page" takes no room (it overflowed 320px phones); on narrow phones the
    wordmark steps aside for it once it shows, leaving the route mark */
 .land.home .land-top:not(.show-cta) .top-cta { position: absolute; right: 20px; }
-@media (max-width: 379px) { .land.home .land-top.show-cta .brand .wm { display: none; } }
+/* Header nav: Sign in / My pages, Share, and (once scrolled) Create a page must fit one row down to 320px.
+   Scrolled on phones the brand drops to its mark; under 380px Share turns icon-only and the header CTA goes small. */
+.land.home .land-nav .link { white-space: nowrap; }
+.land.home #share-app .share-ic { display: none; width: 18px; height: 18px; flex: none; }
+@media (max-width: 479px) { .land.home .land-top.show-cta .brand .wm { display: none; } .land.home .land-top.show-cta .land-nav { gap: 12px; } }
+@media (max-width: 379px) {
+  .land.home .land-top.show-cta .land-nav { gap: 8px; }
+  .land.home .land-top.show-cta #share-app { width: 36px; padding: 0; }
+  .land.home .land-top.show-cta #share-app .share-ic { display: block; }
+  .land.home .land-top.show-cta #share-app .share-lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .land.home .land-top.show-cta .top-cta { min-height: 36px; padding: .35em .9em; font-size: .88rem; }
+}
 @media (min-width: 860px) { .land-top .brand { font-size: 1.35rem; } .land-top .brand .brand-mark { width: 29px; height: 29px; } }

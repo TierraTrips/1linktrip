@@ -895,7 +895,7 @@ function renderLanding() {
   const draft = LS.get('draft');
   $('#app').innerHTML = `
   <main class="land home">
-    <header class="land-top"><a class="brand" href="#">${BRAND}</a><span class="land-nav">${LS.get('signedIn') ? '<a class="link" href="#mine">My pages</a>' : ''}<button type="button" class="btn sm" id="share-app">Share</button><a class="btn primary top-cta" href="#setup" aria-hidden="true" tabindex="-1">Create a page</a></span></header>
+    <header class="land-top"><a class="brand" href="#">${BRAND}</a><span class="land-nav">${LS.get('signedIn') ? '<a class="link" href="#mine">My pages</a>' : '<a class="link" href="#mine">Sign in</a>'}<button type="button" class="btn sm" id="share-app" aria-label="Share"><svg class="share-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 15V3.5M7.5 8 12 3.5 16.5 8"/><path d="M8 11H6.5A1.5 1.5 0 0 0 5 12.5v7A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-7a1.5 1.5 0 0 0-1.5-1.5H16"/></svg><span class="share-lbl">Share</span></button><a class="btn primary top-cta" href="#setup" aria-hidden="true" tabindex="-1">Create a page</a></span></header>
     <section class="land-hero">
       <div class="land-copy">
         <h1>One link for your guests’ whole trip.</h1>
