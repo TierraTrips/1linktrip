@@ -1918,7 +1918,7 @@ function renderViewer(cfg, { exampleId, tab } = {}) {
   const editHref = exampleId ? `#edit-ex=${exampleId}` : `#edit=${packed}`;
   $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#">${BRAND}</a>${exampleId ? `<span class="vbar-note">${t('Example page')}</span>` : ''}<a class="btn sm" href="${editHref}">${exampleId ? t('Customize this') : t('Edit a copy')}</a></div><div id="ev-root"></div></div>`;
   $('.vbar').insertAdjacentHTML('beforeend', langSelectHTML(cfg));
-  renderEvent(translatedView(cfg, LANG), $('#ev-root'), { tab, src: cfg });
+  guestRender(cfg, $('#ev-root'), { tab });
   const foot = $('.ev-foot a'); if (foot && exampleId) foot.setAttribute('href', editHref);
   if (location.search) $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
   window.scrollTo(0, 0);
@@ -2641,7 +2641,7 @@ async function renderHosted(slug, tab) {
   document.title = (cfg.title || 'Event') + ' · 1LinkTrip';
   LANG = guestLangPick(cfg); document.documentElement.lang = LANG; document.documentElement.dir = RTL.has(LANG) ? 'rtl' : 'ltr';
   $('.vbar').insertAdjacentHTML('beforeend', `${langSelectHTML(cfg)}<a class="btn sm" href="#edit=${packEvent(cfg)}">${t('Edit a copy')}</a>`);
-  renderEvent(translatedView(cfg, LANG), $('#ev-root'), { tab, hosted, shareUrl: hosted.url, src: cfg });
+  guestRender(cfg, $('#ev-root'), { tab, hosted, shareUrl: hosted.url });
   // '#' alone can't leave a ?e= page (the hash doesn't change), so home links point at the app itself
   $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
   window.scrollTo(0, 0);
@@ -3974,6 +3974,14 @@ function aiReady() {
   return aiReadyP || (aiReadyP = fetchTimeout(`${SB.url}/functions/v1/ai-import`, {}, 8000)
     .then(r => r.status === 200 || r.status === 401).catch(() => false).then(ok => { LS.set('aiReady', { t: Date.now(), ok }); return ok; }));
 }
+// translate only: a signed-in guest uses their session; anyone else the public key (the function caps that)
+async function aiTranslate(body) {
+  let tok = ''; try { if (LS.get('signedIn')) { const c = await sb(); const { data } = await c.auth.getSession(); tok = data && data.session ? data.session.access_token : ''; } } catch { /* anon below */ }
+  const r = await fetchTimeout(`${SB.url}/functions/v1/ai-import`, { method: 'POST', headers: { Authorization: 'Bearer ' + (tok || SB.key), apikey: SB.key, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 90000);
+  let j = null; try { j = await r.json(); } catch { /* not JSON */ }
+  if (!r.ok || !j || !j.ok) throw new Error((j && j.error) || 'Translate failed (' + r.status + ')');
+  return j;
+}
 async function aiImport(body) {
   const c = await sb(); const { data } = await c.auth.getSession(); const tok = data && data.session && data.session.access_token;
   if (!tok) { const e = new Error('signin'); e.signin = true; throw e; }
@@ -4900,6 +4908,7 @@ function textFields(cfg) {
   const sp = typeSpec(cfg), td = typeData(cfg);
   if (sp) sp.fields.filter(f => f[2] === 'text' || f[2] === 'lines').forEach(([k]) => put(`x.${cfg.type}.${k}`, td[k]));
   Object.entries(cfg.access || {}).forEach(([k, v]) => put(`access.${k}`, v));
+  (cfg.files || []).forEach((x, i) => put(`files[${i}].name`, x.name));
   return out;
 }
 function staleFields(cfg, lang) {
@@ -4923,6 +4932,32 @@ async function translateCfg(cfg, say) {
     }
   }
   return n;
+}
+// On demand: a guest who picks a language the host didn't publish gets the page translated by ai-import (signed-out
+// guests too, capped server-side), cached on this device per page + language; "Translating…" meanwhile.
+const trCacheKey = (cfg, lang) => 'trc:' + hashStr(JSON.stringify([cfg.title, cfg.start, cfg.venue && cfg.venue.name])) + ':' + lang;
+function withCachedTr(cfg, lang) {
+  const c = LS.get(trCacheKey(cfg, lang)); if (!c || lang === srcLang(cfg)) return cfg;
+  return { ...cfg, tr: { ...(cfg.tr || {}), [lang]: { ...c, ...((cfg.tr || {})[lang] || {}) } } };
+}
+async function translateOnDemand(cfg, lang) {
+  const todo = Object.entries(staleFields(cfg, lang)); if (!todo.length) return 0;
+  const got = LS.get(trCacheKey(cfg, lang)) || {}; let n = 0;
+  for (let i = 0; i < todo.length; i += 120) {
+    const part = Object.fromEntries(todo.slice(i, i + 120));
+    const j = await aiTranslate({ mode: 'translate', fields: part, target: lang, source: srcLang(cfg) });
+    ((j.data && j.data.translations) || []).forEach(x => { if (x.key in part && typeof x.text === 'string') { got[x.key] = { h: hashStr(part[x.key]), t: String(x.text).slice(0, 6000) }; n++; } });
+  }
+  if (n) LS.set(trCacheKey(cfg, lang), got); return n;
+}
+// render a guest page in LANG: stored + cached translations now, the rest fetched and the page re-rendered
+function guestRender(cfg, root, opts) {
+  const lang = LANG; const base = withCachedTr(cfg, lang); renderEvent(translatedView(base, lang), root, { ...opts, src: cfg });
+  if (lang === srcLang(cfg) || !Object.keys(staleFields(base, lang)).length || navigator.onLine === false || !SB) return;
+  const note = document.createElement('p'); note.className = 'tr-note'; note.setAttribute('role', 'status'); note.textContent = t('Translating…');
+  const body = root.querySelector('.ev-panel:not([hidden]) .ev-body'); if (body) body.prepend(note);
+  translateOnDemand(base, lang).then(n => { note.remove(); if (n && LANG === lang && document.body.contains(root)) { const p = root.querySelector('.ev-panel:not([hidden])'); renderEvent(translatedView(withCachedTr(cfg, lang), lang), root, { ...opts, src: cfg, tab: p ? p.dataset.panel : opts.tab }); } })
+    .catch(() => { note.textContent = t('Couldn’t translate the host’s text right now.'); setTimeout(() => note.remove(), 4000); });
 }
 // the page as guests in `lang` see it
 function translatedView(cfg, lang) {

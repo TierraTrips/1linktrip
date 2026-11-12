@@ -383,6 +383,8 @@ export function fileBlocks(body: unknown): Anthropic.ContentBlockParam[] | Respo
   return blocks;
 }
 
+// translate without signing in: per address, per 10 minutes (best effort, per function instance), and per request
+const ANON_HITS = new Map&lt;string, number[]&gt;(); const ANON_MAX_CALLS = 30; const ANON_MAX_CHARS = 40_000;
 // Every answer carries the CORS headers for this request's Origin.
 export async function handler(req: Request): Promise&lt;Response&gt; {
   const res = await route(req);
@@ -395,11 +397,21 @@ async function route(req: Request): Promise&lt;Response&gt; {
   const key = Deno.env.get(&quot;ANTHROPIC_API_KEY&quot;);
   if (req.method === &quot;GET&quot;) return json(200, { ok: true, ready: !!key, modes: [&quot;url&quot;, &quot;text&quot;, &quot;edit&quot;, &quot;translate&quot;, &quot;file&quot;, &quot;doc&quot;] });
   if (req.method !== &quot;POST&quot;) return json(405, { ok: false, error: &quot;Use POST&quot; });
-  if (!signedInUser(req)) return json(401, { ok: false, error: &quot;Sign in to use import&quot; });
-  if (!key) return json(503, { ok: false, error: &quot;Import is not set up yet (missing ANTHROPIC_API_KEY)&quot; });
-
+  // Signed-in organizers use every mode. Guests who aren't signed in may only translate a page into their language
+  // (the public key passes the platform's check): capped per request and per address.
+  const user = signedInUser(req);
+  let raw: string; try { raw = await req.text(); } catch { return json(400, { ok: false, error: &quot;Send JSON&quot; }); }
   let body: { url?: string; text?: string; kind?: string; mode?: string; page?: unknown; instruction?: string; type?: string };
-  try { body = await req.json(); } catch { return json(400, { ok: false, error: &quot;Send JSON&quot; }); }
+  try { body = JSON.parse(raw); } catch { return user ? json(400, { ok: false, error: &quot;Send JSON&quot; }) : json(401, { ok: false, error: &quot;Sign in to use import&quot; }); }
+  if (!user) {
+    if (body.mode !== &quot;translate&quot;) return json(401, { ok: false, error: &quot;Sign in to use import&quot; });
+    if (raw.length &gt; ANON_MAX_CHARS) return json(413, { ok: false, error: &quot;Too much text at once&quot; });
+    const ip = (req.headers.get(&quot;x-forwarded-for&quot;) || &quot;&quot;).split(&quot;,&quot;)[0].trim() || &quot;?&quot;; const now = Date.now();
+    const hits = (ANON_HITS.get(ip) || []).filter((x) =&gt; now - x &lt; 600_000);
+    if (hits.length &gt;= ANON_MAX_CALLS) return json(429, { ok: false, error: &quot;Busy right now, try again in a few minutes&quot; });
+    hits.push(now); ANON_HITS.set(ip, hits); if (ANON_HITS.size &gt; 5000) ANON_HITS.clear();
+  }
+  if (!key) return json(503, { ok: false, error: &quot;Import is not set up yet (missing ANTHROPIC_API_KEY)&quot; });
 
   if (body.mode === &quot;translate&quot;) {
     const b = body as unknown as { fields?: Record&lt;string, unknown&gt;; target?: string; source?: string };

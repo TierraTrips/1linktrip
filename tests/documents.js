@@ -55,7 +55,9 @@ function fakeSupabase(user) {
     await page.route('**/functions/v1/ai-import', async (r) => {
       if (r.request().method() === 'GET') return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, ready: true, modes: ['url', 'text', 'edit', 'translate', 'file', 'doc'] }) });
       if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 200, body: 'ok' });
-      const body = JSON.parse(r.request().postData() || '{}'); await page.evaluate((b) => window.__ai.push(b), { ...body, files: body.files.map(f => ({ media_type: f.media_type, n: f.data.length })) });
+      const body = JSON.parse(r.request().postData() || '{}');
+      if (body.mode === 'translate') return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, kind: 'translate', data: { translations: [] } }) }); // a guest in another language
+      await page.evaluate((b) => window.__ai.push(b), { ...body, files: body.files.map(f => ({ media_type: f.media_type, n: f.data.length })) });
       return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, kind: 'event', data: answer(body) }) });
     });
     await page.route(`${SBURL}/rest/**`, r => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));

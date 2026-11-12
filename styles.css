@@ -1022,3 +1022,4 @@ html.is-offline body::before { content: 'Offline'; position: fixed; top: max(12p
    phones and sits above the tabs on wide screens, so it never covers the header, the tabs or the content */
 .vbar { position: absolute; }
 @media (min-width: 760px) { .vbar { position: relative; top: 0; left: 0; right: 0; padding: 10px 14px; background: var(--fog, #F3F5F4); } .vbar .brand, .vbar .btn { background: #fff; } .viewer .ev-hero-in { padding-top: 40px; } }
+.tr-note { margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; background: var(--chip, #EEF1F4); font-size: .86rem; color: var(--muted, #5B6472); }
