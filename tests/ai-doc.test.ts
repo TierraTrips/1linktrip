@@ -33,7 +33,7 @@ Deno.test("doc mode: PDF → event JSON with stops; section focus; CORS echo", a
     assert(j.kind === "event" && j.data.stops[0].city === "Tokyo" && j.section === "route", JSON.stringify(j));
     assertEquals(r.headers.get("Access-Control-Allow-Origin"), "https://1linktrip.com");
     const b = sent.body; const content = b.messages[0].content;
-    assert(b.tool_choice.name === "save_event" && b.tools[0].input_schema.properties.stops && b.tools[0].input_schema.properties.sections, "event tool with stops + sections");
+    assert(b.tool_choice.name === "save_event" && b.tools[0].input_schema.properties.stops && b.tools[0].input_schema.required.includes("stops") && b.tools[0].input_schema.required.includes("sections"), "event tool with stops + sections required");
     assert(content[0].type === "document" && content[0].source.media_type === "application/pdf", "PDF sent as a document block");
     const txt = content[content.length - 1].text;
     assert(/Fill ONLY stops/.test(txt) && /use that type/.test(txt) && /organizer's own document/.test(txt), txt);

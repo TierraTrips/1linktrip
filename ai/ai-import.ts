@@ -216,6 +216,8 @@ schedule[i].date|time|title|note (dates YYYY-MM-DD, times HH:MM 24-hour local), 
 notes[i].label|text|url, "notes[]" / "notes[i]", x.<Type>.<field> for the type's details, tools.<name> and off.<section> booleans, stops[i].from|to.
 Indexes refer to the arrays in the page you were given. start/end are YYYY-MM-DD or YYYY-MM-DDTHH:MM. Call the tool exactly once.`;
 
+// mode "doc" uses the same tool with stops, sections, bring and access required, so a trip document never comes back without its route
+const DOC_TOOL: Anthropic.Tool = { ...EVENT_TOOL, input_schema: { ...EVENT_TOOL.input_schema, required: [...(EVENT_TOOL.input_schema.required as string[]), "stops", "sections", "bring", "access"] } };
 // mode "doc": which part of the page the organizer wants filled from the document
 const DOC_FOCUS: Record<string, string> = {
   route: "Fill ONLY stops (every city or place, in order, with arrive/leave dates) plus start_date/end_date. Leave everything else empty.",
@@ -428,7 +430,7 @@ async function route(req: Request): Promise<Response> {
     const client = new Anthropic({ apiKey: key });
     try {
       const msg = await client.messages.create({
-        model: MODEL, max_tokens: 16000, system: SYSTEM, tools: [EVENT_TOOL], tool_choice: { type: "tool", name: EVENT_TOOL.name },
+        model: MODEL, max_tokens: 16000, system: SYSTEM, tools: [DOC_TOOL], tool_choice: { type: "tool", name: DOC_TOOL.name },
         messages: [{ role: "user", content: [...parsed, { type: "text", text: `Today is ${new Date().toISOString().slice(0, 10)}.${typeNote}\n${DOC_PROMPT}${focus ? `\n${focus}` : ""}` }] }],
       });
       if (msg.stop_reason === "refusal") return json(422, { ok: false, error: "The model declined this file" });
