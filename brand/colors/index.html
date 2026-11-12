@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PlanEZR · Color options</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#E7E6E2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=Public+Sans:wght@400..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:#E7E6E2;color:#1d1d1f;font:15px/1.45 'Public Sans',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1260px;margin:0 auto;padding:26px 14px 60px}
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 4px 20px}
+.top h1{font:600 1.05rem 'Public Sans',sans-serif;margin:0;letter-spacing:-.01em}
+.top span{font:500 .7rem 'IBM Plex Mono',monospace;letter-spacing:.07em;text-transform:uppercase;color:#6f6c66}
+.opts{display:grid;grid-template-columns:minmax(0,1fr);gap:22px;justify-items:center}
+@media (min-width:760px){.opts{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}}
+@media (min-width:1180px){.opts{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* ---------- option card ---------- */
+.opt{width:100%;max-width:388px;background:#fff;border-radius:20px;padding:16px 16px 18px;box-shadow:0 1px 0 #0000000d}
+.opt.now{box-shadow:0 0 0 2px #1d1d1f}
+.opt-h{display:flex;align-items:center;gap:10px;margin:0 2px 12px}
+.opt-h h2{font:600 1.25rem/1.1 'Public Sans',sans-serif;letter-spacing:-.015em;margin:0}
+.opt-h .k{font:600 .62rem 'IBM Plex Mono',monospace;letter-spacing:.09em;text-transform:uppercase;color:#6f6c66}
+.opt-h .tag{font:600 .62rem 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;background:#1d1d1f;color:#fff;padding:4px 8px;border-radius:999px}
+.sw{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;margin-bottom:8px}
+.sw div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.sw i{display:block;height:34px;border-radius:8px;box-shadow:inset 0 0 0 1px #0000001a}
+.sw b{font:600 .6rem/1.1 'IBM Plex Mono',monospace;letter-spacing:.02em;color:#1d1d1f}
+.sw small{font:500 .56rem/1.15 'IBM Plex Mono',monospace;letter-spacing:.04em;text-transform:uppercase;color:#6f6c66}
+.aa{display:flex;flex-wrap:wrap;gap:4px 10px;margin:0 0 14px;font:500 .62rem 'IBM Plex Mono',monospace;letter-spacing:.03em;color:#6f6c66}
+.aa span b{color:#1d1d1f;font-weight:600}
+.aa span.fail b{color:#b00020}
+
+/* ---------- phone preview: the live homepage top, recolored ---------- */
+.phone{--stop:22px;--gutter:40px;width:100%;max-width:340px;margin:0 auto;padding-bottom:30px;overflow:hidden;position:relative;border-radius:26px;
+  background:var(--paper);color:var(--ink);box-shadow:0 0 0 1px #0000001f,0 18px 36px -24px #0006;font:16px/1.5 'Public Sans',sans-serif}
+.phone::after{content:'';position:absolute;left:0;right:0;bottom:0;height:40px;background:linear-gradient(to bottom,transparent,var(--paper));pointer-events:none}
+.p-top{display:flex;justify-content:space-between;align-items:center;padding:16px 20px 14px;gap:10px}
+.brand{display:inline-flex;align-items:center;gap:.4em;font:500 1.3rem/1 'Newsreader',Georgia,serif;letter-spacing:-.015em;color:var(--ink);text-decoration:none}
+.brand svg{width:30px;height:30px;flex:none}
+.brand em{font-style:italic}
+.brand .z{font:500 .56em 'IBM Plex Mono',monospace;letter-spacing:.04em;color:var(--ri);vertical-align:.55em;margin-left:1px}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:.55em 1.05em;border-radius:10px;border:1.5px solid currentColor;background:transparent;font:600 .95rem 'Public Sans',sans-serif;white-space:nowrap;color:inherit}
+.btn.sm{min-height:36px;padding:.35em .9em;font-size:.88rem}
+.btn.big{min-height:52px;padding:.7em 1.4em;font-size:1.05rem}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.p-hero{position:relative;isolation:isolate;padding:28px 20px 24px}
+.p-hero svg.ct{position:absolute;z-index:-1;top:-70px;right:0;width:340px;height:420px;
+  -webkit-mask:linear-gradient(to right,transparent,#000 35%);mask:linear-gradient(to right,transparent,#000 35%)}
+.p-hero h1{font:500 2.55rem/.98 'Newsreader',Georgia,serif;font-variation-settings:'opsz' 72;letter-spacing:-.025em;margin:0 0 .4em;text-wrap:balance}
+.p-hero h1 em{font-style:italic}
+.p-hero .lede{font-size:1.13rem;color:var(--lede);margin:0 0 1.6em}
+.p-hero .fine{font-size:.85rem;color:var(--slate);margin:1em 0 0}
+.p-hero .fine u{text-decoration:none;font-weight:600}
+.p-what{padding:44px 20px 0}
+.p-what h2{font:500 1.7rem 'Newsreader',Georgia,serif;letter-spacing:-.02em;margin:0 0 18px}
+.p-what dl{margin:0}
+.p-what dl>div{position:relative;padding:13px 0 13px var(--gutter)}
+.p-what dl>div+div::after{content:'';position:absolute;top:0;left:var(--gutter);right:0;border-top:1px solid var(--contour)}
+.p-what dl>div::before{content:'';position:absolute;left:calc(var(--stop)/2 - 2px);top:0;bottom:0;width:4px;background:radial-gradient(circle,var(--route) 1.5px,transparent 2px) center top/4px 8px repeat-y}
+.p-what dl>div:first-child::before{top:50%}
+.p-what dt{font:600 1.06rem/1.35 'Newsreader',Georgia,serif}
+.p-what dt::before{content:'';position:absolute;z-index:1;left:0;top:50%;width:var(--stop);height:var(--stop);margin-top:calc(var(--stop)/-2);border-radius:50%;background:var(--paper);border:2px solid var(--ink)}
+.p-what dd{margin:0;color:var(--lede)}
+
+/* ---------- icon + mini event page ---------- */
+.extras{margin-top:16px}
+.ico{flex:none;display:block;width:52px;height:52px;border-radius:12px;overflow:hidden;box-shadow:0 0 0 1px #0000001a,0 6px 14px -8px #0005}
+.ico svg{display:block;width:100%;height:100%}
+.opt-h .nm{display:flex;flex-direction:column;gap:3px;margin-right:auto}
+.ev-l{font:600 .58rem 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6f6c66}
+.ev{background:var(--paper);border-radius:14px;overflow:hidden;box-shadow:0 0 0 1px #0000001a;padding-bottom:12px;color:var(--ink)}
+.ev-hero{position:relative;background:var(--ink);color:#fff;padding:18px 16px 52px;overflow:hidden}
+.ev-hero svg{position:absolute;inset:0 0 0 auto;height:100%;width:auto}
+.ev-hero p{position:relative;margin:0 0 6px;font:600 .58rem 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;opacity:.92}
+.ev-hero h3{position:relative;margin:0;font:500 2rem/.98 'Newsreader',Georgia,serif;letter-spacing:-.02em}
+.stub{position:relative;margin:-34px 10px 0;background:#fff;border-radius:14px;box-shadow:0 16px 30px -18px #0007;display:grid;grid-template-columns:1fr 84px}
+.stub-main{padding:13px 13px 10px;display:grid;grid-template-columns:1.45fr 1fr;gap:9px}
+.cell.wide{grid-column:1/-1}
+.cell{display:flex;flex-direction:column;gap:1px;min-width:0}
+.lbl{font:600 .54rem/1.2 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--slate)}
+.cell b{font-weight:650;font-size:.88rem;line-height:1.2}
+.tear{position:absolute;top:9px;bottom:9px;right:84px;width:4px;margin-right:-2px;background:radial-gradient(circle,var(--route) 1.3px,transparent 1.8px) center top/4px 7px repeat-y}
+.side{grid-row:1/3;grid-column:2;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:1px}
+.side .code{font:600 1.6rem/1 'IBM Plex Mono',monospace;color:var(--ink);margin:2px 0}
+.side small{font-size:.64rem;color:var(--slate)}
+.acts{grid-column:1;display:flex;flex-wrap:wrap;gap:6px;padding:0 13px 13px}
+.acts .btn{min-height:32px;padding:.3em .75em;font-size:.76rem;border-radius:8px;border-width:1.3px;border-color:#00000026}
+.acts .btn.primary{border-color:var(--ink)}
+.ev-sec{margin:10px 10px 0;background:#fff;border-radius:12px;padding:9px 11px;display:flex;align-items:center;gap:7px;font:600 .95rem 'Newsreader',Georgia,serif}
+.ev-sec i{width:7px;height:7px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px var(--route);flex:none}
+.ev-sec time{margin-left:auto;font:600 .64rem 'IBM Plex Mono',monospace;color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top"><h1>PlanEZR · Color options</h1><span>Same design · 6 palettes</span></header>
+  <main class="opts" id="opts"></main>
+</div>
+<script>
+// Each palette fills the same roles the live Field Map uses: ink (text + buttons), soft (sage), route (dotted route, marks),
+// ri (small accent text, darker route), contour (lines), paper (background). slate = muted text, lede = body copy.
+const P = [
+  { key:'Now', name:'Forest', now:true, ink:'#1F3A2E', soft:'#9DB39A', route:'#E2572F', ri:'#B5401D', contour:'#CCD8C5', paper:'#EEF1E8', slate:'#4F6356', lede:'#34493E' },
+  { key:'A', name:'Navy',     ink:'#1C2B45', soft:'#93A6BF', route:'#E35A22', ri:'#B4461A', contour:'#CED7E2', paper:'#EEF1F4', slate:'#4E5D74', lede:'#33425A' },
+  { key:'B', name:'Lagoon',   ink:'#0F4A50', soft:'#8FBDB6', route:'#E35B47', ri:'#B4402F', contour:'#C5DDD8', paper:'#EDF4F1', slate:'#41655F', lede:'#2A5852' },
+  { key:'C', name:'Clay',     ink:'#7A3320', soft:'#D3B08F', route:'#2E7D74', ri:'#236860', contour:'#E6D5BF', paper:'#F5EDE1', slate:'#6E5446', lede:'#5E3A2A' },
+  { key:'D', name:'Plum',     ink:'#3E2142', soft:'#B89BB6', route:'#D9692C', ri:'#A84E17', contour:'#E2D4DF', paper:'#F4EFF1', slate:'#66506A', lede:'#523857' },
+  { key:'E', name:'Charcoal', ink:'#24221F', soft:'#ADA69C', route:'#E45A12', ri:'#B23F00', contour:'#DEDAD2', paper:'#F4F2ED', slate:'#5F5A52', lede:'#3E3A35' },
+];
+const lum = h => { const c = [1,3,5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(v => v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; };
+const cr = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+const badge = (label, r, min) => `<span class="${r >= min ? '' : 'fail'}">${label} <b>${r.toFixed(1)}</b></span>`;
+
+const mark = p => `<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8.5 31.5C15 32 13 21 20 21.5s8 2.8 9.6-.6" fill="none" stroke="${p.route}" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="0.1 5"/><circle cx="8.5" cy="31.5" r="3.6" fill="${p.ink}"/><path d="M30 5.5a7.2 7.2 0 0 1 7.2 7.2c0 5.3-7.2 11.8-7.2 11.8s-7.2-6.5-7.2-11.8A7.2 7.2 0 0 1 30 5.5z" fill="${p.ink}"/><circle cx="30" cy="12.7" r="2.7" fill="${p.paper}"/></svg>`;
+const icon = p => `<svg viewBox="0 0 76 76" aria-hidden="true"><rect width="76" height="76" fill="${p.paper}"/><g fill="none" stroke="${p.contour}" stroke-width="1.4"><path d="M-4 20c20 6 40-10 84 4"/><path d="M-4 58c26-8 46 10 84-2"/></g><g transform="translate(10 10) scale(1.4)"><path d="M8.5 31.5C15 32 13 21 20 21.5s8 2.8 9.6-.6" fill="none" stroke="${p.route}" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="0.1 5"/><circle cx="8.5" cy="31.5" r="3.6" fill="${p.ink}"/><path d="M30 5.5a7.2 7.2 0 0 1 7.2 7.2c0 5.3-7.2 11.8-7.2 11.8s-7.2-6.5-7.2-11.8A7.2 7.2 0 0 1 30 5.5z" fill="${p.ink}"/><circle cx="30" cy="12.7" r="2.7" fill="${p.paper}"/></g></svg>`;
+const contour = (stroke, op, vb) => `<svg class="ct" viewBox="${vb}" preserveAspectRatio="xMaxYMin slice" fill="none" stroke="${stroke}" stroke-width="1.4" opacity="${op}" aria-hidden="true"><path d="M360 0c20 80 140 100 240 80"/><path d="M300 0c16 120 180 156 300 132"/><path d="M236 0c8 164 220 216 364 188"/><path d="M172 0c-8 208 256 280 428 248"/><path d="M104 0c-28 260 300 352 496 312"/><path d="M36 0c-50 300 330 420 564 380"/><path d="M524 0c-8 28 24 44 76 32"/></svg>`;
+
+const roles = [['ink','Primary'],['soft','Soft'],['route','Route'],['ri','Accent text'],['contour','Contour'],['paper','Paper']];
+document.getElementById('opts').innerHTML = P.map(p => {
+  const vars = `--ink:${p.ink};--soft:${p.soft};--route:${p.route};--ri:${p.ri};--contour:${p.contour};--paper:${p.paper};--slate:${p.slate};--lede:${p.lede}`;
+  return `<article class="opt${p.now ? ' now' : ''}" style="${vars}" aria-label="${p.name}">
+    <div class="opt-h"><span class="ico" title="App icon">${icon(p)}</span><span class="nm"><h2>${p.name}</h2><span class="k">${p.now ? 'Current' : 'Option ' + p.key}</span></span>${p.now ? '<span class="tag">Live now</span>' : ''}</div>
+    <div class="sw">${roles.map(([k, l]) => `<div><i style="background:${p[k]}"></i><b>${p[k].slice(1)}</b><small>${l}</small></div>`).join('')}</div>
+    <div class="aa">${badge('Text', cr(p.ink, p.paper), 4.5)}${badge('Button', cr('#FFFFFF', p.ink), 4.5)}${badge('Accent text', cr(p.ri, p.paper), 4.5)}${badge('Muted', cr(p.slate, p.paper), 4.5)}${badge('Route', cr(p.route, p.paper), 3)}</div>
+    <div class="phone">
+      <div class="p-top"><span class="brand">${mark(p)}<span><em>Plan</em><span class="z">EZR</span></span></span><span class="btn sm">Share</span></div>
+      <section class="p-hero">${contour(p.contour, '.8', '0 0 600 420')}
+        <h1><em>One link</em> for your guests’ whole trip.</h1>
+        <p class="lede">Add your event and the venue. Guests get your schedule, plus how to get there and where to stay.</p>
+        <span class="btn primary big">Create a page</span>
+        <p class="fine">Free. No account needed. <u>See examples</u></p>
+      </section>
+      <section class="p-what"><h2>What your guests get</h2><dl>
+        <div><dt>Weather</dt><dd>Forecast for the dates.</dd></div>
+        <div><dt>Map</dt><dd>The venue and what’s nearby.</dd></div>
+        <div><dt>Flights</dt><dd>Nearest airports and fares.</dd></div>
+        <div><dt>Hotels</dt><dd>Places to stay nearby.</dd></div>
+      </dl></section>
+    </div>
+    <div class="extras">
+        <div class="ev">
+          <div class="ev-hero">${contour(p.soft, '.38', '0 0 600 360')}<p>Wedding · Sonoma, CA</p><h3>Maya &amp; Theo</h3></div>
+          <div class="stub">
+            <div class="stub-main"><div class="cell"><span class="lbl">Date</span><b>Jun 12–14, 2027</b></div><div class="cell"><span class="lbl">Starts</span><b>4:00 PM</b></div><div class="cell wide"><span class="lbl">Venue</span><b>Kenwood Inn</b></div></div>
+            <div class="tear"></div>
+            <div class="side"><span class="lbl">Fly into</span><b class="code">STS</b><small>22 mi away</small></div>
+            <div class="acts"><span class="btn primary">Add to calendar</span><span class="btn">Directions</span></div>
+          </div>
+          <div class="ev-sec"><i></i>Schedule<time>FRI 5:00 PM</time></div>
+        </div>
+    </div>
+  </article>`;
+}).join('');
+</script>
+</body>
+</html>
