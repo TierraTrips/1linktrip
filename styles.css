@@ -1015,3 +1015,4 @@ html.is-offline body::before { content: 'Offline'; position: fixed; top: max(12p
 .cx-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .bookings .bk-via { display: block; color: var(--muted, var(--slate)); font-size: .86rem; }
 .gp-none { margin: 10px 0 0; }
+.hotel-chips { margin: 0 0 8px; } .hotel-chips .chip small { font-weight: 500; opacity: .75; margin-left: 2px; }

@@ -1615,7 +1615,7 @@ function renderEvent(cfg, root, opts = {}) {
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-gpid]'); if (b && art._openGPlace) art._openGPlace(b.dataset.gpid); });
   wireEvent(cfg, art, seq, air, opts); wireOffline(cfg, art, opts); if (!opts.preview) wireCollapse(cfg, art);
   if (opts.hosted && typeof wireHosted === 'function') wireHosted(cfg, art, opts.hosted, opts);
-  art.addEventListener('click', (e) => { const b = e.target.closest('[data-route-stop]'); if (!b || !art.querySelector('[data-panel="nearby"]')) return; showTab(art, 'nearby', opts); const c2 = art.querySelector(`[data-gp-stop="${b.dataset.routeStop}"]`); if (c2) c2.click(); });
+  art.addEventListener('click', (e) => { const b = e.target.closest('[data-route-stop]'); if (!b || !art.querySelector('[data-panel="nearby"]')) return; showTab(art, 'nearby', opts); const c2 = art.querySelector(`[data-gp-stop="${cityOfStop(cfg, +b.dataset.routeStop)}"]`); if (c2) c2.click(); });
 }
 function showTab(art, k, opts = {}) {
   $$('.ev-panel', art).forEach(p => { p.hidden = p.dataset.panel !== k; });
@@ -3198,7 +3198,7 @@ function googleAdapter(g, el, c) {
     center: (lat, lon, z) => { map.setCenter({ lat, lng: lon }); if (z) map.setZoom(z); },
     fit: (pts) => { const b = new g.LatLngBounds(); pts.forEach(([la, lo]) => b.extend({ lat: la, lng: lo })); map.fitBounds(b, 60); g.event.addListenerOnce(map, 'idle', () => { if (map.getZoom() > 16) map.setZoom(16); }); },
     pin: (lat, lon, { title, html, color }) => { const m = new g.Marker({ map, position: { lat, lng: lon }, title, zIndex: 1000, label: title ? { text: pinText(title), className: 'gmap-lbl', color: '#12141B', fontSize: '11px', fontWeight: '700' } : undefined, icon: { path: 'M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z', fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 1.15, anchor: new g.Point(12, 36), labelOrigin: new g.Point(12, 46) } }); pop(m, html); all.push(m); },
-    hotelPins: (() => { let ms = []; return (items) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map, position: { lat: x.lat, lng: x.lon }, title: x.title, zIndex: 5000, optimized: false, label: { text: pinText(x.label), className: 'gmap-lbl hotel', color: '#12141B', fontSize: '12px', fontWeight: '700' }, icon: { url: HOTEL_PIN, scaledSize: new g.Size(32, 40), anchor: new g.Point(16, 38), labelOrigin: new g.Point(16, 49) } }); m.addListener('click', () => x.onClick && x.onClick()); return m; }); }; })(),
+    hotelPins: (() => { let ms = []; return (items) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map, position: { lat: x.lat, lng: x.lon }, title: x.title, zIndex: 5000, optimized: false, label: { text: x.label, className: 'gmap-lbl hotel', color: '#12141B', fontSize: '12px', fontWeight: '700' }, icon: { url: HOTEL_PIN, scaledSize: new g.Size(32, 40), anchor: new g.Point(16, 38), labelOrigin: new g.Point(16, 49) } }); m.addListener('click', () => x.onClick && x.onClick()); return m; }); }; })(),
     label: (lat, lon, { title, text, html }) => { const m = new g.Marker({ map, position: { lat, lng: lon }, title, zIndex: 900, label: { text, fontSize: '11px', fontWeight: '700', color: '#12141B' }, icon: { path: g.SymbolPath.CIRCLE, scale: 0 } }); pop(m, html); all.push(m); },
     group: (color) => { let ms = [], vis = true; return {
       set: (items) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map: vis ? map : null, position: { lat: x.lat, lng: x.lon }, title: x.title, icon: { path: g.SymbolPath.CIRCLE, scale: 6, fillColor: color, fillOpacity: .95, strokeColor: '#fff', strokeWeight: 1.5 } }); if (x.onClick) m.addListener('click', x.onClick); else if (x.html) pop(m, x.html); return m; }); },
@@ -3222,7 +3222,7 @@ function leafletAdapter(el, c) {
     center: (lat, lon, z) => map.setView([lat, lon], z || map.getZoom()),
     fit: (pts) => map.fitBounds(pts, { padding: [50, 50], maxZoom: 16 }),
     pin: (lat, lon, { title, html, color }) => Lf.marker([lat, lon], { icon: Lf.divIcon({ className: 'pin', html: `<span style="--accent:${color}"></span>${title ? `<em class="map-lbl">${esc(pinText(title))}</em>` : ''}`, iconSize: [30, 40], iconAnchor: [15, 38] }), title, zIndexOffset: 1000 }).addTo(map).bindPopup(html),
-    hotelPins: (() => { let lg = null; return (items) => { if (!lg) lg = Lf.layerGroup().addTo(map); lg.clearLayers(); items.forEach(x => Lf.marker([x.lat, x.lon], { icon: Lf.divIcon({ className: 'hpin', html: `<img src="${HOTEL_PIN}" alt=""><em class="map-lbl hotel">${esc(pinText(x.label))}</em>`, iconSize: [32, 40], iconAnchor: [16, 38] }), title: x.title, zIndexOffset: 5000 }).on('click', () => x.onClick && x.onClick()).addTo(lg)); }; })(),
+    hotelPins: (() => { let lg = null; return (items) => { if (!lg) lg = Lf.layerGroup().addTo(map); lg.clearLayers(); items.forEach(x => Lf.marker([x.lat, x.lon], { icon: Lf.divIcon({ className: 'hpin', html: `<img src="${HOTEL_PIN}" alt=""><em class="map-lbl hotel">${esc(x.label)}</em>`, iconSize: [32, 40], iconAnchor: [16, 38] }), title: x.title, zIndexOffset: 5000 }).on('click', () => x.onClick && x.onClick()).addTo(lg)); }; })(),
     label: (lat, lon, { title, text, html }) => Lf.marker([lat, lon], { icon: Lf.divIcon({ className: 'tpin', html: `<span>${esc(text)}</span>`, iconSize: null, iconAnchor: [0, 0] }), title, zIndexOffset: 900 }).addTo(map).bindPopup(html),
     group: (color) => { const lg = Lf.layerGroup().addTo(map); return {
       set: (items) => { lg.clearLayers(); items.forEach(x => { const m = Lf.circleMarker([x.lat, x.lon], { radius: 6, color: '#fff', weight: 1.5, fillColor: color, fillOpacity: .95 }); if (x.onClick) m.on('click', x.onClick); else if (x.html) m.bindPopup(x.html); m.addTo(lg); }); },
@@ -3306,6 +3306,7 @@ function wireMap(cfg, art, opts) {
     onPoi: (fn) => { st.poi = fn; if (st.adapter) st.adapter.onPoi(fn); },
     setSaved: (items) => { st.saved = items; if (st.adapter && st.adapter.savedPins) st.adapter.savedPins(items); },
     setHotels: (items) => { st.hotels = items; if (st.adapter && st.adapter.hotelPins) st.adapter.hotelPins(items); },
+    fit: (pts) => { const go = () => { st.area = null; if (areaBtn) areaBtn.hidden = true; if (st.adapter) st.adapter.fit(pts); }; st.adapter ? go() : setTimeout(go, 1500); },
     centerOn: (lat, lon, z) => { const go = () => st.adapter && st.adapter.center(lat, lon, z || 15); st.adapter ? go() : setTimeout(go, 1500); },
     setFood: (items) => { st.food = items; const g = st.groups.food; if (g) g.g.set(items.map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)) }))); },
     center: (lat, lon, z) => { st.area = null; const go = () => { st.area = null; if (areaBtn) areaBtn.hidden = true; if (st.adapter) st.adapter.center(lat, lon, z || 14); }; st.adapter ? go() : setTimeout(go, 1500); }, // a programmatic move is a new starting area
@@ -3504,7 +3505,7 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
   const s = art.querySelector('[data-slot="food"]'); if (!s || !GKEY || gpBroken || !cfg.venue) return false;
   art._gp = art._gp || { cat: 'restaurant', cuisine: '', diet: '', open: false, stars: 0, price: '', q: '' };
   let rows = null, seq = 0, started = false;
-  const ss = stopsOf(cfg);
+  const ss = stopsOf(cfg).length > 1 ? hotelStops(cfg) : [];
   s.innerHTML = `${ss.length > 1 ? `<div class="chips stop-chips" role="group" aria-label="${t('Route')}">${ss.map((x, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-gp-stop="${i}" aria-pressed="${i === 0}">${esc(x.name)}</button>`).join('')}</div>` : ''}<form class="gp-search" role="search" onsubmit="return false"><input type="search" data-gp-q placeholder="${t('Search places, e.g. ramen')}" aria-label="${t('Search places')}" autocomplete="off" enterkeyhint="search"><button type="submit" class="btn sm" data-gp-go>${t('Search')}</button></form><div data-gp-body></div>`;
   const bodyEl = s.querySelector('[data-gp-body]'); const qIn = s.querySelector('[data-gp-q]');
   const v0 = cfg.venue;
@@ -3539,7 +3540,7 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
     const b = e.target.closest('button'); if (!b) return; const f = art._gp; const d = b.dataset;
     if (d.gplace) { art._openGPlace(d.gplace); return; }
     if (d.gpSave) { const r = (rows || []).find(x => x.id === d.gpSave); if (r) toggleSaved(cfg, art, { src: 'g', ref: r.id, name: r.name, lat: r.lat, lon: r.lon, rating: r.rating, count: r.count, addr: r.addr, hours: '', type: placeType([], r.type.toLowerCase()) }); render(); return; }
-    if (d.gpStop != null) { const st = ss[+d.gpStop]; art._stop = hotelStops(cfg).indexOf(st); if (art._stop < 0) art._stop = 0; const h = art._hotelAt ? art._hotelAt(art._stop) : null; art._center = h || st; art._fromHotel = !!h; art._hotelPt = h; $$('[data-gp-stop]', s).forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); }); if (mapCtl) mapCtl.center(art._center.lat, art._center.lon, h ? 15 : 13); art._hotelUI && art._hotelUI(); return load(); }
+    if (d.gpStop != null) { const st = ss[+d.gpStop]; art._stop = +d.gpStop; const h = art._hotelAt ? art._hotelAt(art._stop) : null; art._center = h || st; art._fromHotel = !!h; art._hotelPt = h; $$('[data-gp-stop]', s).forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); }); if (mapCtl) mapCtl.center(art._center.lat, art._center.lon, h ? 15 : 13); art._hotelUI && art._hotelUI(); return load(); }
     if ('gpGo' in d) { textSearch(qIn.value.trim()); return; }
     if ('gpQClear' in d) { f.q = ''; qIn.value = ''; return load(); }
     if (d.gpCat) { f.cat = f.cat === d.gpCat && !f.q ? '' : d.gpCat; f.cuisine = ''; f.price = ''; f.q = ''; qIn.value = ''; return load(); }
@@ -3733,43 +3734,54 @@ function wireCollapse(cfg, art) {
 // Hotel per route city: the guest's own hotel booking (My trip) for those dates → else the host's stay on the itinerary
 // for that leg → else one the guest sets here. A hotel the guest sets is a plan item { hotel: true } so it syncs and
 // works offline like the rest of My trip. Saved spots are plan items too (★ on any place); My trip lists them per city.
-const hotelStops = (cfg) => { const ss = stopsOf(cfg).filter(s => s.lat != null); return ss.length ? ss : cfg.venue ? [cfg.venue] : []; };
+// Nearby works per CITY: a route that comes back to a city (Tokyo at the start and the end) has one Tokyo, with all of its
+// hotels. Each city: { ...first stop, legs: [its stops] }; the Itinerary still lists each leg by date.
+const cityKey = (s) => String(s.city || s.name || '').trim().toLowerCase();
+const hotelStops = (cfg) => {
+  const ss = stopsOf(cfg).filter(s => s.lat != null); if (!ss.length) return cfg.venue ? [{ ...cfg.venue, legs: [] }] : [];
+  const out = []; ss.forEach(s => { const o = out.find(x => cityKey(x) === cityKey(s) || distM(x.lat, x.lon, s.lat, s.lon) < 3000); if (o) o.legs.push(s); else out.push({ ...s, legs: [s] }); });
+  return out;
+};
+const cityOfStop = (cfg, i) => { const s = stopsOf(cfg)[i]; return s ? Math.max(0, hotelStops(cfg).findIndex(c => c.legs.includes(s))) : 0; };
 const nearestStop = (cfg, p) => { let b = 0, bd = Infinity; hotelStops(cfg).forEach((s, i) => { const d = distM(s.lat, s.lon, p.lat, p.lon); if (d < bd) { bd = d; b = i; } }); return b; };
-const stopOfDay = (cfg, d) => { const ss = hotelStops(cfg); if (ss.length < 2 || !d) return 0; const i = legOf(ss, d); return i < 0 ? 0 : i; };
+const stopOfDay = (cfg, d) => { const ss = stopsOf(cfg).filter(s => s.lat != null); if (ss.length < 2 || !d) return 0; const i = legOf(ss, d); return i < 0 ? 0 : Math.max(0, hotelStops(cfg).findIndex(c => c.legs.includes(ss[i]))); };
+const legOfDay = (cfg, d) => { const ss = stopsOf(cfg).filter(s => s.lat != null); const i = d ? legOf(ss, d) : -1; return i < 0 ? null : ss[i]; };
 const HOTEL_RE = /\b(check[- ]?in|hotel|hostel|ryokan|resort|airbnb|guest ?house|inn|lodge)\b/i;
 const hgeoKey = (q) => 'hgeo:' + q.trim().toLowerCase().slice(0, 120);
+// every hotel per city: the guest's own bookings, the host's check-ins on the itinerary, ones the guest set here
 function hotelCands(cfg) {
-  const out = hotelStops(cfg).map(() => null);
-  itinLoad(cfg).filter(x => x.kind === 'hotel' || x.kind === 'stay').forEach(x => { const i = stopOfDay(cfg, (x.start || '').slice(0, 10)); if (!out[i] && (x.name || x.address)) out[i] = { src: 'booking', name: x.name || t('Your hotel'), q: [x.name, x.address].filter(Boolean).join(', '), addr: x.address || '' }; });
-  (cfg.off.schedule ? [] : cfg.schedule || []).filter(x => x.title && HOTEL_RE.test(x.title) && !/check[- ]?out/i.test(x.title)).forEach(x => { const i = stopOfDay(cfg, x.date); const name = x.title.replace(/^\s*check[- ]?in\s*[:\-–—]?\s*(at\s+)?/i, '').trim(); if (!out[i] && name) out[i] = { src: 'host', name, q: name, addr: '' }; });
+  const out = hotelStops(cfg).map(() => []); const add = (i, h) => { if (!out[i].some(x => x.name.toLowerCase() === h.name.toLowerCase())) out[i].push(h); };
+  itinLoad(cfg).filter(x => x.kind === 'hotel' || x.kind === 'stay').forEach(x => { const d = (x.start || '').slice(0, 10); if (x.name || x.address) add(stopOfDay(cfg, d), { src: 'booking', name: x.name || t('Your hotel'), q: [x.name, x.address].filter(Boolean).join(', '), addr: x.address || '', from: d, to: (x.end || '').slice(0, 10) }); });
+  (cfg.off.schedule ? [] : cfg.schedule || []).filter(x => x.title && HOTEL_RE.test(x.title) && !/check[- ]?out/i.test(x.title)).forEach(x => { const name = x.title.replace(/^\s*check[- ]?in\s*[:\-–—]?\s*(at\s+)?/i, '').trim(); const leg = legOfDay(cfg, x.date); if (name) add(stopOfDay(cfg, x.date), { src: 'host', name, q: name, addr: '', from: x.date || '', to: leg && leg.to || '' }); });
   return out;
 }
-// per stop: { name, addr, lat, lon, src: 'set'|'booking'|'host', ref } (lat == null while it is still being found), or null
+// per city: a list of { name, addr, lat, lon, src: 'set'|'booking'|'host', ref, from, to } by date (lat null while being found)
 function hotelsNow(cfg) {
   const mine = planLoad(cfg).filter(x => x.hotel && x.lat != null); const cands = hotelCands(cfg);
   return hotelStops(cfg).map((s, i) => {
-    const set = mine.filter(x => nearestStop(cfg, x) === i).slice(-1)[0];
-    if (set) return { name: set.name, addr: set.addr || '', lat: set.lat, lon: set.lon, src: 'set', ref: set.ref || '', id: set.id };
-    const c = cands[i]; if (!c) return null; const g = LS.get(hgeoKey(c.q));
-    if (g && g.miss) return null;
-    return g ? { ...c, lat: g.lat, lon: g.lon, addr: c.addr || g.addr || '', ref: g.ref || '' } : { ...c, lat: null };
+    const set = mine.filter(x => (x.city != null ? x.city : nearestStop(cfg, x)) === i).map(x => ({ name: x.name, addr: x.addr || '', lat: x.lat, lon: x.lon, src: 'set', ref: x.ref || '', id: x.id, from: x.from || '', to: x.to || '' }));
+    const found = cands[i].map(c => { const g = LS.get(hgeoKey(c.q)); return g && g.miss ? null : g ? { ...c, lat: g.lat, lon: g.lon, addr: c.addr || g.addr || '', ref: g.ref || '' } : { ...c, lat: null }; }).filter(Boolean);
+    return set.concat(found.filter(c => !set.some(x => x.name.toLowerCase() === c.name.toLowerCase()))).sort((a, b) => (a.from || '9999').localeCompare(b.from || '9999'));
   });
 }
+const hotelDates = (h) => h.from ? dateRange(h.from, h.to && h.to > h.from ? h.to : h.from).replace(/, \d{4}$/, '') : '';
 async function resolveHotels(cfg) {
   const ss = hotelStops(cfg); let n = 0;
-  for (const [i, h] of hotelsNow(cfg).entries()) {
-    if (!h || h.lat != null || !h.q) continue; const s = ss[i];
-    const r = await geocode(`${h.q}, ${s.city || s.name}`).then(xs => xs.find(x => x.lat != null && distM(x.lat, x.lon, s.lat, s.lon) < 80000)).catch(() => undefined);
+  for (const [i, hs] of hotelsNow(cfg).entries()) for (const h of hs) {
+    if (h.lat != null || !h.q) continue; const s = ss[i];
+    const r = await geocode(`${h.q}, ${s.city || s.name}`).then(xs => xs.find(x => x.lat != null && !(x.types || []).some(ty => ty === 'country' || ty === 'continent') && distM(x.lat, x.lon, s.lat, s.lon) < 80000)).catch(() => undefined);
     if (r === undefined) continue; // offline or refused: try again next time
     LS.set(hgeoKey(h.q), r ? { lat: r.lat, lon: r.lon, addr: r.address || '', ref: r.gid || '' } : { miss: 1 }); n++;
   }
   return n;
 }
+// the guest adds a hotel to a city (a city can have several); remove takes one out
 function setHotel(cfg, art, i, p) {
-  const xs = planLoad(cfg).filter(x => !(x.hotel && nearestStop(cfg, x) === i));
-  if (p) xs.push({ id: 'pl' + Date.now().toString(36), src: p.gid ? 'g' : 'osm', ref: p.gid || '', name: p.name, lat: p.lat, lon: p.lon, addr: p.address || '', hotel: true, type: 'stay', day: '', time: '', note: '', booked: true, conf: '', rating: 0, count: 0, hours: '' });
+  const xs = planLoad(cfg);
+  if (p && !xs.some(x => x.hotel && x.name === p.name && x.lat === p.lat)) xs.push({ id: 'pl' + Date.now().toString(36), src: p.gid ? 'g' : 'osm', ref: p.gid || '', name: p.name, lat: p.lat, lon: p.lon, addr: p.address || '', hotel: true, city: i, type: 'stay', day: '', time: '', note: '', booked: true, conf: '', rating: 0, count: 0, hours: '' });
   planSave(cfg, xs); art._planChanged && art._planChanged();
 }
+function removeHotel(cfg, art, id) { planSave(cfg, planLoad(cfg).filter(x => x.id !== id)); art._planChanged && art._planChanged(); }
 const isSaved = (cfg, ref) => !!ref && planLoad(cfg).some(x => x.ref === ref && !x.hotel);
 function toggleSaved(cfg, art, place) {
   const xs = planLoad(cfg); const i = xs.findIndex(x => x.ref === place.ref && !x.hotel);
@@ -3781,41 +3793,50 @@ const gmapsLink = (x) => `https://www.google.com/maps/search/?api=1&query=${enc(
 // My trip → Saved spots: per city, the hotel first, then the starred places
 function spotsByCity(cfg) {
   const ss = hotelStops(cfg); const hs = hotelsNow(cfg); const sp = planLoad(cfg).filter(x => x.lat != null && !x.hotel);
-  return ss.map((s, i) => ({ city: s.city || s.name, hotel: hs[i] && hs[i].lat != null ? hs[i] : null, spots: sp.filter(x => nearestStop(cfg, x) === i) })).filter(g => g.hotel || g.spots.length);
+  return ss.map((s, i) => ({ city: s.city || s.name, hotels: hs[i].filter(h => h.lat != null), spots: sp.filter(x => nearestStop(cfg, x) === i) })).filter(g => g.hotels.length || g.spots.length);
 }
 function spotsHTML(cfg) {
   const gs = spotsByCity(cfg); const many = hotelStops(cfg).length > 1;
   if (!gs.length) return `<p class="muted">${t('Tap ☆ on a place in Nearby to save it here.')}</p>`;
-  const row = (x, hotel) => `<li><div><b>${hotel ? `<span class="spot-ic" aria-hidden="true">🛏</span> ` : '★ '}${esc(x.name)}</b>${hotel ? `<span>${esc(t('Your hotel'))}${x.addr ? ' · ' + esc(x.addr) : ''}</span>` : x.addr ? `<span>${esc(x.addr)}</span>` : ''}</div>${ext(gmapsLink(x), t('Open in Google Maps'), 'mini-b')}</li>`;
-  return `${gs.map(g => `${many ? `<h3 class="sub-h">${esc(g.city)}</h3>` : ''}<ul class="plist spots">${g.hotel ? row(g.hotel, true) : ''}${g.spots.map(x => row(x, false)).join('')}</ul>`).join('')}
+  const row = (x, hotel) => `<li><div><b>${hotel ? `<span class="spot-ic" aria-hidden="true">🛏</span> ` : '★ '}${esc(x.name)}</b>${hotel ? `<span>${esc([t('Your hotel'), hotelDates(x), x.addr].filter(Boolean).join(' · '))}</span>` : x.addr ? `<span>${esc(x.addr)}</span>` : ''}</div>${ext(gmapsLink(x), t('Open in Google Maps'), 'mini-b')}</li>`;
+  return `${gs.map(g => `${many ? `<h3 class="sub-h">${esc(g.city)}</h3>` : ''}<ul class="plist spots">${g.hotels.map(h => row(h, true)).join('')}${g.spots.map(x => row(x, false)).join('')}</ul>`).join('')}
     <div class="btns"><button type="button" class="btn" data-kml>${t('Save all to Google Maps')}</button></div><p class="muted small">${t('Import into Google My Maps — shows in the Google Maps app under Saved → Maps')}</p>`;
 }
 const xmlEsc = (s) => String(s || '').replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
 function spotsKML(cfg) {
   const pm = (name, desc, x) => `<Placemark><name>${xmlEsc(name)}</name>${desc ? `<description>${xmlEsc(desc)}</description>` : ''}<Point><coordinates>${x.lon},${x.lat},0</coordinates></Point></Placemark>`;
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${xmlEsc(cfg.title || 'Trip')}</name>${spotsByCity(cfg).map(g => `<Folder><name>${xmlEsc(g.city)}</name>${g.hotel ? pm(`${t('Your hotel')}: ${g.hotel.name}`, g.hotel.addr, g.hotel) : ''}${g.spots.map(x => pm(x.name, x.addr, x)).join('')}</Folder>`).join('')}</Document></kml>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${xmlEsc(cfg.title || 'Trip')}</name>${spotsByCity(cfg).map(g => `<Folder><name>${xmlEsc(g.city)}</name>${g.hotels.map(h => pm(`${t('Your hotel')}: ${h.name}`, [hotelDates(h), h.addr].filter(Boolean).join(' · '), h)).join('')}${g.spots.map(x => pm(x.name, x.addr, x)).join('')}</Folder>`).join('')}</Document></kml>`;
 }
 function hotelBarHTML(cfg, art) {
-  const ss = hotelStops(cfg); const i = art._stop || 0; const h = hotelsNow(cfg)[i]; const city = ss.length > 1 ? (ss[i].city || ss[i].name) : '';
-  const lbl = city ? t('Your hotel in {c}', { c: city }) : t('Your hotel');
-  if (h && !art._hotelEdit) return `<div class="hb"><img class="hb-ic" src="${HOTEL_PIN}" alt=""><div class="hb-t"><span class="lbl">${esc(lbl)}</span><b>${esc(h.name)}</b><small class="muted">${esc(h.lat == null ? t('Finding it on the map…') : h.src === 'booking' ? t('From your bookings') : h.src === 'host' ? t('From the itinerary') : h.addr || '')}</small></div><button type="button" class="btn sm" data-hotel-change>${t('Change')}</button></div>`;
-  return `<form class="hb-set" onsubmit="return false"><label for="hb-q">${esc(t('Set your hotel'))}${city ? ` <small class="muted">${esc(city)}</small>` : ''}</label><div class="search"><input id="hb-q" data-hotel-q placeholder="${t('Search your hotel')}" autocomplete="off"><button type="submit" class="btn sm" data-hotel-find>${t('Find')}</button></div>${h && h.src === 'set' ? `<button type="button" class="link" data-hotel-clear>${t('Remove hotel')}</button>` : ''}${h ? `<button type="button" class="link" data-hotel-cancel>${t('Cancel')}</button>` : ''}<p class="hint" data-hotel-msg role="status" aria-live="polite"></p></form>`;
+  const ss = hotelStops(cfg); const i = art._stop || 0; const hs = hotelsNow(cfg)[i] || []; const city = ss.length > 1 ? (ss[i].city || ss[i].name) : '';
+  const lbl = city ? t('Your hotel in {c}', { c: city }) : t('Your hotel'); const pick = art._pick[i] ?? 0; const h = pick >= 0 ? hs[pick] || hs[0] : null;
+  const chips = hs.length > 1 ? `<div class="chips hotel-chips" role="group" aria-label="${esc(lbl)}"><button type="button" class="chip ${pick < 0 ? 'on' : ''}" data-hotel-pick="-1" aria-pressed="${pick < 0}">${t('All')}</button>${hs.map((x, k) => `<button type="button" class="chip ${k === pick ? 'on' : ''}" data-hotel-pick="${k}" aria-pressed="${k === pick}">${esc(x.name)}${hotelDates(x) ? ` <small>${esc(hotelDates(x))}</small>` : ''}</button>`).join('')}</div>` : '';
+  const sub = (x) => x.lat == null ? t('Finding it on the map…') : [hotelDates(x), x.src === 'booking' ? t('From your bookings') : x.src === 'host' ? t('From the itinerary') : x.addr || ''].filter(Boolean).join(' · ');
+  const form = `<form class="hb-set" onsubmit="return false"><label for="hb-q">${esc(hs.length ? t('Add a hotel') : t('Set your hotel'))}${city ? ` <small class="muted">${esc(city)}</small>` : ''}</label><div class="search"><input id="hb-q" data-hotel-q placeholder="${t('Search your hotel')}" autocomplete="off"><button type="submit" class="btn sm" data-hotel-find>${t('Find')}</button></div>${hs.length ? `<button type="button" class="link" data-hotel-cancel>${t('Cancel')}</button>` : ''}<p class="hint" data-hotel-msg role="status" aria-live="polite"></p></form>`;
+  if (!hs.length || art._hotelEdit) return chips + form;
+  if (!h) return `${chips}<div class="hb"><img class="hb-ic" src="${HOTEL_PIN}" alt=""><div class="hb-t"><span class="lbl">${esc(lbl)}</span><b>${esc(t('{n} hotels', { n: hs.length }))}</b></div><button type="button" class="btn sm" data-hotel-add>${t('Add')}</button></div>`;
+  return `${chips}<div class="hb"><img class="hb-ic" src="${HOTEL_PIN}" alt=""><div class="hb-t"><span class="lbl">${esc(lbl)}</span><b>${esc(h.name)}</b><small class="muted">${esc(sub(h))}</small></div>${h.src === 'set' ? `<button type="button" class="link" data-hotel-del="${esc(h.id)}">${t('Remove')}</button>` : ''}<button type="button" class="btn sm" data-hotel-add>${t('Add')}</button></div>`;
 }
 function wireHotel(cfg, art, mapCtl) {
+  const fold = () => art._cx && art._cx();
   const bar = art.querySelector('[data-slot="hotel"]'); const key = art.querySelector('[data-slot="map-key"]'); const ss = hotelStops(cfg);
-  art._stop = art._stop || 0;
-  art._hotelAt = (i) => { const h = hotelsNow(cfg)[i]; return h && h.lat != null ? h : null; };
+  art._stop = art._stop || 0; art._pick = art._pick || {};
+  // the chosen hotel in a city (All = none: searches start at the city itself)
+  art._hotelAt = (i) => { const hs = hotelsNow(cfg)[i] || []; const pick = art._pick[i] ?? 0; if (pick < 0) return null; const h = hs[pick] || hs[0]; return h && h.lat != null ? h : null; };
   // the current city's hotel is where Nearby searches start and distances are measured from; true when that changed
   const center = () => { const h = art._hotelAt(art._stop), prev = art._hotelPt || null;
     if (h ? prev && prev.lat === h.lat && prev.lon === h.lon : !prev) return false;
     art._hotelPt = h; art._fromHotel = !!h; art._center = h ? { lat: h.lat, lon: h.lon } : ss[art._stop]; return true; };
-  const ui = () => {
-    const hs = hotelsNow(cfg);
-    if (mapCtl) mapCtl.setHotels(hs.map((h, i) => h && h.lat != null ? { lat: h.lat, lon: h.lon, title: `${t('Your hotel')}: ${h.name}`, label: h.name, onClick: () => { art._stop = i; ui(); } } : null).filter(Boolean));
+  const ui = (force) => {
+    const all = hotelsNow(cfg); const sp = art.querySelector('#sec-spots .sec-b'); if (sp) sp.innerHTML = spotsHTML(cfg);
+    if (mapCtl) mapCtl.setHotels([].concat(...all.map((hs, i) => hs.filter(h => h.lat != null).map((h, k) => ({ lat: h.lat, lon: h.lon, title: `${t('Your hotel')}: ${h.name}`, label: [pinText(h.name), hotelDates(h)].filter(Boolean).join(' · '), onClick: () => { art._stop = i; art._pick[i] = all[i].indexOf(h); ui(); } })))));
     if (bar) { bar.innerHTML = hotelBarHTML(cfg, art); const q = bar.querySelector('[data-hotel-q]'); if (q) placeAutocomplete(q, { bias: () => ss[art._stop], onPick: (id, tok) => gpVenue(id, tok).then(v => { art._hotelEdit = false; setHotel(cfg, art, art._stop, v); }).catch(() => toast(t('Couldn’t load that place right now.'))) }); }
     const cur = art._hotelAt(art._stop); const saved = planLoad(cfg).some(x => x.lat != null && !x.hotel);
     if (key) key.innerHTML = cur || saved ? `${cur ? `<span class="mk"><img src="${HOTEL_PIN}" alt="">${t('Your hotel')}</span>` : ''}${saved ? `<span class="mk"><img src="${STAR_PIN}" alt="">${t('Saved')}</span>` : ''}${cur ? `<button type="button" class="mk-go" data-hotel-go>${t('Hotel')}</button>` : ''}` : '';
-    if (center()) { if (art._gpReload) art._gpReload(); const h = art._hotelPt; if (mapCtl) { if (h) mapCtl.center(h.lat, h.lon, 15); else if (ss[art._stop]) mapCtl.center(ss[art._stop].lat, ss[art._stop].lon, 13); } }
+    const moved = center();
+    if (moved || force) { if (moved && art._gpReload) art._gpReload(); const h = art._hotelPt; const cityHs = (all[art._stop] || []).filter(x => x.lat != null);
+      if (mapCtl) { if (h) mapCtl.center(h.lat, h.lon, 15); else if (cityHs.length > 1 && mapCtl.fit) mapCtl.fit(cityHs.map(x => [x.lat, x.lon])); else if (ss[art._stop]) mapCtl.center(ss[art._stop].lat, ss[art._stop].lon, 13); } }
+    fold();
   };
   art._hotelUI = ui; ui();
   resolveHotels(cfg).then(n => { if (n && document.body.contains(art)) ui(); }).catch(() => {});
@@ -3823,9 +3844,10 @@ function wireHotel(cfg, art, mapCtl) {
     const s = ss[art._stop]; geocode(`${q}, ${s.city || s.name}`).then(xs => { const r = xs.find(x => x.lat != null && !(x.types || []).some(ty => ty === 'country' || ty === 'continent') && distM(x.lat, x.lon, s.lat, s.lon) < 80000); if (!r) { if (m) m.textContent = t('No match. Try the hotel name and street.'); return; } art._hotelEdit = false; setHotel(cfg, art, art._stop, { ...r, name: r.name || q }); })
       .catch(() => { if (m) m.textContent = navigator.onLine === false ? t('Offline') : t('Search is unavailable right now'); }); };
   if (bar) bar.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
-    if ('hotelChange' in d) { art._hotelEdit = true; ui(); const q = bar.querySelector('[data-hotel-q]'); if (q) q.focus(); }
+    if (d.hotelPick != null) { art._pick[art._stop] = +d.hotelPick; ui(true); return; }
+    if ('hotelAdd' in d) { art._hotelEdit = true; ui(); const q = bar.querySelector('[data-hotel-q]'); if (q) q.focus(); }
     if ('hotelCancel' in d) { art._hotelEdit = false; ui(); }
-    if ('hotelClear' in d) { art._hotelEdit = false; setHotel(cfg, art, art._stop, null); }
+    if (d.hotelDel) { art._pick[art._stop] = 0; removeHotel(cfg, art, d.hotelDel); }
     if ('hotelFind' in d) find((bar.querySelector('[data-hotel-q]') || {}).value.trim()); });
   if (key) key.addEventListener('click', (e) => { if (!e.target.closest('[data-hotel-go]')) return; const h = art._hotelAt(art._stop); if (h && mapCtl) mapCtl.centerOn(h.lat, h.lon, 16); });
   art.addEventListener('click', (e) => {
