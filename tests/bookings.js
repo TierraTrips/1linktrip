@@ -61,7 +61,7 @@ const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m
   ok((await page.$$('.rv-card')).length === 2, 'remove one card before saving');
   await page.click('[data-rv-save]'); await page.waitForTimeout(300);
   saved = await page.$$eval('#sec-itinerary .bookings li', ls => ls.length);
-  ok(saved === 3, `3 bookings saved (${saved})`);
+  ok(saved === 2, `DL 1873 read again merges into the one already saved: 2 bookings (${saved})`); // one item per flight (booking-dedupe)
   ok(await kayak() === 'CZM', 'flight arriving CZM → Flying into CZM');
 
   // enter it yourself: airline + flight number names the card
@@ -76,7 +76,7 @@ const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m
   await page.click('[data-itin-edit="0"]'); await page.fill('#it-confNo', 'ZZ9'); await page.click('[data-itin-save]'); await page.waitForTimeout(200);
   ok(/ZZ9/.test(await page.textContent('#sec-itinerary .bookings')), 'edit saves'); // cards are in date order; the edited one is wherever its date puts it
   await page.click('[data-itin-edit="0"]'); await page.click('[data-itin-del="0"]'); await page.waitForTimeout(200);
-  ok((await page.$$('#sec-itinerary .bookings li')).length === 3, 'delete removes one');
+  ok((await page.$$('#sec-itinerary .bookings li')).length === 2, 'delete removes one');
 
   // photos are shrunk to ≤1800px JPEG before upload
   const r = await page.evaluate(async () => { const c = document.createElement('canvas'); c.width = 3000; c.height = 1200; c.getContext('2d').fillRect(0, 0, 10, 10);

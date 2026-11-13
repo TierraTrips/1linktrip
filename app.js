@@ -1487,7 +1487,7 @@ function legsHTML(cfg, ss, days, dayHTML) {
 function scheduleHTML(cfg) {
   const fit = (d) => isTrip(cfg) && d ? fitTripDate(cfg.start, cfg.end, d, false) : d || '';
   const evs = cfg.off.schedule ? [] : cfg.schedule.filter(x => x.title).map(x => { const d = fit(x.date); return { ev: true, start: d + (d && x.time ? 'T' + x.time : ''), name: x.title, note: x.note, kind: x.kind || '', si: cfg.schedule.indexOf(x) }; });
-  const mine = cfg.tools.mytrip ? itinLoad(cfg).map((x, i) => ({ ...x, i })).concat(planLoad(cfg).filter(x => x.day).map(x => ({ kind: '', name: x.name, start: x.day + (x.time ? 'T' + x.time : ''), confNo: x.booked ? x.conf : '', note: x.note }))) : [];
+  const mine = cfg.tools.mytrip ? itinLoad(cfg).map((x, i) => ({ ...x, i })).concat(itinLoad(cfg).filter(x => LODGE.has(x.kind) && bkDay(x.end) > bkDay(x.start) && bkDay(x.start)).map(x => ({ ...x, co: true, start: x.end }))).concat(planLoad(cfg).filter(x => x.day).map(x => ({ kind: '', name: x.name, start: x.day + (x.time ? 'T' + x.time : ''), confNo: x.booked ? x.conf : '', note: x.note }))) : [];
   const legs = routeInItin(cfg) && !cfg.off.route ? stopsOf(cfg) : null;
   if (!evs.length && !mine.length && !legs) return '';
   const view = mine.length ? (LS.get('schedview:' + itinKey(cfg)) || 'all') : 'all';
@@ -1501,6 +1501,7 @@ function scheduleHTML(cfg) {
     const more = (title, body) => body ? `<details class="tl-d"><summary><b>${title}</b><i class="tl-dot" aria-hidden="true"></i><span class="sr">${t('Details')}</span></summary><span>${body}</span></details>` : `<b>${title}</b>`;
     if (x.ev && isTrip(cfg)) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"${edA('s:' + x.si)}><time>${esc(tm(x.start))}</time><div>${more(esc(x.name), x.note ? esc(x.note) : '')}</div></li>`;
     if (x.ev) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"${edA('s:' + x.si)}><time>${esc(tm(x.start)) || (isTrip(cfg) ? '' : '—')}</time><div><b>${esc(x.name)}${x.kind && x.kind !== 'activity' ? ` <em class="kind">${esc(t(PLAN_KINDS[x.kind] || ''))}</em>` : ''}</b>${x.note ? `<span>${esc(x.note)}</span>` : ''}</div></li>`;
+    if (x.co) return `<li class="mine co"><time>${esc(tm(x.start)) || '—'}</time><div><b>${esc(t('Check out · {n}', { n: x.name || t(ITIN_KINDS[x.kind] || 'Hotel') }))}</b></div></li>`;
     const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
     const until = x.kind === 'flight' && x.start && x.start.length > 10 && flightArrLabel(x) ? flightArrLabel(x) : x.end ? (x.end.slice(0, 10) !== (x.start || '').slice(0, 10) ? t('until {d}', { d: fmt(x.end.slice(0, 10), { month: 'short', day: 'numeric' }) }) : t('until {d}', { d: tm(x.end) })) : '';
     if (isTrip(cfg)) { const det = esc([t(ITIN_KINDS[x.kind] || ''), until, x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · ')) + (fl.status ? ' ' + ext(fl.status, t('Flight status') + ' ↗', 'tl-link') : '');
@@ -1656,6 +1657,7 @@ function renderEvent(cfg, root, opts = {}) {
   }
   if (!opts.src) opts = { ...opts, src: cfg }; // "Edit a copy" and the language picker keep the page as written
   cfg = tripView(cfg);
+  if (!opts.preview && cfg.tools && cfg.tools.mytrip && !cfg.demoTrip && bkClean(cfg) && LS.get('signedIn')) syncPush(cfg); // one item per booking (merges old duplicates)
   const seq = ++renderSeq;
   maps.forEach(m => { try { m.remove(); } catch {} }); maps.clear();
   loadFont(cfg.theme.font); ONP = !!opts.onpage;
@@ -1777,7 +1779,7 @@ function wireEvent(cfg, art, seq, air, opts) {
     const tr = tripDates(cfg); const k = b.dataset.addtrip;
     if (b.dataset.iata) setAirport(b.dataset.iata);
     showTab(art, 'mytrip', opts);
-    art._itinOpen({ kind: k, name: b.dataset.atLabel || '', address: b.dataset.atPlace || '', start: tr.arrive, end: k === 'flight' ? '' : tr.leave });
+    art._itinOpen({ kind: k, name: b.dataset.atLabel || '', address: b.dataset.atPlace || '', start: tr.arrive, end: k === 'flight' ? '' : tr.leave, ph: 1, _gen: b.dataset.atLabel || '' }); // a placeholder until the guest makes it theirs
     const f = art.querySelector('#sec-itinerary [data-slot="itin-form"]'); if (f) f.scrollIntoView({ block: 'start' });
   });
   const tripKey = 'trip:' + cfg.start.slice(0, 10) + ':' + (cfg.end || cfg.start).slice(0, 10);
@@ -1900,7 +1902,9 @@ function wireItin(cfg, art) {
   const sheet = (html) => { const slot = formSlot(); slot.innerHTML = html; body.querySelector('.itin-btns')?.setAttribute('hidden', ''); return slot; };
   // a saved flight that lands at one of the nearby airports becomes the "Flying into" pick
   const arrivalPick = (xs) => { const a = flightArrival(air, xs); if (a) LS.set(apKey(cfg), a.iata); };
-  const saveNew = (add) => { LS.set(itinKey(cfg), itinLoad(cfg).concat(add)); arrivalPick(add); rerender(); if (add.length > 1) toast(t('Added {n} bookings', { n: add.length })); };
+  // every new booking goes through the one upsert: a match updates the item already there (Replace? asked here)
+  const saveNew = (add) => { add = add.map(x => { const y = { ...x }; if (y._gen != null) { if (y.name !== y._gen) delete y.ph; delete y._gen; } return y; }); arrivalPick(add); return bkSave(cfg, art, add, () => { const sl = formSlot(); if (sl && !sl.querySelector('.itin-sheet')) sheet(''); return formSlot(); }).then(() => rerender()); };
+  art._bkChanged = rerender;
   const fileOk = () => LS.get('signedIn') ? aiModes().then(m => m.includes('file')) : aiReady();
   const openChooser = () => { const slot = sheet(bkChooserHTML()); fileOk().then(ok => { const b = slot.querySelector('[data-itin-mode="file"]'); if (b && ok) b.hidden = false; }).catch(() => {}); };
   const openReview = (xs) => { review = xs.map(x => ({ ...x })); if (!review.length) return openChooser(); sheet(bkReviewHTML(review)); };
@@ -1953,13 +1957,13 @@ function wireItin(cfg, art) {
     }
     else if ('itinEdit' in d) { openForm(itinLoad(cfg)[+d.itinEdit], +d.itinEdit); fill(); }
     else if ('itinCancel' in d) rerender();
-    else if ('itinDel' in d) { const xs = itinLoad(cfg); xs.splice(+d.itinDel, 1); LS.set(itinKey(cfg), xs); rerender(); }
+    else if ('itinDel' in d) { const xs = itinLoad(cfg); xs.splice(+d.itinDel, 1); itinSave(cfg, xs); rerender(); }
     else if ('itinSave' in d) {
       if (!draft.name && !draft.flight && !draft.start) { toast(t('Add a name or a date')); return; }
       if (draft.kind === 'flight' && draft.flight && !draft.name) draft.name = flightName(draft.flight) || draft.flight.toUpperCase();
       if (draft.kind !== 'flight') draft.to = '';
       if (editing == null) return saveNew([draft]);
-      const xs = itinLoad(cfg); const was = xs[editing] || {}; xs[editing] = draft; LS.set(itinKey(cfg), xs); if ((was.to || '') !== (draft.to || '') || was.kind !== draft.kind) arrivalPick([draft]); rerender();
+      const xs = itinLoad(cfg); const was = xs[editing] || {}; const ed = { ...draft }; if (ed._gen != null) { if (ed.name !== ed._gen) delete ed.ph; delete ed._gen; } if (ed.start !== was.start || ed.end !== was.end) delete ed.guess; xs[editing] = ed; itinSave(cfg, xs); if ((was.to || '') !== (draft.to || '') || was.kind !== draft.kind) arrivalPick([draft]); rerender();
     }
     else if ('itinIcs' in d) itinICS(cfg);
   });
@@ -4149,6 +4153,134 @@ function wireCollapse(cfg, art) {
   const tp = art.querySelector('[data-panel="travel"]'); if (tp) new MutationObserver(debounce(() => { if (document.body.contains(art)) paint(); }, 120)).observe(tp, { childList: true });
 }
 
+// ================= one booking per real thing: hotels, flights, rental cars =================
+// Every way a booking gets in — Add a booking (paste / screenshot / PDF / by hand), Add to my trip on a link, the Nearby
+// "Your hotel" pick, forwarded bookings, account sync — goes through bkUpsert: one that matches a booking already there
+// is merged into it (booking facts from the booking, the place from the map pick), never added twice. Two different
+// hotels on overlapping dates in the same city ask once: Replace A with B? / Keep both. Old duplicates (and map picks
+// that used to be stored apart as plan items { hotel: true }) are merged on load (bkClean); merged-away ids are
+// remembered (gone:<key>) so account sync never brings them back.
+const LODGE = new Set(['hotel', 'stay']);
+const bkGroup = (x) => LODGE.has(x.kind) ? 'lodge' : x.kind || '';
+const newBkId = () => 'bk' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const NAME_STOP = new Set(['the', 'hotel', 'hotels', 'and', 'by', 'a', 'an', 'at', 'of', 'in', 'near', 'to', 'rental', 'car', 'cars', 'flight', 'resort', 'suites', 'spa', 'your']);
+const nameToks = (s) => String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/&/g, ' and ').split(/[^\p{L}\p{N}]+/u).filter(w => w && !NAME_STOP.has(w));
+const GENERIC_RE = /^(your hotel|hotel|rental car|flight)(\s+(in|near|at|to)\b.*)?$/i;
+const bkGeneric = (x) => !!x.ph || !String(x.name || '').trim() || GENERIC_RE.test(String(x.name).trim()) || !nameToks(x.name).length;
+function nameLike(a, b) { const A = new Set(nameToks(a)), B = new Set(nameToks(b)); if (!A.size || !B.size) return false; let n = 0; A.forEach(w => { if (B.has(w)) n++; }); return n === Math.min(A.size, B.size) || n / (A.size + B.size - n) >= 0.6; }
+const bkDay = (s) => String(s || '').slice(0, 10);
+const bkSpan = (x) => { const f = bkDay(x.start), e = bkDay(x.end); return f ? [f, e && e > f ? e : f] : null; };
+const spanHit = (a, b) => a[0] === b[0] || (a[0] < b[1] && b[0] < a[1]);
+const flNo = (x) => { const m = String(x.flight || '').replace(/\s+/g, '').toUpperCase().match(/^([A-Z0-9]{2})0*(\d{1,4})$/) || String(x.name || '').match(/\b([A-Z][A-Z0-9]|[0-9][A-Z])\s?0*(\d{1,4})\b/); return m ? m[1] + m[2] : ''; };
+// where a hotel is: its own map pin, else what its name + address were found as on the map
+const bkGeo = (x) => { if (x.lat != null) return { ref: x.ref || '', lat: x.lat, lon: x.lon }; const q = [x.name, x.address].filter(Boolean).join(', '); const g = q && LS.get(hgeoKey(q)); return g && !g.miss ? g : { ref: x.ref || '' }; };
+// which route city a hotel is in (-1 = can't tell)
+function bkCity(cfg, x) {
+  const n = hotelStops(cfg).length; if (n < 2) return 0;
+  const d = bkDay(x.start); if (d && !x.guess) return stopOfDay(cfg, d);
+  const g = bkGeo(x); if (g.lat != null) return nearestStop(cfg, g);
+  return x.city != null ? x.city : d ? stopOfDay(cfg, d) : -1;
+}
+// 'same' (one thing, merge) | 'conflict' (two hotels for the same nights in one city) | ''
+function bkMatch(cfg, a, b) {
+  const g = bkGroup(a); if (a === b || !g || g !== bkGroup(b)) return '';
+  const da = bkDay(a.start), db = bkDay(b.start); const dOk = !da || !db || da === db;
+  if (g === 'flight') { const fa = flNo(a), fb = flNo(b); if (fa && fb) return fa === fb && dOk ? 'same' : ''; return dOk && (a.ph || b.ph || (a.name || '') === (b.name || '') && a.start === b.start) && (a.ph || b.ph || a.name || a.start) ? 'same' : ''; }
+  if (g === 'car') return dOk && (bkGeneric(a) || bkGeneric(b) || nameLike(a.name, b.name)) ? 'same' : '';
+  if (g !== 'lodge') return a.start === b.start && nameToks(a.name).join(' ') === nameToks(b.name).join(' ') && (a.name || a.start) ? 'same' : '';
+  const ca = bkCity(cfg, a), cb = bkCity(cfg, b); if (ca >= 0 && cb >= 0 && ca !== cb) return '';
+  const sa = bkSpan(a), sb = bkSpan(b); const hit = sa && sb ? spanHit(sa, sb) : null; // null: a date is missing
+  const loose = hit !== false || !!a.guess || !!b.guess; // a map pick's dates are only a guess
+  const ga = bkGeo(a), gb = bkGeo(b); const twoPlaces = a.ref && b.ref && a.ref !== b.ref;
+  const samePlace = (ga.ref && ga.ref === gb.ref) || (ga.lat != null && gb.lat != null && distM(ga.lat, ga.lon, gb.lat, gb.lon) < 120);
+  if (loose && (samePlace || (!twoPlaces && (nameLike(a.name, b.name) || bkGeneric(a) || bkGeneric(b))))) return 'same';
+  return hit ? 'conflict' : '';
+}
+const bkFilled = (v) => v != null && v !== '' && !(Array.isArray(v) && !v.length) && !(typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length);
+const bkRank = (x) => Object.keys(x).filter(k => bkFilled(x[k])).length - (x.ph ? 20 : 0) - (x.guess ? 10 : 0);
+const BK_FACTS = ['kind', 'name', 'start', 'end', 'confNo', 'via', 'viaOther', 'link', 'flight', 'to', 'from'];
+const BK_PLACE = ['ref', 'lat', 'lon', 'address', 'city'];
+// one item from two: the richer one's id; dates, confirmation, Booked through… from the real booking; the place from the map
+function bkMerge(a, b) {
+  const [p, s] = bkRank(a) > bkRank(b) || (bkRank(a) === bkRank(b) && String(a.id || '') <= String(b.id || '')) ? [a, b] : [b, a];
+  const out = { ...s };
+  Object.keys(p).forEach(k => { if (!bkFilled(p[k])) return; const v = out[k];
+    if (Array.isArray(p[k]) && Array.isArray(v)) { const seen = new Set(); out[k] = v.concat(p[k]).filter(e => { const j = JSON.stringify(e); return seen.has(j) ? false : seen.add(j); }); }
+    else if (p[k] && typeof p[k] === 'object' && v && typeof v === 'object' && !Array.isArray(v)) out[k] = { ...v, ...p[k] };
+    else out[k] = p[k]; });
+  const real = (x) => !x.ph && !x.guess; const bk = real(a) ? a : real(b) ? b : p;
+  BK_FACTS.forEach(k => { if (bkFilled(bk[k])) out[k] = bk[k]; });
+  if (bkGeneric({ name: out.name })) { const o = [a, b].find(x => !bkGeneric(x)); if (o) out.name = o.name; }
+  const pl = [a, b].find(x => x.ref) || [a, b].find(x => x.lat != null);
+  if (pl) BK_PLACE.forEach(k => { if (bkFilled(pl[k])) out[k] = pl[k]; });
+  if (a.note && b.note && a.note !== b.note && !a.note.includes(b.note) && !b.note.includes(a.note)) out.note = [bk.note || p.note, bk === a ? b.note : a.note].join(' · ');
+  out.id = p.id || s.id; if (!(a.ph && b.ph)) delete out.ph; if (!(a.guess && b.guess)) delete out.guess; if (a.pin || b.pin) out.pin = 1;
+  return out;
+}
+// adds → merged into a match, or appended; conflicts are returned (not added) unless keepBoth
+function bkUpsert(cfg, xs, adds, keepBoth) {
+  xs = xs.slice(); const conflicts = []; let merged = 0;
+  adds.forEach(x0 => { const x = { ...x0 }; if (!x.id) x.id = newBkId();
+    const j = xs.findIndex(y => bkMatch(cfg, y, x) === 'same'); if (j >= 0) { xs[j] = bkMerge(xs[j], x); merged++; return; }
+    const c = keepBoth ? null : xs.find(y => bkMatch(cfg, y, x) === 'conflict'); if (c) conflicts.push([c, x]); else xs.push(x); });
+  return { xs, conflicts, merged };
+}
+function bkDedupe(cfg, xs) {
+  let out = xs.slice(), ch = false;
+  for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) if (bkMatch(cfg, out[i], out[j]) === 'same') { out[i] = bkMerge(out[i], out[j]); out.splice(j, 1); j = i; ch = true; }
+  return ch ? out : xs;
+}
+const goneKey = (cfg) => 'gone:' + eventKey(cfg).slice(6);
+const goneAdd = (cfg, ids) => { if (ids.length) LS.set(goneKey(cfg), [...new Set((LS.get(goneKey(cfg)) || []).concat(ids))].slice(-300)); };
+// saves the bookings; ids that left are remembered so a pull from the account can't bring them back
+function itinSave(cfg, xs) { const now = new Set(xs.map(x => x.id)); goneAdd(cfg, (LS.get(itinKey(cfg), null) || []).map(x => x.id).filter(id => id && !now.has(id))); LS.set(itinKey(cfg), xs); }
+// a map pick's nights: the city's first leg without a hotel yet (else its first leg), else the trip
+function hotelGuessDates(cfg, city, xs) {
+  const c = hotelStops(cfg)[city]; const legs = (c && c.legs || []).filter(l => l.from); const sp = (l) => [l.from, l.to && l.to > l.from ? l.to : l.from];
+  const leg = legs.find(l => !(xs || []).some(y => LODGE.has(y.kind) && bkSpan(y) && bkCity(cfg, y) === city && spanHit(bkSpan(y), sp(l)))) || legs[0];
+  if (leg) return [leg.from, leg.to || ''];
+  if (!cfg.start) return ['', ''];
+  if (isTrip(cfg)) return [cfg.start.slice(0, 10), (cfg.end || cfg.start).slice(0, 10)];
+  const tr = tripDates(cfg); return [tr.arrive, tr.leave];
+}
+const pinToBooking = (cfg, x, xs) => { const city = x.city != null ? x.city : nearestStop(cfg, x); const d = hotelGuessDates(cfg, city, xs);
+  return { id: x.id, kind: 'hotel', name: x.name || '', address: x.addr || '', ref: x.ref || '', lat: x.lat, lon: x.lon, city, pin: 1, guess: 1, start: d[0], end: d[1], ...(x.conf ? { confNo: x.conf } : {}), ...(x.note ? { note: x.note } : {}) }; };
+// on load: old map picks become hotel bookings, duplicates merge (keeps the richer item); true when anything changed
+function bkClean(cfg) {
+  if (!cfg || !cfg.tools || !cfg.tools.mytrip) return false;
+  const stored = LS.get(itinKey(cfg), null), plan = LS.get(planKey(cfg), null); if (stored == null && plan == null) return false; // nothing of the guest's (or an example's sample)
+  const pl = plan || []; const pins = pl.filter(x => x && x.hotel);
+  let xs = itinLoad(cfg).map(x => x.id ? x : { ...x, id: newBkId() }); const before = JSON.stringify(stored || []);
+  pins.forEach(p => { xs = bkUpsert(cfg, xs, [pinToBooking(cfg, p, xs)], true).xs; });
+  xs = bkDedupe(cfg, xs);
+  const ch = JSON.stringify(xs) !== before;
+  if (ch) { const now = new Set(xs.map(x => x.id)); goneAdd(cfg, pins.map(p => p.id).filter(id => id && !now.has(id))); itinSave(cfg, xs); }
+  if (pins.length) LS.set(planKey(cfg), pl.filter(x => !(x && x.hotel)));
+  return ch || pins.length > 0;
+}
+const bkChanged = (art) => { if (art && art._bkChanged) art._bkChanged(); else if (art && art._planChanged) art._planChanged(); };
+// Replace <A> with <B>? — inline, under/over where the guest is working; resolves true = replace
+function askReplace(slot, a, b) {
+  return new Promise(res => {
+    const el = typeof slot === 'function' ? slot() : slot; if (!el) return res(false);
+    el.insertAdjacentHTML('beforeend', `<div class="bk-ask" role="alertdialog" aria-live="polite"><p>${esc(t('Replace {a} with {b}?', { a: a.name || t(ITIN_KINDS[a.kind] || 'Booking'), b: b.name || t(ITIN_KINDS[b.kind] || 'Booking') }))}</p><p class="muted small">${esc(t('Both are for the same nights.'))}</p><div class="btns"><button type="button" class="btn primary" data-bk-ask="1">${t('Replace')}</button><button type="button" class="btn" data-bk-ask="0">${t('Keep both')}</button></div></div>`);
+    const box = el.lastElementChild; box.scrollIntoView && box.scrollIntoView({ block: 'nearest' });
+    box.addEventListener('click', (e) => { const bt = e.target.closest('[data-bk-ask]'); if (!bt) return; box.remove(); res(bt.dataset.bkAsk === '1'); });
+  });
+}
+// the one way bookings are added: upsert, save, then settle any Replace? questions one by one
+async function bkSave(cfg, art, adds, slot) {
+  const r = bkUpsert(cfg, itinLoad(cfg), adds);
+  itinSave(cfg, r.xs); bkChanged(art);
+  if (r.merged) toast(r.merged > 1 ? t('Updated {n} bookings you already had', { n: r.merged }) : t('Updated the booking you already had'));
+  else if (adds.length > 1 && !r.conflicts.length) toast(t('Added {n} bookings', { n: adds.length }));
+  for (const [old, add] of r.conflicts) {
+    const rep = await askReplace(slot, old, add); const xs = itinLoad(cfg);
+    itinSave(cfg, rep ? xs.filter(y => y.id !== old.id).concat(add) : xs.concat(add)); bkChanged(art);
+  }
+  return r;
+}
+
 // ================= the guest's hotel per city + saved spots (★) =================
 // Hotel per route city: the guest's own hotel booking (My trip) for those dates → else the host's stay on the itinerary
 // for that leg → else one the guest sets here. A hotel the guest sets is a plan item { hotel: true } so it syncs and
@@ -4167,20 +4299,25 @@ const stopOfDay = (cfg, d) => { const ss = stopsOf(cfg).filter(s => s.lat != nul
 const legOfDay = (cfg, d) => { const ss = stopsOf(cfg).filter(s => s.lat != null); const i = d ? legOf(ss, d) : -1; return i < 0 ? null : ss[i]; };
 const HOTEL_RE = /\b(check[- ]?in|hotel|hostel|ryokan|resort|airbnb|guest ?house|inn|lodge)\b/i;
 const hgeoKey = (q) => 'hgeo:' + q.trim().toLowerCase().slice(0, 120);
-// every hotel per city: the guest's own bookings, the host's check-ins on the itinerary, ones the guest set here
+// every hotel per city the host put on the itinerary (check-ins); the guest's own come from their bookings (hotelsNow)
 function hotelCands(cfg) {
   const out = hotelStops(cfg).map(() => []); const add = (i, h) => { if (!out[i].some(x => x.name.toLowerCase() === h.name.toLowerCase())) out[i].push(h); };
-  itinLoad(cfg).filter(x => x.kind === 'hotel' || x.kind === 'stay').forEach(x => { const d = (x.start || '').slice(0, 10); if (x.name || x.address) add(stopOfDay(cfg, d), { src: 'booking', name: x.name || t('Your hotel'), q: [x.name, x.address].filter(Boolean).join(', '), addr: x.address || '', from: d, to: (x.end || '').slice(0, 10) }); });
   (cfg.off.schedule ? [] : cfg.schedule || []).filter(x => x.title && HOTEL_RE.test(x.title) && !/check[- ]?out/i.test(x.title)).forEach(x => { const name = x.title.replace(/^\s*check[- ]?in\s*[:\-–—]?\s*(at\s+)?/i, '').trim(); const leg = legOfDay(cfg, x.date); if (name) add(stopOfDay(cfg, x.date), { src: 'host', name, q: name, addr: '', from: x.date || '', to: leg && leg.to || '' }); });
   return out;
 }
-// per city: a list of { name, addr, lat, lon, src: 'set'|'booking'|'host', ref, from, to } by date (lat null while being found)
+// per city: a list of { name, addr, lat, lon, src: 'set'|'booking'|'host', ref, id, from, to } by date (lat null while being found).
+// The guest's hotels are their hotel bookings — ONE item each, whether it came from Add a booking, Add to my trip or a
+// pick on this map ('set' = picked here, no booking details yet, so it can be removed here).
 function hotelsNow(cfg) {
-  const mine = planLoad(cfg).filter(x => x.hotel && x.lat != null); const cands = hotelCands(cfg);
-  return hotelStops(cfg).map((s, i) => {
-    const set = mine.filter(x => (x.city != null ? x.city : nearestStop(cfg, x)) === i).map(x => ({ name: x.name, addr: x.addr || '', lat: x.lat, lon: x.lon, src: 'set', ref: x.ref || '', id: x.id, from: x.from || '', to: x.to || '' }));
-    const found = cands[i].map(c => { const g = LS.get(hgeoKey(c.q)); return g && g.miss ? null : g ? { ...c, lat: g.lat, lon: g.lon, addr: c.addr || g.addr || '', ref: g.ref || '' } : { ...c, lat: null }; }).filter(Boolean);
-    return set.concat(found.filter(c => !set.some(x => x.name.toLowerCase() === c.name.toLowerCase()))).sort((a, b) => (a.from || '9999').localeCompare(b.from || '9999'));
+  const ss = hotelStops(cfg); const cands = hotelCands(cfg); const geo = (q) => q ? LS.get(hgeoKey(q)) : null;
+  return ss.map((s, i) => {
+    const mine = itinLoad(cfg).filter(x => LODGE.has(x.kind) && (x.name || x.address) && Math.max(0, Math.min(ss.length - 1, bkCity(cfg, x))) === i).map(x => {
+      const q = [x.name, x.address].filter(Boolean).join(', '); const g = x.lat != null ? { lat: x.lat, lon: x.lon, ref: x.ref || '' } : geo(q);
+      const h = { src: x.pin && x.guess && !x.confNo ? 'set' : 'booking', id: x.id, name: x.name || t('Your hotel'), q, addr: x.address || '', from: bkDay(x.start), to: bkDay(x.end), ref: x.ref || '' };
+      return g && g.miss ? null : g ? { ...h, lat: g.lat, lon: g.lon, addr: h.addr || g.addr || '', ref: h.ref || g.ref || '' } : { ...h, lat: null };
+    }).filter(Boolean);
+    const host = cands[i].filter(c => !mine.some(x => nameLike(x.name, c.name))).map(c => { const g = geo(c.q); return g && g.miss ? null : g ? { ...c, lat: g.lat, lon: g.lon, addr: c.addr || g.addr || '', ref: g.ref || '' } : { ...c, lat: null }; }).filter(Boolean);
+    return mine.concat(host).sort((a, b) => (a.from || '9999').localeCompare(b.from || '9999'));
   });
 }
 const hotelDates = (h) => h.from ? dateRange(h.from, h.to && h.to > h.from ? h.to : h.from).replace(/, \d{4}$/, '') : '';
@@ -4194,13 +4331,16 @@ async function resolveHotels(cfg) {
   }
   return n;
 }
-// the guest adds a hotel to a city (a city can have several); remove takes one out
+// the guest picks a hotel for a city on the map: it upserts their hotel booking for those dates (a booking already there
+// for that hotel / those dates gets the place linked to it instead of a second item); remove takes a map-only pick out
 function setHotel(cfg, art, i, p) {
-  const xs = planLoad(cfg);
-  if (p && !xs.some(x => x.hotel && x.name === p.name && x.lat === p.lat)) xs.push({ id: 'pl' + Date.now().toString(36), src: p.gid ? 'g' : 'osm', ref: p.gid || '', name: p.name, lat: p.lat, lon: p.lon, addr: p.address || '', hotel: true, city: i, type: 'stay', day: '', time: '', note: '', booked: true, conf: '', rating: 0, count: 0, hours: '' });
-  planSave(cfg, xs); art._planChanged && art._planChanged();
+  if (!p) return Promise.resolve();
+  const d = hotelGuessDates(cfg, i, itinLoad(cfg));
+  const add = { id: newBkId(), kind: 'hotel', name: p.name || '', address: p.address || '', ref: p.gid || '', lat: p.lat, lon: p.lon, city: i, pin: 1, guess: 1, start: d[0], end: d[1] };
+  const slot = () => { const bar = art.querySelector('[data-slot="hotel"]'); if (!bar) return null; let s = art.querySelector('[data-slot="hotel-ask"]'); if (!s) { bar.insertAdjacentHTML('beforebegin', '<div data-slot="hotel-ask"></div>'); s = bar.previousElementSibling; } return s; };
+  return bkSave(cfg, art, [add], slot);
 }
-function removeHotel(cfg, art, id) { planSave(cfg, planLoad(cfg).filter(x => x.id !== id)); art._planChanged && art._planChanged(); }
+function removeHotel(cfg, art, id) { itinSave(cfg, itinLoad(cfg).filter(x => x.id !== id)); bkChanged(art); }
 const isSaved = (cfg, ref) => !!ref && planLoad(cfg).some(x => x.ref === ref && !x.hotel);
 function toggleSaved(cfg, art, place) {
   const xs = planLoad(cfg); const i = xs.findIndex(x => x.ref === place.ref && !x.hotel);
@@ -4676,16 +4816,17 @@ async function syncPull(cfg, art) {
   const { data, error } = await c.from('trip_items').select('id,page_key,kind,item,source').in('page_key', [key, 'inbox']);
   if (error) { if (tableMissing(error)) LS.set('syncOff', Date.now()); return; }
   const mine = (data || []).filter(r => r.page_key === key); const inbox = (data || []).filter(r => r.page_key === 'inbox');
-  const bk = withIds(cfg), pl = planLoad(cfg), sh = shopLoad(cfg); const have = new Set(bk.map(x => x.id).concat(pl.map(x => x.id), sh.map(x => x.id))); let added = 0;
+  const bk = withIds(cfg), pl = planLoad(cfg), sh = shopLoad(cfg); const have = new Set(bk.map(x => x.id).concat(pl.map(x => x.id), sh.map(x => x.id), LS.get(goneKey(cfg)) || [])); let added = 0; // merged-away / deleted ids stay gone
   mine.forEach(r => { if (r.item && r.item.secui) { if (!LS.get(cxKey(cfg))) { const { secui, ...ui } = r.item; LS.set(cxKey(cfg), ui); art._cx && art._cx(); } return; } if (have.has(r.id) || !r.item) return; if (r.kind === 'place' && r.item.shop) { const { shop, ...x } = r.item; sh.push({ ...x, id: r.id }); } else if (r.kind === 'place') pl.push({ ...r.item, id: r.id }); else bk.push({ ...r.item, id: r.id }); added++; });
-  if (added) { LS.set(shopKey(cfg), sh); art._shop && art._shop(); LS.set(itinKey(cfg), bk); planSave(cfg, pl); art._planChanged && art._planChanged(); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); }
-  if (added || !mine.length) syncPush(cfg); // first sync uploads what this device already had
+  if (added) { LS.set(shopKey(cfg), sh); art._shop && art._shop(); LS.set(itinKey(cfg), bk); LS.set(planKey(cfg), pl); bkClean(cfg); art._planChanged && art._planChanged(); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); }
+  const gone = new Set(LS.get(goneKey(cfg)) || []);
+  if (added || !mine.length || mine.some(r => gone.has(r.id))) syncPush(cfg); // first sync uploads what this device already had; rows merged away here are deleted there
   const slot = art.querySelector('#sec-plan .sec-b');
   if (inbox.length && slot) {
     slot.insertAdjacentHTML('afterbegin', `<div class="inbox-note"><b>${esc(t('{n} forwarded bookings', { n: inbox.length }))}</b> <button type="button" class="btn sm" data-inbox-add>${t('Add to this trip')}</button></div>`);
     slot.querySelector('[data-inbox-add]').onclick = async (e) => {
-      e.target.disabled = true; const xs = withIds(cfg); inbox.forEach(r => xs.push({ ...r.item, id: r.id }));
-      LS.set(itinKey(cfg), xs); await c.from('trip_items').update({ page_key: key }).in('id', inbox.map(r => r.id));
+      e.target.disabled = true; const xs = bkUpsert(cfg, withIds(cfg), inbox.map(r => ({ ...r.item, id: r.id })), true).xs;
+      itinSave(cfg, xs); syncPush(cfg); await c.from('trip_items').update({ page_key: key }).in('id', inbox.map(r => r.id));
       art._planChanged && art._planChanged(); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); toast(t('Added {n} bookings', { n: inbox.length }));
     };
   }
@@ -5674,5 +5815,5 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

@@ -1,6 +1,6 @@
 // 1LinkTrip service worker: app shell offline. Same-origin files are network-first, so deploys show up on the next open.
 // Bump VERSION on every deploy anyway: it clears old caches and triggers the in-page 'Updated' prompt.
-const VERSION = 'ep-2026-11-13l';
+const VERSION = 'ep-2026-11-13m';
 const SHELL = ['./', './index.html', './app.js', './styles.css', './home.css', './airports.js', './examples.js', './osm-snapshots.js', './qrcode.js', './i18n.js', './supabase-config.js', './google-config.js',
   './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './icon.svg'];
 // The page's own data kept for offline (config, updates, documents, photos): written by the page, kept across versions.

@@ -120,7 +120,8 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
     await page.fill('[data-hotel-q]', 'Hotel Osaka Bay'); await page.click('[data-hotel-find]');
     await page.waitForFunction(() => /Hotel Osaka Bay/i.test(document.querySelector('[data-slot="hotel"] .hb') ? document.querySelector('[data-slot="hotel"] .hb').textContent : ''));
     const plan = await page.evaluate((k) => JSON.parse(localStorage.getItem('ep:plan:' + k)), k);
-    ok(plan.some(x => x.hotel && /Osaka Bay/i.test(x.name)) && plan.some(x => !x.hotel && x.ref === first), `@${w} set hotel + saved spot stored as My trip items`);
+    const itin = await page.evaluate((k) => JSON.parse(localStorage.getItem('ep:itin:' + k)), k);
+    ok(itin.some(x => x.kind === 'hotel' && x.pin && /Osaka Bay/i.test(x.name) && x.start === '2027-04-07') && !plan.some(x => x.hotel) && plan.some(x => !x.hotel && x.ref === first), `@${w} set hotel = a hotel booking for the Osaka nights; saved spot a plan item`);
     ok(await page.evaluate(() => window.__markers.filter(m => m.on && m.o.zIndex === 5000).length) === 3, `@${w} a hotel pin per city`);
     const of = await overflow(page); ok(of.length === 0, `@${w} Nearby: no overflow ${of.join(' ')}`);
 
@@ -155,7 +156,7 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
     const packed = await page.evaluate((c) => window.__ep.packEvent(c), { ...one, venue: { ...one.venue, lat: 35.6655, lon: 139.7620 } });
     await page.goto(BASE + '#e=' + packed + '&t=nearby'); await page.waitForSelector('.hpin', { timeout: 15000 }); await page.waitForTimeout(2500);
     const z = await page.evaluate(() => { const h = document.querySelector('.hpin'); const zs = [...document.querySelectorAll('.leaflet-marker-icon')].map(e => +e.style.zIndex); return { h: +h.style.zIndex, max: Math.max(...zs), lbl: h.querySelector('.map-lbl').textContent, stars: document.querySelectorAll('.spin img').length }; });
-    ok(z.h === z.max && z.lbl === 'Park Hotel Tokyo' && z.stars === 2, `OSM map: hotel pin on top with its label, 2 star pins ${JSON.stringify(z)}`);
+    ok(z.h === z.max && /^Park Hotel Tokyo( · |$)/.test(z.lbl) && z.stars === 2, `OSM map: hotel pin on top with its label, 2 star pins ${JSON.stringify(z)}`);
     if (SHOTS) await page.locator('#sec-map').screenshot({ path: `${SHOTS}/hotel-map-osm-390.png` });
     ok(errors.length === 0, `OSM: no page errors ${errors.join(' ')}`);
     await ctx.close();
