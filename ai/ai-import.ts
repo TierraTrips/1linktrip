@@ -160,7 +160,7 @@ const ITEMS_TOOL: Anthropic.Tool = {
             name: str("Short name, e.g. 'JAL 61 Tokyo → Osaka', 'Park Hyatt Kyoto', 'Hertz at LAX'"),
             provider: str("Airline, hotel, rental company, booking site, or restaurant"),
             start: str("Local start: YYYY-MM-DDTHH:MM, or YYYY-MM-DD if no time"),
-            end: str("Local end in the same format, or empty"),
+            end: str("Local end in the same format, or empty. For a flight: its arrival in the ARRIVAL airport's local time, with the arrival date exactly as printed (a flight east across the date line can land on the same calendar day it left, or earlier). Never add a day yourself; when no arrival date is printed, use the departure date"),
             address: str("Address or station/airport, or empty"),
             confirmation: str("Confirmation / PNR / booking number, or empty"),
             flight_number: str("e.g. UA 837, or empty"),
@@ -239,7 +239,7 @@ const DOC_FOCUS: Record<string, string> = {
 const DOC_PROMPT = `The attached files are the SOURCE: the organizer's own document for this event or trip (an itinerary, program, info sheet or booking list).
 Fill the page from it. Put dated plans and bookings in schedule (kind "reservation" for flights, trains, hotel check-ins, restaurants and tickets; include confirmation codes in the note).
 For a multi-city trip, list every city stayed in as stops with arrive/leave dates. Anything else guests should know that has no field goes in sections or extras; never repeat in sections what stops or schedule already hold.
-Every date is a full YYYY-MM-DD: when the document leaves out the year, take it from the trip's dates. A flight's date is its departure date in the departure city's local time (the outbound flight is the first item, the return flight the last). Leave a date empty rather than guess it.
+Every date is a full YYYY-MM-DD: when the document leaves out the year, take it from the trip's dates. A flight's date is its departure date in the departure city's local time (the outbound flight is the first item, the return flight the last). Its arrival goes in the note exactly as printed, with the arrival date when the document gives one (e.g. "HND → JFK, arrives Jun 2 10:55 PM"); never work out an arrival day yourself (flights east across the date line land the same calendar day or earlier). Leave a date empty rather than guess it.
 Only things tied to a day go in schedule; tips, reminders and general notes for the whole trip go in faqs (they show as Notes for guests). An item's own details (address, confirmation code, what to bring that day) stay in its note.`;
 
 const SYSTEM = `You extract structured travel and event details for 1LinkTrip.

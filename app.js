@@ -573,7 +573,32 @@ const itinKey = (cfg) => 'itin:' + eventKey(cfg).slice(6);
 // example pages carry a sample My trip (cfg.demoTrip): shown until the visitor changes it, then their own copy is kept
 // under the example's key (never a real trip's); an edited copy of an example never takes it along (renderBuilder)
 const demoOf = (cfg, k) => cfg && cfg.demoTrip && cfg.demoTrip[k] ? clone(cfg.demoTrip[k]) : null;
-const itinLoad = (cfg) => LS.get(itinKey(cfg), null) ?? demoOf(cfg, 'itin') ?? [];
+const itinLoad = (cfg) => (LS.get(itinKey(cfg), null) ?? demoOf(cfg, 'itin') ?? []).map(flightArriveFix);
+// ---- flight arrival day: departure and arrival are local wall times at two airports, so "lands the next day" depends on
+// both time zones (HND→JFK eastbound over the date line lands the same calendar day; LAX→SYD two days later). ----
+let AP_TZ_MAP = null;
+const apZone = (code) => { if (!AP_TZ_MAP) { AP_TZ_MAP = {}; for (const [z, cs] of Object.entries(window.AIRPORT_TZ || {})) cs.split(' ').forEach(c => { AP_TZ_MAP[c] = z; }); } return AP_TZ_MAP[String(code || '').trim().toUpperCase()] || ''; };
+const zonedMs = (local, z) => wallToUTC(local, z).getTime(); // a local wall time in zone z → UTC ms
+// a flight's departure / arrival airport codes: its own fields, else "HND → JFK" in the name or note
+function flightAirports(x) {
+  const code = (s) => { const m = String(s || '').toUpperCase().match(/\b[A-Z]{3}\b/g) || []; return m.find(c => apZone(c)) || ''; };
+  const pair = String([x.note, x.name].join(' ')).match(/\b([A-Z]{3})\s*(?:→|->|–|—|-|to)\s*([A-Z]{3})\b/);
+  return [code(x.from) || (pair && apZone(pair[1]) ? pair[1] : ''), code(x.to) || (pair && apZone(pair[2]) ? pair[2] : '')];
+}
+// Keeps an arrival date that gives a plausible flight (30 min – 20 h); otherwise picks the arrival day (−1 … +2 from
+// departure) that does. Unknown airports or no times: unchanged.
+function flightArriveFix(x) {
+  if (!x || x.kind !== 'flight' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(x.start || '') || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(x.end || '')) return x;
+  const [fa, ta] = flightAirports(x); const zf = apZone(fa), zt = apZone(ta); if (!zf || !zt) return x;
+  try {
+    const dep = zonedMs(x.start, zf); const hm = x.end.slice(11, 16); const dur = (d) => (zonedMs(d + 'T' + hm, zt) - dep) / 3600e3; const ok = (h) => h >= 0.5 && h <= 20;
+    if (ok(dur(x.end.slice(0, 10)))) return x;
+    const d = [-1, 0, 1, 2].map(k => addDays(x.start, k)).filter(d => ok(dur(d))).sort((a, b) => dur(a) - dur(b))[0];
+    return d ? { ...x, end: d + 'T' + hm } : x;
+  } catch { return x; }
+}
+// "Arrives 10:55 PM", with (+1) / (−1) when it lands on another calendar day than it left
+const flightArrLabel = (x) => { if (!x.end || x.end.length < 16) return ''; const off = daysBetween(x.start, x.end); return `${t('Arrives')} ${fmtTime(x.end.slice(11, 16))}${off ? ` (${off > 0 ? '+' : '−'}${Math.abs(off)})` : ''}`; };
 // "Flying into": the guest's arrival airport, one of the airports near the venue. One saved value per event (ap:<key>).
 // Default: their saved pick → a flight in their bookings that lands at one of them → the closest large airport → the closest.
 const apKey = (cfg) => 'ap:' + eventKey(cfg).slice(6);
@@ -1477,7 +1502,7 @@ function scheduleHTML(cfg) {
     if (x.ev && isTrip(cfg)) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"${edA('s:' + x.si)}><time>${esc(tm(x.start))}</time><div>${more(esc(x.name), x.note ? esc(x.note) : '')}</div></li>`;
     if (x.ev) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"${edA('s:' + x.si)}><time>${esc(tm(x.start)) || (isTrip(cfg) ? '' : '—')}</time><div><b>${esc(x.name)}${x.kind && x.kind !== 'activity' ? ` <em class="kind">${esc(t(PLAN_KINDS[x.kind] || ''))}</em>` : ''}</b>${x.note ? `<span>${esc(x.note)}</span>` : ''}</div></li>`;
     const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
-    const until = x.end ? (x.end.slice(0, 10) !== (x.start || '').slice(0, 10) ? t('until {d}', { d: fmt(x.end.slice(0, 10), { month: 'short', day: 'numeric' }) }) : t('until {d}', { d: tm(x.end) })) : '';
+    const until = x.kind === 'flight' && x.start && x.start.length > 10 && flightArrLabel(x) ? flightArrLabel(x) : x.end ? (x.end.slice(0, 10) !== (x.start || '').slice(0, 10) ? t('until {d}', { d: fmt(x.end.slice(0, 10), { month: 'short', day: 'numeric' }) }) : t('until {d}', { d: tm(x.end) })) : '';
     if (isTrip(cfg)) { const det = esc([t(ITIN_KINDS[x.kind] || ''), until, x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · ')) + (fl.status ? ' ' + ext(fl.status, t('Flight status') + ' ↗', 'tl-link') : '');
       return `<li class="mine"><time>${esc(tm(x.start)) || '—'}</time><div>${more(`${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))} <em class="yours">${t('Yours')}</em>`, det)}</div></li>`; }
     return `<li class="mine"><time>${esc(tm(x.start)) || '—'}</time><div><b>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))} <em class="yours">${t('Yours')}</em></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), until, x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>${fl.status ? ext(fl.status, t('Flight status') + ' ↗', 'tl-link') : ''}</div></li>`;
@@ -1553,7 +1578,7 @@ function bookingsHTML(cfg) {
   const order = items.map((x, i) => [x, i]).sort((a, b) => (a[0].start || '9999').localeCompare(b[0].start || '9999') || a[1] - b[1]); // by departure / start; i stays the stored index (Edit)
   return `${air.length ? `<div class="ap-mine" data-slot="ap-mine">${airportSelHTML(cfg, air, chosenAirport(cfg, air), true)}</div>` : ''}${items.length ? `<ul class="plist rich bookings">${order.map(([x, i]) => {
     const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
-    const when = x.start ? fmt(x.start.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' }) + (x.start.length > 10 ? ' · ' + fmtTime(x.start.slice(11, 16)) : '') : '';
+    const when = x.start ? fmt(x.start.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' }) + (x.start.length > 10 ? ' · ' + fmtTime(x.start.slice(11, 16)) : '') + (x.kind === 'flight' && x.start.length > 10 && flightArrLabel(x) ? ' · ' + flightArrLabel(x) : '') : '';
     const via = viaOf(x); const viaUrl = via && via.url;
     const links = [fl.status ? ext(fl.status, t('Flight status'), 'mini-b') : '', viaUrl ? ext(viaUrl, `${t('Manage booking')} · ${via.name}`, 'mini-b') : fl.manage ? ext(fl.manage, t('Manage booking'), 'mini-b') : '', x.link ? ext(x.link, t('Open booking'), 'mini-b') : '', x.address ? ext(L.place(x.address), 'Google Maps', 'mini-b') : ''].join('');
     return `<li><div><b>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${x.note ? `<span>${esc(x.note)}</span>` : ''}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button></div></div></li>`;
@@ -1589,7 +1614,7 @@ const isCoarseVenue = (v) => !!v && (!v.city || (!!v.country && v.name.trim().to
 function tripView(cfg) {
   if (!isTrip(cfg)) return cfg;
   // evidence: route legs, the guest's own flights (departure dates), the itinerary's dated items (outliers dropped)
-  const fl = itinLoad(cfg).filter(x => x.kind === 'flight').map(x => (x.start || '').slice(0, 10));
+  const fl = itinLoad(cfg).filter(x => x.kind === 'flight').flatMap(x => [(x.start || '').slice(0, 10), (x.end || '').slice(0, 10)]); // departure and (time-zone-corrected) arrival days
   const sp = tripSpan(stopsOf(cfg).flatMap(x => [x.from, x.to]).concat(fl, (cfg.schedule || []).map(x => x.date)).filter(isoDay));
   const ds = sp ? sp : [];
   if (ds.length >= 2 && cfg.start) { const rs = ds[0], re = ds[ds.length - 1], s0 = cfg.start.slice(0, 10), e0 = (cfg.end || cfg.start).slice(0, 10);
@@ -4414,8 +4439,8 @@ function aiItemsToBookings(items) {
     const okDT = (s) => /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(s) ? s : '';
     return { kind: AI_KIND[x.type] || 'other', name: cleanText(x.name || x.provider, 120), start: okDT(st), end: okDT(en), address: cleanText(x.address, 200), confNo: cleanText(x.confirmation, 60),
       ...(() => { const bt = cleanText(x.booked_through || '', 60); const k = viaGuess(bt) || viaGuess(x.link) || (bt && /direct/i.test(bt) ? 'direct' : ''); return k ? { via: k } : bt ? { via: 'other', viaOther: bt } : {}; })(),
-      link: httpsUrl(x.link), flight: cleanText(x.flight_number, 12), to: AI_KIND[x.type] === 'flight' ? cleanText(x.to, 60) : '', note: cleanText([x.from && x.to ? `${x.from} → ${x.to}` : '', x.note].filter(Boolean).join(' · '), 300) };
-  }).filter(x => x.name || x.start);
+      link: httpsUrl(x.link), flight: cleanText(x.flight_number, 12), to: AI_KIND[x.type] === 'flight' ? cleanText(x.to, 60) : '', ...(AI_KIND[x.type] === 'flight' && x.from ? { from: cleanText(x.from, 60) } : {}), note: cleanText([x.from && x.to ? `${x.from} → ${x.to}` : '', x.note].filter(Boolean).join(' · '), 300) };
+  }).map(flightArriveFix).filter(x => x.name || x.start);
 }
 
 // ================= multi-city trips: a route of stops with dates =================
@@ -5473,5 +5498,5 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { pageStale, docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, pageStale, docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
