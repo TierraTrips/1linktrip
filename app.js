@@ -963,33 +963,57 @@ function lfWire(art) {
   });
 }
 // hotels and sights near the venue (OpenStreetMap or Google): search by name, within walking distance, sort by distance or rating
-function nearListRegister(art, key, cfg, rows, rowHTML, { more, walkLabel }) {
-  art._lf = art._lf || {}; const prev = art._lf[key]; const f = prev ? prev.f : { q: '', walk: false, sort: 'dist' };
-  const hasRating = rows.some(r => r.rating);
+// hotels also get price level ($ … $$$$, Google's priceLevel; several can be on) and minimum rating (4+ / 4.5+)
+function nearListRegister(art, key, cfg, rows, rowHTML, { more, walkLabel, hotel }) {
+  art._lf = art._lf || {}; const prev = art._lf[key]; const f = prev ? prev.f : { q: '', walk: false, sort: 'dist', price: [], minR: 0 };
+  f.price = f.price || []; f.minR = f.minR || 0;
+  const hasRating = rows.some(r => r.rating); const prices = hotel ? ['$', '$$', '$$$', '$$$$'].filter(p => rows.some(r => r.price === p)) : [];
   const x = art._lf[key] = { f, hasRating,
-    on: (id) => id === 'walk' ? f.walk : false,
-    chip: (id) => { if (id === 'walk') f.walk = !f.walk; },
-    clear: () => { f.q = ''; f.walk = false; f.sort = 'dist'; },
+    on: (id) => id === 'walk' ? f.walk : id.startsWith('p:') ? f.price.includes(id.slice(2)) : id.startsWith('r:') ? f.minR === +id.slice(2) : false,
+    chip: (id) => { if (id === 'walk') f.walk = !f.walk; else if (id.startsWith('p:')) { const p = id.slice(2); f.price = f.price.includes(p) ? f.price.filter(y => y !== p) : f.price.concat(p); } else if (id.startsWith('r:')) f.minR = f.minR === +id.slice(2) ? 0 : +id.slice(2); },
+    clear: () => { f.q = ''; f.walk = false; f.sort = 'dist'; f.price = []; f.minR = 0; },
     list: () => {
-      const xs = lfSort(rows.filter(r => (!f.q || lfMatch(f.q, r.name, r.kind ? t(r.kind) : '')) && (!f.walk || r.d <= 1500)), hasRating ? f.sort : 'dist');
-      const active = !!(f.q || f.walk); const fold = !active && xs.length > more + 1;
+      const xs = lfSort(rows.filter(r => (!f.q || lfMatch(f.q, r.name, r.kind ? t(r.kind) : '')) && (!f.walk || r.d <= 1500) && (!f.price.length || f.price.includes(r.price)) && (!f.minR || (r.rating || 0) >= f.minR)), hasRating ? f.sort : 'dist');
+      const active = !!(f.q || f.walk || f.price.length || f.minR); const fold = !active && xs.length > more + 1;
       return `${active ? lfCount(xs.length, true) : ''}${xs.length ? `<ul class="plist rich">${xs.map((r, i) => rowHTML(r, fold && i >= more)).join('')}${fold ? `<li class="more-li"><button type="button" class="btn sm" data-more>${t('Show {n} more', { n: xs.length - more })}</button></li>` : ''}</ul>` : `<p class="muted">${t('Nothing matches these filters.')} <button type="button" class="link" data-lf-clear>${t('Clear filters')}</button></p>`}`;
     } };
   lfWire(art);
-  return `<div data-lf-box="${key}">${rows.length > more ? lfBarHTML(key, f, { ph: t('Search by name'), chips: [['walk', walkLabel, f.walk]], sorts: hasRating ? [['dist', t('Distance')], ['rating', t('Rating')]] : [] }) : ''}<div data-lf-list>${x.list()}</div></div>`;
+  return `<div data-lf-box="${key}">${rows.length > more ? lfBarHTML(key, f, { ph: t('Search by name'), chips: [['walk', walkLabel, f.walk], ...prices.map(p => ['p:' + p, p, f.price.includes(p)]), ...(hotel && hasRating ? [['r:4', '★ 4+', f.minR === 4], ['r:4.5', '★ 4.5+', f.minR === 4.5]] : [])], sorts: hasRating ? [['dist', t('Distance')], ['rating', t('Rating')]] : [] }) : ''}<div data-lf-list>${x.list()}</div></div>`;
 }
+// "See prices": one button → a small menu of Google / Expedia / Booking.com with the stay's nights + guests filled in.
+// Formats checked live (Nov 2026, iPhone Safari): Google Hotels reads the hotel + dates from the query text (it opens on
+// that hotel; guests stay its default 2 — no URL setting for them); Booking.com takes the hotel name + checkin /
+// checkout / group_adults (the hotel comes first); Expedia only resolves a CITY (a hotel name lands on its city), so its
+// link is that city's hotels for those dates and travelers.
+const fullDay = (d) => new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' }).format(asUTC(d));
+function priceLinks({ hotel, city, country, d1, d2, n }) {
+  const place = [city, country].filter(Boolean).join(', '); const q = hotel ? [hotel, place].filter(Boolean).join(', ') : place;
+  return [['Google', `https://www.google.com/travel/hotels?q=${enc(`${hotel ? q : 'hotels in ' + place} ${fullDay(d1)} to ${fullDay(d2)}`)}`],
+    ['Expedia', `https://www.expedia.com/Hotel-Search?destination=${enc(place || q)}&startDate=${d1}&endDate=${d2}&adults=${n}&rooms=1`, hotel ? t('{c} hotels', { c: city || place }) : ''],
+    ['Booking.com', `https://www.booking.com/searchresults.html?ss=${enc(q)}&checkin=${d1}&checkout=${d2}&group_adults=${n}&no_rooms=1&group_children=0`]];
+}
+const seePricesHTML = (p, cls = 'mini-b') => `<details class="menu sp-menu"><summary class="${cls}">${t('See prices')}</summary><div class="menu-pop" role="menu">${priceLinks(p).map(([name, url, sub]) => `<a role="menuitem" href="${esc(url)}" target="_blank" rel="noopener noreferrer" data-sp="${esc(name)}">${esc(name)}${sub ? ` <small class="muted">${esc(sub)}</small>` : ''}</a>`).join('')}<small class="sp-when muted">${esc([dateRange(p.d1, p.d2), t('{n} guests', { n: p.n })].join(' · '))}</small></div></details>`;
+// a hotel's nights: the route leg it sits in (closest stop with dates), else the guest's trip dates
+function hotelNights(cfg, h) {
+  const tr = tripDates(cfg); const ss = stopsOf(cfg).filter(s => s.lat != null && s.from && s.to && s.to > s.from);
+  const s = h && h.lat != null && ss.length ? ss.slice().sort((a, b) => distM(a.lat, a.lon, h.lat, h.lon) - distM(b.lat, b.lon, h.lat, h.lon))[0] : null;
+  const v = cfg.venue || {}; const leg = s && distM(s.lat, s.lon, h.lat, h.lon) < 60000 ? s : null;
+  return { d1: leg ? leg.from : tr.arrive, d2: leg ? leg.to : tr.leave, n: tr.guests || 2, city: (leg && (leg.city || leg.name)) || h.city || v.city || '', country: (leg && leg.country) || v.country || '' };
+}
+const hotelPrices = (cfg, h) => seePricesHTML({ hotel: h.name, ...hotelNights(cfg, h) });
+const brandBook = (cfg, h) => { const b = hotelBrand(h.name); if (!b && !(h.web || h.website)) return ''; const a = hotelBookAction(cfg, h); return ext(a.url, a.label, 'mini-b'); };
 function hotelsHTML(cfg, data) {
   const v = cfg.venue; const tr = tripDates(cfg);
   if (!data.hotels.length) return `<p class="muted">${t('No hotels are mapped within 3 km of the venue. Try the searches above.')}</p>`;
-  const art = data.__art; const rows0 = data.hotels.slice(0, 30).map(h => ({ ...h, rating: (h.g && h.g.rating) || h.rating || 0, count: (h.g && h.g.count) || h.count || 0 }));
+  const art = data.__art; const rows0 = data.hotels.slice(0, 30).map(h => ({ ...h, rating: (h.g && h.g.rating) || h.rating || 0, count: (h.g && h.g.count) || h.count || 0, price: (h.g && h.g.price) || h.price || '' }));
   if (art) return nearListRegister(art, 'hotels', cfg, rows0, (h, fold) => `<li${fold ? ' class="more"' : ''}>
-    <div><b>${esc(h.name)}</b><span>${esc([t(h.kind), h.stars ? `${h.stars}★` : '', h.rating ? `★ ${h.rating.toFixed(1)}` : ''].filter(Boolean).join(' · '))}</span>
-      <div class="mini">${(() => { const a = hotelBookAction(cfg, h); return ext(a.url, a.label, 'mini-b'); })()}<button type="button" class="mini-b" ${h.g && h.g.gid ? `data-gpid="${esc(h.g.gid)}"` : `data-place="${esc(placeKey(h))}"`}>${t('Details')}</button>${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
-    <span class="dist">${esc(fmtDist(h.d, v.cc))}<small>${h.d < 2000 ? walkTxt(h.d) : t('from the venue')}</small></span></li>`, { more: 3, walkLabel: t('Walking distance') });
+    <div><b>${esc(h.name)}</b><span>${esc([t(h.kind), h.stars ? `${h.stars}★` : '', h.rating ? `★ ${h.rating.toFixed(1)}` : '', h.price].filter(Boolean).join(' · '))}</span>
+      <div class="mini">${hotelPrices(cfg, h)}${brandBook(cfg, h)}<button type="button" class="mini-b" ${h.g && h.g.gid ? `data-gpid="${esc(h.g.gid)}"` : `data-place="${esc(placeKey(h))}"`}>${t('Details')}</button>${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
+    <span class="dist">${esc(fmtDist(h.d, v.cc))}<small>${h.d < 2000 ? walkTxt(h.d) : t('from the venue')}</small></span></li>`, { more: 3, walkLabel: t('Walking distance'), hotel: true });
   const hs = data.hotels.slice(0, 8);
   return `<ul class="plist rich">${hs.map((h, i) => `<li${i >= 3 ? ' class="more"' : ''}>
     <div><b>${esc(h.name)}</b><span>${esc([t(h.kind), h.stars ? `${h.stars}★` : ''].filter(Boolean).join(' · '))}</span>
-      <div class="mini">${(() => { const a = hotelBookAction(cfg, h); return ext(a.url, a.label, 'mini-b'); })()}<button type="button" class="mini-b" ${h.g && h.g.gid ? `data-gpid="${esc(h.g.gid)}"` : `data-place="${esc(placeKey(h))}"`}>${t('Details')}</button>${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
+      <div class="mini">${hotelPrices(cfg, h)}${brandBook(cfg, h)}<button type="button" class="mini-b" ${h.g && h.g.gid ? `data-gpid="${esc(h.g.gid)}"` : `data-place="${esc(placeKey(h))}"`}>${t('Details')}</button>${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
     <span class="dist">${esc(fmtDist(h.d, v.cc))}<small>${h.d < 2000 ? walkTxt(h.d) : t('from the venue')}</small></span></li>`).join('')}${hs.length > 3 ? `<li class="more-li"><button type="button" class="btn sm" data-more>${t('All {n} hotels', { n: hs.length })}</button></li>` : ''}</ul>`;
 }
 // Temperatures are fetched in °F (packing hints compare in °F) and shown in the guest's unit: their saved choice
@@ -4597,16 +4621,16 @@ function gGeocode(q) {
   memo.set(key, p); p.catch(() => memo.delete(key)); return p;
 }
 // hotels, sights and stations near a point, in the shape osmNearby returns (no restaurants: the Google list covers food)
-const GN_MASK = 'places.id,places.displayName,places.location,places.types,places.accessibilityOptions,places.rating,places.userRatingCount,places.googleMapsUri';
+const GN_MASK = 'places.id,places.displayName,places.location,places.types,places.accessibilityOptions,places.rating,places.userRatingCount,places.priceLevel,places.googleMapsUri';
 const GN_SIGHT = [['museum', 'museum'], ['art_gallery', 'gallery'], ['zoo', 'zoo'], ['aquarium', 'aquarium'], ['amusement_park', 'theme park']];
 function gNearbyAll(lat, lon) {
-  const key = 'gn1:' + osmKey(lat, lon); const c = LS.get(key); if (c && Date.now() - c.t < G_TTL) return Promise.resolve(c.d);
+  const key = 'gn2:' + osmKey(lat, lon); // gn2: + price level const c = LS.get(key); if (c && Date.now() - c.t < G_TTL) return Promise.resolve(c.d);
   if (memo.has(key)) return memo.get(key);
   const q = (types, radius, near) => gFetch('https://places.googleapis.com/v1/places:searchNearby', { includedTypes: types, maxResultCount: 20, ...(near ? { rankPreference: 'DISTANCE' } : {}), locationRestriction: { circle: { center: { latitude: lat, longitude: lon }, radius } } }, GN_MASK)
     .then(j => (j.places || []).filter(x => x.location && x.displayName && x.displayName.text).map(x => {
       const la = x.location.latitude, lo = x.location.longitude, name = x.displayName.text, ac = x.accessibilityOptions || {};
       return { name, lat: la, lon: lo, d: distM(lat, lon, la, lo), types: x.types || [], website: '', street: '', city: '', wheelchair: ac.wheelchairAccessibleEntrance ? 'yes' : '',
-        g: { gid: x.id, name, lat: la, lon: lo, rating: x.rating || 0, count: x.userRatingCount || 0, price: '', url: x.googleMapsUri || '' } };
+        g: { gid: x.id, name, lat: la, lon: lo, rating: x.rating || 0, count: x.userRatingCount || 0, price: G_PRICE[x.priceLevel] || '', url: x.googleMapsUri || '' } };
     }));
   const dedupe = (arr, n) => { const seen = new Set(); return arr.filter(x => { const k = x.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, n); };
   const has = (x, ty) => x.types.includes(ty);
@@ -4912,7 +4936,7 @@ function routeStaysHTML(cfg) {
   const ss = stopsOf(cfg); if (ss.length < 2) return '';
   const n = tripDates(cfg).guests || 2;
   return `<h3 class="sub-h">${t('Stays along the route')}</h3><div class="row-links">${ss.filter(s => s.from && s.to && s.to > s.from).map(s => { const q = [s.city || s.name, s.country].filter(Boolean).join(', '); const p = { q, d1: s.from, d2: s.to, n };
-    return bookExt('hotels', 'ghotels', p, `${esc(t('Hotels in {c}', { c: s.name }))} <small>${esc(dateRange(s.from, s.to))} · Google Hotels</small>`) + bookExt('hotels', 'booking', p, `${esc(t('Hotels and apartments'))} · ${esc(s.name)} <small>Booking.com</small>`); }).join('')}</div>`;
+    return `<div class="row-link sp-row"><span><b>${esc(t('Hotels in {c}', { c: s.name }))}</b> <small>${esc(dateRange(s.from, s.to))}</small></span>${seePricesHTML({ city: s.city || s.name, country: s.country || '', d1: s.from, d2: s.to, n }, 'btn sm')}</div>`; }).join('')}</div>`;
 }
 
 // ================= personal itinerary ↔ account (trip_items; quiet no-op until schema-2 is installed) =================

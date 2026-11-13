@@ -1102,3 +1102,10 @@ details.det > summary::after { content: ' ›'; } details.det[open] > summary::a
 .gal .ph-add { width: 72px; height: 72px; border-radius: 10px; border: 1.5px dashed var(--rule, #CBD0DA); display: grid; place-content: center; text-align: center; cursor: pointer; color: var(--muted, var(--slate)); }
 .gal .ph-add span { font-size: 1.3rem; line-height: 1; } .gal .ph-add small { font-size: .7rem; } .gal .ph-add.busy { opacity: .5; pointer-events: none; }
 .rv-det { margin: 6px 0; }
+/* See prices: one button → Google / Expedia / Booking.com with the nights filled in */
+details.sp-menu { display: inline-block; } .mini details.sp-menu { vertical-align: top; }
+details.sp-menu > summary.mini-b::after { content: ' ▾'; font-size: .8em; }
+.sp-menu .menu-pop { min-width: 200px; display: grid; } .sp-menu .menu-pop small.muted { font-weight: 500; }
+.sp-menu .sp-when { display: block; padding: 6px 12px 4px; font-size: .75rem; }
+.sp-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sp-row .menu-pop { left: auto; right: 0; }
