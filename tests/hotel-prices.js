@@ -34,6 +34,7 @@ const P = (name, lat, lon, from, to, country = 'Japan', cc = 'jp') => ({ name, a
     const chips = await page.$$eval(`${box} [data-lf-chip]`, bs => bs.map(b => b.textContent));
     ok(chips.join('|') === 'Walking distance|$|$$|$$$|$$$$|★ 4+|★ 4.5+', `@${w} hotel chips: ${chips.join(' | ')}`);
     const names = () => page.$$eval(`${box} ul.plist > li:not(.more-li) > div > b`, bs => bs.map(b => b.textContent));
+    await page.click(`${box} [data-cc-filters]`); // the filters live in the Filters sheet
     await page.click(`${box} [data-lf-chip="p:$$"]`); let n = await names();
     ok(n.sort().join() === 'Hotel Avenida,Hotel Mundial,Olissippo', `@${w} $$ → ${n}`);
     await page.click(`${box} [data-lf-chip="p:$$$$"]`); n = await names();
@@ -42,7 +43,12 @@ const P = (name, lat, lon, from, to, country = 'Japan', cc = 'jp') => ({ name, a
     ok(n.sort().join() === 'Bairro Alto Hotel,Pousada de Lisboa', `@${w} + ★ 4.5+ → ${n}`);
     await page.click(`${box} [data-lf-chip="r:4"]`); n = await names();
     ok(n.length === 4 && await page.$eval(`${box} [data-lf-chip="r:4.5"]`, b => b.getAttribute('aria-pressed')) === 'false' && await page.$eval(`${box} [data-lf-chip="r:4"]`, b => b.getAttribute('aria-pressed')) === 'true', `@${w} ★ 4+ replaces 4.5+ → ${n.length}`);
-    await page.click(`${box} [data-lf-clear]`); n = await names(); ok(n.length >= 3 && !(await page.$(`${box} [data-lf-chip].on`)), `@${w} Clear filters`);
+    await page.click(`${box} .cc-sheet [data-cc-close].primary`);
+    const pl = await page.$$eval(`${box} [data-ccb-pills] .pill span`, ss => ss.map(s => s.textContent)); ok(pl.join('|') === '$$|$$$$|★ 4+', `@${w} pills under the bar: ${pl.join(' | ')}`);
+    await page.click(`${box} [data-ccb-pills] [data-lf-unchip="p:$$$$"]`); n = await names(); const pl2 = await page.$$eval(`${box} [data-ccb-pills] .pill span`, ss => ss.map(s => s.textContent));
+    ok(n.length >= 1 && n.every(x => ['Hotel Avenida', 'Hotel Mundial', 'Olissippo'].includes(x)) && pl2.join('|') === '$$|★ 4+' && await page.$eval(`${box} [data-lf-chip="p:$$$$"]`, b => b.getAttribute('aria-pressed')) === 'false', `@${w} removing the $$$$ pill → ${n} (${pl2.join(' | ')})`);
+    await page.click(`${box} [data-cc-filters]`); await page.click(`${box} .cc-sheet [data-lf-clear]`); await page.click(`${box} .cc-sheet [data-cc-close].primary`);
+    n = await names(); ok(n.length >= 3 && !(await page.$(`${box} [data-lf-chip].on`)) && !(await page.$(`${box} [data-ccb-pills] .pill`)), `@${w} Clear filters`);
     // See prices
     const row = `${box} ul.plist > li:first-child`;
     const first = await page.$eval(`${row} > div > b`, b => b.textContent);

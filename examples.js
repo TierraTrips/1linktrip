@@ -258,9 +258,9 @@ window.EXAMPLES = {
       plan: [
         { id: 'ds1', src: 'g', ref: 'ChIJ8QwFX9qMGGARVm0p0caIeTk', name: 'Ichiran Shinjuku', lat: 35.69059, lon: 139.70281, addr: 'Peace Bldg. B1F, 3-34-11 Shinjuku, Tokyo', rating: 4.3, count: 7855, type: 'food', day: '' },
         { id: 'ds2', src: 'g', ref: 'ChIJ508frs-MGGARnIKrb_tkai0', name: 'Fuunji Shinjuku', lat: 35.68683, lon: 139.69664, addr: '2-14-3 Yoyogi, Shibuya, Tokyo', rating: 4.3, count: 5791, type: 'food', day: '' },
-        { id: 'ds3', src: 'g', ref: 'ChIJVVVp3BaJGGARfAgSR2yEybw', name: 'Blue Bottle Coffee Kiyosumi-Shirakawa', lat: 35.67776, lon: 139.80059, addr: '1-4-8 Hirano, Koto City, Tokyo', rating: 4.1, count: 5102, type: 'food', day: '' },
+        { id: 'ds3', src: 'g', ref: 'ChIJVVVp3BaJGGARfAgSR2yEybw', name: 'Blue Bottle Coffee Kiyosumi-Shirakawa', cat: 'cafes', lat: 35.67776, lon: 139.80059, addr: '1-4-8 Hirano, Koto City, Tokyo', rating: 4.1, count: 5102, type: 'food', day: '' },
         { id: 'ds4', src: 'g', ref: 'ChIJW2cLzSGLGGARXAKXv6EkbqI', name: 'Tsukiji Outer Market', lat: 35.66477, lon: 139.77025, addr: 'Tsukiji 4-chome, Chuo City, Tokyo', rating: 4.2, count: 56400, type: 'food', day: '2027-04-10', time: '08:00' },
-        { id: 'ds5', src: 'g', ref: 'ChIJCWDv__-pAWARwLeeqs_cVew', name: '% Arabica Kyoto Arashiyama', lat: 35.01354, lon: 135.67644, addr: '3-47 Sagatenryuji Susukinobabacho, Ukyo Ward, Kyoto', rating: 4.2, count: 5828, type: 'food', day: '2027-04-07', time: '08:00' },
+        { id: 'ds5', src: 'g', ref: 'ChIJCWDv__-pAWARwLeeqs_cVew', name: '% Arabica Kyoto Arashiyama', cat: 'cafes', lat: 35.01354, lon: 135.67644, addr: '3-47 Sagatenryuji Susukinobabacho, Ukyo Ward, Kyoto', rating: 4.2, count: 5828, type: 'food', day: '2027-04-07', time: '08:00' },
         { id: 'ds6', src: 'g', ref: 'ChIJT8uMzZwIAWARnGzsARCjnrY', name: 'Nishiki Market', lat: 35.00503, lon: 135.76472, addr: 'Nakagyo Ward, Kyoto', rating: 4.3, count: 55557, type: 'food', day: '' },
         { id: 'ds7', src: 'g', ref: 'ChIJXSJB5UHnAGARQcEjvngsHaw', name: 'Kuromon Market', lat: 34.66535, lon: 135.50624, addr: '2-4-1 Nipponbashi, Chuo Ward, Osaka', rating: 4.1, count: 21447, type: 'food', day: '' }
       ],

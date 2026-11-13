@@ -14,6 +14,9 @@ const { chromium } = require(process.env.PW || 'playwright');
 const fs = require('fs');
 const BASE = process.env.BASE || 'http://127.0.0.1:18765/';
 const SHOTS = process.env.SHOTS || '';
+const pick = async (page, key, v, box = '[data-ccb="near"]') => { await page.click(`${box} [data-dd="${key}"] [data-dd-btn]`); await page.click(`${box} [data-dd="${key}"] [data-dd-v="${v}"]`); }; // City / Category dropdowns
+const cityOpts = (page) => page.$$eval('[data-ccb="near"] [data-dd="city"] [data-dd-v]', bs => bs.map(b => b.textContent));
+const cityNow = (page) => page.$eval('[data-ccb="near"] [data-dd="city"] [data-dd-v][aria-selected="true"]', b => b.dataset.ddV);
 const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m}`); if (!c) fails.push(m); };
 const overflow = (page) => page.evaluate(() => {
   const cw = document.documentElement.clientWidth;
@@ -107,7 +110,7 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
     ok(/Saved/.test(await page.textContent('[data-slot="map-key"]')), `@${w} key shows Saved`);
 
     // Kyoto: the host's stay on the itinerary
-    await page.click('[data-gp-stop="1"]');
+    await pick(page, 'city', '1');
     await page.waitForFunction(() => /Ryokan Sakura/i.test(document.querySelector('[data-slot="hotel"]').textContent) && !/Finding/.test(document.querySelector('[data-slot="hotel"]').textContent), null, { timeout: 8000 }).catch(() => {});
     const kb = await page.textContent('[data-slot="hotel"]');
     ok(/Your hotel in Kyoto/.test(kb) && /Ryokan Sakura/.test(kb) && /From the itinerary/.test(kb), `@${w} Kyoto hotel from the host's itinerary: ${kb.replace(/\s+/g, ' ')}`);
@@ -115,7 +118,7 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
     const nb2 = [...reqs].reverse().find(x => /searchNearby/.test(x.url));
     ok(nb2 && near(nb2.b.locationRestriction.circle.center.latitude, 35.0036), `@${w} Kyoto searches start at the ryokan`);
     // Osaka: nothing known → Set your hotel
-    await page.click('[data-gp-stop="2"]'); await page.waitForSelector('[data-hotel-q]');
+    await pick(page, 'city', '2'); await page.waitForSelector('[data-hotel-q]');
     ok(/Set your hotel/.test(await page.textContent('[data-slot="hotel"]')), `@${w} Osaka: Set your hotel`);
     await page.fill('[data-hotel-q]', 'Hotel Osaka Bay'); await page.click('[data-hotel-find]');
     await page.waitForFunction(() => /Hotel Osaka Bay/i.test(document.querySelector('[data-slot="hotel"] .hb') ? document.querySelector('[data-slot="hotel"] .hb').textContent : ''));
@@ -155,8 +158,8 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
       { id: 's2', src: 'osm', ref: 'n2', name: 'Hamarikyu Gardens', lat: 35.6600, lon: 139.7630, addr: '', type: 'activity', day: '' }])); }, [k]);
     const packed = await page.evaluate((c) => window.__ep.packEvent(c), { ...one, venue: { ...one.venue, lat: 35.6655, lon: 139.7620 } });
     await page.goto(BASE + '#e=' + packed + '&t=nearby'); await page.waitForSelector('.hpin', { timeout: 15000 }); await page.waitForTimeout(2500);
-    const z = await page.evaluate(() => { const h = document.querySelector('.hpin'); const zs = [...document.querySelectorAll('.leaflet-marker-icon')].map(e => +e.style.zIndex); return { h: +h.style.zIndex, max: Math.max(...zs), lbl: h.querySelector('.map-lbl').textContent, stars: document.querySelectorAll('.spin img').length }; });
-    ok(z.h === z.max && /^Park Hotel Tokyo( · |$)/.test(z.lbl) && z.stars === 2, `OSM map: hotel pin on top with its label, 2 star pins ${JSON.stringify(z)}`);
+    const z = await page.evaluate(() => { const h = document.querySelector('.hpin'); const zs = [...document.querySelectorAll('.leaflet-marker-icon')].map(e => +e.style.zIndex); return { h: +h.style.zIndex, max: Math.max(...zs), lbl: h.querySelector('.map-lbl').textContent, stars: document.querySelectorAll('.spin img, .ccpin.sv img').length, cats: [...document.querySelectorAll('.ccpin.sv img')].map(i => /%23(E25A1C|0B7A8A)/i.test(i.src) && /E8A100/i.test(decodeURIComponent(i.src))) }; });
+    ok(z.h === z.max && /^Park Hotel Tokyo( · |$)/.test(z.lbl) && z.stars === 2 && z.cats.length === 2 && z.cats.every(Boolean), `OSM map: hotel pin on top with its label, 2 saved pins (category icon + gold star) ${JSON.stringify(z)}`);
     if (SHOTS) await page.locator('#sec-map').screenshot({ path: `${SHOTS}/hotel-map-osm-390.png` });
     ok(errors.length === 0, `OSM: no page errors ${errors.join(' ')}`);
     await ctx.close();

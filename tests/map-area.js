@@ -10,6 +10,7 @@
 const { chromium } = require(process.env.PW || 'playwright');
 const BASE = process.env.BASE || 'http://127.0.0.1:18765/';
 const SHOTS = process.env.SHOTS || '';
+const pick = async (page, key, v, box = '[data-ccb="near"]') => { await page.click(`${box} [data-dd="${key}"] [data-dd-btn]`); await page.click(`${box} [data-dd="${key}"] [data-dd-v="${v}"]`); }; // City / Category dropdowns
 const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m}`); if (!c) fails.push(m); };
 
 function fakeGoogleMaps() {
@@ -32,7 +33,8 @@ function fakeGoogleMaps() {
   class Marker { constructor(o) { this.o = o; } setMap() {} addListener() { return { remove() {} }; } }
   class InfoWindow { setContent() {} open() {} }
   class Point { constructor(x, y) { this.x = x; this.y = y; } }
-  window.google = { maps: { Map, Marker, InfoWindow, LatLngBounds, LatLng, Point, SymbolPath: { CIRCLE: 0 }, event: { trigger() {}, addListenerOnce: (o, ev, f) => { const h = on(o, ev, (a) => { h.remove(); f(a); }); return h; } } } };
+  class Size { constructor(w, h) { this.w = w; this.h = h; } }
+  window.google = { maps: { Map, Marker, InfoWindow, LatLngBounds, LatLng, Point, Size, SymbolPath: { CIRCLE: 0 }, event: { trigger() {}, addListenerOnce: (o, ev, f) => { const h = on(o, ev, (a) => { h.remove(); f(a); }); return h; } } } };
 }
 
 (async () => {
@@ -86,8 +88,8 @@ function fakeGoogleMaps() {
     ok(await page.$eval(btn, b => b.hidden), `@${w} button hides after the search`);
     ok(/38\.720/.test(await page.textContent('[data-gp-body]')), `@${w} list shows the new area's places`);
     // change category → still inside the searched area
-    await page.click('[data-gp-cat="coffee"]'); await page.waitForTimeout(400);
-    s = lastNearby(places); ok(s.b.includedTypes.includes('cafe') && Math.abs(s.b.locationRestriction.circle.center.latitude - bounds.lat) < 1e-4, `@${w} Coffee searched in the same area`);
+    await pick(page, 'cat', 'cafes'); await page.waitForTimeout(400);
+    s = lastNearby(places); ok(s.b.includedTypes.includes('cafe') && Math.abs(s.b.locationRestriction.circle.center.latitude - bounds.lat) < 1e-4, `@${w} Cafés searched in the same area`);
     // zoom out a lot (no pan) → button again; second, third pans keep working
     await page.evaluate(() => document.querySelector('[data-panel="nearby"] [data-slot="map"]')._gmap.setZoom(12)); await page.waitForTimeout(150);
     ok(!(await page.$eval(btn, b => b.hidden)), `@${w} zoom out: button appears again`);
@@ -107,16 +109,16 @@ function fakeGoogleMaps() {
     await ctx.close();
   }
 
-  // trip with stops: a stop chip resets the area (no button), panning from there works
+  // trip with stops: picking a City resets the area (no button), panning from there works
   {
     const { ctx, page, places } = await mk(390);
     await page.goto(BASE); await page.waitForFunction(() => window.__ep);
     const trip = { ...cfg, type: 'Trip', title: 'Portugal', stops: [{ name: 'Lisbon', lat: 38.7075, lon: -9.1364, cc: 'pt', from: '2027-05-14', to: '2027-05-17' }, { name: 'Porto', lat: 41.1496, lon: -8.611, cc: 'pt', from: '2027-05-17', to: '2027-05-20' }] };
     const packed = await page.evaluate((c) => window.__ep.packEvent(c), trip);
     await page.goto(BASE + '#e=' + packed + '&t=nearby'); await page.waitForSelector('[data-gp-body] .place-row', { timeout: 15000 }); await page.waitForTimeout(300);
-    await page.click('[data-gp-stop="1"]'); await page.waitForTimeout(500);
-    ok(await page.$eval(btn, b => b.hidden), 'stop chip: map moves there without the button');
-    ok(Math.abs(lastNearby(places).b.locationRestriction.circle.center.latitude - 41.1496) < 1e-3, 'stop chip searches that stop');
+    await pick(page, 'city', '1'); await page.waitForTimeout(500);
+    ok(await page.$eval(btn, b => b.hidden), 'City Porto: map moves there without the button');
+    ok(Math.abs(lastNearby(places).b.locationRestriction.circle.center.latitude - 41.1496) < 1e-3, 'City Porto searches that stop');
     await page.evaluate(() => document.querySelector('[data-panel="nearby"] [data-slot="map"]')._gmap.setCenter({ lat: 41.16, lng: -8.63 })); await page.waitForTimeout(150);
     ok(!(await page.$eval(btn, b => b.hidden)), 'pan from the stop: button');
     await page.click(btn); await page.waitForTimeout(400);
@@ -145,8 +147,10 @@ function fakeGoogleMaps() {
       ok(await page.$eval(btn, b => b.hidden), 'OSM: button hides after the search');
     }
     // filters still work after re-wiring (one click = one toggle)
-    const openBtn = await page.$('[data-pf-open]');
-    if (openBtn) { await openBtn.click(); await page.waitForTimeout(150); ok(await page.$eval('[data-pf-open]', b => b.getAttribute('aria-pressed') === 'true' || b.classList.contains('on')), 'OSM: a filter toggles once after re-searching'); }
+    await page.click('[data-ccb="near"] [data-cc-filters]'); await page.waitForTimeout(150);
+    await page.click('[data-pf-open]'); await page.waitForTimeout(150); ok(await page.$eval('[data-pf-open]', b => b.getAttribute('aria-pressed') === 'true' && b.classList.contains('on')), 'OSM: a filter toggles once after re-searching');
+    await page.click('[data-ccb="near"] .cc-sheet [data-cc-close].primary'); await page.waitForTimeout(100);
+    ok(/Open now/.test(await page.textContent('[data-ccb="near"] [data-ccb-pills]')), 'OSM: the filter shows as a pill under the bar');
     ok(errors.length === 0, `OSM: no page errors ${errors.join(' ')}`);
     await ctx.close();
   }

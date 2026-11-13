@@ -942,8 +942,21 @@ function foodHTML(cfg, data, filter = 'all') {
 // lfBarHTML draws the bar once; only the list under it re-renders while typing, so the search box keeps focus.
 const withArt = (d, art) => { const o = Object.create(d); Object.defineProperty(o, '__art', { value: art }); return o; };
 function lfBarHTML(key, f, { ph, chips = [], sorts = [] }) {
-  return `<div class="lf" data-lf="${key}" role="group" aria-label="${esc(t('Filters'))}"><div class="gp-search lf-q"><input type="search" data-lf-q value="${esc(f.q || '')}" placeholder="${esc(ph)}" aria-label="${esc(ph)}" enterkeyhint="search" autocomplete="off"></div>
-    <div class="chips lf-chips">${chips.map(([id, label, on]) => `<button type="button" class="chip ${on ? 'on' : ''}" data-lf-chip="${esc(id)}" aria-pressed="${!!on}">${esc(label)}</button>`).join('')}${sorts.length > 1 ? `<label class="pf-sel lf-sort"><span class="sr">${esc(t('Sort by'))}</span><select data-lf-sort>${sorts.map(([k, l]) => `<option value="${k}" ${f.sort === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>` : ''}</div></div>`;
+  const filt = chips.length || sorts.length > 1;
+  const grp = (id) => id.startsWith('p:') ? 'Price' : id.startsWith('r:') ? 'Rating' : id === 'airport' || id === 'town' ? 'Where' : 'Show';
+  const body = ['Where', 'Show', 'Price', 'Rating'].map(g => { const cs = chips.filter(c => grp(c[0]) === g); return cs.length ? ccGroup(t(g), cs.map(([id, label, on]) => ccChip(on, `data-lf-chip="${esc(id)}"${id === 'airport' ? ' data-lf-def' : ''}`, esc(label))).join('')) : ''; }).join('')
+    + (sorts.length > 1 ? `<div class="cc-g cc-sels"><label class="field"><span>${esc(t('Sort by'))}</span><select data-lf-sort>${sorts.map(([k, l]) => `<option value="${k}" ${f.sort === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label></div>` : '');
+  const ps = chips.filter(c => c[2] && c[0] !== 'airport').map(c => [c[0], c[1]]).concat(sorts.length > 1 && f.sort && f.sort !== sorts[0][0] ? [['sort', (sorts.find(x => x[0] === f.sort) || [0, ''])[1]]] : []);
+  return `<div class="lf ccb" data-lf="${key}" role="group" aria-label="${esc(t('Filters'))}"><div class="ccb-row lf-row"><div class="gp-search lf-q"><input type="search" data-lf-q value="${esc(f.q || '')}" placeholder="${esc(ph)}" aria-label="${esc(ph)}" enterkeyhint="search" autocomplete="off"></div>${filt ? ccFiltersBtn(ps.length) : ''}</div><div class="ccb-pills" data-ccb-pills${ps.length ? '' : ' hidden'}>${lfPills(ps)}</div>${filt ? `<dialog class="cc-sheet" data-ccb-sheet aria-label="${esc(t('Filters'))}">${ccSheet(body, t('Done'), 'data-lf-clear')}</dialog>` : ''}</div>`;
+}
+const lfPills = (ps) => ps.map(([k, l]) => `<button type="button" class="pill" data-lf-unchip="${esc(k)}" aria-label="${esc(t('Remove {s}', { s: l }))}"><span>${esc(l)}</span><i aria-hidden="true">×</i></button>`).join('');
+// after a change: the pills under the bar and the count on Filters follow the sheet's chips
+function lfSync(box) {
+  const bar = box.querySelector('.lf'); if (!bar) return; const so = bar.querySelector('[data-lf-sort]');
+  const on = [...bar.querySelectorAll('.cc-sheet [data-lf-chip].on:not([data-lf-def])')].map(c => [c.dataset.lfChip, c.textContent]);
+  const ps = on.concat(so && so.selectedIndex > 0 ? [['sort', so.options[so.selectedIndex].textContent]] : []);
+  const p = bar.querySelector('[data-ccb-pills]'); if (p) { p.innerHTML = lfPills(ps); p.hidden = !ps.length; }
+  const fb = bar.querySelector('[data-cc-filters]'); if (fb) fb.outerHTML = ccFiltersBtn(ps.length);
 }
 const lfMatch = (q, ...xs) => { const n = (x) => String(x || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, ''); const w = n(q).trim().split(/\s+/).filter(Boolean); const hay = n(xs.join(' ')); return w.every(x => hay.includes(x)); };
 const lfSort = (rows, sort) => sort === 'rating' ? rows.slice().sort((a, b) => (b.rating || 0) - (a.rating || 0) || (b.count || 0) - (a.count || 0) || a.d - b.d) : rows.slice().sort((a, b) => a.d - b.d);
@@ -954,12 +967,15 @@ function lfWire(art) {
   const L0 = (el) => { const box = el.closest('[data-lf-box]'); return box ? [box, art._lf[box.dataset.lfBox]] : [null, null]; };
   const paint = (box, x) => { const out = box.querySelector('[data-lf-list]'); if (out) out.innerHTML = x.list(); };
   art.addEventListener('input', (e) => { if (!e.target.matches('[data-lf-q]')) return; const [box, x] = L0(e.target); if (!x) return; x.f.q = e.target.value.slice(0, 60); paint(box, x); });
-  art.addEventListener('change', (e) => { if (!e.target.matches('[data-lf-sort]')) return; const [box, x] = L0(e.target); if (!x) return; x.f.sort = e.target.value; paint(box, x); });
+  art.addEventListener('change', (e) => { if (!e.target.matches('[data-lf-sort]')) return; const [box, x] = L0(e.target); if (!x) return; x.f.sort = e.target.value; paint(box, x); lfSync(box); });
   art.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-lf-chip],[data-lf-clear]'); if (!b) return; const [box, x] = L0(b); if (!x) return;
-    if (b.dataset.lfChip) x.chip(b.dataset.lfChip); else { x.clear(); const q = box.querySelector('[data-lf-q]'); if (q) q.value = ''; const so = box.querySelector('[data-lf-sort]'); if (so) so.value = x.f.sort; }
+    const b = e.target.closest('[data-lf-chip],[data-lf-clear],[data-lf-unchip]'); if (!b) return; const [box, x] = L0(b); if (!x) return;
+    const un = b.dataset.lfUnchip; const so = box.querySelector('[data-lf-sort]');
+    if (un === 'sort') { x.f.sort = 'dist'; if (so) so.value = 'dist'; }
+    else if (un) x.chip(un === 'town' ? 'airport' : un);
+    else if (b.dataset.lfChip) x.chip(b.dataset.lfChip); else { x.clear(); const q = box.querySelector('[data-lf-q]'); if (q) q.value = ''; if (so) so.value = x.f.sort; }
     box.querySelectorAll('[data-lf-chip]').forEach(c => { const on = !!x.on(c.dataset.lfChip); c.classList.toggle('on', on); c.setAttribute('aria-pressed', String(on)); });
-    paint(box, x);
+    paint(box, x); lfSync(box);
   });
 }
 // hotels and sights near the venue (OpenStreetMap or Google): search by name, within walking distance, sort by distance or rating
@@ -1489,7 +1505,7 @@ function aboutHTML(cfg) {
   if (cfg.off.about || !(cfg.description || cfg.host)) return '';
   return `${cfg.host ? `<p class="host"><span class="lbl">${t('Hosted by')}</span> ${esc(cfg.host)}</p>` : ''}${cfg.description.split(/\n\s*\n/).filter(Boolean).map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}`;
 }
-const scheduleSecHTML = (cfg) => sec('schedule', t(schedTitle(cfg)), scheduleHTML(cfg) + (cfg.off.schedule ? '' : docsHTML(cfg, ['schedule'])) + (routeInItin(cfg) && !cfg.off.route ? docsHTML(cfg, ['route']).replace(/^<ul class="docs/, '<ul class="route-docs docs') : ''), isTrip(cfg) ? 'itin' : '');
+const scheduleSecHTML = (cfg) => sec('schedule', t(schedTitle(cfg)), (ccItinOn(cfg) ? '<div class="ccb-wrap in-sec" data-slot="itin-cc"></div>' : '') + `<div data-slot="sched-body">${scheduleHTML(cfg)}</div>` + (cfg.off.schedule ? '' : docsHTML(cfg, ['schedule'])) + (routeInItin(cfg) && !cfg.off.route ? docsHTML(cfg, ['route']).replace(/^<ul class="docs/, '<ul class="route-docs docs') : ''), isTrip(cfg) ? 'itin' : '');
 // trips show their route (cities + dates) as the Itinerary's legs instead of a separate Route section
 const routeInItin = (cfg) => isTrip(cfg) && stopsOf(cfg).length > 0;
 // which leg a day belongs to: the stop whose stay covers it (leave day → next stop), else the nearest dated stop; -1 when no stop has dates
@@ -1500,24 +1516,26 @@ function legOf(ss, d) {
   return best;
 }
 // the Itinerary for a trip: one block per route stop (tap → Nearby for that stop), its days under it; undated days last
-function legsHTML(cfg, ss, days, dayHTML) {
+function legsHTML(cfg, ss, days, dayHTML, dropEmpty = false) {
   const by = ss.map(() => []), rest = []; const nb = tabsFor(cfg).some(x => x[0] === 'nearby');
   days.forEach(e => { const i = e[0] ? legOf(ss, e[0]) : -1; (i >= 0 ? by[i] : rest).push(e); });
   const head = (s, i) => { const inner = `<span class="leg-t"><b>${esc(s.name)}</b>${stopRange(s) ? `<small>${esc(stopRange(s))}</small>` : ''}</span>`;
-    const ea = edA('st:' + (cfg.stops || []).indexOf(s));
+    const ea = edA('st:' + (cfg.stops || []).indexOf(s)); i = stopsOf(cfg).indexOf(s);
     return s.lat != null && nb ? `<button type="button" class="leg-h" data-route-stop="${i}"${ea}>${inner}<i class="leg-go" aria-hidden="true">›</i></button>` : `<div class="leg-h"${ea}>${inner}</div>`; };
-  return `<ol class="legs">${ss.map((s, i) => `<li class="leg">${head(s, i)}${by[i].length ? `<div class="leg-days">${by[i].map(dayHTML).join('')}</div>` : ''}</li>`).join('')}</ol>${rest.map(dayHTML).join('')}`;
+  return `<ol class="legs">${ss.map((s, i) => dropEmpty && !by[i].length ? '' : `<li class="leg">${head(s, i)}${by[i].length ? `<div class="leg-days">${by[i].map(dayHTML).join('')}</div>` : ''}</li>`).join('')}</ol>${rest.map(dayHTML).join('')}`;
 }
 // one schedule: the organizer's items, with the guest's own bookings mixed in
 function scheduleHTML(cfg) {
   const fit = (d) => isTrip(cfg) && d ? fitTripDate(cfg.start, cfg.end, d, false) : d || '';
-  const evs = cfg.off.schedule ? [] : cfg.schedule.filter(x => x.title).map(x => { const d = fit(x.date); return { ev: true, start: d + (d && x.time ? 'T' + x.time : ''), name: x.title, note: x.note, kind: x.kind || '', si: cfg.schedule.indexOf(x) }; });
-  const mine = cfg.tools.mytrip ? itinLoad(cfg).map((x, i) => ({ ...x, i })).concat(itinLoad(cfg).filter(x => LODGE.has(x.kind) && bkDay(x.end) > bkDay(x.start) && bkDay(x.start)).map(x => ({ ...x, co: true, start: x.end }))).concat(planLoad(cfg).filter(x => x.day).map(x => ({ kind: '', name: x.name, start: x.day + (x.time ? 'T' + x.time : ''), confNo: x.booked ? x.conf : '', note: x.note }))) : [];
-  const legs = routeInItin(cfg) && !cfg.off.route ? stopsOf(cfg) : null;
+  const evs = cfg.off.schedule ? [] : cfg.schedule.filter(x => x.title).map(x => { const d = fit(x.date); return { ev: true, start: d + (d && x.time ? 'T' + x.time : ''), name: x.title, note: x.note, kind: x.kind || '', si: cfg.schedule.indexOf(x), _cc: { city: d ? stopOfDay(cfg, d) : -1, cat: ccCatOfEv(x), text: [x.title, x.note].join(' '), host: true } }; });
+  const mine = cfg.tools.mytrip ? itinLoad(cfg).map((x, i) => ({ ...x, i, _cc: ccBkItem(cfg, x) })).concat(itinLoad(cfg).filter(x => LODGE.has(x.kind) && bkDay(x.end) > bkDay(x.start) && bkDay(x.start)).map(x => ({ ...x, co: true, start: x.end, _cc: ccBkItem(cfg, x) }))).concat(planLoad(cfg).filter(x => x.day).map(x => ({ kind: '', name: x.name, start: x.day + (x.time ? 'T' + x.time : ''), confNo: x.booked ? x.conf : '', note: x.note, _cc: { city: ccCityOfPlan(cfg, x), cat: ccCatOfPlan(x), text: [x.name, x.addr, x.note].join(' '), saved: true, booked: !!x.booked } }))) : [];
+  let legs = routeInItin(cfg) && !cfg.off.route ? stopsOf(cfg) : null;
   if (!evs.length && !mine.length && !legs) return '';
-  const view = mine.length ? (LS.get('schedview:' + itinKey(cfg)) || 'all') : 'all';
+  const F = ccItinOn(cfg) ? ccTrip(cfg) : null;
+  const view = mine.length && !F ? (LS.get('schedview:' + itinKey(cfg)) || 'all') : 'all';
   const key = (x) => x.ev && isTrip(cfg) ? (x.start || '9999').slice(0, 10) : (x.start || '9999');
-  const all = (view === 'event' ? evs : evs.concat(mine)).sort((a, b) => (a.start || '9999').slice(0, 10).localeCompare((b.start || '9999').slice(0, 10)) || key(a).localeCompare(key(b)));
+  if (F && legs && F.ci >= 0) legs = legs.filter(s => cityOfStop(cfg, stopsOf(cfg).indexOf(s)) === F.ci);
+  const all = (view === 'event' ? evs : evs.concat(mine)).filter(x => !F || !F.on || F.ok(x._cc)).sort((a, b) => (a.start || '9999').slice(0, 10).localeCompare((b.start || '9999').slice(0, 10)) || key(a).localeCompare(key(b)));
   const days = {}; all.forEach(x => (days[(x.start || '').slice(0, 10)] = days[(x.start || '').slice(0, 10)] || []).push(x));
   const tm = (s) => fmtTime((s || '').slice(11, 16));
   const tripHead = (d) => d ? `${cfg.start && d >= cfg.start.slice(0, 10) ? esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 })) + ' · ' : ''}${esc(fmt(d, { weekday: 'short', month: 'short', day: 'numeric' }))}${!legs && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? ` <span class="day-city">${esc(stopFor(cfg, d).name)}</span>` : ''}` : t('Unscheduled');
@@ -1533,8 +1551,9 @@ function scheduleHTML(cfg) {
       return `<li class="mine"><time>${esc(tm(x.start)) || '—'}</time><div>${more(`${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))} <em class="yours">${t('Yours')}</em>`, det)}</div></li>`; }
     return `<li class="mine"><time>${esc(tm(x.start)) || '—'}</time><div><b>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))} <em class="yours">${t('Yours')}</em></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), until, x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>${fl.status ? ext(fl.status, t('Flight status') + ' ↗', 'tl-link') : ''}</div></li>`;
   }).join('')}</ol></div>`;
-  return `${mine.length ? `<div class="seg2 sched-seg" role="group"><button type="button" data-sched="all" class="${view === 'all' ? 'on' : ''}" aria-pressed="${view === 'all'}">${t('Everything')}</button><button type="button" data-sched="event" class="${view === 'event' ? 'on' : ''}" aria-pressed="${view === 'event'}">${t('Event only')}</button></div>` : ''}
-  ${legs ? legsHTML(cfg, legs, Object.entries(days), dayHTML) : Object.entries(days).map(dayHTML).join('')}`;
+  if (F && F.on && !all.length) return ccNoneHTML();
+  return `${mine.length && !F ? `<div class="seg2 sched-seg" role="group"><button type="button" data-sched="all" class="${view === 'all' ? 'on' : ''}" aria-pressed="${view === 'all'}">${t('Everything')}</button><button type="button" data-sched="event" class="${view === 'event' ? 'on' : ''}" aria-pressed="${view === 'event'}">${t('Event only')}</button></div>` : ''}
+  ${legs ? legsHTML(cfg, legs, Object.entries(days), dayHTML, !!(F && F.sub)) : Object.entries(days).map(dayHTML).join('')}`;
 }
 function stubSideHTML(cfg, ap) {
   const v = cfg.venue;
@@ -1594,7 +1613,8 @@ function roomBlockHTML(cfg) {
 }
 function nearbyTabHTML(cfg) {
   const T = cfg.tools; const out = [];
-  if (T.nearby) out.push(sec('map', t('Map'), `<div class="map-off" data-slot="map-off"></div><div class="hotel-bar" data-slot="hotel"></div><div class="map-wrap"><div class="map" data-slot="map" role="region" aria-label="${t('Map of the venue and surroundings')}"></div><div class="map-key" data-slot="map-key"></div><div class="map-legend" data-slot="legend"></div></div>`));
+  if (T.nearby) out.push(`<div class="ccb-wrap" data-slot="near-cc"></div>`);
+  if (T.nearby) out.push(sec('map', t('Map'), `<div class="map-off" data-slot="map-off"></div><div class="hotel-bar" data-slot="hotel"></div><div class="map-wrap"><div class="map" data-slot="map" role="region" aria-label="${t('Map of the venue and surroundings')}"></div><div class="map-key" data-slot="map-key"></div><div class="map-legend" data-slot="legend"></div></div><div class="map-cats" data-slot="map-cats" aria-hidden="true"></div>`));
   if (T.nearby) out.push(sec('food', t('Places nearby'), `<div data-slot="food">${loading(t('places to eat'))}</div>`));
   if (T.tours) out.push(sec('tours', t('Things to do'), toursHTML(cfg)));
   return out.join('');
@@ -1602,17 +1622,20 @@ function nearbyTabHTML(cfg) {
 function bookingsHTML(cfg) {
   const items = itinLoad(cfg); const air = cfg.tools && cfg.tools.travel ? airFor(cfg) : [];
   const order = items.map((x, i) => [x, i]).sort((a, b) => (a[0].start || '9999').localeCompare(b[0].start || '9999') || a[1] - b[1]); // by departure / start; i stays the stored index (Edit)
+  const F = ccTrip(cfg);
   return `${air.length ? `<div class="ap-mine" data-slot="ap-mine">${airportSelHTML(cfg, air, chosenAirport(cfg, air), true)}</div>` : ''}${items.length ? `<ul class="plist rich bookings">${order.map(([x, i]) => {
     const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
     const when = x.start ? fmt(x.start.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' }) + (x.start.length > 10 ? ' · ' + fmtTime(x.start.slice(11, 16)) : '') + (x.kind === 'flight' && x.start.length > 10 && flightArrLabel(x) ? ' · ' + flightArrLabel(x) : '') : '';
     const via = viaOf(x); const viaUrl = via && via.url;
     const links = [fl.status ? ext(fl.status, t('Flight status'), 'mini-b') : '', viaUrl ? ext(viaUrl, `${t('Manage booking')} · ${via.name}`, 'mini-b') : fl.manage ? ext(fl.manage, t('Manage booking'), 'mini-b') : '', x.link ? ext(x.link, t('Open booking'), 'mini-b') : '', x.address ? ext(L.place(x.address), 'Google Maps', 'mini-b') : ''].join('');
-    return `<li><div><b>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${x.note ? `<span>${esc(x.note)}</span>` : ''}${x.id ? detBlockHTML(x, 'bk:' + x.id, false) : ''}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button></div></div></li>`;
-  }).join('')}</ul>` : ''}
+    const it = ccBkItem(cfg, x);
+    return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div><b class="plan-t">${ccIcon(it.cat)}<span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${x.note ? `<span>${esc(x.note)}</span>` : ''}${x.id ? detBlockHTML(x, 'bk:' + x.id, false) : ''}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button></div></div></li>`;
+  }).join('')}</ul>${ccNoneHTML().replace('class="muted cc-none"', `class="muted cc-none"${order.some(([x]) => F.ok(ccBkItem(cfg, x))) ? ' hidden' : ''}`)}` : ''}
   <div class="btns itin-btns"><button type="button" class="btn primary" data-itin-add>+ ${t('Add a booking')}</button>${items.length ? `<button type="button" class="btn" data-itin-ics>${t('Add to calendar')}</button>` : ''}</div><div data-slot="itin-form"></div>`;
 }
 function myTripTabHTML(cfg) {
   const T = cfg.tools; const out = [];
+  if (T.mytrip) out.push(`<div class="ccb-wrap" data-slot="trip-cc"></div>`);
   if (T.mytrip) out.push(sec('plan', t('Your itinerary'), planHTML(cfg)));
   if (T.mytrip && cfg.venue) out.push(sec('spots', t('Saved spots'), spotsHTML(cfg)));
   if (T.mytrip) out.push(sec('itinerary', t('Your bookings'), bookingsHTML(cfg)));
@@ -1682,6 +1705,9 @@ function renderEvent(cfg, root, opts = {}) {
   }
   if (!opts.src) opts = { ...opts, src: cfg }; // "Edit a copy" and the language picker keep the page as written
   cfg = tripView(cfg);
+  // ?city=kyoto&cat=restaurants: that city and category in Nearby, My trip and the Itinerary (opens Nearby unless a tab is asked for)
+  ccLive = !opts.preview && !opts.onpage; const ccLink = ccLive ? ccFromURL(cfg) : false;
+  if (ccLink && !opts.tab) opts = { ...opts, tab: ccCatId(new URLSearchParams(location.search).get('cat')) === 'transport' ? 'mytrip' : 'nearby' };
   if (!opts.preview && cfg.tools && cfg.tools.mytrip && !cfg.demoTrip && bkClean(cfg) && LS.get('signedIn')) syncPush(cfg); // one item per booking (merges old duplicates)
   const seq = ++renderSeq;
   maps.forEach(m => { try { m.remove(); } catch {} }); maps.clear();
@@ -1721,7 +1747,7 @@ function renderEvent(cfg, root, opts = {}) {
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-gpid]'); if (b && art._openGPlace) art._openGPlace(b.dataset.gpid); });
   wireEvent(cfg, art, seq, air, opts); wireOffline(cfg, art, opts); if (!opts.preview) wireCollapse(cfg, art);
   if (opts.hosted && typeof wireHosted === 'function') wireHosted(cfg, art, opts.hosted, opts);
-  art.addEventListener('click', (e) => { const b = e.target.closest('[data-route-stop]'); if (!b || !art.querySelector('[data-panel="nearby"]')) return; showTab(art, 'nearby', opts); const c2 = art.querySelector(`[data-gp-stop="${cityOfStop(cfg, +b.dataset.routeStop)}"]`); if (c2) c2.click(); });
+  art.addEventListener('click', (e) => { const b = e.target.closest('[data-route-stop]'); if (!b || !art.querySelector('[data-panel="nearby"]')) return; showTab(art, 'nearby', opts); const ci = cityOfStop(cfg, +b.dataset.routeStop); if (art._nearCity) art._nearCity(ci); else if (art._osmCity) art._osmCity(ci); });
   if (opts.onpage && typeof onpDecorate === 'function') onpDecorate(cfg, art);
 }
 function showTab(art, k, opts = {}) {
@@ -1737,7 +1763,7 @@ function wireEvent(cfg, art, seq, air, opts) {
   const v = cfg.venue; const T = cfg.tools; const alive = () => seq === renderSeq && document.body.contains(art);
   const slot = (n) => art.querySelector(`[data-slot="${n}"]`);
   const renderSchedule = () => { const w = slot('schedule-wrap'); if (!w) return; ONP = !!opts.onpage; try { w.innerHTML = scheduleSecHTML(cfg); } finally { ONP = false; } if (opts.onpage && typeof onpDecorate === 'function') onpDecorate(cfg, art); };
-  art._renderSchedule = () => { renderSchedule(); art._cx && art._cx(); }; // a new booking can fold its Travel part
+  art._renderSchedule = () => { renderSchedule(); art._cx && art._cx(); art._ccBars && art._ccBars(); }; // a new booking can fold its Travel part
   art.addEventListener('click', (e) => {
     const a = e.target.closest('[data-act],[data-food],[data-tmode],[data-tab-go],[data-sched],[data-more]'); if (!a) return;
     if (a.dataset.tabGo) showTab(art, a.dataset.tabGo, opts);
@@ -1838,15 +1864,23 @@ function wireEvent(cfg, art, seq, air, opts) {
   const mapCtl = wireMap(cfg, art, opts);
   wirePlan(cfg, art, mapCtl);
   wireHotel(cfg, art, mapCtl);
+  if (T.mytrip || ccItinOn(cfg)) wireTripCC(cfg, art, opts);
   // Google Places first; if it is refused (quota, key) the OpenStreetMap list takes over, now or when its data arrives
   let gmode = false;
-  const osmFood = (d) => { const s0 = slot('food'); if (!s0 || !alive()) return; art._useSrc('osm'); if (mapCtl) mapCtl.setData(d); wirePlaces(cfg, art, d, mapCtl ? mapCtl.setFood : null); };
+  const osmFood = (d) => { const s0 = slot('food'); if (!s0 || !alive()) return; art._useSrc('osm'); if (mapCtl) mapCtl.setData(d); if (art._stop > 0 && art._osmCity) art._osmCity(art._stop); else wirePlaces(cfg, art, d, mapCtl ? mapCtl.setFood : null); };
   // "Search this area" on the OpenStreetMap list (no Google, or Google refused): the same lists around the new center
-  if (mapCtl) mapCtl.onArea((a) => {
+  const osmAt = (a) => {
     if (gmode || !slot('food')) return; slot('food').innerHTML = loading(t('places to eat'));
-    osmNearby(a.lat, a.lon).then(d => { if (!alive() || gmode) return; mapCtl.setData(d); wirePlaces(cfg, art, d, mapCtl.setFood, { lat: a.lat, lon: a.lon }); })
+    osmNearby(a.lat, a.lon).then(d => { if (!alive() || gmode) return; if (mapCtl) mapCtl.setData(d); wirePlaces(cfg, art, d, mapCtl ? mapCtl.setFood : null, { lat: a.lat, lon: a.lon }); })
       .catch(() => { if (alive() && slot('food')) slot('food').innerHTML = `<p class="muted">${t('Nearby places could not be loaded right now.')}</p>`; });
-  });
+  };
+  if (mapCtl) mapCtl.onArea(osmAt);
+  // the City dropdown on the OpenStreetMap list: that city's hotel (or the city) and its places
+  art._osmCity = (i) => {
+    const ss = hotelStops(cfg); if (!ss[i] || gmode) return; art._stop = i; const h = art._hotelAt ? art._hotelAt(i) : null;
+    art._center = h || ss[i]; art._fromHotel = !!h; art._hotelPt = h; const c = ccCities(cfg)[i]; ccSet(cfg, 'nearby', { city: c ? c.k : '' });
+    if (mapCtl) mapCtl.center(art._center.lat, art._center.lon, h ? 15 : 13); art._hotelUI && art._hotelUI(); osmAt(art._center);
+  };
   gmode = wireGPlaces(cfg, art, mapCtl, () => {
     gmode = false; if (mapCtl) mapCtl.osmMode(); const s0 = slot('food'); if (s0) s0.innerHTML = loading(t('places to eat'));
     // Google's nearby data has no restaurants list (the Google list handled that), so fetch the OpenStreetMap one
@@ -1865,7 +1899,7 @@ function wireEvent(cfg, art, seq, air, opts) {
       applyModes();
       if (mapCtl) mapCtl.setData(d);
       art._focusPlace = (p) => mapCtl && mapCtl.focus(p);
-      if (slot('food') && !gmode) { if (d.src === 'google') osmNearby(v.lat, v.lon).then(osmFood).catch(() => {}); else wirePlaces(cfg, art, d, mapCtl ? mapCtl.setFood : null); }
+      if (slot('food') && !gmode) { if (d.src === 'google') osmNearby(v.lat, v.lon).then(osmFood).catch(() => {}); else if (art._stop > 0 && art._osmCity) art._osmCity(art._stop); else wirePlaces(cfg, art, d, mapCtl ? mapCtl.setFood : null); }
     }).catch(() => {
       if (!alive()) return;
       const msg = (what, q) => `<p class="muted">${t('Nearby places could not be loaded right now.')}</p>${ext(L.place(q, placeLabel(v)), t('Search on Google Maps'), 'btn')}`;
@@ -3447,11 +3481,13 @@ const placeKey = (p) => `${p.name}|${(+p.lat).toFixed(5)},${(+p.lon).toFixed(5)}
 const cuisineList = (p) => (p.cuisines || String(p.cuisine || '').split(',')).map(x => String(x).trim().toLowerCase()).filter(Boolean);
 const cuisineLabel = (c) => c.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
 
-function placeFilters(cfg, art) { return art._pf || (art._pf = { cat: 'restaurant', cuisine: '', diet: [], open: false, dist: 0, price: '', stars: 0 }); }
+function placeFilters(cfg, art) { return art._pf || (art._pf = { cat: 'restaurant', cuisine: '', diet: [], open: false, dist: 0, price: '', stars: 0, q: '' }); }
 const placePrice = (p) => p.price || (p.g && p.g.price) || '';
+const OSM_CC = { restaurant: 'restaurants', fast_food: 'restaurants', cafe: 'cafes', bar: 'bars', pub: 'bars', pharmacy: 'shopping', grocery: 'shopping', hotel: 'hotels', sight: 'sights' };
 function filterPlaces(cfg, places, f) {
   const now = f.open ? venueNow(cfg) : null;
   return places.filter(p => (!f.cat || f.cat === 'all' || p.cat === f.cat)
+    && (!f.q || lfMatch(f.q, p.name, cuisineList(p).join(' ')))
     && (!f.cuisine || cuisineList(p).includes(f.cuisine))
     && f.diet.every(k => hasDiet(p, k))
     && (!f.dist || p.d <= f.dist)
@@ -3459,35 +3495,45 @@ function filterPlaces(cfg, places, f) {
     && (!f.stars || (p.g && p.g.rating >= f.stars))
     && (!now || ohOpenAt(p.hours, now) === true));
 }
+const pfActive = (f) => (f.cuisine ? 1 : 0) + f.diet.length + (f.open ? 1 : 0) + (f.dist ? 1 : 0) + (f.price ? 1 : 0) + (f.stars ? 1 : 0);
+// the OpenStreetMap list's bar: City (when the trip has several) · Category (with counts) · Filters; its search filters by name
+function placesBar(cfg, data, art, box) {
+  const f = placeFilters(cfg, art); const all = allPlaces(data); const ss = ccCities(cfg);
+  const counts = {}; all.forEach(p => counts[p.cat] = (counts[p.cat] || 0) + 1);
+  const inCat = all.filter(p => f.cat === 'all' || p.cat === f.cat);
+  const cuis = {}; inCat.forEach(p => cuisineList(p).forEach(c => { cuis[c] = (cuis[c] || 0) + 1; }));
+  const cuisTop = Object.entries(cuis).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30);
+  const prices = [...new Set(inCat.map(placePrice).filter(Boolean))].sort((a, b) => a.length - b.length);
+  const rated = inCat.some(p => p.g && p.g.rating); const eat = isEatery(f.cat) || f.cat === 'all';
+  const dietCount = (k) => inCat.filter(p => hasDiet(p, k)).length; const n = filterPlaces(cfg, all, f).length;
+  const body = [
+    eat && cuisTop.length ? `<div class="cc-g cc-sels"><label class="field"><span>${t('Cuisine')}</span><select data-pf="cuisine"><option value="">${t('Any cuisine')}</option>${cuisTop.map(([c, k]) => `<option value="${esc(c)}" ${f.cuisine === c ? 'selected' : ''}>${esc(cuisineLabel(c))} (${k})</option>`).join('')}</select></label></div>` : '',
+    ccGroup(t('Hours'), ccChip(f.open, 'data-pf-open', esc(t('Open now')))),
+    ccGroup(t('Distance'), DISTS.slice(1).map(([m, l]) => ccChip(+f.dist === m, `data-pf-dist="${m}"`, esc(t(l)))).join('')),
+    rated ? ccGroup(t('Rating'), [4, 4.5].map(x => ccChip(f.stars === x, `data-pf-stars="${x}"`, `★ ${x.toFixed(1)}+`)).join('')) : '',
+    eat ? ccGroup(t('Dietary'), DIETS.map(([k, l]) => { const c = dietCount(k); const on = f.diet.includes(k); return c || on ? ccChip(on, `data-pf-diet="${k}"`, `${esc(t(l))} <span>${c}</span>`) : ''; }).join('')) : '',
+    prices.length > 1 ? ccGroup(t('Price'), prices.map(pr => ccChip(f.price === pr, `data-pf-price="${esc(pr)}"`, esc(pr))).join('')) : '',
+  ].join('');
+  const ps = [];
+  if (f.cuisine) ps.push(['cuisine', cuisineLabel(f.cuisine)]); f.diet.forEach(k => ps.push(['diet:' + k, t((DIETS.find(x => x[0] === k) || [0, k])[1])]));
+  if (f.open) ps.push(['open', t('Open now')]); if (f.dist) ps.push(['dist', t((DISTS.find(x => x[0] === +f.dist) || [0, ''])[1])]);
+  if (f.stars) ps.push(['stars', `★ ${f.stars.toFixed(1)}+`]); if (f.price) ps.push(['price', f.price]);
+  ccFill(box, {
+    row: (ss.length ? ddHTML({ key: 'city', aria: t('City'), value: String(art._stop || 0), ph: t('City'), cls: 'dd-city', opts: ss.map(c => ({ v: String(c.i), l: c.l })) }) : '')
+      + ddHTML({ key: 'cat', aria: t('Category'), value: f.cat, ph: t('Category'), cls: 'dd-cat', opts: PLACE_CATS.filter(([k]) => counts[k] || f.cat === k).map(([k, l]) => ({ v: k, l: t(l), ic: OSM_CC[k], n: counts[k] || 0 })) }),
+    filt: ccFiltersBtn(pfActive(f), false),
+    pills: ccPills(ps, 'data-pf-clear'), sheet: ccSheet(body, n === 1 ? t('Show 1 place') : t('Show {n} places', { n }), 'data-pf-clear') });
+}
 function placesHTML(cfg, data, art) {
   const v = cfg.venue; const f = placeFilters(cfg, art); const all = allPlaces(data);
   if (!all.length) return `<p class="muted">${t('No restaurants, cafés or bars are mapped within 900 m of the venue.')}</p>${ext(L.place('restaurants', placeLabel(v)), t('Search on Google Maps'), 'btn')}`;
   const counts = {}; all.forEach(p => counts[p.cat] = (counts[p.cat] || 0) + 1);
   if (f.cat !== 'all' && !counts[f.cat]) f.cat = PLACE_CATS.find(([k]) => counts[k])?.[0] || 'all';
-  const inCat = all.filter(p => f.cat === 'all' || p.cat === f.cat);
-  const cuis = {}; inCat.forEach(p => cuisineList(p).forEach(c => { cuis[c] = (cuis[c] || 0) + 1; }));
-  const cuisTop = Object.entries(cuis).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30);
-  if (f.cuisine && !cuis[f.cuisine]) f.cuisine = '';
-  const prices = [...new Set(inCat.map(placePrice).filter(Boolean))].sort((a, b) => a.length - b.length);
-  const rated = inCat.some(p => p.g && p.g.rating);
-  const eat = isEatery(f.cat) || f.cat === 'all';
-  const dietCount = (k) => inCat.filter(p => hasDiet(p, k)).length;
-  const list = filterPlaces(cfg, all, f); const now = venueNow(cfg);
-  const active = (f.cuisine ? 1 : 0) + f.diet.length + (f.open ? 1 : 0) + (f.dist ? 1 : 0) + (f.price ? 1 : 0) + (f.stars ? 1 : 0);
-  return `<div class="pf" role="group" aria-label="${t('Filters')}">
-    <div class="chips pf-cats">${PLACE_CATS.filter(([k]) => counts[k]).map(([k, l]) => `<button type="button" class="chip ${f.cat === k ? 'on' : ''}" data-pf-cat="${k}" aria-pressed="${f.cat === k}">${t(l)} <span>${counts[k]}</span></button>`).join('')}</div>
-    <div class="pf-row">
-      ${eat && cuisTop.length ? `<label class="pf-sel"><span class="sr">${t('Cuisine')}</span><select data-pf="cuisine"><option value="">${t('Any cuisine')}</option>${cuisTop.map(([c, n]) => `<option value="${esc(c)}" ${f.cuisine === c ? 'selected' : ''}>${esc(cuisineLabel(c))} (${n})</option>`).join('')}</select></label>` : ''}
-      <label class="pf-sel"><span class="sr">${t('Distance')}</span><select data-pf="dist">${DISTS.map(([m, l]) => `<option value="${m}" ${+f.dist === m ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></label>
-      <button type="button" class="chip ${f.open ? 'on' : ''}" data-pf-open aria-pressed="${f.open}">${t('Open now')}</button>
-      ${rated ? [4, 4.5].map(n => `<button type="button" class="chip ${f.stars === n ? 'on' : ''}" data-pf-stars="${n}" aria-pressed="${f.stars === n}">★ ${n.toFixed(1)}+</button>`).join('') : ''}
-    </div>
-    ${eat ? `<div class="chips pf-diet">${DIETS.map(([k, l]) => { const n = dietCount(k); const on = f.diet.includes(k); return n || on ? `<button type="button" class="chip ${on ? 'on' : ''}" data-pf-diet="${k}" aria-pressed="${on}">${t(l)} <span>${n}</span></button>` : ''; }).join('')}</div>` : ''}
-    ${prices.length > 1 ? `<div class="chips pf-price">${prices.map(pr => `<button type="button" class="chip ${f.price === pr ? 'on' : ''}" data-pf-price="${esc(pr)}" aria-pressed="${f.price === pr}">${esc(pr)}</button>`).join('')}</div>` : ''}
-  </div>
-  <p class="pf-count muted small" role="status" aria-live="polite">${esc(list.length === 1 ? t('1 place') : t('{n} places', { n: list.length }))}${active ? ` · <button type="button" class="link" data-pf-clear>${t('Clear filters')}</button>` : ''}</p>
+  const rated = all.some(p => p.g && p.g.rating);
+  const list = filterPlaces(cfg, all, f); const now = venueNow(cfg); const active = pfActive(f) + (f.q ? 1 : 0);
+  return `<p class="pf-count muted small" role="status" aria-live="polite">${esc(list.length === 1 ? t('1 place') : t('{n} places', { n: list.length }))}${active ? ` · <button type="button" class="link" data-pf-clear>${t('Clear filters')}</button>` : ''}</p>
   ${list.length ? `<ul class="plist rich places">${list.slice(0, art._pfMore ? 80 : 12).map(p => { const o = ohOpenAt(p.hours, now); const dl = DIETS.filter(([k]) => hasDiet(p, k)).map(([, l]) => t(l));
-    return `<li><button type="button" class="place-row" data-place="${esc(placeKey(p))}"><div><b>${esc(p.name)}</b>${p.g && p.g.rating ? `<span class="rt">${gRatingHTML(p.g)}</span>` : ''}<span>${esc([t(PLACE_ONE[p.cat] || ''), cuisineList(p).slice(0, 2).map(cuisineLabel).join(', '), placePrice(p)].filter(Boolean).join(' · '))}</span>${dl.length || o != null ? `<span class="tags">${o === true ? `<em class="open">${t('Open now')}</em>` : o === false ? `<em class="closed">${t('Closed now')}</em>` : ''}${dl.map(x => `<em>${esc(x)}</em>`).join('')}</span>` : ''}</div><span class="dist">${esc(fmtDist(p.d, v.cc))}<small>${walkTxt(p.d)}</small></span></button></li>`; }).join('')}
+    return `<li><button type="button" class="place-row" data-place="${esc(placeKey(p))}">${ccIcon(OSM_CC[p.cat] || '')}<div><b>${esc(p.name)}</b>${p.g && p.g.rating ? `<span class="rt">${gRatingHTML(p.g)}</span>` : ''}<span>${esc([t(PLACE_ONE[p.cat] || ''), cuisineList(p).slice(0, 2).map(cuisineLabel).join(', '), placePrice(p)].filter(Boolean).join(' · '))}</span>${dl.length || o != null ? `<span class="tags">${o === true ? `<em class="open">${t('Open now')}</em>` : o === false ? `<em class="closed">${t('Closed now')}</em>` : ''}${dl.map(x => `<em>${esc(x)}</em>`).join('')}</span>` : ''}</div><span class="dist">${esc(fmtDist(p.d, v.cc))}<small>${walkTxt(p.d)}</small></span></button></li>`; }).join('')}
     ${list.length > 12 && !art._pfMore ? `<li class="more-li"><button type="button" class="btn sm" data-pf-more>${t('Show {n} more', { n: Math.min(80, list.length) - 12 })}</button></li>` : ''}</ul>`
     : `<p class="muted">${t('Nothing matches these filters.')} <button type="button" class="link" data-pf-clear>${t('Clear filters')}</button></p>`}
   ${rated ? `<p class="muted small g-attr">${t('Ratings from Google')}</p>` : ''}`;
@@ -3525,7 +3571,10 @@ function wirePlaces(cfg, art, data, setMarkers, center) {
     gNearby(center || cfg.venue, cat).then(gs => { gMerge(all, gs); if (document.body.contains(s) && !ac.signal.aborted) render(); }).catch(() => {});
   };
   (art._showFns = art._showFns || []).push((k) => { if (k === 'nearby') gLoad(); });
-  const render = () => { if (ac.signal.aborted) return; s.innerHTML = placesHTML(cfg, data, art); if (setMarkers) setMarkers(filterPlaces(cfg, all, placeFilters(cfg, art)).slice(0, 60)); gLoad(); };
+  // the bar above the map (or above the list when the page has no map slot)
+  const bar = art.querySelector('[data-slot="near-cc"]'); let box = bar && bar.querySelector('[data-ccb="near"]');
+  if (bar && !box) { bar.insertAdjacentHTML('beforeend', ccShell('near', `<div class="gp-search ccb-q"><input type="search" data-pf-q placeholder="${esc(t('Search by name'))}" aria-label="${esc(t('Search by name'))}" autocomplete="off" enterkeyhint="search"></div>`)); box = bar.querySelector('[data-ccb="near"]'); }
+  const render = () => { if (ac.signal.aborted) return; s.innerHTML = placesHTML(cfg, data, art); if (box) placesBar(cfg, data, art, box); if (setMarkers) setMarkers(filterPlaces(cfg, all, placeFilters(cfg, art)).slice(0, 60)); gLoad(); };
   art._openPlace = (key) => {
     const p = byKey.get(key); if (!p) return;
     let d = $('#placedlg'); if (!d) { d = document.createElement('dialog'); d.id = 'placedlg'; d.className = 'sheet place-sheet'; document.body.appendChild(d); d.addEventListener('click', (e) => { if (e.target === d) d.close(); }); }
@@ -3543,20 +3592,30 @@ function wirePlaces(cfg, art, data, setMarkers, center) {
     }).catch(() => {});
   };
   if (!art._placeClicks) { art._placeClicks = true; art.addEventListener('click', (e) => { const b = e.target.closest('[data-place]'); if (b && art._openPlace) art._openPlace(b.dataset.place); }); }
-  s.addEventListener('click', (e) => {
+  const onClick = (e) => {
     const b = e.target.closest('button'); if (!b) return; const f = placeFilters(cfg, art); const d = b.dataset;
     if (d.place) return;
-    if (d.pfCat) { f.cat = d.pfCat; f.cuisine = ''; art._pfMore = false; }
+    if (d.ccPill) { const k = d.ccPill; if (k.startsWith('diet:')) f.diet = f.diet.filter(x => x !== k.slice(5)); else f[k] = k === 'open' ? false : k === 'stars' || k === 'dist' ? 0 : ''; }
     else if (d.pfDiet) { f.diet = f.diet.includes(d.pfDiet) ? f.diet.filter(x => x !== d.pfDiet) : f.diet.concat(d.pfDiet); }
+    else if (d.pfDist) f.dist = +f.dist === +d.pfDist ? 0 : +d.pfDist;
     else if (d.pfOpen != null) f.open = !f.open;
     else if (d.pfPrice) f.price = f.price === d.pfPrice ? '' : d.pfPrice;
     else if (d.pfStars) f.stars = f.stars === +d.pfStars ? 0 : +d.pfStars;
-    else if (d.pfClear != null) Object.assign(f, { cuisine: '', diet: [], open: false, dist: 0, price: '', stars: 0 });
+    else if (d.pfClear != null) { Object.assign(f, { cuisine: '', diet: [], open: false, dist: 0, price: '', stars: 0, q: '' }); const q = box && box.querySelector('[data-pf-q]'); if (q) q.value = ''; }
     else if (d.pfMore != null) art._pfMore = true;
     else return;
     render();
-  }, on);
-  s.addEventListener('change', (e) => { const i = e.target; if (!i.dataset.pf) return; const f = placeFilters(cfg, art); f[i.dataset.pf] = i.dataset.pf === 'dist' ? +i.value : i.value; render(); }, on);
+  };
+  s.addEventListener('click', onClick, on);
+  const onChange = (e) => { const i = e.target; if (!i.dataset.pf) return; const f = placeFilters(cfg, art); f[i.dataset.pf] = i.dataset.pf === 'dist' ? +i.value : i.value; render(); };
+  s.addEventListener('change', onChange, on);
+  if (bar) {
+    bar.addEventListener('click', onClick, on); bar.addEventListener('change', onChange, on);
+    bar.addEventListener('input', (e) => { if (!e.target.matches('[data-pf-q]')) return; placeFilters(cfg, art).q = e.target.value.slice(0, 60); art._pfMore = false; render(); }, on);
+    bar.addEventListener('dd', (e) => { const { key, v } = e.detail; const f = placeFilters(cfg, art);
+      if (key === 'cat') { f.cat = v; f.cuisine = ''; art._pfMore = false; render(); }
+      if (key === 'city' && art._osmCity) art._osmCity(+v); }, on);
+  }
   render();
 }
 
@@ -3640,6 +3699,11 @@ const STAR_PIN = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://
 function googleAdapter(g, el, c) {
   const map = new g.Map(el, { center: { lat: c.lat, lng: c.lon }, zoom: c.zoom || 15, disableDefaultUI: true, zoomControl: true, gestureHandling: 'cooperative', clickableIcons: false, keyboardShortcuts: false });
   const info = new g.InfoWindow(); const all = []; el._gmap = map;
+  // category markers: white icon on the category color, sized by zoom (redrawn when the zoom crosses a step)
+  const ccMs = new Set(); let ccSz = 0;
+  const gIc = (k, sv) => { const z = ccPinSize(map.getZoom() || 15) + (sv ? 4 : 0); return { url: ccPinURL(k, sv), scaledSize: new g.Size(z, z), anchor: new g.Point(z / 2, z / 2) }; };
+  try { map.addListener('zoom_changed', () => { const z = ccPinSize(map.getZoom() || 15); if (z === ccSz) return; ccSz = z; ccMs.forEach(([m, k, sv]) => m.setIcon && m.setIcon(gIc(k, sv))); }); } catch { /* stand-in maps */ }
+  const ccReg = (m, k, sv) => { const e = [m, k, sv]; ccMs.add(e); return () => ccMs.delete(e); };
   const pop = (m, html) => m.addListener('click', () => { info.setContent(html); info.open({ anchor: m, map }); });
   return {
     kind: 'google', map,
@@ -3649,10 +3713,10 @@ function googleAdapter(g, el, c) {
     hotelPins: (() => { let ms = []; return (items) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map, position: { lat: x.lat, lng: x.lon }, title: x.title, zIndex: 5000, optimized: false, label: { text: x.label, className: 'gmap-lbl hotel', color: '#12141B', fontSize: '12px', fontWeight: '700' }, icon: { url: HOTEL_PIN, scaledSize: new g.Size(32, 40), anchor: new g.Point(16, 38), labelOrigin: new g.Point(16, 49) } }); m.addListener('click', () => x.onClick && x.onClick()); return m; }); }; })(),
     label: (lat, lon, { title, text, html }) => { const m = new g.Marker({ map, position: { lat, lng: lon }, title, zIndex: 900, label: { text, fontSize: '11px', fontWeight: '700', color: '#12141B' }, icon: { path: g.SymbolPath.CIRCLE, scale: 0 } }); pop(m, html); all.push(m); },
     group: (color) => { let ms = [], vis = true; return {
-      set: (items) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map: vis ? map : null, position: { lat: x.lat, lng: x.lon }, title: x.title, icon: { path: g.SymbolPath.CIRCLE, scale: 6, fillColor: color, fillOpacity: .95, strokeColor: '#fff', strokeWeight: 1.5 } }); if (x.onClick) m.addListener('click', x.onClick); else if (x.html) pop(m, x.html); return m; }); },
+      set: (items) => { ms.forEach(m => { m.setMap(null); m._un && m._un(); }); ms = items.map(x => { const m = new g.Marker({ map: vis ? map : null, position: { lat: x.lat, lng: x.lon }, title: x.title, optimized: x.ic == null, icon: x.ic != null ? gIc(x.ic) : { path: g.SymbolPath.CIRCLE, scale: 6, fillColor: color, fillOpacity: .95, strokeColor: '#fff', strokeWeight: 1.5 } }); if (x.ic != null) m._un = ccReg(m, x.ic); if (x.onClick) m.addListener('click', x.onClick); else if (x.html) pop(m, x.html); return m; }); },
       show: (on) => { vis = on; ms.forEach(m => m.setMap(on ? map : null)); }, visible: () => vis, count: () => ms.length }; },
-    pins: (() => { let ms = []; return (items, color) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map, position: { lat: x.lat, lng: x.lon }, title: x.title, zIndex: x.z || 500, optimized: false, icon: color ? { path: 'M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z', fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 1, anchor: new g.Point(12, 36) } : undefined }); m.addListener('click', () => x.onClick && x.onClick()); return m; }); }; })(),
-    savedPins: (() => { let ms = []; return (items) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map, position: { lat: x.lat, lng: x.lon }, title: x.title, zIndex: 4000, optimized: false, icon: { url: STAR_PIN, scaledSize: new g.Size(34, 34), anchor: new g.Point(17, 17) } }); m.addListener('click', () => x.onClick && x.onClick()); return m; }); }; })(),
+    pins: (() => { let ms = []; return (items, color) => { ms.forEach(m => { m.setMap(null); m._un && m._un(); }); ms = items.map(x => { const m = new g.Marker({ map, position: { lat: x.lat, lng: x.lon }, title: x.title, zIndex: x.z || 500, optimized: false, icon: x.ic != null ? gIc(x.ic) : color ? { path: 'M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z', fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 1, anchor: new g.Point(12, 36) } : undefined }); if (x.ic != null) m._un = ccReg(m, x.ic); m.addListener('click', () => x.onClick && x.onClick()); return m; }); }; })(),
+    savedPins: (() => { let ms = []; return (items) => { ms.forEach(m => { m.setMap(null); m._un && m._un(); }); ms = items.map(x => { const m = new g.Marker({ map, position: { lat: x.lat, lng: x.lon }, title: x.title, zIndex: 4000, optimized: false, icon: x.ic ? gIc(x.ic, true) : { url: STAR_PIN, scaledSize: new g.Size(34, 34), anchor: new g.Point(17, 17) } }); if (x.ic) m._un = ccReg(m, x.ic, true); m.addListener('click', () => x.onClick && x.onClick()); return m; }); }; })(),
     onPoi: (fn) => { map.setOptions({ clickableIcons: true }); map.addListener('click', (e) => { if (e.placeId) { e.stop(); fn(e.placeId); } }); },
     view: () => { const b = map.getBounds(); if (!b) return null; const c = b.getCenter(), ne = b.getNorthEast(); return { lat: c.lat(), lon: c.lng(), ne: [ne.lat(), ne.lng()] }; },
     onMoved: (fn) => map.addListener('idle', fn), zoom: () => map.getZoom(),
@@ -3664,6 +3728,8 @@ function leafletAdapter(el, c) {
   const Lf = window.L; el.innerHTML = ''; delete el._leaflet_id;
   const map = Lf.map(el, { scrollWheelZoom: false, zoomControl: false, attributionControl: true }).setView([c.lat, c.lon], c.zoom || 15);
   Lf.control.zoom({ position: 'topright' }).addTo(map); el._leafletMap = map;
+  const zb = () => { const z = map.getZoom(); el.dataset.zb = z >= 15 ? '' : z >= 13 ? 'mid' : 'far'; }; map.on('zoomend', zb); zb();
+  const ccMk = (x, sv, zi) => Lf.marker([x.lat, x.lon], { icon: Lf.divIcon({ className: 'ccpin' + (sv ? ' sv' : ''), html: `<img src="${ccPinURL(x.ic, sv)}" alt="">`, iconSize: [36, 36], iconAnchor: [18, 18] }), title: x.title, zIndexOffset: zi });
   Lf.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
   return {
     kind: 'leaflet', map,
@@ -3673,10 +3739,10 @@ function leafletAdapter(el, c) {
     hotelPins: (() => { let lg = null; return (items) => { if (!lg) lg = Lf.layerGroup().addTo(map); lg.clearLayers(); items.forEach(x => Lf.marker([x.lat, x.lon], { icon: Lf.divIcon({ className: 'hpin', html: `<img src="${HOTEL_PIN}" alt=""><em class="map-lbl hotel">${esc(x.label)}</em>`, iconSize: [32, 40], iconAnchor: [16, 38] }), title: x.title, zIndexOffset: 5000 }).on('click', () => x.onClick && x.onClick()).addTo(lg)); }; })(),
     label: (lat, lon, { title, text, html }) => Lf.marker([lat, lon], { icon: Lf.divIcon({ className: 'tpin', html: `<span>${esc(text)}</span>`, iconSize: null, iconAnchor: [0, 0] }), title, zIndexOffset: 900 }).addTo(map).bindPopup(html),
     group: (color) => { const lg = Lf.layerGroup().addTo(map); return {
-      set: (items) => { lg.clearLayers(); items.forEach(x => { const m = Lf.circleMarker([x.lat, x.lon], { radius: 6, color: '#fff', weight: 1.5, fillColor: color, fillOpacity: .95 }); if (x.onClick) m.on('click', x.onClick); else if (x.html) m.bindPopup(x.html); m.addTo(lg); }); },
+      set: (items) => { lg.clearLayers(); items.forEach(x => { const m = x.ic != null ? ccMk(x, false, 0) : Lf.circleMarker([x.lat, x.lon], { radius: 6, color: '#fff', weight: 1.5, fillColor: color, fillOpacity: .95 }); if (x.onClick) m.on('click', x.onClick); else if (x.html) m.bindPopup(x.html); m.addTo(lg); }); },
       show: (on) => { on ? lg.addTo(map) : map.removeLayer(lg); }, visible: () => map.hasLayer(lg), count: () => lg.getLayers().length }; },
-    pins: (() => { let lg = null; return (items, color) => { if (!lg) lg = Lf.layerGroup().addTo(map); lg.clearLayers(); items.forEach(x => Lf.circleMarker([x.lat, x.lon], { radius: 10, color: '#fff', weight: 2, fillColor: color || '#D93025', fillOpacity: 1 }).on('click', () => x.onClick && x.onClick()).bindTooltip(x.title || '').addTo(lg)); }; })(),
-    savedPins: (() => { let lg = null; return (items) => { if (!lg) lg = Lf.layerGroup().addTo(map); lg.clearLayers(); items.forEach(x => Lf.marker([x.lat, x.lon], { icon: Lf.divIcon({ className: 'spin', html: `<img src="${STAR_PIN}" alt="">`, iconSize: [34, 34], iconAnchor: [17, 17] }), title: x.title, zIndexOffset: 4000 }).on('click', () => x.onClick && x.onClick()).addTo(lg)); }; })(),
+    pins: (() => { let lg = null; return (items, color) => { if (!lg) lg = Lf.layerGroup().addTo(map); lg.clearLayers(); items.forEach(x => (x.ic != null ? ccMk(x, false, 500) : Lf.circleMarker([x.lat, x.lon], { radius: 10, color: '#fff', weight: 2, fillColor: color || '#D93025', fillOpacity: 1 })).on('click', () => x.onClick && x.onClick()).bindTooltip(x.title || '').addTo(lg)); }; })(),
+    savedPins: (() => { let lg = null; return (items) => { if (!lg) lg = Lf.layerGroup().addTo(map); lg.clearLayers(); items.forEach(x => (x.ic ? ccMk(x, true, 4000) : Lf.marker([x.lat, x.lon], { icon: Lf.divIcon({ className: 'spin', html: `<img src="${STAR_PIN}" alt="">`, iconSize: [34, 34], iconAnchor: [17, 17] }), title: x.title, zIndexOffset: 4000 })).on('click', () => x.onClick && x.onClick()).addTo(lg)); }; })(),
     onPoi: () => {},
     view: () => { const b = map.getBounds(); const c = b.getCenter(), ne = b.getNorthEast(); return { lat: c.lat, lon: c.lng, ne: [ne.lat, ne.lng] }; },
     onMoved: (fn) => map.on('moveend', fn), zoom: () => map.getZoom(),
@@ -3685,6 +3751,7 @@ function leafletAdapter(el, c) {
   };
 }
 // The venue map on the Nearby tab. Built the first time the tab is shown; nearby data can arrive before or after.
+const osmIc = (x) => OSM_CC[x.cat] || OSM_CC[x.kind] || 'restaurants';
 function wireMap(cfg, art, opts) {
   let el = art.querySelector('[data-slot="map"]'); const v = cfg.venue; if (!el || !v) return;
   const T = cfg.tools; const st = { data: null, food: null, groups: {}, adapter: null, building: false, gmode: false, pins: [], poi: null, saved: [], hotels: [], area: null, areaFns: [] };
@@ -3724,7 +3791,7 @@ function wireMap(cfg, art, opts) {
   const layers = () => {
     const a = st.adapter, d = st.data; if (!a || !d || st.gmode) return;
     Object.values(st.groups).forEach(x => { try { x.g.set([]); x.g.show(false); } catch { /* gone */ } }); st.groups = {};
-    const defs = [['food', '#E4572E', t('Food & drink'), (st.food || d.food.slice(0, 25)).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)), html: popup(x) }))]];
+    const defs = [['food', '#E4572E', t('Food & drink'), (st.food || d.food.slice(0, 25)).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, ic: osmIc(x), onClick: () => art._openPlace && art._openPlace(placeKey(x)), html: popup(x) }))]];
     if (T.stay) defs.push(['hotels', '#7B4FD6', t('Hotels'), d.hotels.slice(0, 15).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)), html: popup(x) }))]);
     if (T.tours) defs.push(['sights', '#0B9A6D', t('Sights'), (d.sights || []).slice(0, 12).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)), html: popup(x) }))]);
     defs.push(['transit', '#1D8FD8', t('Transit'), [].concat(...Object.values(d.transit)).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, html: popup(x) }))]);
@@ -3732,6 +3799,14 @@ function wireMap(cfg, art, opts) {
     const lg = art.querySelector('[data-slot="legend"]');
     lg.innerHTML = Object.entries(st.groups).map(([k, x]) => `<button class="chip on" data-layer="${k}" aria-pressed="true"><i style="background:${x.color}"></i>${x.label}</button>`).join('');
     lg.onclick = (e) => { const b = e.target.closest('[data-layer]'); if (!b) return; const l = st.groups[b.dataset.layer]; const on = !l.g.visible(); l.g.show(on); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); };
+    legend();
+  };
+  // a tiny legend under the map, only while markers of more than one category are on it
+  const legend = () => {
+    const box = art.querySelector('[data-slot="map-cats"]'); if (!box) return;
+    const ks = new Set((st.gmode ? st.pins : st.data ? (st.food || st.data.food.slice(0, 25)).map(x => ({ ic: osmIc(x) })) : []).concat(st.saved).map(x => x.ic).filter(Boolean));
+    const order = CC_CATS.map(c => c[0]).filter(k => ks.has(k));
+    box.innerHTML = order.length > 1 ? order.map(k => `<span>${ccIcon(k)}${esc(ccLabel(k))}</span>`).join('') : '';
   };
   const fallback = () => {
     if (st.adapter && st.adapter.kind === 'leaflet') return; gmapsFails.delete(fallback);
@@ -3752,15 +3827,15 @@ function wireMap(cfg, art, opts) {
   if (!art.querySelector('[data-panel="nearby"]')?.hidden) build();
   return {
     setData: (d) => { st.data = d; layers(); },
-    googleMode: () => { st.gmode = true; const lg = art.querySelector('[data-slot="legend"]'); if (lg) lg.innerHTML = ''; Object.values(st.groups).forEach(x => x.g.show(false)); },
-    osmMode: () => { st.gmode = false; st.pins = []; drawPins(); layers(); },
-    setPins: (items) => { st.pins = items; if (st.adapter && st.adapter.pins) st.adapter.pins(items); },
+    googleMode: () => { st.gmode = true; const lg = art.querySelector('[data-slot="legend"]'); if (lg) lg.innerHTML = ''; Object.values(st.groups).forEach(x => x.g.show(false)); legend(); },
+    osmMode: () => { st.gmode = false; st.pins = []; drawPins(); layers(); legend(); },
+    setPins: (items) => { st.pins = items; if (st.adapter && st.adapter.pins) st.adapter.pins(items); legend(); },
     onPoi: (fn) => { st.poi = fn; if (st.adapter) st.adapter.onPoi(fn); },
-    setSaved: (items) => { st.saved = items; if (st.adapter && st.adapter.savedPins) st.adapter.savedPins(items); },
+    setSaved: (items) => { st.saved = items; if (st.adapter && st.adapter.savedPins) st.adapter.savedPins(items); legend(); },
     setHotels: (items) => { st.hotels = items; if (st.adapter && st.adapter.hotelPins) st.adapter.hotelPins(items); },
     fit: (pts) => view({ pts }),
     centerOn: (lat, lon, z) => view({ lat, lon, z: z || 15 }),
-    setFood: (items) => { st.food = items; const g = st.groups.food; if (g) g.g.set(items.map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => art._openPlace && art._openPlace(placeKey(x)) }))); },
+    setFood: (items) => { st.food = items; const g = st.groups.food; if (g) g.g.set(items.map(x => ({ lat: x.lat, lon: x.lon, title: x.name, ic: osmIc(x), onClick: () => art._openPlace && art._openPlace(placeKey(x)) }))); legend(); },
     center: (lat, lon, z) => view({ lat, lon, z: z || 14 }), // a programmatic move is a new starting area
     onArea: (fn) => { st.areaFns.push(fn); },
     searchedArea: (a) => { st.area = a; if (areaBtn) areaBtn.hidden = true; },
@@ -3853,24 +3928,173 @@ addEventListener('ep-pages', () => {
   if (v && slug) { const own = pagesAll().find(p => p.hosted && p.hosted.slug === slug); if (own) { v.outerHTML = `<a class="btn sm" href="#page=${esc(own.pid)}" data-onp-open>${t('Edit page')}</a>`; $('[data-onp-open]')?.addEventListener('click', () => { window.__onpOpen = true; }); } }
 });
 
+// ================= City × Category: one compact control bar for every list of places and plans =================
+// [City ▾] [Category ▾] [Filters n] + search, the active sub-filters as removable pills under it, the sub-filters in a
+// bottom sheet. Nearby searches the chosen city (its hotel, else the city) for the chosen category; My trip and the trip
+// Itinerary show only that city / category. Kept per trip on this device; linkable as ?city=kyoto&cat=restaurants.
+// Each category has one icon + color, used in the dropdown, list rows and map markers alike.
+const CC_CATS = [['restaurants', 'Restaurants', '#E25A1C'], ['cafes', 'Cafés', '#8A5A2B'], ['bars', 'Bars', '#B0306A'], ['sights', 'Sights', '#0B7A8A'],
+  ['tours', 'Things to do', '#6741D9'], ['shopping', 'Shopping', '#2F8A3E'], ['hotels', 'Hotels', '#1E3A8A'], ['transport', 'Transport', '#5C6370']];
+const CC_NEAR = CC_CATS.slice(0, 7);
+const CC_ALIAS = { restaurant: 'restaurants', food: 'restaurants', eat: 'restaurants', cafe: 'cafes', 'café': 'cafes', 'cafés': 'cafes', coffee: 'cafes', bar: 'bars', drinks: 'bars', nightlife: 'bars',
+  sight: 'sights', attractions: 'sights', todo: 'tours', 'things-to-do': 'tours', tour: 'tours', activities: 'tours', shop: 'shopping', shops: 'shopping', hotel: 'hotels', stay: 'hotels', stays: 'hotels',
+  lodging: 'hotels', flights: 'transport', transit: 'transport' };
+const ccCatId = (s) => { s = String(s || '').trim().toLowerCase(); return CC_CATS.some(c => c[0] === s) ? s : CC_ALIAS[s] || ''; };
+const ccLabel = (k) => t((CC_CATS.find(c => c[0] === k) || [0, 'Other'])[1]);
+const ccColor = (k) => (CC_CATS.find(c => c[0] === k) || [0, 0, '#5C6370'])[2];
+const CC_GLYPH = {
+  restaurants: '<path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 21V3c-2.2 1.2-3.5 3.6-3.5 7v3H17"/>',
+  cafes: '<path d="M4 9h12v4.5A5.5 5.5 0 0 1 10.5 19h-1A5.5 5.5 0 0 1 4 13.5zM16 10.5h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5c-.8 1 .8 2 0 3M12 3.5c-.8 1 .8 2 0 3"/>',
+  bars: '<path d="M5 8h10v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2zM15 11h2.5a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5H15M8.5 12v5M11.5 12v5M5 8c-.9-2.6 1.6-4.5 3.7-3.3C9.6 3 12.9 3 13.5 5c1.4-.3 2.2 1.4 1.5 3"/>',
+  sights: '<path d="M3 20.5h18M5 17.5h14M12 3.5 4 8h16zM6.5 10.5v4.5M10 10.5v4.5M14 10.5v4.5M17.5 10.5v4.5"/>',
+  tours: '<path d="M3.5 7.5h17v3a2 2 0 0 0 0 3.5v2.5h-17V14a2 2 0 0 0 0-3.5zM14.5 7.5v1.6M14.5 11.2v1.6M14.5 14.9v1.6"/>',
+  shopping: '<path d="M5 8h14l-1.2 12.5H6.2zM9 10V6.5a3 3 0 0 1 6 0V10"/>',
+  hotels: '<path d="M3 19V6M3 15h18v4M21 15v-3.5A2.5 2.5 0 0 0 18.5 9H11v6"/><circle cx="7" cy="11.5" r="1.8"/>',
+  transport: '<rect x="6" y="3" width="12" height="13" rx="3"/><path d="M6 10h12M9 20l-1.5 2M15 20l1.5 2M9 16l-1 4M15 16l1 4"/>',
+  all: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
+  pin: '<path d="M12 21s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/>',
+};
+const ccGlyph = (k) => CC_GLYPH[k] || CC_GLYPH.pin;
+const ccIcon = (k) => `<span class="cci" style="--cc:${k === 'all' ? 'var(--ink)' : ccColor(k)}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">${ccGlyph(k)}</svg></span>`;
+// map marker: white icon on the category's colored circle; a saved spot gets a gold star on its shoulder
+const ccPinMemo = new Map();
+function ccPinURL(k, saved) {
+  const key = k + (saved ? '*' : ''); if (ccPinMemo.has(key)) return ccPinMemo.get(key);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><defs><filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="1.2" stdDeviation="1.2" flood-color="#000" flood-opacity=".38"/></filter></defs><circle filter="url(#s)" cx="20" cy="21" r="14.5" fill="${ccColor(k)}" stroke="#fff" stroke-width="2.5"/><g transform="translate(10.8 11.8) scale(.77)" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${ccGlyph(k)}</g>${saved ? '<path transform="translate(24.5 .5) scale(.43)" d="M17 2.5l4.3 8.9 9.7 1.4-7 6.8 1.7 9.7-8.7-4.6-8.7 4.6 1.7-9.7-7-6.8 9.7-1.4z" fill="#E8A100" stroke="#fff" stroke-width="4.6" stroke-linejoin="round"/>' : ''}</svg>`;
+  const u = 'data:image/svg+xml,' + encodeURIComponent(svg); ccPinMemo.set(key, u); return u;
+}
+const ccPinSize = (z) => z >= 15 ? 34 : z >= 13 ? 29 : 23; // markers shrink as the map zooms out
+// a place's category from Google types / a type label / a name
+function ccCatOfTypes(types, label) {
+  const one = (s) => {
+    s = ' ' + String(s || '').toLowerCase().replace(/_/g, ' ') + ' ';
+    if (/lodging|hotel|hostel|motel|ryokan|guest ?house|resort|\binn\b|check[- ]?in/.test(s)) return 'hotels';
+    if (/\b(cafe|café|coffee|tea house|bakery|kissa|patisserie)/.test(s)) return 'cafes';
+    if (/\b(restaurant|dinner|lunch|breakfast|brunch|food|meal|ramen|sushi|yakitori|izakaya|takoyaki|okonomiyaki|diner|steak|pizza|noodle|bistro|eatery|trattoria|tasting)/.test(s)) return 'restaurants';
+    if (/\b(bar|pub|wine|brewery|night club|cocktail|beer|sake)\b/.test(s)) return 'bars';
+    if (/\b(airport|station|train|shinkansen|transit|subway|bus|ferry|car rental|rent-a-car|flight|fly|land at)\b/.test(s)) return 'transport';
+    if (/\b(shopping|store|market|mall|shop|boutique|department|outlet)/.test(s)) return 'shopping';
+    if (/\b(tours?|travel agency|tour agency|experiences?|amusement|aquarium|zoo|spa|onsen|theater|theatre|karaoke|class|workshop|activity|tickets?|teamlab|cruise)\b/.test(s)) return 'tours';
+    if (/\b(tourist|museum|gallery|park|temple|shrine|church|landmark|monument|castle|attraction|viewpoint|garden|scenic|historical|sight|tower|palace|grove|ji)\b/.test(s)) return 'sights';
+    return '';
+  };
+  const ts = types || []; return one(ts[0]) || one(label) || ts.slice(1).map(one).find(Boolean) || '';
+}
+// ---- state per trip per guest (this device): scope 'nearby' (what Nearby searches) and 'trip' (My trip + Itinerary) ----
+let ccLive = false; // a guest view (not the builder preview): selections go into the address bar
+const ccKey = (cfg, sc) => `cc:${sc}:${syncKey(cfg)}`;
+const ccGet = (cfg, sc) => LS.get(ccKey(cfg, sc), null) || {};
+function ccSet(cfg, sc, patch, url = true) { const x = { ...ccGet(cfg, sc), ...patch }; LS.set(ccKey(cfg, sc), x); if (url) ccURL(x); return x; }
+const ccCities = (cfg) => { const ss = stopsOf(cfg).length > 1 ? hotelStops(cfg) : []; return ss.length > 1 ? ss.map((s, i) => ({ i, k: ccSlug(s.city || s.name), l: s.name || s.city })) : []; };
+const ccSlug = (s) => slug(s) || String(s || '').trim().toLowerCase(); // 京都 stays 京都
+const ccCityIdx = (cfg, k) => k ? ccCities(cfg).findIndex(c => c.k === ccSlug(k) || ccSlug(c.l) === ccSlug(k)) : -1;
+function ccURL(x) {
+  if (!ccLive) return; const q = new URLSearchParams(location.search);
+  if (x.city) q.set('city', x.city); else q.delete('city'); if (x.cat) q.set('cat', x.cat); else q.delete('cat');
+  const s = q.toString(); history.replaceState(history.state, '', location.pathname + (s ? '?' + s : '') + location.hash);
+}
+// ?city=kyoto&cat=restaurants → both scopes; true when the link asked for something
+function ccFromURL(cfg) {
+  const q = new URLSearchParams(location.search); const c = q.get('city'), k = ccCatId(q.get('cat')); const ci = ccCityIdx(cfg, c);
+  if (ci < 0 && !k) return false;
+  const p = {}; if (ci >= 0) p.city = ccCities(cfg)[ci].k; if (k) p.cat = k;
+  ccSet(cfg, 'trip', p, false); ccSet(cfg, 'nearby', k === 'transport' ? { city: p.city || ccGet(cfg, 'nearby').city || '' } : p, false);
+  return true;
+}
+// ---- the pieces ----
+// a dropdown: a button showing the choice, a list of options (with the category icons); fires a bubbling 'dd' event
+function ddHTML(o) {
+  const cur = o.opts.find(x => x.v === o.value);
+  return `<div class="dd ${o.cls || ''}" data-dd="${esc(o.key)}"><button type="button" class="dd-b${cur && cur.v ? ' set' : ''}" data-dd-btn aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(o.aria + ': ' + (cur ? cur.l : o.ph))}">${cur && cur.ic ? ccIcon(cur.ic) : ''}<span class="dd-l">${esc(cur ? cur.l : o.ph)}</span><i class="dd-car" aria-hidden="true"></i></button><div class="dd-pop" role="listbox" aria-label="${esc(o.aria)}" hidden>${o.opts.map(x => `<button type="button" role="option" class="dd-o" data-dd-v="${esc(x.v)}" aria-selected="${x.v === o.value}"${x.dim ? ' data-dim' : ''}>${x.ic ? ccIcon(x.ic) : ''}<span>${esc(x.l)}</span>${x.n != null ? `<small>${x.n}</small>` : ''}</button>`).join('')}</div></div>`;
+}
+const ddClose = (p) => { p.hidden = true; const b = p.previousElementSibling; if (b) b.setAttribute('aria-expanded', 'false'); };
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-dd-btn]'); const o = !b && e.target.closest('[data-dd-v]');
+  document.querySelectorAll('.dd-pop:not([hidden])').forEach(p => { if (!b || p !== b.nextElementSibling) ddClose(p); });
+  if (b) { const p = b.nextElementSibling; if (!p.hidden) { ddClose(p); return; }
+    p.hidden = false; b.setAttribute('aria-expanded', 'true'); p.classList.remove('r'); const r = p.getBoundingClientRect(); if (r.right > document.documentElement.clientWidth - 6) p.classList.add('r');
+    (p.querySelector('[aria-selected="true"]') || p.querySelector('button')).focus({ preventScroll: true }); return; }
+  if (o) { const dd = o.closest('[data-dd]'); dd.dispatchEvent(new CustomEvent('dd', { bubbles: true, detail: { key: dd.dataset.dd, v: o.dataset.ddV } })); }
+});
+document.addEventListener('keydown', (e) => {
+  const p = e.target.closest && e.target.closest('.dd'); if (!p) return; const pop = p.querySelector('.dd-pop'); if (!pop || pop.hidden) return;
+  if (e.key === 'Escape') { ddClose(pop); p.querySelector('[data-dd-btn]').focus(); e.preventDefault(); }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { const xs = [...pop.querySelectorAll('button')]; const i = xs.indexOf(document.activeElement); const n = xs[(i + (e.key === 'ArrowDown' ? 1 : -1) + xs.length) % xs.length]; if (n) n.focus(); e.preventDefault(); }
+});
+// the bar: drawn once (the search box keeps focus); its row, pills and sheet are refilled on every change
+const ccShell = (id, search) => `<div class="ccb" data-ccb="${esc(id)}"><div class="ccb-row" data-ccb-row></div><div class="ccb-row2">${search || ''}<span class="ccb-fs" data-ccb-f></span></div><div class="ccb-pills" data-ccb-pills></div><dialog class="cc-sheet" data-ccb-sheet aria-label="${esc(t('Filters'))}"></dialog></div>`;
+const ccFiltersBtn = (n, off) => `<button type="button" class="dd-b ccb-f${n ? ' set' : ''}" data-cc-filters aria-haspopup="dialog" aria-label="${esc(n ? t('Filters') + ' (' + n + ')' : t('Filters'))}"${off ? ' disabled' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4"/></svg><span class="dd-l">${esc(t('Filters'))}</span>${n ? `<b class="ccb-n">${n}</b>` : ''}</button>`;
+const ccPills = (ps, clear) => ps.map(([k, l]) => `<button type="button" class="pill" data-cc-pill="${esc(k)}" aria-label="${esc(t('Remove {s}', { s: l }))}"><span>${esc(l)}</span><i aria-hidden="true">×</i></button>`).join('') + (ps.length > 1 ? `<button type="button" class="link pill-clear" ${clear}>${esc(t('Clear all'))}</button>` : '');
+const ccSheet = (body, done, clear) => `<div class="cc-in"><div class="cc-top"><h2>${esc(t('Filters'))}</h2><button type="button" class="x" data-cc-close aria-label="${esc(t('Close'))}">×</button></div><div class="cc-body">${body}</div><div class="cc-foot"><button type="button" class="btn" ${clear}>${esc(t('Clear filters'))}</button><button type="button" class="btn primary" data-cc-close>${esc(done)}</button></div></div>`;
+const ccGroup = (label, inner) => `<div class="cc-g"><h3>${esc(label)}</h3><div class="chips">${inner}</div></div>`;
+const ccChip = (on, attrs, label) => `<button type="button" class="chip ${on ? 'on' : ''}" ${attrs} aria-pressed="${!!on}">${label}</button>`;
+function ccFill(box, { row, filt, pills, sheet }) {
+  const r = box.querySelector('[data-ccb-row]'), p = box.querySelector('[data-ccb-pills]'), s = box.querySelector('[data-ccb-sheet]'), fb = box.querySelector('[data-ccb-f]');
+  if (r) { const open = r.querySelector('.dd-pop:not([hidden])'); if (!open) r.innerHTML = row; r.hidden = !row; }
+  if (fb) fb.innerHTML = filt || '';
+  if (p) { p.innerHTML = pills; p.hidden = !pills; }
+  if (s) { const sc = s.querySelector('.cc-body'); const y = sc ? sc.scrollTop : 0; s.innerHTML = sheet; const sc2 = s.querySelector('.cc-body'); if (sc2) sc2.scrollTop = y; }
+}
+document.addEventListener('click', (e) => {
+  const f = e.target.closest('[data-cc-filters]');
+  if (f) { const d = f.closest('.ccb').querySelector('[data-ccb-sheet]'); if (d && !d.open) d.showModal(); return; }
+  const d = e.target.closest('dialog.cc-sheet'); if (!d) return;
+  if (e.target === d || e.target.closest('[data-cc-close]')) d.close();
+});
+// ---- a My trip / Itinerary item's city and category ----
+const PL_CAT_TYPE = { restaurants: 'food', cafes: 'food', bars: 'food', sights: 'activity', tours: 'activity', shopping: 'other', hotels: 'stay', transport: 'transport' };
+function ccCatOfPlan(x) {
+  if (x.cat === 'other') return ''; const c = ccCatId(x.cat); if (c) return c; if (x.hotel) return 'hotels';
+  const g = ccCatOfTypes([], x.name); const ty = x.type || 'other';
+  if (ty === 'stay') return 'hotels'; if (ty === 'transport') return 'transport';
+  if (ty === 'food') return g === 'cafes' || g === 'bars' ? g : 'restaurants';
+  if (ty === 'activity') return g === 'tours' ? 'tours' : 'sights';
+  return g;
+}
+const BK_CAT = { flight: 'transport', train: 'transport', car: 'transport', hotel: 'hotels', stay: 'hotels', food: 'restaurants', tour: 'tours' };
+const ccCatOfBooking = (x) => BK_CAT[x.kind] || ccCatOfTypes([], x.name);
+const ccCatOfEv = (x) => ccCatOfTypes([], x.title || x.name) || (x.kind === 'activity' ? 'sights' : '');
+function ccCityOfPlan(cfg, x) {
+  if (ccCities(cfg).length < 2) return 0;
+  if (x.lat != null) return nearestStop(cfg, x); return x.day ? stopOfDay(cfg, x.day) : -1;
+}
+function ccCityOfBooking(cfg, x) {
+  if (ccCities(cfg).length < 2) return 0;
+  if (LODGE.has(x.kind)) { const c = bkCity(cfg, x); return c < 0 ? -1 : c; }
+  const g = x.lat != null ? x : null; if (g && x.kind !== 'flight') return nearestStop(cfg, g);
+  return bkDay(x.start) ? stopOfDay(cfg, bkDay(x.start)) : -1;
+}
+// the trip scope's filter: { on, ok(item) } for items { city, cat, text, saved, booked, host }
+function ccTrip(cfg) {
+  const st = ccGet(cfg, 'trip'); const ci = ccCityIdx(cfg, st.city); const cat = ccCatId(st.cat); const q = String(st.q || '').trim(); const show = st.show || '';
+  return { st, ci, cat, q, show, on: ci >= 0 || !!cat || !!q || !!show, sub: !!cat || !!q || !!show,
+    ok: (it) => (ci < 0 || it.city === ci) && (!cat || it.cat === cat) && (!q || lfMatch(q, it.text)) && (!show || (show === 'saved' ? it.saved : show === 'booked' ? it.booked : show === 'host' ? it.host : true)) };
+}
+const ccBkItem = (cfg, x) => ({ city: ccCityOfBooking(cfg, x), cat: ccCatOfBooking(x), text: [x.name, x.address, x.confNo, t(ITIN_KINDS[x.kind] || '')].filter(Boolean).join(' '), saved: false, booked: true });
+// the trip Itinerary gets the bar when there is something to narrow down: several cities, or a long list
+const ccItinOn = (cfg) => isTrip(cfg) && (ccCities(cfg).length > 1 || (cfg.schedule || []).length + (cfg.tools.mytrip ? itinLoad(cfg).length + planLoad(cfg).length : 0) >= 8);
+const ccNoneHTML = () => `<p class="muted cc-none">${t('Nothing matches these filters.')} <button type="button" class="link" data-cct-clear>${t('Clear filters')}</button></p>`;
+
 // ================= Nearby from Google Places (when a key is set): list + pins + tappable map POIs → in-app card =================
 // One request per category / cuisine / dietary search, cached per event for 3 days. Open now, rating and price filter
 // the cached results in the browser, so changing them costs nothing. OpenStreetMap stays as the fallback.
-const GP_CATS = [['restaurant', 'Restaurants', ['restaurant'], 1500], ['coffee', 'Coffee', ['cafe', 'coffee_shop'], 1500], ['bar', 'Bars', ['bar', 'pub', 'wine_bar'], 1500],
-  ['todo', 'Things to do', ['tourist_attraction', 'museum', 'park', 'art_gallery'], 4000], ['hotel', 'Hotels', ['lodging'], 3000]];
+const GP_CATS = [['restaurants', 'Restaurants', ['restaurant'], 1500], ['cafes', 'Cafés', ['cafe', 'coffee_shop'], 1500], ['bars', 'Bars', ['bar', 'pub', 'wine_bar'], 1500],
+  ['sights', 'Sights', ['tourist_attraction', 'museum', 'art_gallery', 'historical_landmark'], 4000], ['tours', 'Things to do', null, 8000, 'tours and experiences'],
+  ['shopping', 'Shopping', ['shopping_mall', 'department_store', 'market', 'gift_shop'], 2500], ['hotels', 'Hotels', ['lodging'], 3000]];
+const GP_FOOD = new Set(['restaurants', 'cafes', 'bars']);
 const GP_CUISINES = ['american', 'barbecue', 'brazilian', 'breakfast', 'brunch', 'chinese', 'french', 'greek', 'hamburger', 'indian', 'indonesian', 'italian', 'japanese', 'korean', 'lebanese', 'mediterranean', 'mexican', 'middle_eastern', 'pizza', 'ramen', 'seafood', 'spanish', 'steak_house', 'sushi', 'thai', 'turkish', 'vegan', 'vegetarian', 'vietnamese'];
 const gpCuisineType = (c) => c === 'steak_house' ? 'steak_house' : c + '_restaurant';
 const GP_DIETS = [['vegetarian', 'Vegetarian', 'vegetarian'], ['vegan', 'Vegan', 'vegan'], ['gluten_free', 'Gluten-free', 'gluten free'], ['halal', 'Halal', 'halal'], ['kosher', 'Kosher', 'kosher']];
-const GP_LIST_MASK = 'places.id,places.displayName,places.location,places.rating,places.userRatingCount,places.priceLevel,places.primaryTypeDisplayName,places.currentOpeningHours.openNow,places.shortFormattedAddress';
+const GP_LIST_MASK = 'places.id,places.displayName,places.location,places.rating,places.userRatingCount,places.priceLevel,places.primaryType,places.primaryTypeDisplayName,places.currentOpeningHours.openNow,places.shortFormattedAddress';
 const GP_CARD_MASK = 'id,displayName,location,formattedAddress,rating,userRatingCount,priceLevel,primaryTypeDisplayName,regularOpeningHours.weekdayDescriptions,currentOpeningHours.openNow,websiteUri,nationalPhoneNumber,internationalPhoneNumber,googleMapsUri,photos,servesVegetarianFood,reservable,types,primaryType';
 let gpBroken = false; // set when the Places API refuses (quota, key): pages fall back to OpenStreetMap
 const gpRow = (x, v) => ({ id: x.id, name: (x.displayName && x.displayName.text) || '', lat: x.location && x.location.latitude, lon: x.location && x.location.longitude,
-  rating: x.rating || 0, count: x.userRatingCount || 0, price: G_PRICE[x.priceLevel] || '', type: (x.primaryTypeDisplayName && x.primaryTypeDisplayName.text) || '',
+  rating: x.rating || 0, count: x.userRatingCount || 0, price: G_PRICE[x.priceLevel] || '', type: (x.primaryTypeDisplayName && x.primaryTypeDisplayName.text) || '', ptype: x.primaryType || '',
   open: x.currentOpeningHours ? !!x.currentOpeningHours.openNow : null, addr: x.shortFormattedAddress || x.formattedAddress || '',
   d: x.location ? distM(v.lat, v.lon, x.location.latitude, x.location.longitude) : 0 });
-function gpQueryKey(f) { if (f.q) return `q:${f.q.toLowerCase()}:${f.diet}`; return f.diet ? `diet:${f.cat}:${f.diet}` : f.cuisine && f.cat === 'restaurant' ? `cuisine:${f.cuisine}` : `cat:${f.cat}`; }
+function gpQueryKey(f) { if (f.q) return `q:${f.q.toLowerCase()}:${f.diet}`; return f.diet ? `diet:${f.cat}:${f.diet}` : f.cuisine && f.cat === 'restaurants' ? `cuisine:${f.cuisine}` : `cat:${f.cat}`; }
 function gpSearch(cfg, f, center) {
-  const v = center || cfg.venue; const qk = gpQueryKey(f); const key = `gq1:${osmKey(v.lat, v.lon)}${v.r ? ':r' + v.r : ''}:${qk}`;
+  const v = center || cfg.venue; const qk = gpQueryKey(f); const key = `gq2:${osmKey(v.lat, v.lon)}${v.r ? ':r' + v.r : ''}:${qk}`;
   const c = LS.get(key); if (c && (Date.now() - c.t < G_TTL || navigator.onLine === false)) return Promise.resolve(c.d);
   if (memo.has(key)) return memo.get(key);
   const cat = GP_CATS.find(x => x[0] === f.cat) || GP_CATS[0]; const rad = v.r || cat[3]; const circle = { center: { latitude: v.lat, longitude: v.lon }, radius: rad };
@@ -3879,14 +4103,18 @@ function gpSearch(cfg, f, center) {
     const diet = f.diet ? GP_DIETS.find(x => x[0] === f.diet)[2] + ' ' : '';
     req = gFetch('https://places.googleapis.com/v1/places:searchText', { textQuery: diet + f.q, maxResultCount: 20, locationBias: { circle: { center: { latitude: v.lat, longitude: v.lon }, radius: v.r || 5000 } } }, GP_LIST_MASK);
   } else if (f.diet) {
-    const noun = { restaurant: 'restaurants', coffee: 'cafes', bar: 'bars', todo: 'restaurants', hotel: 'restaurants' }[f.cat] || 'restaurants';
+    const noun = { cafes: 'cafes', bars: 'bars' }[f.cat] || 'restaurants';
     req = gFetch('https://places.googleapis.com/v1/places:searchText', { textQuery: `${GP_DIETS.find(x => x[0] === f.diet)[2]} ${noun}`, maxResultCount: 20, locationBias: { circle } }, GP_LIST_MASK);
+  } else if (cat[4]) { // Things to do: tour companies and experiences are only found by text
+    req = gFetch('https://places.googleapis.com/v1/places:searchText', { textQuery: cat[4], maxResultCount: 20, locationBias: { circle } }, GP_LIST_MASK);
   } else {
-    const types = f.cuisine && f.cat === 'restaurant' ? [gpCuisineType(f.cuisine)] : cat[2];
+    const types = f.cuisine && f.cat === 'restaurants' ? [gpCuisineType(f.cuisine)] : cat[2];
     req = gFetch('https://places.googleapis.com/v1/places:searchNearby', { includedTypes: types, maxResultCount: 20, locationRestriction: { circle } }, GP_LIST_MASK);
   }
   const from = v.anchor || v; // an area search still measures distance from the venue (or the trip stop)
-  const p = req.then(j => { const d = (j.places || []).map(x => gpRow(x, from)).filter(x => x.lat != null && (f.q || distM(v.lat, v.lon, x.lat, x.lon) <= rad * (v.r ? 1.2 : 1.8))); LS.set(key, { t: Date.now(), d }); return d; })
+  const p = req.then(j => { let d = (j.places || []).map(x => gpRow(x, from)).filter(x => x.lat != null && (f.q || distM(v.lat, v.lon, x.lat, x.lon) <= rad * (v.r ? 1.2 : 1.8)));
+    if (f.q) { const near = d.filter(x => distM(v.lat, v.lon, x.lat, x.lon) <= Math.max(40000, (v.r || 0) * 1.5)); if (near.length) d = near; } // “ramen” with Kyoto chosen: Kyoto's ramen
+    LS.set(key, { t: Date.now(), d }); return d; })
     .catch(e => { if (c && !/places 4/.test(e.message)) return c.d; throw e; }); // offline: the last list
   memo.set(key, p); p.catch(() => memo.delete(key)); return p;
 }
@@ -3902,32 +4130,44 @@ function gpDetails(id, session) {
     LS.set(key, { t: Date.now(), d }); return d;
   });
 }
-function gpFilter(rows, f) { return rows.filter(r => (!f.open || r.open === true) && (!f.stars || r.rating >= f.stars) && (!f.price || r.price === f.price)); }
+function gpFilter(rows, f) {
+  const xs = rows.filter(r => (!f.open || r.open === true) && (!f.stars || r.rating >= f.stars) && (!f.price || r.price === f.price) && (!f.dist || r.d <= f.dist));
+  return f.sort === 'rating' ? lfSort(xs, 'rating') : xs;
+}
+// which icon a Google row gets: the chosen category, else what Google calls it (a text search mixes them)
+const gpRowCat = (f, r) => (!f.q && f.cat) || ccCatOfTypes([r.ptype], r.type) || '';
+const gpActive = (f) => (f.cuisine ? 1 : 0) + (f.diet ? 1 : 0) + (f.open ? 1 : 0) + (f.stars ? 1 : 0) + (f.price ? 1 : 0) + (f.dist ? 1 : 0) + (f.sort === 'rating' ? 1 : 0);
+function gpSheetHTML(cfg, f, n) {
+  const food = GP_FOOD.has(f.cat) || (!!f.q && !f.cat); const priced = f.cat !== 'sights' && f.cat !== 'tours';
+  const body = [
+    ccGroup(t('Sort by'), [['dist', t('Distance')], ['rating', t('Rating')]].map(([k, l]) => ccChip((f.sort || 'dist') === k, `data-gp-sort="${k}"`, esc(l))).join('')),
+    ccGroup(t('Hours'), ccChip(f.open, 'data-gp-open', esc(t('Open now')))),
+    ccGroup(t('Rating'), [4, 4.5].map(x => ccChip(f.stars === x, `data-gp-stars="${x}"`, `★ ${x.toFixed(1)}+`)).join('')),
+    priced ? ccGroup(t('Price'), ['$', '$$', '$$$', '$$$$'].map(pr => ccChip(f.price === pr, `data-gp-price="${pr}"`, esc(priceSym(cfg, pr)))).join('')) : '',
+    ccGroup(t('Distance'), DISTS.slice(1).map(([m, l]) => ccChip(f.dist === m, `data-gp-dist="${m}"`, esc(t(l)))).join('')),
+    food ? `<div class="cc-g cc-sels">${f.cat === 'restaurants' ? `<label class="field"><span>${t('Cuisine')}</span><select data-gp="cuisine" ${f.diet ? 'disabled' : ''}><option value="">${t('Any cuisine')}</option>${GP_CUISINES.map(c => `<option value="${c}" ${f.cuisine === c ? 'selected' : ''}>${esc(cuisineLabel(c))}</option>`).join('')}</select></label>` : ''}
+      <label class="field"><span>${t('Dietary')}</span><select data-gp="diet"><option value="">${t('Any dietary need')}</option>${GP_DIETS.map(([k, l]) => `<option value="${k}" ${f.diet === k ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></label></div>` : '',
+  ].join('');
+  return ccSheet(body, n == null ? t('Done') : n === 1 ? t('Show 1 place') : t('Show {n} places', { n }), 'data-gp-clear');
+}
+function gpPills(cfg, f) {
+  const ps = [];
+  if (f.cuisine) ps.push(['cuisine', cuisineLabel(f.cuisine)]); if (f.diet) ps.push(['diet', t((GP_DIETS.find(x => x[0] === f.diet) || [0, f.diet])[1])]);
+  if (f.open) ps.push(['open', t('Open now')]); if (f.stars) ps.push(['stars', `★ ${f.stars.toFixed(1)}+`]); if (f.price) ps.push(['price', priceSym(cfg, f.price)]);
+  if (f.dist) ps.push(['dist', t((DISTS.find(x => x[0] === f.dist) || [0, ''])[1])]); if (f.sort === 'rating') ps.push(['sort', t('Top rated')]);
+  return ccPills(ps, 'data-gp-clear');
+}
 function gpHTML(cfg, art, rows) {
   const v = cfg.venue; const f = art._gp; const list = gpFilter(rows || [], f);
-  const prices = ['$', '$$', '$$$', '$$$$']; const isFood = f.cat === 'restaurant' || f.cat === 'coffee' || f.cat === 'bar';
-  const active = (f.cuisine ? 1 : 0) + (f.diet ? 1 : 0) + (f.open ? 1 : 0) + (f.stars ? 1 : 0) + (f.price ? 1 : 0);
-  const none = !f.cat && !f.q;
-  return `<div class="pf gp" role="group" aria-label="${t('Filters')}">
-    <div class="chips pf-cats">${GP_CATS.map(([k, l]) => `<button type="button" class="chip ${f.cat === k && !f.q ? 'on' : ''}" data-gp-cat="${k}" aria-pressed="${f.cat === k && !f.q}">${t(l)}</button>`).join('')}</div>
-    <div class="chips pf-diet"${none ? ' hidden' : ''}>
-      <button type="button" class="chip ${f.open ? 'on' : ''}" data-gp-open aria-pressed="${f.open}">${t('Open now')}</button>
-      ${[4, 4.5].map(n => `<button type="button" class="chip ${f.stars === n ? 'on' : ''}" data-gp-stars="${n}" aria-pressed="${f.stars === n}">★ ${n.toFixed(1)}+</button>`).join('')}
-      ${f.cat !== 'todo' ? prices.map(pr => `<button type="button" class="chip ${f.price === pr ? 'on' : ''}" data-gp-price="${pr}" aria-pressed="${f.price === pr}">${esc(priceSym(cfg, pr))}</button>`).join('') : ''}
-    </div>
-    ${isFood ? `<div class="pf-row">
-      ${f.cat === 'restaurant' ? `<label class="pf-sel"><span class="sr">${t('Cuisine')}</span><select data-gp="cuisine" ${f.diet ? 'disabled' : ''}><option value="">${t('Any cuisine')}</option>${GP_CUISINES.map(c => `<option value="${c}" ${f.cuisine === c ? 'selected' : ''}>${esc(cuisineLabel(c))}</option>`).join('')}</select></label>` : ''}
-      <label class="pf-sel"><span class="sr">${t('Dietary')}</span><select data-gp="diet"><option value="">${t('Any dietary need')}</option>${GP_DIETS.map(([k, l]) => `<option value="${k}" ${f.diet === k ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></label>
-    </div>` : ''}
-  </div>
-  ${none ? `<p class="muted gp-none">${t('Pick a category or search for a place.')}</p>` : rows == null ? `<div class="skel" role="status"><span></span><span></span><em>${t('Loading places…')}</em></div>` : `
+  const active = gpActive(f); const none = !f.cat && !f.q;
+  return `${none ? `<p class="muted gp-none">${t('Pick a category or search for a place.')}</p>` : rows == null ? `<div class="skel" role="status"><span></span><span></span><em>${t('Loading places…')}</em></div>` : `
   ${f.q ? `<p class="gp-q"><span>${esc(t('Results for “{q}”', { q: f.q }))}</span> <button type="button" class="link" data-gp-q-clear>${t('Clear search')}</button></p>` : ''}
   <p class="pf-count muted small" role="status" aria-live="polite">${esc(list.length === 1 ? t('1 place') : t('{n} places', { n: list.length }))}${active ? ` · <button type="button" class="link" data-gp-clear>${t('Clear filters')}</button>` : ''}</p>
-  ${list.length ? `<ul class="plist rich places">${list.map(r => `<li class="has-star"><button type="button" class="place-row" data-gplace="${esc(r.id)}"><div><b>${esc(r.name)}</b>${r.rating ? `<span class="rt">${gRatingHTML(r)}</span>` : ''}<span>${esc([r.type, priceSym(cfg, r.price)].filter(Boolean).join(' · '))}</span>${r.open != null ? `<span class="tags">${r.open ? `<em class="open">${t('Open now')}</em>` : `<em class="closed">${t('Closed now')}</em>`}</span>` : ''}</div><span class="dist">${esc(fmtDist(r.d, v.cc))}<small>${r.d < 2500 ? walkTxt(r.d) : art._fromHotel ? t('from your hotel') : t('from the venue')}</small></span></button>${starBtnHTML(cfg, r.id, r.name)}</li>`).join('')}</ul>`
+  ${list.length ? `<ul class="plist rich places">${list.map(r => `<li class="has-star"><button type="button" class="place-row" data-gplace="${esc(r.id)}">${ccIcon(gpRowCat(f, r))}<div><b>${esc(r.name)}</b>${r.rating ? `<span class="rt">${gRatingHTML(r)}</span>` : ''}<span>${esc([r.type, priceSym(cfg, r.price)].filter(Boolean).join(' · '))}</span>${r.open != null ? `<span class="tags">${r.open ? `<em class="open">${t('Open now')}</em>` : `<em class="closed">${t('Closed now')}</em>`}</span>` : ''}</div><span class="dist">${esc(fmtDist(r.d, v.cc))}<small>${r.d < 2500 ? walkTxt(r.d) : art._fromHotel ? t('from your hotel') : t('from the venue')}</small></span></button>${starBtnHTML(cfg, r.id, r.name)}</li>`).join('')}</ul>`
     : navigator.onLine === false ? `<p class="muted off-msg"><b>${t('Offline')}</b> · ${t('Searching places needs a connection. Your saved spots are in My trip.')}</p>` : `<p class="muted">${t('Nothing matches these filters.')} ${active ? `<button type="button" class="link" data-gp-clear>${t('Clear filters')}</button>` : ''}</p>`}
   <p class="muted small g-attr">${t('Places and ratings from Google')}</p>`}`;
 }
-const gPlanPlace = (d) => ({ src: 'g', ref: d.id, name: d.name, lat: d.lat, lon: d.lon, rating: d.rating, count: d.count, addr: d.addr, hours: d.hours, type: d.ptype ? placeType([d.ptype], '') : placeType(d.types, '') });
+const gPlanPlace = (d) => ({ src: 'g', ref: d.id, name: d.name, lat: d.lat, lon: d.lon, rating: d.rating, count: d.count, addr: d.addr, hours: d.hours, type: d.ptype ? placeType([d.ptype], '') : placeType(d.types, ''), cat: ccCatOfTypes([d.ptype, ...(d.types || [])], d.type) });
 function gpCardHTML(cfg, d, art) {
   const v = cfg.venue; const tr = tripDates(cfg); const o = art && art._fromHotel && art._hotelPt ? art._hotelPt : v; const dist = d.lat != null ? distM(o.lat, o.lon, d.lat, d.lon) : 0;
   const dirURL = `https://www.google.com/maps/dir/?api=1&origin=${o.lat},${o.lon}&destination=${enc(d.name)}&destination_place_id=${enc(d.id)}&travelmode=${dist < 2500 ? 'walking' : 'transit'}`;
@@ -3955,25 +4195,44 @@ function openPlaceDialog(cfg, html, onMap, place, art) {
 // returns false when Google can't be used (no key, refused) so the caller wires the OpenStreetMap list instead
 function wireGPlaces(cfg, art, mapCtl, onFail) {
   const s = art.querySelector('[data-slot="food"]'); if (!s || !GKEY || gpBroken || !cfg.venue) return false;
-  art._gp = art._gp || { cat: 'restaurant', cuisine: '', diet: '', open: false, stars: 0, price: '', q: '' };
+  const bar = art.querySelector('[data-slot="near-cc"]') || s;
+  const st0 = ccGet(cfg, 'nearby');
+  art._gp = art._gp || { cat: 'cat' in st0 ? ccCatId(st0.cat) : 'restaurants', cuisine: '', diet: '', open: false, stars: 0, price: '', dist: 0, sort: 'dist', q: '' };
+  if (art._gp.cat === 'transport') art._gp.cat = 'restaurants';
   let rows = null, seq = 0, started = false;
-  const ss = stopsOf(cfg).length > 1 ? hotelStops(cfg) : [];
-  s.innerHTML = `${ss.length > 1 ? `<div class="chips stop-chips" role="group" aria-label="${t('Route')}">${ss.map((x, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-gp-stop="${i}" aria-pressed="${i === 0}">${esc(x.name)}</button>`).join('')}</div>` : ''}<form class="gp-search" role="search" onsubmit="return false"><input type="search" data-gp-q placeholder="${t('Search places, e.g. ramen')}" aria-label="${t('Search places')}" autocomplete="off" enterkeyhint="search"><button type="submit" class="btn sm" data-gp-go>${t('Search')}</button></form><div data-gp-body></div>`;
-  const bodyEl = s.querySelector('[data-gp-body]'); const qIn = s.querySelector('[data-gp-q]');
+  const ss = stopsOf(cfg).length > 1 ? hotelStops(cfg) : []; const cities = ccCities(cfg);
+  if (ss.length > 1 && !art._center && art._stop > 0 && ss[art._stop]) { art._center = ss[art._stop]; if (mapCtl) mapCtl.center(ss[art._stop].lat, ss[art._stop].lon, 13); }
+  const cityName = () => ss.length > 1 && ss[art._stop] ? ss[art._stop].name || ss[art._stop].city : '';
+  const ph = () => cityName() ? t('Search in {c}', { c: cityName() }) : t('Search places, e.g. ramen');
+  bar.insertAdjacentHTML(bar === s ? 'afterbegin' : 'beforeend', ccShell('near', `<form class="gp-search ccb-q" role="search" onsubmit="return false"><input type="search" data-gp-q placeholder="${esc(ph())}" aria-label="${t('Search places')}" autocomplete="off" enterkeyhint="search"><button type="submit" class="btn sm" data-gp-go>${t('Search')}</button></form>`));
+  if (bar === s) s.insertAdjacentHTML('beforeend', '<div data-gp-body></div>'); else s.innerHTML = '<div data-gp-body></div>';
+  const box = bar.querySelector('[data-ccb="near"]');
+  const bodyEl = s.querySelector('[data-gp-body]'); const qIn = box.querySelector('[data-gp-q]');
   const v0 = cfg.venue;
+  const pinsOf = () => gpFilter(rows || [], art._gp).map(r => ({ lat: r.lat, lon: r.lon, title: r.name, ic: gpRowCat(art._gp, r), onClick: () => art._openGPlace(r.id) }));
   const pickPlace = (id, tok) => gpDetails(id, tok).then(pl => {
-    if (mapCtl && pl.lat != null) { mapCtl.setPins(gpFilter(rows || [], art._gp).map(r => ({ lat: r.lat, lon: r.lon, title: r.name, onClick: () => art._openGPlace(r.id) })).concat([{ lat: pl.lat, lon: pl.lon, title: pl.name, z: 900, onClick: () => art._openGPlace(pl.id) }])); mapCtl.focus(pl); }
+    if (mapCtl && pl.lat != null) { mapCtl.setPins(pinsOf().concat([{ lat: pl.lat, lon: pl.lon, title: pl.name, z: 900, ic: ccCatOfTypes([pl.ptype, ...pl.types], pl.type), onClick: () => art._openGPlace(pl.id) }])); mapCtl.focus(pl); }
     openPlaceDialog(cfg, gpCardHTML(cfg, pl, art), () => mapCtl && mapCtl.focus(pl), gPlanPlace(pl), art);
   }).catch(() => toast(t('Couldn’t load this place right now.')));
   const textSearch = (q) => { if (!q) return; art._gp.q = q.slice(0, 80); art._gp.cuisine = ''; qIn.blur(); load(); };
-  placeAutocomplete(qIn, { bias: () => cfg.venue, onPick: pickPlace, onText: textSearch });
-  const pins = () => { if (mapCtl) mapCtl.setPins(gpFilter(rows || [], art._gp).map(r => ({ lat: r.lat, lon: r.lon, title: r.name, onClick: () => art._openGPlace(r.id) }))); };
-  const render = () => { bodyEl.innerHTML = gpHTML(cfg, art, rows); pins(); };
+  placeAutocomplete(qIn, { bias: () => art._center || cfg.venue, onPick: pickPlace, onText: textSearch });
+  const pins = () => { if (mapCtl) mapCtl.setPins(pinsOf()); };
+  const save = (url) => { const c = cities[art._stop]; ccSet(cfg, 'nearby', { city: c ? c.k : '', cat: art._gp.cat }, !!url); }; // the address bar follows the guest's own picks only
+  const renderBar = () => {
+    const f = art._gp; const n = rows && (f.cat || f.q) ? gpFilter(rows, f).length : null;
+    qIn.placeholder = ph();
+    ccFill(box, {
+      row: (ss.length > 1 ? ddHTML({ key: 'city', aria: t('City'), value: String(art._stop || 0), ph: t('City'), cls: 'dd-city', opts: ss.map((x, i) => ({ v: String(i), l: x.name || x.city })) }) : '')
+        + ddHTML({ key: 'cat', aria: t('Category'), value: f.q ? '' : f.cat, ph: t('Category'), cls: 'dd-cat', opts: CC_NEAR.map(([k, l]) => ({ v: k, l: t(l), ic: k })) }),
+      filt: ccFiltersBtn(gpActive(f), !f.cat && !f.q),
+      pills: gpPills(cfg, f), sheet: gpSheetHTML(cfg, f, n) });
+  };
+  const render = () => { bodyEl.innerHTML = gpHTML(cfg, art, rows); renderBar(); try { pins(); } catch (e) { console.warn(e); } }; // a marker problem never empties the list
   const load = () => {
-    const my = ++seq; if (!art._gp.cat && !art._gp.q) { rows = []; render(); return; } // no category picked: just the map and the search box
+    const my = ++seq; save(false); if (!art._gp.cat && !art._gp.q) { rows = []; render(); return; } // no category picked: just the map and the search box
     rows = null; render();
     gpSearch(cfg, art._gp, art._center).then(d => { if (my !== seq) return; rows = d; if (art._useSrc) art._useSrc('google'); render(); })
-      .catch(e => { if (my !== seq) return; if (/places 4(03|29)|places 400/.test(e.message)) { gpBroken = true; onFail && onFail(); return; } rows = []; render(); });
+      .catch(e => { if (my !== seq) return; if (/places 4(03|29)|places 400/.test(e.message)) { gpBroken = true; box.remove(); onFail && onFail(); return; } rows = []; render(); });
   };
   art._openGPlace = (id) => {
     const dlg = openPlaceDialog(cfg, `<div class="pc"><button type="button" class="x" data-pc-close aria-label="${t('Close')}">×</button><div class="skel" role="status"><span></span><span></span><em>${t('Loading…')}</em></div></div>`);
@@ -3986,24 +4245,36 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
   }
   const go = () => { if (started) return; const panel = art.querySelector('[data-panel="nearby"]'); if (panel && panel.hidden) return; started = true; load(); };
   art._gpReload = () => { if (started) load(); else render(); };
+  // a city: its hotel (or the city itself) becomes where searches start and distances are measured from
+  art._nearCity = (i) => {
+    if (!ss[i]) return; const st = ss[i]; art._stop = i; const h = art._hotelAt ? art._hotelAt(i) : null; art._center = h || st; art._fromHotel = !!h; art._hotelPt = h;
+    if (mapCtl) mapCtl.center(art._center.lat, art._center.lon, h ? 15 : 13); art._hotelUI && art._hotelUI(); started = true; load(); save(true);
+  };
   (art._showFns = art._showFns || []).push((k) => { if (k === 'nearby') go(); });
-  bodyEl.innerHTML = gpHTML(cfg, art, null);
-  s.addEventListener('click', (e) => {
+  bodyEl.innerHTML = gpHTML(cfg, art, null); renderBar();
+  const onBar = (e) => {
     const b = e.target.closest('button'); if (!b) return; const f = art._gp; const d = b.dataset;
     if (d.gplace) { art._openGPlace(d.gplace); return; }
-    if (d.gpSave) { const r = (rows || []).find(x => x.id === d.gpSave); if (r) toggleSaved(cfg, art, { src: 'g', ref: r.id, name: r.name, lat: r.lat, lon: r.lon, rating: r.rating, count: r.count, addr: r.addr, hours: '', type: placeType([], r.type.toLowerCase()) }); render(); return; }
-    if (d.gpStop != null) { const st = ss[+d.gpStop]; art._stop = +d.gpStop; const h = art._hotelAt ? art._hotelAt(art._stop) : null; art._center = h || st; art._fromHotel = !!h; art._hotelPt = h; $$('[data-gp-stop]', s).forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); }); if (mapCtl) mapCtl.center(art._center.lat, art._center.lon, h ? 15 : 13); art._hotelUI && art._hotelUI(); return load(); }
+    if (d.gpSave) { const r = (rows || []).find(x => x.id === d.gpSave); if (r) toggleSaved(cfg, art, { src: 'g', ref: r.id, name: r.name, lat: r.lat, lon: r.lon, rating: r.rating, count: r.count, addr: r.addr, hours: '', type: placeType([r.ptype], r.type.toLowerCase()), cat: gpRowCat(f, r) }); render(); return; }
     if ('gpGo' in d) { textSearch(qIn.value.trim()); return; }
     if ('gpQClear' in d) { f.q = ''; qIn.value = ''; return load(); }
-    if (d.gpCat) { f.cat = f.cat === d.gpCat && !f.q ? '' : d.gpCat; f.cuisine = ''; f.price = ''; f.q = ''; qIn.value = ''; return load(); }
-    if (d.gpOpen != null) f.open = !f.open;
+    if (d.ccPill) { const k = d.ccPill; const refetch = k === 'cuisine' || k === 'diet'; if (k === 'sort') f.sort = 'dist'; else f[k] = k === 'open' ? false : k === 'stars' || k === 'dist' ? 0 : ''; if (refetch) return load(); }
+    else if (d.gpOpen != null) f.open = !f.open;
     else if (d.gpStars) f.stars = f.stars === +d.gpStars ? 0 : +d.gpStars;
     else if (d.gpPrice) f.price = f.price === d.gpPrice ? '' : d.gpPrice;
-    else if (d.gpClear != null) { const refetch = f.cuisine || f.diet; Object.assign(f, { cuisine: '', diet: '', open: false, stars: 0, price: '' }); if (refetch) return load(); }
+    else if (d.gpDist) f.dist = f.dist === +d.gpDist ? 0 : +d.gpDist;
+    else if (d.gpSort) f.sort = d.gpSort;
+    else if (d.gpClear != null) { const refetch = f.cuisine || f.diet; Object.assign(f, { cuisine: '', diet: '', open: false, stars: 0, price: '', dist: 0, sort: 'dist' }); if (refetch) return load(); }
     else return;
     render();
+  };
+  s.addEventListener('click', onBar); if (bar !== s) bar.addEventListener('click', onBar);
+  bar.addEventListener('dd', (e) => {
+    const { key, v } = e.detail; const f = art._gp;
+    if (key === 'city') { art._nearCity(+v); return; }
+    if (key === 'cat') { f.cat = f.cat === v && !f.q ? '' : v; f.cuisine = ''; f.price = ''; f.q = ''; qIn.value = ''; if (!GP_FOOD.has(f.cat)) f.diet = ''; load(); save(true); }
   });
-  s.addEventListener('change', debounce((e) => { const i = e.target; if (!i.dataset.gp) return; art._gp[i.dataset.gp] = i.value; if (i.dataset.gp === 'diet' && i.value) art._gp.cuisine = ''; load(); }, 250));
+  bar.addEventListener('change', debounce((e) => { const i = e.target; if (!i.dataset.gp) return; art._gp[i.dataset.gp] = i.value; if (i.dataset.gp === 'diet' && i.value) art._gp.cuisine = ''; load(); }, 250));
   go();
   return true;
 }
@@ -4060,43 +4331,90 @@ function placeType(types, cat) {
   if (/tourist|museum|park|gallery|attraction|zoo|aquarium|amusement|sight|viewpoint|stadium|theater|night_club/.test(ts)) return 'activity';
   return 'other';
 }
-// one list: places the guest added + bookings they entered
+// one list: places the guest added + bookings they entered (each with its city and category for the City × Category bar)
 function itineraryEntries(cfg) {
-  const ps = planLoad(cfg).map((x, i) => ({ ...x, ent: 'plan', type: x.type || 'other', order: i }));
-  const bs = itinLoad(cfg).map((x, i) => ({ ent: 'book', id: 'bk' + i, bi: i, name: x.name || t(ITIN_KINDS[x.kind] || 'Booking'), type: itinType(x), day: (x.start || '').slice(0, 10), time: (x.start || '').slice(11, 16), addr: x.address || '', conf: x.confNo || '', booked: true, kindLabel: t(ITIN_KINDS[x.kind] || ''), order: 1000 + i }));
+  const ps = planLoad(cfg).map((x, i) => ({ ...x, ent: 'plan', type: x.type || 'other', order: i, cc: ccCatOfPlan(x), city: ccCityOfPlan(cfg, x) }));
+  const bs = itinLoad(cfg).map((x, i) => ({ ent: 'book', id: 'bk' + i, bi: i, name: x.name || t(ITIN_KINDS[x.kind] || 'Booking'), type: itinType(x), day: (x.start || '').slice(0, 10), time: (x.start || '').slice(11, 16), addr: x.address || '', conf: x.confNo || '', booked: true, kindLabel: t(ITIN_KINDS[x.kind] || ''), order: 1000 + i, cc: ccCatOfBooking(x), city: ccCityOfBooking(cfg, x) }));
   return ps.concat(bs);
 }
+const ccItem = (x) => ({ city: x.city, cat: x.cc, text: [x.name, x.addr, x.note, x.conf, x.kindLabel].filter(Boolean).join(' '), saved: x.ent === 'plan', booked: !!x.booked });
 function planHTML(cfg) {
   const all = itineraryEntries(cfg);
   if (!all.length) return `<p class="muted">${t('Add places from the Nearby tab.')}</p>`;
-  const k = eventKey(cfg).slice(6); const view = LS.get('planview:' + k) || 'day'; const on = LS.get('plantypes:' + k) || [];
-  const counts = {}; all.forEach(x => { counts[x.type] = (counts[x.type] || 0) + 1; });
-  const xs = on.length ? all.filter(x => on.includes(x.type)) : all;
+  const F = ccTrip(cfg); const view = F.st.group || LS.get('planview:' + syncKey(cfg)) || 'day';
+  const xs = all.filter(x => F.ok(ccItem(x)));
   const days = planDays(cfg); const byTime = (a, b) => (a.time || '').localeCompare(b.time || '') || a.order - b.order;
-  const tlabel = (ty) => t((PTYPES.find(p => p[0] === ty) || PTYPES[5])[1]);
-  const row = (x) => x.ent === 'book' ? `<li class="plan-row bk"><div class="plan-main"><b>${esc(x.name)}</b><span class="muted small">${esc([x.kindLabel, x.day ? dayLabel(cfg, x.day) : '', x.time ? fmtTime(x.time) : '', x.conf ? t('Conf. {n}', { n: x.conf }) : ''].filter(Boolean).join(' · '))}</span></div><div class="plan-ctl"><button type="button" class="link" data-bk-edit="${x.bi}">${t('Edit booking')}</button></div></li>`
+  const row = (x) => x.ent === 'book' ? `<li class="plan-row bk"><div class="plan-main"><b class="plan-t">${ccIcon(x.cc)}<span>${esc(x.name)}</span></b><span class="muted small">${esc([x.kindLabel, x.day ? dayLabel(cfg, x.day) : '', x.time ? fmtTime(x.time) : '', x.conf ? t('Conf. {n}', { n: x.conf }) : ''].filter(Boolean).join(' · '))}</span></div><div class="plan-ctl"><button type="button" class="link" data-bk-edit="${x.bi}">${t('Edit booking')}</button></div></li>`
     : `<li class="plan-row ${x.booked ? 'booked' : ''}" data-plan-id="${esc(x.id)}">
-      <div class="plan-main"><button type="button" class="link plan-name" data-plan-card="${esc(x.id)}">${esc(x.name)}</button>
+      <div class="plan-main"><span class="plan-t">${ccIcon(x.cc)}<button type="button" class="link plan-name" data-plan-card="${esc(x.id)}">${esc(x.name)}</button></span>
         <span class="muted small">${esc([view === 'type' && x.day ? dayLabel(cfg, x.day) : '', x.time ? fmtTime(x.time) : '', x.addr].filter(Boolean).join(' · '))}</span>
         ${x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}${x.note ? `<span class="small">${esc(x.note)}</span>` : ''}
         <div class="plan-book"><label class="chk"><input type="checkbox" data-plan-booked ${x.booked ? 'checked' : ''}> ${t('Booked')}</label>${x.booked ? `<input class="plan-conf" data-plan-conf value="${esc(x.conf || '')}" placeholder="${t('Confirmation #')}" aria-label="${t('Confirmation #')}">` : ''}</div>${detBlockHTML(x, 'pl:' + x.id, true)}</div>
       <div class="plan-ctl"><select data-plan-move aria-label="${t('Move to day')}"><option value="">${t('Saved for later')}</option>${days.map(d => `<option value="${d}" ${x.day === d ? 'selected' : ''}>${esc(dayLabel(cfg, d))}</option>`).join('')}</select>
-        <select data-plan-type aria-label="${t('Type')}">${PTYPES.map(([v, l]) => `<option value="${v}" ${x.type === v ? 'selected' : ''}>${t(l)}</option>`).join('')}</select>
+        <select data-plan-type aria-label="${t('Category')}">${CC_CATS.map(([v, l]) => `<option value="${v}" ${x.cc === v ? 'selected' : ''}>${t(l)}</option>`).join('')}<option value="" ${x.cc ? '' : 'selected'}>${t('Other')}</option></select>
         <span class="mv"><button type="button" data-plan-mv="-1" aria-label="${t('Move up')}">↑</button><button type="button" data-plan-mv="1" aria-label="${t('Move down')}">↓</button></span><button type="button" class="link" data-plan-del>${t('Remove')}</button></div></li>`;
   let groups;
   if (view === 'type') {
-    groups = PTYPES.map(([ty]) => [tlabel(ty), xs.filter(x => x.type === ty).sort((a, b) => (a.day || '9999').localeCompare(b.day || '9999') || byTime(a, b))]).filter(([, g]) => g.length);
+    groups = CC_CATS.map(([k]) => k).concat(['']).map(k => [k ? ccLabel(k) : t('Other'), xs.filter(x => x.cc === k).sort((a, b) => (a.day || '9999').localeCompare(b.day || '9999') || byTime(a, b))]).filter(([, g]) => g.length);
   } else {
     const dated = [...new Set(xs.filter(x => x.day).map(x => x.day))].sort();
     groups = dated.map(d => [dayLabel(cfg, d), xs.filter(x => x.day === d).sort(byTime)]).concat([[t('Saved for later'), xs.filter(x => !x.day).sort(byTime)]]).filter(([, g]) => g.length);
   }
-  return `<div class="plan-tools"><div class="seg2" role="group" aria-label="${t('View')}"><button type="button" data-plan-view="day" class="${view === 'day' ? 'on' : ''}" aria-pressed="${view === 'day'}">${t('By day')}</button><button type="button" data-plan-view="type" class="${view === 'type' ? 'on' : ''}" aria-pressed="${view === 'type'}">${t('By type')}</button></div>
-      <div class="chips plan-chips">${PTYPES.filter(([ty]) => counts[ty]).map(([ty, l]) => `<button type="button" class="chip ${on.includes(ty) ? 'on' : ''}" data-plan-chip="${ty}" aria-pressed="${on.includes(ty)}">${t(l)} <span>${counts[ty]}</span></button>`).join('')}</div></div>
-    ${groups.length ? groups.map(([h, g]) => `<h3 class="sub-h">${esc(h)}</h3><ul class="plan-list">${g.map(row).join('')}</ul>`).join('') : `<p class="muted">${t('Nothing of these types yet.')}</p>`}`;
+  return groups.length ? groups.map(([h, g]) => `<h3 class="sub-h">${esc(h)}</h3><ul class="plan-list">${g.map(row).join('')}</ul>`).join('') : ccNoneHTML();
+}
+// My trip + the trip Itinerary: one City × Category selection for both (saved spots, bookings, plan, itinerary days)
+function wireTripCC(cfg, art, opts) {
+  const fit = (d) => isTrip(cfg) && d ? fitTripDate(cfg.start, cfg.end, d, false) : d || '';
+  const counts = (F) => {
+    const xs = itineraryEntries(cfg).map(ccItem).concat((cfg.off.schedule ? [] : cfg.schedule || []).filter(x => x.title).map(x => ({ city: x.date ? stopOfDay(cfg, fit(x.date)) : -1, cat: ccCatOfEv(x) })));
+    const n = {}; xs.forEach(x => { if (F.ci < 0 || x.city === F.ci) n[x.cat] = (n[x.cat] || 0) + 1; }); return n;
+  };
+  const SHOW = [['', 'Everything'], ['saved', 'Saved only'], ['booked', 'Booked'], ['host', 'Event only']];
+  const fill = (where, el) => {
+    const F = ccTrip(cfg); const cities = ccCities(cfg); const n = counts(F);
+    if (!el.querySelector('.ccb')) el.innerHTML = ccShell(where, `<div class="gp-search ccb-q"><input type="search" data-cct-q placeholder="${esc(t('Search your trip'))}" aria-label="${esc(t('Search your trip'))}" autocomplete="off" enterkeyhint="search"></div>`);
+    const box = el.querySelector('.ccb'); const inp = box.querySelector('[data-cct-q]'); if (inp && document.activeElement !== inp) inp.value = F.st.q || '';
+    const shows = SHOW.filter(([k]) => where === 'itin' || k !== 'host');
+    const body = ccGroup(t('Show'), shows.map(([k, l]) => ccChip(F.show === k, `data-cct-show="${k}"`, esc(t(l)))).join(''))
+      + (where === 'trip' ? ccGroup(t('Group by'), [['day', 'By day'], ['type', 'By type']].map(([k, l]) => ccChip((F.st.group || LS.get('planview:' + syncKey(cfg)) || 'day') === k, `data-cct-group="${k}"`, esc(t(l)))).join('')) : '');
+    const sl = (SHOW.find(x => x[0] === F.show) || [0, ''])[1];
+    ccFill(box, {
+      row: (cities.length ? ddHTML({ key: 'city', aria: t('City'), value: F.ci >= 0 ? String(F.ci) : '', ph: t('All cities'), cls: 'dd-city', opts: [{ v: '', l: t('All cities') }].concat(cities.map(c => ({ v: String(c.i), l: c.l }))) }) : '')
+        + ddHTML({ key: 'cat', aria: t('Category'), value: F.cat, ph: t('All categories'), cls: 'dd-cat', opts: [{ v: '', l: t('All categories'), ic: 'all' }].concat(CC_CATS.filter(([k]) => n[k] || F.cat === k).map(([k, l]) => ({ v: k, l: t(l), ic: k, n: n[k] || 0 }))) }),
+      filt: ccFiltersBtn(F.show ? 1 : 0),
+      pills: F.show ? ccPills([['show', t(sl)]], '') : '', sheet: ccSheet(body, t('Done'), 'data-cct-sub') });
+  };
+  const bars = () => { const a = art.querySelector('[data-slot="trip-cc"]'), b = art.querySelector('[data-slot="itin-cc"]'); if (a) fill('trip', a); if (b) fill('itin', b); };
+  const refresh = () => {
+    const pb = art.querySelector('#sec-plan .sec-b'); if (pb) pb.innerHTML = planHTML(cfg);
+    const sp = art.querySelector('#sec-spots .sec-b'); if (sp) sp.innerHTML = spotsHTML(cfg);
+    const ul = art.querySelector('#sec-itinerary ul.bookings');
+    if (ul) { const F = ccTrip(cfg); let any = false; ul.querySelectorAll('li[data-cc-cat]').forEach(li => { const ok = F.ok({ city: +li.dataset.ccCity, cat: li.dataset.ccCat, text: li.dataset.ccText, saved: false, booked: true }); li.hidden = !ok; any = any || ok; }); const none = ul.nextElementSibling; if (none && none.classList.contains('cc-none')) none.hidden = any; }
+    const sb = art.querySelector('[data-slot="sched-body"]'); if (sb) { if (opts.onpage) { art._renderSchedule && art._renderSchedule(); return; } sb.innerHTML = scheduleHTML(cfg); }
+    bars();
+  };
+  art._ccBars = bars; bars();
+  const mine = (el) => el.closest && el.closest('[data-ccb="trip"],[data-ccb="itin"]');
+  art.addEventListener('dd', (e) => {
+    if (!mine(e.target)) return; const { key, v } = e.detail; const cities = ccCities(cfg);
+    if (key === 'city') ccSet(cfg, 'trip', { city: v === '' ? '' : (cities[+v] || {}).k || '' });
+    if (key === 'cat') ccSet(cfg, 'trip', { cat: v });
+    refresh();
+  });
+  art.addEventListener('input', debounce((e) => { if (!e.target.matches || !e.target.matches('[data-cct-q]')) return; ccSet(cfg, 'trip', { q: e.target.value.slice(0, 60) }, false); refresh(); }, 120));
+  art.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cct-show],[data-cct-group],[data-cct-clear],[data-cct-sub],[data-cc-pill]'); if (!b) return; const d = b.dataset;
+    if (d.ccPill != null && !mine(b)) return;
+    if (d.cctShow != null) ccSet(cfg, 'trip', { show: d.cctShow }, false);
+    else if (d.cctGroup) { ccSet(cfg, 'trip', { group: d.cctGroup }, false); LS.set('planview:' + syncKey(cfg), d.cctGroup); }
+    else if (d.cctSub != null || d.ccPill != null) ccSet(cfg, 'trip', { show: '' }, false);
+    else if (d.cctClear != null) { ccSet(cfg, 'trip', { city: '', cat: '', q: '', show: '' }); $$('[data-cct-q]', art).forEach(i => { i.value = ''; }); }
+    refresh();
+  });
 }
 function wirePlan(cfg, art, mapCtl) {
   const sec0 = art.querySelector('#sec-plan'); const body = sec0 && sec0.querySelector('.sec-b');
-  const pins = () => { if (mapCtl) mapCtl.setSaved(planLoad(cfg).filter(x => x.lat != null && !x.hotel).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, onClick: () => openPlan(x) }))); };
+  const pins = () => { if (mapCtl) mapCtl.setSaved(planLoad(cfg).filter(x => x.lat != null && !x.hotel).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, ic: ccCatOfPlan(x), onClick: () => openPlan(x) }))); };
   const openPlan = (x) => { if (x.src === 'g' && art._openGPlace) art._openGPlace(x.ref); else if (art._openPlace) art._openPlace(x.ref); };
   const render = () => { if (body) body.innerHTML = planHTML(cfg); art._renderSchedule && art._renderSchedule(); pins(); const sp = art.querySelector('#sec-spots .sec-b'); if (sp) sp.innerHTML = spotsHTML(cfg); art._hotelUI && art._hotelUI(); };
   art._planChanged = render; pins();
@@ -4105,8 +4423,6 @@ function wirePlan(cfg, art, mapCtl) {
   body.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return; const li = b.closest('[data-plan-id]'); const xs = planLoad(cfg); const i = li ? xs.findIndex(x => x.id === li.dataset.planId) : -1;
     const k = eventKey(cfg).slice(6);
-    if (b.dataset.planView) { LS.set('planview:' + k, b.dataset.planView); render(); return; }
-    if (b.dataset.planChip) { const on = LS.get('plantypes:' + k) || []; LS.set('plantypes:' + k, on.includes(b.dataset.planChip) ? on.filter(x => x !== b.dataset.planChip) : on.concat(b.dataset.planChip)); render(); return; }
     if (b.dataset.bkEdit != null) { const s2 = art.querySelector('#sec-itinerary'); const eb = s2 && s2.querySelector(`[data-itin-edit="${b.dataset.bkEdit}"]`); if (eb) { s2.scrollIntoView({ block: 'start' }); eb.click(); } return; }
     if (b.dataset.planCard) { const x = xs.find(y => y.id === b.dataset.planCard); if (x) openPlan(x); return; }
     if (i < 0) return;
@@ -4117,7 +4433,7 @@ function wirePlan(cfg, art, mapCtl) {
     const el = e.target; if (el.closest('[data-pdet],[data-ph-add]')) return; const li = el.closest('[data-plan-id]'); if (!li) return; const xs = planLoad(cfg); const x = xs.find(y => y.id === li.dataset.planId); if (!x) return;
     if (el.matches('[data-plan-move]')) { x.day = el.value; if (!x.day) x.time = ''; }
     if (el.matches('[data-plan-booked]')) x.booked = el.checked;
-    if (el.matches('[data-plan-type]')) x.type = el.value;
+    if (el.matches('[data-plan-type]')) { x.cat = el.value || 'other'; x.type = PL_CAT_TYPE[el.value] || 'other'; }
     if (el.matches('[data-plan-conf]')) x.conf = el.value.trim().slice(0, 60);
     planSave(cfg, xs); render();
   });
@@ -4492,9 +4808,13 @@ function spotsByCity(cfg) {
   return ss.map((s, i) => ({ city: s.city || s.name, hotels: hs[i].filter(h => h.lat != null), spots: sp.filter(x => nearestStop(cfg, x) === i) })).filter(g => g.hotels.length || g.spots.length);
 }
 function spotsHTML(cfg) {
-  const gs = spotsByCity(cfg); const many = hotelStops(cfg).length > 1;
-  if (!gs.length) return `<p class="muted">${t('Tap ☆ on a place in Nearby to save it here.')}</p>`;
-  const row = (x, hotel) => `<li><div><b>${hotel ? `<span class="spot-ic" aria-hidden="true">🛏</span> ` : '★ '}${esc(x.name)}</b>${hotel ? `<span>${esc([t('Your hotel'), hotelDates(x), x.addr].filter(Boolean).join(' · '))}</span>` : x.addr ? `<span>${esc(x.addr)}</span>` : ''}</div>${ext(gmapsLink(x), t('Open in Google Maps'), 'mini-b')}</li>`;
+  const gs0 = spotsByCity(cfg); const many = hotelStops(cfg).length > 1;
+  if (!gs0.length) return `<p class="muted">${t('Tap ☆ on a place in Nearby to save it here.')}</p>`;
+  // the City × Category bar: a city's group only, hotels under Hotels, spots under their own category
+  const F = ccTrip(cfg); const cityI = (g) => hotelStops(cfg).findIndex(s => (s.city || s.name) === g.city);
+  const gs = gs0.map(g => { const ci = many ? cityI(g) : 0; return { ...g, hotels: g.hotels.filter(h => F.ok({ city: ci, cat: 'hotels', text: [h.name, h.addr].join(' '), saved: false, booked: true })), spots: g.spots.filter(x => F.ok({ city: ci, cat: ccCatOfPlan(x), text: [x.name, x.addr, x.note].join(' '), saved: true, booked: !!x.booked })) }; }).filter(g => g.hotels.length || g.spots.length);
+  if (!gs.length) return ccNoneHTML();
+  const row = (x, hotel) => `<li><div><b class="plan-t">${ccIcon(hotel ? 'hotels' : ccCatOfPlan(x))}<span>${hotel ? '' : '<i class="spot-star" aria-hidden="true">★</i> '}${esc(x.name)}</span></b>${hotel ? `<span>${esc([t('Your hotel'), hotelDates(x), x.addr].filter(Boolean).join(' · '))}</span>` : x.addr ? `<span>${esc(x.addr)}</span>` : ''}</div>${ext(gmapsLink(x), t('Open in Google Maps'), 'mini-b')}</li>`;
   return `${gs.map(g => `${many ? `<h3 class="sub-h">${esc(g.city)}</h3>` : ''}<ul class="plist spots">${g.hotels.map(h => row(h, true)).join('')}${g.spots.map(x => row(x, false)).join('')}</ul>`).join('')}
     <div class="btns"><button type="button" class="btn" data-kml>${t('Save all to Google Maps')}</button></div><p class="muted small">${t('Import into Google My Maps — shows in the Google Maps app under Saved → Maps')}</p>`;
 }
@@ -4516,7 +4836,7 @@ function hotelBarHTML(cfg, art) {
 function wireHotel(cfg, art, mapCtl) {
   const fold = () => art._cx && art._cx();
   const bar = art.querySelector('[data-slot="hotel"]'); const key = art.querySelector('[data-slot="map-key"]'); const ss = hotelStops(cfg);
-  art._stop = art._stop || 0; art._pick = art._pick || {};
+  if (art._stop == null) art._stop = Math.max(0, ccCityIdx(cfg, ccGet(cfg, 'nearby').city)); art._pick = art._pick || {};
   // the chosen hotel in a city (All = none: searches start at the city itself)
   art._hotelAt = (i) => { const hs = hotelsNow(cfg)[i] || []; const pick = art._pick[i] ?? 0; if (pick < 0) return null; const h = hs[pick] || hs[0]; return h && h.lat != null ? h : null; };
   // the current city's hotel is where Nearby searches start and distances are measured from; true when that changed

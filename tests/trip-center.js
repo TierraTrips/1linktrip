@@ -9,6 +9,9 @@
 // Google Maps JS is an in-page stand-in; Places answers are generated.
 const { chromium } = require(process.env.PW || 'playwright');
 const BASE = process.env.BASE || 'http://127.0.0.1:18765/';
+const pick = async (page, key, v, box = '[data-ccb="near"]') => { await page.click(`${box} [data-dd="${key}"] [data-dd-btn]`); await page.click(`${box} [data-dd="${key}"] [data-dd-v="${v}"]`); }; // City / Category dropdowns
+const cityOpts = (page) => page.$$eval('[data-ccb="near"] [data-dd="city"] [data-dd-v]', bs => bs.map(b => b.textContent));
+const cityNow = (page) => page.$eval('[data-ccb="near"] [data-dd="city"] [data-dd-v][aria-selected="true"]', b => b.dataset.ddV);
 const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m}`); if (!c) fails.push(m); };
 function fakeGoogleMaps() {
   const ls = (o) => { o._l = o._l || {}; return o; };
@@ -75,14 +78,14 @@ const near = (a, b, e = 2e-3) => Math.abs(a - b) < e;
     const nb = nearbyReq(reqs); ok(nb && near(nb.b.locationRestriction.circle.center.latitude, 35.6764), 'Nearby search starts at Tokyo');
     const pin = await page.evaluate(() => window.__markers.filter(m => m.on && m.o.zIndex === 1000).map(m => [m.o.title, m.o.position.lat]));
     ok(pin.length === 1 && pin[0][0] === 'Tokyo' && near(pin[0][1], 35.6764), `the pin is Tokyo ${JSON.stringify(pin)}`);
-    await page.click('[data-gp-stop="1"]'); await page.waitForTimeout(300);
+    await pick(page, 'city', '1'); await page.waitForTimeout(300);
     const k = await mapC(page); ok(near(k.lat, 35.0116) && k.z === 13, `Kyoto chip → Kyoto ${JSON.stringify(k)}`);
     // a hotel set for Osaka → Osaka opens on the hotel
-    await page.click('[data-gp-stop="2"]'); await page.waitForSelector('[data-hotel-q]');
+    await pick(page, 'city', '2'); await page.waitForSelector('[data-hotel-q]');
     await page.evaluate(() => { const k = Object.keys(localStorage).find(x => x.startsWith('ep:plan:')); }); 
     await page.fill('[data-hotel-q]', 'Osaka'); await page.click('[data-hotel-find]'); await page.waitForSelector('[data-slot="hotel"] .hb');
     await page.waitForTimeout(200); const o = await mapC(page); ok(near(o.lat, 34.6937) && o.z === 15, `Osaka with a hotel → map on the hotel ${JSON.stringify(o)}`);
-    await page.click('[data-gp-stop="0"]'); await page.waitForTimeout(200); await page.click('[data-gp-stop="2"]'); await page.waitForTimeout(300);
+    await pick(page, 'city', '0'); await page.waitForTimeout(200); await pick(page, 'city', '2'); await page.waitForTimeout(300);
     const o2 = await mapC(page); ok(near(o2.lat, 34.6937) && o2.z === 15, 'back to Osaka → on its hotel again');
     await page.click('[data-tab-go="event"]');
     ok(/Japan/.test(await page.textContent('.stub')), 'Event tab still says Japan');
@@ -100,7 +103,7 @@ const near = (a, b, e = 2e-3) => Math.abs(a - b) < e;
     await page.goto(BASE + '#e=' + packed + '&t=nearby');
     await page.waitForFunction(() => window.__gmap && Math.abs(window.__gmap.c.lat - 35.6764) < 2e-3, null, { timeout: 15000 }).catch(() => {});
     const c = await mapC(page); ok(near(c.lat, 35.6764) && near(c.lon, 139.65), `stops found by city; map on Tokyo ${JSON.stringify(c)}`);
-    ok((await page.$$eval('[data-gp-stop]', bs => bs.map(b => b.textContent))).join() === 'Tokyo,Kyoto,Osaka', 'stop chips for the found cities');
+    ok((await cityOpts(page)).join() === 'Tokyo,Kyoto,Osaka', `City dropdown lists the found cities ${await cityOpts(page)}`);
     const pts = await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('ep:sgeo:')).map(k => JSON.parse(localStorage.getItem(k))).map(x => [x.name, x.lat]));
     ok(pts.length === 3 && pts.every(([, la]) => la !== 36.2048), `never the country point ${JSON.stringify(pts)}`);
     ok(errors.length === 0, `no page errors ${errors.join(' ')}`);

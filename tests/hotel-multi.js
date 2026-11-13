@@ -7,6 +7,9 @@
 const { chromium } = require(process.env.PW || 'playwright');
 const BASE = process.env.BASE || 'http://127.0.0.1:18765/';
 const SHOTS = process.env.SHOTS || '';
+const pick = async (page, key, v, box = '[data-ccb="near"]') => { await page.click(`${box} [data-dd="${key}"] [data-dd-btn]`); await page.click(`${box} [data-dd="${key}"] [data-dd-v="${v}"]`); }; // City / Category dropdowns
+const cityOpts = (page) => page.$$eval('[data-ccb="near"] [data-dd="city"] [data-dd-v]', bs => bs.map(b => b.textContent));
+const cityNow = (page) => page.$eval('[data-ccb="near"] [data-dd="city"] [data-dd-v][aria-selected="true"]', b => b.dataset.ddV);
 const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m}`); if (!c) fails.push(m); };
 const overflow = (page) => page.evaluate(() => { const cw = document.documentElement.clientWidth; return [...document.querySelectorAll('body *')].filter(e => { for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) if (getComputedStyle(a).overflowX !== 'visible') return false; const r = e.getBoundingClientRect(); return r.width && r.right > cw + 1; }).length; });
 function fakeGoogleMaps() {
@@ -58,7 +61,7 @@ const near = (a, b, e = 1e-3) => Math.abs(a - b) < e;
       { id: 'b2', kind: 'hotel', name: 'Hotel B', address: 'Ginza', start: '2027-04-08T15:00', end: '2027-04-10T11:00' }])); }, keyOf(CFG));
     await page.goto(BASE + '#e=' + await page.evaluate((c) => window.__ep.packEvent(c), CFG) + '&t=nearby'); await page.waitForSelector('[data-gp-body] .place-row', { timeout: 15000 });
     await page.waitForFunction(() => document.querySelectorAll('[data-hotel-pick]').length === 3, null, { timeout: 8000 }).catch(() => {});
-    ok((await page.$$eval('[data-gp-stop]', bs => bs.map(b => b.textContent))).join() === 'Tokyo,Kyoto', `@${w} one Tokyo chip for both Tokyo legs`);
+    ok((await cityOpts(page)).join() === 'Tokyo,Kyoto', `@${w} one Tokyo in the City dropdown for both Tokyo legs`);
     const chips = await page.$$eval('[data-hotel-pick]', bs => bs.map(b => b.textContent.replace(/\s+/g, ' ').trim()));
     ok(chips.join('|') === 'All|Hotel A Apr 1–4|Hotel B Apr 8–10', `@${w} hotel chips ${chips.join('|')}`);
     const pins = await page.evaluate(() => window.__markers.filter(m => m.on && m.o.zIndex === 5000).map(m => m.o.label.text).sort());
@@ -76,9 +79,9 @@ const near = (a, b, e = 1e-3) => Math.abs(a - b) < e;
     // the Itinerary still has both Tokyo legs; the second opens Tokyo in Nearby
     await page.click('[data-tab-go="event"]'); await page.waitForSelector('#sec-schedule .leg');
     ok((await page.$$eval('#sec-schedule .leg-h b', bs => bs.map(b => b.textContent))).join() === 'Tokyo,Kyoto,Tokyo', `@${w} itinerary keeps both Tokyo legs`);
-    await page.click('[data-gp-stop="1"]').catch(() => {}); // (hidden tab) — go via the itinerary instead
+    // (Nearby is a hidden tab now) — go via the itinerary instead
     await page.click('#sec-schedule [data-route-stop="2"]'); await page.waitForTimeout(300);
-    ok(await page.$eval('[data-gp-stop="0"]', b => b.getAttribute('aria-pressed')) === 'true', `@${w} second Tokyo leg → Tokyo in Nearby`);
+    ok(await cityNow(page) === '0' && await page.textContent('[data-ccb="near"] [data-dd="city"] .dd-l') === 'Tokyo', `@${w} second Tokyo leg → Tokyo in Nearby`);
     await page.click('[data-tab-go="mytrip"]');
     const sp = await page.textContent('#sec-spots'); ok(/Hotel A[\s\S]*Hotel B/.test(sp), `@${w} My trip lists both Tokyo hotels: ${sp.replace(/\s+/g, ' ').slice(0, 200)}`);
     ok(errors.length === 0, `@${w} no page errors ${errors.join(' ')}`);

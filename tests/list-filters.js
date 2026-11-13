@@ -1,11 +1,14 @@
 // Guest lists with search + filters: Rental car counters (search by company, At the airport / In town, Open now, sort by
-// Distance / Rating), Hotels near the venue and Sights (search by name, Walking distance, sort). Typing keeps focus (only
+// Distance / Rating), Hotels near the venue and Sights (search by name, Walking distance, sort). The bar is a search box +
+// a Filters button; the filters live in a bottom sheet and show as removable pills under the bar. Typing keeps focus (only
 // the list re-renders), Clear filters resets, labels translate, no overflow at 390/320. Google Places answers are generated.
 //
 //   python3 -m http.server 18765 --bind 127.0.0.1 &  node tests/list-filters.js
 const { chromium } = require(process.env.PW || 'playwright');
 const BASE = process.env.BASE || 'http://127.0.0.1:18765/';
 const SHOTS = process.env.SHOTS || '';
+const openF = (page, box) => page.click(`${box} [data-cc-filters]`); const doneF = (page, box) => page.click(`${box} .cc-sheet [data-cc-close].primary`);
+const pills = (page, box) => page.$$eval(`${box} [data-ccb-pills] .pill span`, ss => ss.map(s => s.textContent));
 const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m}`); if (!c) fails.push(m); };
 const overflow = (page, sel) => page.evaluate((sel) => { const cw = document.documentElement.clientWidth; return [...document.querySelectorAll(sel + ' *')].filter(e => { for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) if (getComputedStyle(a).overflowX !== 'visible') return false; const r = e.getBoundingClientRect(); return r.width && r.right > cw + 1; }).slice(0, 4).map(e => e.tagName + '.' + e.className); }, sel);
 
@@ -41,12 +44,19 @@ const CARS_TOWN = ['Hertz Baixa', 'Avis Marquês', 'Guerin Rent a Car', 'Bolt Dr
     await page.click('[data-lf-box="cars"] [data-lf-q]'); await page.keyboard.type('av');
     n = await names(); ok(n.join() === 'Avis' && await page.evaluate(() => document.activeElement.matches('[data-lf-box="cars"] [data-lf-q]')), `@${w} search “av” → ${n.join()} (focus kept)`);
     ok(/1 /.test(await page.textContent('[data-lf-box="cars"] .pf-count')), `@${w} count shown`);
-    await page.click('[data-lf-box="cars"] [data-lf-clear]'); n = await names(); ok(n.length === 8 && await page.inputValue('[data-lf-box="cars"] [data-lf-q]') === '', `@${w} Clear filters`);
+    await page.click('[data-lf-box="cars"] [data-lf-list] [data-lf-clear]'); n = await names(); ok(n.length === 8 && await page.inputValue('[data-lf-box="cars"] [data-lf-q]') === '', `@${w} Clear filters`);
+    ok(!(await page.isVisible('[data-lf-box="cars"] [data-lf-chip="open"]')), `@${w} filters folded into the Filters sheet`);
+    await openF(page, '[data-lf-box="cars"]');
     await page.click(`[data-lf-box="cars"] [data-lf-chip="open"]`); n = await names(); ok(n.length === 4, `@${w} Open now → ${n.length}`);
     await page.click(`[data-lf-box="cars"] [data-lf-chip="open"]`);
     await page.selectOption('[data-lf-box="cars"] [data-lf-sort]', 'rating'); n = await names(); ok(n[0] === 'Centauro Rent a Car', `@${w} sort by rating → ${n[0]}`);
     await page.click(`[data-lf-box="cars"] [data-lf-chip="town"]`); n = await names();
     ok(n.length === 4 && n.includes('Guerin Rent a Car') && await page.$eval('[data-lf-chip="town"]', b => b.getAttribute('aria-pressed')) === 'true' && await page.$eval('[data-lf-chip="airport"]', b => b.getAttribute('aria-pressed')) === 'false', `@${w} In town → ${n.join(', ')}`);
+    await doneF(page, '[data-lf-box="cars"]');
+    let pl = await pills(page, '[data-lf-box="cars"]'); ok(pl.length === 2 && pl[0] === L.town && /[0-9]/.test(await page.textContent('[data-lf-box="cars"] [data-cc-filters] .ccb-n')), `@${w} active filters as pills: ${pl.join(' | ')}`);
+    await page.click(`[data-lf-box="cars"] [data-lf-unchip="town"]`); n = await names(); pl = await pills(page, '[data-lf-box="cars"]');
+    ok(n.length === 8 && pl.length === 1 && await page.$eval('[data-lf-chip="airport"]', b => b.getAttribute('aria-pressed')) === 'true', `@${w} removing the In town pill → airport counters again`);
+    await openF(page, '[data-lf-box="cars"]'); await page.click(`[data-lf-box="cars"] [data-lf-chip="town"]`); await doneF(page, '[data-lf-box="cars"]'); n = await names();
     const link = await page.$eval('[data-lf-box="cars"] .cars li b a', a => a.href); ok(/^https:/.test(link), `@${w} counter links out (${link})`);
     if (SHOTS) await page.locator('[data-slot="rental"]').screenshot({ path: `${SHOTS}/rental-${w}.png` });
     ok((await overflow(page, '[data-slot="rental"]')).length === 0, `@${w} rental: no overflow`);
@@ -55,9 +65,9 @@ const CARS_TOWN = ['Hertz Baixa', 'Avis Marquês', 'Guerin Rent a Car', 'Bolt Dr
     const hn = () => page.$$eval('[data-lf-box="hotels"] li:not(.more):not(.more-li) b', bs => bs.map(b => b.textContent));
     ok((await hn()).length === 3 && !!(await page.$('[data-lf-box="hotels"] [data-more]')), `@${w} hotels: 3 then Show more`);
     await page.fill('[data-lf-box="hotels"] [data-lf-q]', 'pestana'); ok((await hn()).join() === 'Pestana Palace', `@${w} hotel search → ${await hn()}`);
-    await page.fill('[data-lf-box="hotels"] [data-lf-q]', ''); await page.click('[data-lf-box="hotels"] [data-lf-chip="walk"]');
+    await page.fill('[data-lf-box="hotels"] [data-lf-q]', ''); await openF(page, '[data-lf-box="hotels"]'); await page.click('[data-lf-box="hotels"] [data-lf-chip="walk"]');
     const walk = await hn(); ok(walk.length > 0 && walk.length < 12, `@${w} Walking distance → ${walk.length} hotels`);
-    await page.selectOption('[data-lf-box="hotels"] [data-lf-sort]', 'rating');
+    await page.selectOption('[data-lf-box="hotels"] [data-lf-sort]', 'rating'); await doneF(page, '[data-lf-box="hotels"]');
     const rated = await page.$$eval('[data-lf-box="hotels"] li span', ss => ss.map(s => (s.textContent.match(/★ ([\d.]+)/) || [])[1]).filter(Boolean).map(Number));
     ok(rated.length && rated.every((x, i) => i === 0 || rated[i - 1] >= x), `@${w} hotels by rating ${rated.join(',')}`);
     // sights (Nearby off; tours on → shown on Travel? they live where the page puts them)
