@@ -2002,7 +2002,7 @@ function renderViewer(cfg, { exampleId, tab } = {}) {
   // the organizer's own long link (this device shared it): edit the page itself, and say when this link is behind it
   const own = exampleId ? null : ownLongPage(cfg, packed);
   $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#">${BRAND}</a>${exampleId ? `<span class="vbar-note">${t('Example page')}</span>` : ''}${own ? `<a class="btn sm" href="#page=${esc(own.pid)}" data-onp-open>${t('Edit page')}</a>` : `<a class="btn sm" href="${editHref}">${exampleId ? t('Customize this') : t('Edit a copy')}</a>`}</div><div id="ev-root"></div></div>`;
-  $('.vbar').insertAdjacentHTML('beforeend', langSelectHTML(cfg));
+  $('.vbar').insertAdjacentHTML('beforeend', langPillsHTML(cfg) + langSelectHTML(cfg));
   $('[data-onp-open]')?.addEventListener('click', () => { window.__onpOpen = true; });
   if (own && own.hosted) $('.viewer').insertAdjacentHTML('beforeend', `<div class="own-stale" role="status"><span>${t('This is an older link. Your page now has a link that stays up to date.')}</span><a class="btn sm primary" href="${esc(shortURL(own.hosted.slug))}">${t('Open')}</a></div>`);
   else if (own && builderHash(own.cfg) !== builderHash(cfg)) {
@@ -2050,7 +2050,7 @@ function renderBuilder(cfg, source, hosted, pid) {
     const tb = e.target.closest('[data-tab]'); if (tb && tb.tagName === 'BUTTON') { bl.dataset.tab = tb.dataset.tab; $$('.seg button').forEach(b => b.setAttribute('aria-selected', String(b === tb))); if (tb.dataset.tab === 'preview') { maps.forEach(m => m.invalidateSize()); window.scrollTo(0, 0); } }
     if (e.target.closest('[data-act="publish"]')) publishTranslated();
     if (e.target.closest('[data-act="update-live"]')) updateLive();
-    if (e.target.closest('[data-act="make-hosted"]')) hostNow();
+    if (e.target.closest('[data-act="make-hosted"]')) publishTranslated();
   });
   const dlg = $('#pub');
   dlg.addEventListener('click', (e) => {
@@ -2062,6 +2062,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   const sh = $('#sheet');
   sh.addEventListener('close', () => { if (B.onp) onpCleanup(); B.onp = false; B.focus = null; B.onpSec = null; sh.classList.remove('onp'); B.card = null; if (DU && DU.key !== 'main') DU = null; buildForm(); });
   $('#preview').addEventListener('click', onpTap, true);
+  $('.onp-bar').addEventListener('click', (e) => { const b = e.target.closest('[data-pv-lang]'); if (!b) return; B.pvLang = b.dataset.pvLang === srcLang(B.cfg) ? '' : b.dataset.pvLang; paintPvLang(); preview(); });
   $('[data-onp-tg]').addEventListener('change', (e) => { LS.set('onpEdit', e.target.checked); if (!e.target.checked && sh.open && B.onp) sh.close(); preview(); });
   if (!document._onpEsc) { document._onpEsc = true; document.addEventListener('keydown', (e) => { const d = $('#sheet'); if (e.key === 'Escape' && d && d.open && d.classList.contains('onp') && !d.matches(':modal') && !$('#confirmdlg[open]')) d.close(); }); }
   if (window.__onpOpen) { window.__onpOpen = false; bl.dataset.tab = 'preview'; $$('.seg button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === 'preview'))); }
@@ -2142,8 +2143,17 @@ async function updateLive() {
   finally { B.pushing = false; saveStatus(''); }
 }
 function markLive() { B.live = cfgHash(B.cfg); B.justLive = true; pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted, live: B.live }); saveStatus(''); }
-const preview = debounce(() => { const p = $('#preview'); if (!p) return; const sc = p.parentElement; const y = sc.scrollTop; const tab = p.querySelector('[data-tab-go][aria-selected="true"]')?.dataset.tabGo; renderEvent(B.cfg, p, { preview: true, shareUrl: shareURL(B.cfg), tab, onpage: onpOn() }); sc.scrollTop = y; }, 350);
-function changed(rebuild) { if (B) B.justLive = false; saveStatus('saving'); savedraft(); preview(); if (rebuild) { if (B.card) renderSheet(); else buildForm(); } }
+// "Preview in: English | 日本語": the organizer sees the page as guests in each language do (on-page editing stays on the original)
+function pvLangHTML() { const c = B && B.cfg; const ls = c ? [srcLang(c), ...(c.langs || []).filter(l => l !== srcLang(c))] : []; if (ls.length < 2) { if (B) B.pvLang = ''; return ''; }
+  if (!ls.includes(B.pvLang)) B.pvLang = ''; const cur = B.pvLang || srcLang(c);
+  return `<span class="pv-lang" role="group" aria-label="Preview in"><span class="muted small">Preview in:</span>${ls.map(l => `<button type="button" class="pv-l ${l === cur ? 'on' : ''}" aria-pressed="${l === cur}" data-pv-lang="${l}">${esc(langName(l))}</button>`).join('')}</span>`; }
+function paintPvLang() { const bar = $('.onp-bar'); if (!bar) return; let el = bar.querySelector('.pv-lang'); const h = pvLangHTML(); if (el) { if (h) el.outerHTML = h; else el.remove(); } else if (h) bar.insertAdjacentHTML('beforeend', h); }
+const preview = debounce(() => { const p = $('#preview'); if (!p) return; const sc = p.parentElement; const y = sc.scrollTop; const tab = p.querySelector('[data-tab-go][aria-selected="true"]')?.dataset.tabGo; paintPvLang();
+  const pl = B.pvLang && B.pvLang !== srcLang(B.cfg) ? B.pvLang : '';
+  if (pl) { const was = LANG; LANG = pl; try { renderEvent(translatedView(B.cfg, pl), p, { preview: true, shareUrl: shareURL(B.cfg), tab, onpage: false, src: B.cfg }); } finally { LANG = was; } }
+  else renderEvent(B.cfg, p, { preview: true, shareUrl: shareURL(B.cfg), tab, onpage: onpOn() });
+  sc.scrollTop = y; }, 350);
+function changed(rebuild) { if (B) B.justLive = false; saveStatus('saving'); savedraft(); preview(); if (B && (B.cfg.langs || []).length) autoTranslate(); if (rebuild) { if (B.card) renderSheet(); else buildForm(); } }
 
 const fieldWrap = (label, html, id) => `<div class="field"><label${id ? ` for="${id}"` : ''}>${esc(label)}</label>${html}</div>`;
 // shorter labels inside a card sheet, where the card title already gives context (the page keeps the full labels)
@@ -2275,7 +2285,7 @@ function wireInputs(root) {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset; const cfg = c();
     if (B.onp && root.closest('#sheet') && onpClick(b, cfg)) return;
     if (designClick(b, cfg) || tripClick(b, cfg) || routeClick(b, cfg)) return;
-    if (b.dataset.b === 'translate-now') { langsClick(b, cfg); return; }
+    if (b.dataset.trGo || b.dataset.trEdit) { langsClick(b, cfg); return; }
     if (d.whenTg != null) { whenToggle(cfg); changed(true); setTimeout(() => root.querySelector(hasTime(cfg.start) ? '[data-when="st"]' : '[data-when-tg]')?.focus(), 0); }
     else if (d.card) openCard(d.card);
     else if (d.b === 'close') $('#sheet').close();
@@ -2931,7 +2941,7 @@ async function renderHosted(slug, tab) {
   LANG = guestLangPick(cfg); document.documentElement.lang = LANG; document.documentElement.dir = RTL.has(LANG) ? 'rtl' : 'ltr';
   // the organizer (this device has the page in My pages) edits the page itself, on the page; everyone else gets a copy
   const own = pagesAll().find(p => p.hosted && p.hosted.id === row.id);
-  $('.vbar').insertAdjacentHTML('beforeend', `${langSelectHTML(cfg)}${own ? `<a class="btn sm" href="#page=${esc(own.pid)}" data-onp-open>${t('Edit page')}</a>` : `<a class="btn sm" href="#edit=${packEvent(cfg)}">${t('Edit a copy')}</a>`}`);
+  $('.vbar').insertAdjacentHTML('beforeend', `${langPillsHTML(cfg)}${langSelectHTML(cfg)}${own ? `<a class="btn sm" href="#page=${esc(own.pid)}" data-onp-open>${t('Edit page')}</a>` : `<a class="btn sm" href="#edit=${packEvent(cfg)}">${t('Edit a copy')}</a>`}`);
   $('[data-onp-open]')?.addEventListener('click', () => { window.__onpOpen = true; });
   // the organizer's saved edits that guests (and this link) don't show yet: say so here, where they look at the page
   if (own && pageStale(own)) {
@@ -5319,36 +5329,66 @@ function guestLangPick(cfg) {
   const nav = (navigator.languages || [navigator.language || 'en']).map(x => String(x).slice(0, 2).toLowerCase());
   return nav.find(l => (cfg.langs || []).includes(l) || l === srcLang(cfg)) || nav.find(ok) || srcLang(cfg);
 }
+// the host's own languages as a switch at the top of the page ("English · 日本語"); other languages stay in the picker
+const langPillsHTML = (cfg) => { const ls = [srcLang(cfg), ...(cfg.langs || []).filter(l => l !== srcLang(cfg))]; if (ls.length < 2) return '';
+  return `<span class="lang-pills" role="group" aria-label="Language">${ls.map(l => `<button type="button" class="lang-pill ${l === LANG ? 'on' : ''}" aria-pressed="${l === LANG}" data-lang-pill="${l}" lang="${l}">${esc(langName(l))}</button>`).join('')}</span>`; };
+document.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.vbar [data-lang-pill]'); if (b && b.dataset.langPill !== LANG) setGuestLang(b.dataset.langPill); });
 const langSelectHTML = (cfg) => `<select class="lang-sel" data-lang aria-label="Language">${pageLangs(cfg).map(k => `<option value="${k}" ${k === LANG ? 'selected' : ''}>${esc(langName(k))}${(cfg.langs || []).includes(k) || k === srcLang(cfg) ? '' : ' ·'}</option>`).join('')}</select>`;
 // choosing a language also rewrites a ?lang= in the address, so the choice wins over the link it came from
 function setGuestLang(v) { LS.set('lang', v); const q = new URLSearchParams(location.search); if (q.has('lang')) { q.set('lang', v); history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash); } route(); }
 document.addEventListener('change', (e) => { const s0 = e.target.closest && e.target.closest('.vbar [data-lang]'); if (!s0) return; setGuestLang(s0.value); });
-// editor card
+// editor card: each guest language with its state (Translating… / N to translate / Ready ✓ · Edit translation)
+const TRB = {}; // lang → true while its translation runs (this tab)
+function langStatusHTML(c, l) {
+  const missing = Object.keys(staleFields(c, l)).length;
+  const st = TRB[l] ? `<span class="tr-st busy">${esc(t('Translating…'))}</span>`
+    : !missing ? `<span class="tr-st ok">Ready ✓</span>`
+    : !canTranslate() ? `<span class="tr-st">${missing} to translate · <a href="#mine">Sign in</a> to translate</span>`
+    : `<span class="tr-st">${missing} to translate</span><button type="button" class="btn sm" data-tr-go="${l}">Translate</button>`;
+  return `<div class="tr-lang" data-tr-status="${l}"><b>${esc(langName(l))}</b>${st}${TRB[l] ? '' : `<button type="button" class="link" data-tr-edit="${l}">Edit translation</button>`}</div>`;
+}
 function langsCardHTML(c) {
-  const src = srcLang(c); const sel = new Set(c.langs || []);
-  const reviews = [...sel].filter(l => l !== src).map(l => { const tr = (c.tr && c.tr[l]) || {}; const f = textFields(c);
+  const src = srcLang(c); const sel = new Set(c.langs || []); const on = [...sel].filter(l => l !== src);
+  const reviews = on.map(l => { const tr = (c.tr && c.tr[l]) || {}; const f = textFields(c);
     const rows = Object.entries(f).map(([k, v]) => { const e = tr[k]; const fresh = e && e.h === hashStr(v); return `<div class="tr-row"><span class="tr-src">${esc(v.length > 140 ? v.slice(0, 140) + '…' : v)}</span><textarea data-tr-lang="${l}" data-tr-key="${esc(k)}" rows="${v.length > 80 ? 3 : 1}" placeholder="${fresh ? '' : 'Not translated yet'}">${esc(fresh ? e.t : '')}</textarea></div>`; }).join('');
-    const missing = Object.keys(staleFields(c, l)).length;
-    return `<details class="tr-review"><summary><b>${esc(langName(l))}</b> <small class="muted">${missing ? `${missing} to translate` : 'up to date'}</small></summary>${rows || '<p class="hint">Nothing to translate yet.</p>'}</details>`; }).join('');
-  return `<p class="hint">Translated when you publish. Edit any line below.</p>
+    return `<details class="tr-review" data-tr-lang="${l}"><summary><b>${esc(langName(l))}</b> <small class="muted">edit any line</small></summary>${rows || '<p class="hint">Nothing to translate yet.</p>'}</details>`; }).join('');
+  return `<p class="hint">Guests see your page in these languages: a switch at the top of the page, and their phone’s language is picked for them. Translated as soon as you add a language; edit any line.</p>
     <div class="field"><label for="f-lang">You write in</label><select id="f-lang" data-src-lang>${GUEST_LANGS.map(([k, n]) => `<option value="${k}" ${k === src ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
     <div class="field"><label>Guest languages</label><div class="chips tr-langs">${GUEST_LANGS.filter(([k]) => k !== src).map(([k, n]) => `<label class="chip ${sel.has(k) ? 'on' : ''}"><input type="checkbox" data-guest-lang="${k}" ${sel.has(k) ? 'checked' : ''} hidden>${esc(n)}</label>`).join('')}</div></div>
-    <div class="btns"><button type="button" class="btn" data-b="translate-now" ${sel.size ? '' : 'disabled'}>Translate now</button></div><p class="hint" data-tr-msg role="status" aria-live="polite"></p>
+    <div class="tr-status" data-tr-box>${on.map(l => langStatusHTML(c, l)).join('')}</div><p class="hint" data-tr-msg role="status" aria-live="polite"></p>
     ${reviews}`;
 }
+function paintLangStatus() { const box = $('[data-tr-box]'); if (box && B) box.innerHTML = (B.cfg.langs || []).filter(l => l !== srcLang(B.cfg)).map(l => langStatusHTML(B.cfg, l)).join(''); }
+// translate one guest language now, into the page as it is when the answer comes back (only lines whose text didn't change)
+async function translateLang(l) {
+  if (!B || TRB[l] || !canTranslate()) return; const cfg0 = B.cfg; const todo = staleFields(cfg0, l); if (!Object.keys(todo).length) { paintLangStatus(); return; }
+  TRB[l] = true; paintLangStatus();
+  try {
+    const keys = Object.entries(todo); const got = {};
+    for (let i = 0; i < keys.length; i += 120) {
+      const part = Object.fromEntries(keys.slice(i, i + 120));
+      const j = await aiImport({ mode: 'translate', fields: part, target: l, source: srcLang(cfg0) });
+      ((j.data && j.data.translations) || []).forEach(x => { if (x.key in part && typeof x.text === 'string') got[x.key] = { h: hashStr(part[x.key]), t: String(x.text).slice(0, 6000) }; });
+    }
+    if (!B) return; const c = B.cfg; if (!(c.langs || []).includes(l)) return; const now = textFields(c);
+    c.tr = c.tr && typeof c.tr === 'object' ? c.tr : {}; const tr = (c.tr[l] = c.tr[l] || {});
+    Object.entries(got).forEach(([k, e]) => { if (now[k] != null && hashStr(now[k]) === e.h && !(tr[k] && tr[k].o && tr[k].h === e.h)) tr[k] = e; });
+    TRB[l] = false; changed(); if (B.card === 'langs' && !(document.activeElement && document.activeElement.matches('#sheet textarea'))) renderSheet(); else paintLangStatus();
+  } catch (e) { TRB[l] = false; paintLangStatus(); const m = $('[data-tr-msg]'); const why = e.signin ? 'Sign in (My pages) to translate.' : (e.message || 'Translation failed'); if (m) m.textContent = why; toast('Couldn’t translate: ' + why); }
+}
+// after edits: re-translate changed lines of every guest language (quietly, a few seconds after typing stops)
+const autoTranslate = debounce(() => { if (!B || !canTranslate()) return; (B.cfg.langs || []).filter(l => l !== srcLang(B.cfg) && Object.keys(staleFields(B.cfg, l)).length).forEach(l => translateLang(l)); }, 2500);
 function langsInput(i, cfg) {
-  if (i.dataset.guestLang) { const s0 = new Set(cfg.langs || []); i.checked ? s0.add(i.dataset.guestLang) : s0.delete(i.dataset.guestLang); cfg.langs = [...s0]; changed(true); return true; }
+  if (i.dataset.guestLang) { const l = i.dataset.guestLang; const s0 = new Set(cfg.langs || []); i.checked ? s0.add(l) : s0.delete(l); cfg.langs = [...s0]; changed(true); if (i.checked) translateLang(l); return true; }
   if (i.dataset.srcLang != null) { cfg.lang = i.value; cfg.langs = (cfg.langs || []).filter(l => l !== i.value); changed(true); return true; }
   if (i.dataset.trLang) { const l = i.dataset.trLang, k = i.dataset.trKey; const v = textFields(cfg)[k]; if (v == null) return true; cfg.tr = cfg.tr || {}; cfg.tr[l] = cfg.tr[l] || {};
-    if (i.value.trim()) cfg.tr[l][k] = { h: hashStr(v), t: i.value, o: true }; else delete cfg.tr[l][k]; changed(); return true; }
+    if (i.value.trim()) cfg.tr[l][k] = { h: hashStr(v), t: i.value, o: true }; else delete cfg.tr[l][k]; changed(); paintLangStatus(); return true; }
   return false;
 }
 async function langsClick(b, cfg) {
-  if (b.dataset.b !== 'translate-now') return false;
-  const msg = $('[data-tr-msg]'); b.disabled = true;
-  try { const n = await translateCfg(cfg, (m) => { if (msg) msg.textContent = m; }); changed(true); toast(n ? `Translated ${n} pieces of text` : 'Already up to date'); }
-  catch (e) { if (msg) msg.textContent = e.signin ? 'Sign in (My pages) to translate.' : (e.message || 'Translation failed'); b.disabled = false; }
-  return true;
+  if (b.dataset.trGo) { translateLang(b.dataset.trGo); return true; }
+  if (b.dataset.trEdit) { const d = $(`#sheet details.tr-review[data-tr-lang="${b.dataset.trEdit}"]`) || $(`details.tr-review[data-tr-lang="${b.dataset.trEdit}"]`); if (d) { d.open = true; d.scrollIntoView({ block: 'nearest' }); } return true; }
+  return false;
 }
 const canTranslate = () => { const c = LS.get('aiModes'); return !!(c && c.m && c.m.includes('translate')) && !!LS.get('signedIn'); };
 // translate a few strings for the host (guest notes) into the host's language, cached
