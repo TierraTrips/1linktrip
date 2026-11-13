@@ -1064,3 +1064,10 @@ html.is-offline body::before { content: 'Offline'; position: fixed; top: max(12p
 .pub [hidden] { display: none !important; }
 .pub-alt { margin: 10px 0 0 !important; } .pub-host .link { font-size: inherit; }
 .b-long { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; } .b-long small { flex-basis: 100%; }
+/* setup: Start from a website / Start from a document */
+.su-ai-starts { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.su-doc-form { display: grid; gap: 8px; margin-top: 8px; padding: 14px; background: var(--paper, #fff); border-radius: 14px; }
+.su-doc-drop { display: grid; gap: 4px; place-items: center; text-align: center; min-height: 96px; padding: 14px; border: 1.5px dashed var(--rule); border-radius: 12px; cursor: pointer; }
+.su-doc-drop span { font-size: .88rem; color: var(--slate, #556); } .su-doc-drop.over { border-color: var(--gate, #155); background: var(--fog, #EDF4F1); }
+.su-doc-drop.busy { opacity: .6; pointer-events: none; }
+.su-ai [hidden] { display: none !important; } /* the website / document forms open on tap */

@@ -2516,16 +2516,21 @@ function suRender() {
     h = 'Your page is ready';
     const url = shareURL(c); const sugg = (TYPE_CARDS[c.type] || []).slice(0, 2).concat([COMMON_CARDS[0]]);
     body = `<div class="su-done" aria-hidden="true">✓</div>
-      <div class="su-link"><input readonly value="${esc(url)}" aria-label="Link to your page"><button type="button" class="btn sm" data-su="copy">Copy</button></div>
+      <p class="hint">Saved on this device. Share gives you one link that stays up to date when you edit.</p>
       <div class="two su-share"><button type="button" class="btn primary" data-su="share">Share</button><a class="btn" href="${esc(url)}">View page</a></div>
       ${typeof qrButtonHTML === 'function' ? qrButtonHTML() : ''}
       <p class="grp">Add to your page</p>
       <div class="su-later">${sugg.map(([id, title]) => `<button type="button" data-su-card="${id}"><span>${esc(title)}</span><b>+ Add</b></button>`).join('')}<button type="button" data-su-card=""><span>See all</span><b>→</b></button></div>`;
-    LS.set('published:' + Date.now(), { title: c.title, url });
   }
   m.innerHTML = `${prog}${top}<h1>${h}</h1><div class="su-body">${body}</div><div class="grow"></div>${n === 1 || n === 2 ? suTicket(c) : ''}${cta}`;
   LS.set('draft', c); pageSave(LS.get('draftId'), { cfg: c }); suPreview();
-  if (n === 0) aiReady().then(ok => { const el = $('[data-su-ai]'); if (el && ok) el.hidden = false; const pend = LS.get('pendingAiUrl'); if (ok && pend && el) { LS.del('pendingAiUrl'); sbUser().then(u => { if (!u) return; el.querySelector('.su-ai-form').hidden = false; $('#su-ai-url').value = pend; SU.pick = SU.aiType = LS.get('pendingAiType') || ''; LS.del('pendingAiType'); $$('.su-type').forEach(x => x.classList.toggle('on', x.dataset.suType === SU.aiType)); const nb = $('[data-su="next0"]'); if (nb) nb.disabled = !SU.pick; suAIHint(); suAIGo(); }).catch(() => {}); } });
+  if (n === 0) { const dz = $('[data-su-doc-drop]'); if (dz) { // Start from a document: choose or drop a file
+    $('#su-doc-file').addEventListener('change', (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) suDocGo(f); });
+    dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('over'); }); dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+    dz.addEventListener('drop', (e) => { e.preventDefault(); dz.classList.remove('over'); const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) suDocGo(f); });
+  } }
+  if (n === 0) aiReady().then(ok => { const el = $('[data-su-ai]'); if (el && ok) el.hidden = false;
+    const pd = LS.get('pendingAiDoc'); if (ok && pd && el) { LS.del('pendingAiDoc'); el.querySelector('.su-doc-form').hidden = false; SU.pick = SU.aiType = pd === '-' ? '' : pd; $$('.su-type').forEach(x => x.classList.toggle('on', x.dataset.suType === SU.aiType)); const nb = $('[data-su="next0"]'); if (nb) nb.disabled = !SU.pick; suAIHint(); $('[data-su-doc-msg]').textContent = 'Signed in. Choose your document again.'; } const pend = LS.get('pendingAiUrl'); if (ok && pend && el) { LS.del('pendingAiUrl'); sbUser().then(u => { if (!u) return; el.querySelector('.su-ai-form').hidden = false; $('#su-ai-url').value = pend; SU.pick = SU.aiType = LS.get('pendingAiType') || ''; LS.del('pendingAiType'); $$('.su-type').forEach(x => x.classList.toggle('on', x.dataset.suType === SU.aiType)); const nb = $('[data-su="next0"]'); if (nb) nb.disabled = !SU.pick; suAIHint(); suAIGo(); }).catch(() => {}); } });
   placeAutocomplete($('#su-q'), { bias: () => null, onPick: (id, tok) => gpVenue(id, tok).then(r => {
     if (!SU) return; const cc = SU.cfg; cc.venue = { name: r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc }; SU.q = r.name; SU.results = []; SU.msg = '';
     suRender(); lookupTZ(r.lat, r.lon).then(tz => { cc.tz = tz; LS.set('draft', cc); }).catch(() => {});
@@ -2549,8 +2554,9 @@ document.addEventListener('click', (e) => {
       SU.typed = true; SU.step = 1; suRender();
     }
   } else if (d.whenTg != null) { whenToggle(c); suRender(); const f = $(hasTime(c.start) ? '#su-st' : '#su-sd'); if (f) f.focus(); }
-  else if (d.su === 'ai-open') { const f = $('.su-ai-form'); f.hidden = !f.hidden; if (!f.hidden) { SU.aiType = SU.pick || ''; suAIHint(); $('#su-ai-url').focus(); } }
+  else if (d.su === 'ai-open') { const f = $('.su-ai-form'); f.hidden = !f.hidden; $('.su-doc-form').hidden = true; if (!f.hidden) { SU.aiType = SU.pick || ''; suAIHint(); $('#su-ai-url').focus(); } }
   else if (d.su === 'ai-go') suAIGo();
+  else if (d.su === 'doc-open') { const f = $('.su-doc-form'); f.hidden = !f.hidden; $('.su-ai-form').hidden = true; if (!f.hidden) { SU.aiType = SU.pick || ''; suAIHint(); } }
   else if (d.si === 'send') signInSubmit($('.setup'));
   else if (d.su === 'back') { SU.step = Math.max(0, SU.step - 1); suRender(); }
   else if (d.su === 'skip') { c.venue = null; SU.step = 3; suRender(); }
@@ -2560,8 +2566,7 @@ document.addEventListener('click', (e) => {
     const r = SU.results[+d.suPick]; c.venue = { name: r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc };
     suRender(); lookupTZ(r.lat, r.lon).then(tz => { c.tz = tz; LS.set('draft', c); }).catch(() => {});
   }
-  else if (d.su === 'copy') copy(shareURL(c));
-  else if (d.su === 'share') { if (navigator.share) navigator.share({ title: c.title, url: shareURL(c) }).catch(() => {}); else copy(shareURL(c)); }
+  else if (d.su === 'share') { const pid = LS.get('draftId'); LS.set('draft', c); pageSave(pid, { cfg: c }); SU = null; window.__sharePub = true; location.hash = '#page=' + pid; } // the builder's Share: short link
   else if (d.suCard != null) { LS.set('draft', c); window.__openCard = d.suCard || null; SU = null; if (location.hash === '#new') route(); else location.hash = '#new'; }
   else if (typeof suExtraClick === 'function') suExtraClick(b, c);
 });
@@ -4410,15 +4415,49 @@ async function startFromWebsite(url, msgEl, type) {
   renderBuilder(cfg, `Filled in from ${hostOf(url)}. Check every detail before you publish.`, null, pid);
 }
 function suAIHTML() {
-  return `<div class="su-ai" data-su-ai hidden><button type="button" class="link strong" data-su="ai-open">✦ Start from a website</button>
+  return `<div class="su-ai" data-su-ai hidden><div class="su-ai-starts"><button type="button" class="link strong" data-su="ai-open">✦ Start from a website</button><button type="button" class="link strong" data-su="doc-open">✦ Start from a document</button></div>
     <div class="su-ai-form" hidden><p class="hint" data-su-ai-type></p>
       <div class="search"><input id="su-ai-url" type="url" inputmode="url" placeholder="https://yourwedding.com" autocomplete="off"><button type="button" class="btn primary" data-su="ai-go">Fill in</button></div>
-      <p class="hint" data-su-ai-msg role="status" aria-live="polite"></p><div data-su-ai-signin></div></div></div>`;
+      <p class="hint" data-su-ai-msg role="status" aria-live="polite"></p><div data-su-ai-signin></div></div>
+    <div class="su-doc-form" hidden><p class="hint" data-su-ai-type></p>
+      <label class="su-doc-drop" data-su-doc-drop><input type="file" id="su-doc-file" accept="application/pdf,.pdf,image/*" hidden><b>Choose a PDF or photo</b><span>or drop it here · an itinerary, invitation or booking confirmation</span></label>
+      <p class="hint" data-su-doc-msg role="status" aria-live="polite"></p><div data-su-doc-signin></div></div></div>`;
+}
+// "Start from a document": the same reader as Upload a document in the builder (ai-import mode doc), filling a new page
+// (type, title, dates, venue or route, schedule, notes, sections), then on to the builder like Start from a website.
+async function startFromDocument(file, msgEl, type) {
+  const say = (t2) => { if (msgEl) msgEl.textContent = t2; };
+  if (!file) return; if (!isPdf(file) && !/^image\//.test(file.type || '')) throw new Error('Use a PDF or a photo.');
+  if (isPdf(file) && file.size > 10 * 1024 * 1024) throw new Error('That PDF is too large (10 MB max).');
+  say('Reading your document and filling in your page…');
+  const part = await bookingFile(file);
+  const j = await aiImport({ mode: 'doc', files: [part], ...(type && TYPES.includes(type) ? { type } : {}) });
+  const d = j.data || {}; const typ = type && TYPES.includes(type) ? type : TYPES.includes(d.type) ? d.type : 'Party';
+  const base = blankEvent(typ); const items = docItems(base, { ...d, type: typ }, 'auto');
+  if (!items.length && !cleanText(d.title, 80)) throw new Error('Nothing found to fill in. Try another file, or pick a category below.');
+  say('Finding the places…');
+  const cfg = await docApply(base, items);
+  if (!isTrip(cfg) && cfg.start === isoDay(d.start_date) && isoTime(d.start_time)) { // an event keeps its start time (trips run by the day)
+    cfg.start += 'T' + d.start_time; if (cfg.end && cfg.end === isoDay(d.end_date) && isoTime(d.end_time)) cfg.end += 'T' + d.end_time; else if (cfg.end && cfg.end.length === 10) cfg.end = cfg.end > cfg.start.slice(0, 10) ? cfg.end : ''; }
+  if (!cfg.title.trim()) cfg.title = cleanText(d.title, 80) || cleanText((file.name || '').replace(/\.\w+$/, '').replace(/[_-]+/g, ' '), 80) || 'My trip';
+  if (cfg.venue && !cfg.tz) { try { cfg.tz = await lookupTZ(cfg.venue.lat, cfg.venue.lon); } catch { /* floating */ } }
+  await aiPinPlaces(cfg).catch(() => {});
+  const pid = newPid(); LS.set('draft', cfg); LS.set('draftHosted', null); LS.set('draftId', pid); pageSave(pid, { cfg });
+  SU = null; history.replaceState(null, '', siteBase() + '#page=' + pid);
+  renderBuilder(cfg, `Filled in from ${cleanText(file.name || 'your document', 80)}. Check every detail before you publish.`, null, pid);
+}
+async function suDocGo(file) {
+  const msg = $('[data-su-doc-msg]'); const drop = $('[data-su-doc-drop]'); if (drop) drop.classList.add('busy');
+  try { await startFromDocument(file, msg, SU && SU.aiType); }
+  catch (e) {
+    if (drop) drop.classList.remove('busy');
+    if (e.signin) { LS.set('pendingAiDoc', (SU && SU.aiType) || '-'); LS.set('afterSignIn', '#setup'); msg.textContent = 'Sign in first, so imports stay yours. Then choose the file again.'; $('[data-su-doc-signin]').innerHTML = signInFormHTML(''); return; }
+    msg.textContent = e.message || 'Couldn’t read that file.'; toast('Couldn’t read that file: ' + (e.message || 'try again'));
+  }
 }
 function suAIHint() {
-  const el = $('[data-su-ai-type]'); if (!el) return;
   const t = SU && SU.aiType && (SETUP_TYPES.find(x => x[0] === SU.aiType) || [])[1];
-  el.innerHTML = t ? `Category: <b>${esc(t)}</b>` : '';
+  $$('[data-su-ai-type]').forEach(el => { el.innerHTML = t ? `Category: <b>${esc(t)}</b>` : ''; });
 }
 async function suAIGo() {
   const inp = $('#su-ai-url'); const msg = $('[data-su-ai-msg]'); const url = normSite(inp ? inp.value : '');
@@ -5498,5 +5537,5 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, pageStale, docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, pageStale, docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
