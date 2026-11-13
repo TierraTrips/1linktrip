@@ -49,6 +49,11 @@ const USER = { id: 'u0000000-0000-4000-8000-000000000001', email: 'host@example.
   ok(rows.filter(r => r.rm).length === 5 && rows.filter(r => r.rm).every(r => r.struck && /Removed$/.test(r.t)), 'removals struck through and marked Removed');
   ok(rows.some(r => r.rm && /Hotel Granvia Kyoto/.test(r.t)) && rows.some(r => r.rm && /Dress code/.test(r.t)) && rows.some(r => r.rm && /Osaka/.test(r.t)) && rows.some(r => r.rm && /Sam, Alex/.test(r.t)) && rows.some(r => r.rm && /Old plan\.pdf/.test(r.t)), 'each removal names what goes');
   if (SHOTS) await page.locator('[data-ai-edit]').screenshot({ path: `${SHOTS}/ai-edit-remove-390.png` });
+  // Signed in, account autosave pins the page key (cfg.ek) into the open page after load; Undo must bring back exactly
+  // the page as it was at Apply — content as opened, plus that key (dropping it would detach the page from its row).
+  const atApply = await page.evaluate(() => { const pid = localStorage.getItem('ep:draftId'); const x = window.__ep.pagesAll().find(p => p.pid === JSON.parse(pid)); return x && x.cfg; });
+  const { ek: pinned, ...atApplyContent } = atApply || {};
+  ok(!!pinned && JSON.stringify(atApplyContent) === JSON.stringify(JSON.parse(before)), `page at Apply = page as opened + its key (${pinned})`);
   await page.click('[data-ai-edit-apply]'); await page.waitForTimeout(500);
   const c = await page.evaluate(() => JSON.parse(localStorage.getItem('ep:draft')));
   ok(!c.schedule.some(x => /Granvia/.test(x.title)) && c.schedule.length === 7, 'schedule item removed');
@@ -57,7 +62,7 @@ const USER = { id: 'u0000000-0000-4000-8000-000000000001', email: 'host@example.
   ok(!(c.x.Trip || {}).companions && !c.files, 'detail cleared, document removed');
   await page.click('[data-ai-edit-undo]'); await page.waitForTimeout(500);
   const u = await page.evaluate(() => localStorage.getItem('ep:draft'));
-  ok(JSON.stringify(JSON.parse(u)) === JSON.stringify(JSON.parse(before)), 'Undo restores the page');
+  ok(JSON.stringify(JSON.parse(u)) === JSON.stringify(atApply), 'Undo restores the page');
   ok(errors.length === 0, `no page errors ${errors.join(' ')}`);
   await browser.close();
   console.log(fails.length ? `\n${fails.length} failed` : '\nall passed');
