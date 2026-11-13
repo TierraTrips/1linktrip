@@ -1060,3 +1060,7 @@ html.is-offline body::before { content: 'Offline'; position: fixed; top: max(12p
 #undo.show { opacity: 1; transform: translate(-50%, 0); }
 #undo span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #undo .btn { color: #fff; border-color: rgba(255,255,255,.5); flex: none; }
+/* Share sheet: the link box + its buttons hide until there's a link (signing in, creating the short link, an error) */
+.pub [hidden] { display: none !important; }
+.pub-alt { margin: 10px 0 0 !important; } .pub-host .link { font-size: inherit; }
+.b-long { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; } .b-long small { flex-basis: 100%; }
