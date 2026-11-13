@@ -15,6 +15,8 @@
 //            { "mode": "doc", "files": [same as "file"], "type": "Trip", "section": "route" | "schedule" | "notes" | "about" | "custom" | "access" | "bring" | "details" | "" }
 //              → { ok, kind: "event", data }   (an organizer's own document, e.g. a trip itinerary PDF → the same event JSON as a url,
 //              plus stops (route), sections (custom sections), bring and access; "section" asks for just that part of the page)
+//            { "mode": "brand", "url": "https://…" } → { ok, kind: "brand", data: { url, themeColor, vars, colors, background, text, fonts, logo, icon, image } }
+//              (the site's own colors, fonts and logo read from its HTML and stylesheets; no model call)
 // GET (signed in) → { ok, ready, modes } so the site only shows features this deployed version supports.
 // Only signed-in users can call it. Input is capped at 40,000 characters.
 
@@ -352,6 +354,95 @@ export async function gatherSite(u: URL, read = readPage): Promise<{ source: str
   const parts = [`=== MAIN PAGE: ${main.url} ===\n${mainText}`, ...subs.map(p => `=== RELATED PAGE: ${p.url} ===\n${p.text.slice(0, each)}`)];
   return { source: `TARGET YEAR: ${target}\n\n${parts.join("\n\n")}${assetText}`, pages: [main.url, ...subs.map(p => p.url)], target };
 }
+// ---------- mode "brand": a website's own colors, fonts and logo (HTML + up to 5 stylesheets; no model call) ----------
+export type Brand = { url: string; themeColor: string; vars: { name: string; hex: string }[]; colors: { hex: string; n: number; bg: number; fg: number }[];
+  background: string; text: string; fonts: string[]; logo: string; icon: string; image: string };
+const hex2 = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+// one CSS color → "#rrggbb", or "" when it's transparent, mostly see-through, or not a color
+export function cssColor(v: string): string {
+  v = v.trim().toLowerCase();
+  let m = v.match(/^#([0-9a-f]{3,8})$/);
+  if (m) { let h = m[1]; if (h.length === 3 || h.length === 4) h = [...h].map(c => c + c).join(""); if (h.length === 8) { if (parseInt(h.slice(6), 16) < 128) return ""; h = h.slice(0, 6); } return h.length === 6 ? "#" + h : ""; }
+  m = v.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+)(%?))?\s*\)$/);
+  if (m) { if (m[4] != null && (m[5] ? +m[4] / 100 : +m[4]) < 0.5) return ""; return "#" + hex2(+m[1]) + hex2(+m[2]) + hex2(+m[3]); }
+  m = v.match(/^hsla?\(\s*([\d.]+)(?:deg)?[\s,]+([\d.]+)%[\s,]+([\d.]+)%(?:[\s,/]+([\d.]+)(%?))?\s*\)$/);
+  if (m) {
+    if (m[4] != null && (m[5] ? +m[4] / 100 : +m[4]) < 0.5) return "";
+    const h = (+m[1] % 360) / 360, sat = +m[2] / 100, l = +m[3] / 100;
+    const q = l < 0.5 ? l * (1 + sat) : l + sat - l * sat, p = 2 * l - q;
+    const f = (t: number) => { t = (t + 1) % 1; return t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; };
+    return "#" + hex2(f(h + 1 / 3) * 255) + hex2(f(h) * 255) + hex2(f(h - 1 / 3) * 255);
+  }
+  return NAMED_COLORS[v] || "";
+}
+const NAMED_COLORS: Record<string, string> = { white: "#ffffff", black: "#000000", red: "#ff0000", blue: "#0000ff", navy: "#000080", green: "#008000", orange: "#ffa500", purple: "#800080", gray: "#808080", grey: "#808080", teal: "#008080", maroon: "#800000", gold: "#ffd700", crimson: "#dc143c", darkblue: "#00008b", darkgreen: "#006400", royalblue: "#4169e1", tomato: "#ff6347", coral: "#ff7f50", indigo: "#4b0082" };
+const COLOR_TOKEN = /#[0-9a-f]{3,8}\b|(?:rgba?|hsla?)\([^)]*\)|(?<![\w-])(?:white|black|red|blue|navy|green|orange|purple|gray|grey|teal|maroon|gold|crimson|darkblue|darkgreen|royalblue|tomato|coral|indigo)(?![\w-])/gi;
+const BRAND_VAR = /primary|brand|accent|main|theme|secondary|cta|button|btn|highlight|link/i;
+const GENERIC_FONTS = /^(inherit|initial|unset|revert|serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-sans-serif|ui-serif|ui-monospace|-apple-system|blinkmacsystemfont|segoe ui|roboto|helvetica neue|helvetica|arial|noto sans|liberation sans|apple color emoji|segoe ui emoji|segoe ui symbol|noto color emoji|var\(.*)$/i;
+const ICON_FONTS = /awesome|icon|glyph|dashicons|material symbols|material icons|eicons|fa-|swiper|slick|star|feather|ionicons|bootstrap-icons|socicon|revicons|elementskit|etmodules|modules/i;
+const attr = (tag: string, name: string) => { const m = tag.match(new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i")); return m ? (m[1] ?? m[2] ?? m[3] ?? "") : ""; };
+const absHttps = (u: string, base: string) => { try { const x = new URL(u.replace(/&amp;/g, "&"), base); if (x.protocol === "http:") x.protocol = "https:"; return x.protocol === "https:" ? x.href : ""; } catch { return ""; } };
+export function brandFromSources(html: string, base: string, css: string[]): Brand {
+  const styleText = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map(m => m[1]).join("\n") + "\n" + [...html.matchAll(/\sstyle\s*=\s*"([^"]*)"/gi)].map(m => `x{${m[1]}}`).join("\n");
+  const all = [styleText, ...css].join("\n").replace(/\/\*[\s\S]*?\*\//g, " ");
+  const counts = new Map<string, { n: number; bg: number; fg: number }>(); const vars: { name: string; hex: string }[] = []; const fontN = new Map<string, number>();
+  const bump = (hex: string, prop: string, w = 1) => { const c = counts.get(hex) || { n: 0, bg: 0, fg: 0 }; c.n += w; if (/^background/.test(prop)) c.bg += w; else if (prop === "color") c.fg += w; counts.set(hex, c); };
+  for (const m of all.matchAll(/([-\w]+)\s*:\s*([^;{}]+)/g)) {
+    const prop = m[1].toLowerCase(), val = m[2];
+    if (prop === "font-family" || (prop.startsWith("--") && /font/.test(prop) && !/weight|size|style|stretch|feature|variation|smooth|height|spacing/.test(prop))) {
+      // the first named family in the list; var() references, sizes and other non-names are skipped
+      const fam = val.split(",").map(x => x.replace(/!important/, "").trim().replace(/^["']|["']$/g, "").trim()).find(x => /^[a-z][\w .'-]*$/i.test(x) && !GENERIC_FONTS.test(x)) || "";
+      if (fam && !ICON_FONTS.test(fam) && fam.length < 40) fontN.set(fam, (fontN.get(fam) || 0) + 1);
+      continue;
+    }
+    if (!/color|background|border|fill|stroke|outline|shadow|^--/.test(prop)) continue;
+    for (const t of val.replace(/(?:var|url)\([^)]*\)/gi, " ").match(COLOR_TOKEN) || []) {
+      const hex = cssColor(t); if (!hex) continue;
+      if (prop.startsWith("--")) { if (vars.length < 40 && !vars.some(v => v.name === prop)) vars.push({ name: prop, hex }); bump(hex, prop, BRAND_VAR.test(prop) ? 3 : 1); }
+      else bump(hex, prop);
+    }
+  }
+  for (const m of html.matchAll(/fonts\.googleapis\.com\/css2?\?([^"'>\s]+)/gi)) for (const f of m[1].replace(/&amp;/g, "&").matchAll(/family=([^&:;]+)/g)) { const fam = decodeURIComponent(f[1].replace(/\+/g, " ")).trim(); if (fam) fontN.set(fam, (fontN.get(fam) || 0) + 5); }
+  const pageColor = (sel: RegExp, prop: RegExp) => { for (const m of all.matchAll(sel)) { const d = m[1].match(prop); if (d) { const t = (d[1].match(COLOR_TOKEN) || [])[0]; const hex = t ? cssColor(t) : ""; if (hex) return hex; } } return ""; };
+  const background = pageColor(/(?:^|[\s,}])(?:html|body)\s*\{([^}]*)\}/gi, /background(?:-color)?\s*:\s*([^;}]+)/i);
+  const text = pageColor(/(?:^|[\s,}])(?:html|body)\s*\{([^}]*)\}/gi, /(?:^|[;\s])color\s*:\s*([^;}]+)/i);
+  const metas = [...html.matchAll(/<meta\b[^>]*>/gi)].map(m => m[0]);
+  const meta = (re: RegExp) => { const t = metas.find(x => re.test(attr(x, "name") || attr(x, "property"))); return t ? attr(t, "content") : ""; };
+  const themeColor = cssColor(meta(/^(theme-color|msapplication-tilecolor)$/i));
+  const links = [...html.matchAll(/<link\b[^>]*>/gi)].map(m => m[0]);
+  const icons = links.filter(l => /icon/i.test(attr(l, "rel"))).map(l => ({ href: absHttps(attr(l, "href"), base), apple: /apple-touch/i.test(attr(l, "rel")), size: +(attr(l, "sizes").split("x")[0]) || 0 })).filter(x => x.href && !/\.ico(\?|$)/i.test(x.href));
+  icons.sort((a, b) => (+b.apple - +a.apple) || b.size - a.size);
+  // the site's own logo: an image in the home link, else one whose class/id says logo (in the header first), else the
+  // file named logo; customer/partner logo strips ("logos", "clients", "partners") are skipped
+  const imgSrc = (tag: string) => { const src = attr(tag, "src") || attr(tag, "data-src") || (attr(tag, "srcset").split(/[\s,]+/)[0] || ""); return src && !/^data:/i.test(src) ? absHttps(src, base) : ""; };
+  const notOthers = (tag: string) => !/partner|client|customer|sponsor|logos|press|award|trust|badge|payment/i.test([attr(tag, "class"), attr(tag, "id"), attr(tag, "alt"), attr(tag, "src")].join(" "));
+  const root = new URL(base); const isHome = (href: string) => { try { const x = new URL(href.replace(/&amp;/g, "&"), base); return x.hostname.replace(/^www\./, "") === root.hostname.replace(/^www\./, "") && /^\/?([a-z]{2}([-_][a-z]{2})?\/?)?$/i.test(x.pathname.replace(/^\//, "")); } catch { return false; } };
+  const header = (html.match(/<header\b[\s\S]*?<\/header>/i) || [""])[0];
+  const big = (tag: string) => +attr(tag, "width") > 800 || +attr(tag, "height") > 400;
+  const says = (tag: string) => /logo/i.test(attr(tag, "class") + " " + attr(tag, "id") + " " + attr(tag, "src")) || /^\s*[\w .&'’-]{1,40}\s+logo\s*$/i.test(attr(tag, "alt"));
+  let logo = "";
+  for (const scope of [header, html]) {
+    for (const m of scope.matchAll(/<a\b([^>]*)>([\s\S]{0,1500}?)<\/a>/gi)) { if (!isHome(attr(m[0], "href"))) continue; const img = (m[2].match(/<img\b[^>]*>/i) || [])[0]; if (img && !big(img) && notOthers(img) && (scope === header || says(img)) && (logo = imgSrc(img))) break; }
+    if (logo) break;
+    for (const m of scope.matchAll(/<img\b[^>]*>/gi)) { const tag = m[0]; if (says(tag) && !big(tag) && notOthers(tag) && (logo = imgSrc(tag))) break; }
+    if (logo) break;
+  }
+  if (!logo) for (const m of html.matchAll(/<img\b[^>]*>/gi)) { if (/\/logo[^/]*\.(svg|png|webp|jpe?g)/i.test(attr(m[0], "src")) && notOthers(m[0]) && (logo = imgSrc(m[0]))) break; }
+  if (!logo) { const ld = html.match(/"logo"\s*:\s*(?:\{[^}]*?"url"\s*:\s*)?"(https?:[^"]+)"/i); if (ld) logo = absHttps(ld[1].replace(/\\\//g, "/"), base); }
+  const colors = [...counts.entries()].map(([hex, c]) => ({ hex, ...c })).sort((a, b) => b.n - a.n).slice(0, 24);
+  const fonts = [...fontN.entries()].sort((a, b) => b[1] - a[1]).map(([f]) => f).slice(0, 6);
+  return { url: base, themeColor, vars: vars.filter(v => BRAND_VAR.test(v.name)).slice(0, 16), colors, background, text, fonts, logo, icon: icons[0] ? icons[0].href : "", image: ((v) => v ? absHttps(v, base) : "")(meta(/^(og:image|twitter:image)$/i)) };
+}
+export async function readBrand(u: URL, get = fetchWithTimeout): Promise<Brand | null> {
+  const ua = { "User-Agent": "Mozilla/5.0 (compatible; 1LinkTripImport/1.0)", "Accept": "text/html,*/*;q=0.5" };
+  let html = "", base = u.href;
+  try { const r = await get(u.href, { headers: ua }, 12000); if (!r.ok) return null; html = (await r.text()).slice(0, 2_000_000); base = r.url || u.href; } catch { return null; }
+  if (!/<html|<head|<body/i.test(html)) return null;
+  const hrefs = [...html.matchAll(/<link\b[^>]*>/gi)].map(m => m[0]).filter(l => /stylesheet/i.test(attr(l, "rel")) && !/print/i.test(attr(l, "media"))).map(l => absHttps(attr(l, "href"), base))
+    .filter(h => h && !/fonts\.googleapis|font-awesome|fontawesome|use\.typekit/i.test(h)).filter(h => isPublicHttpUrl(h)).slice(0, 5);
+  const css = (await Promise.all(hrefs.map(h => get(h, { headers: { ...ua, Accept: "text/css,*/*;q=0.1" } }, 8000).then(r => r.ok ? r.text() : "").then(t => t.slice(0, 1_500_000)).catch(() => "")))).filter(Boolean);
+  return brandFromSources(html, base, css);
+}
 function signedInUser(req: Request): string | null {
   // The platform has already verified the JWT signature (Verify JWT on); here we require a real signed-in user, not the anon role.
   const m = (req.headers.get("authorization") || "").match(/^Bearer\s+([\w-]+)\.([\w-]+)\.([\w-]+)$/);
@@ -391,7 +482,7 @@ export async function handler(req: Request): Promise<Response> {
 async function route(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok");
   const key = Deno.env.get("ANTHROPIC_API_KEY");
-  if (req.method === "GET") return json(200, { ok: true, ready: !!key, modes: ["url", "text", "edit", "translate", "file", "doc"] });
+  if (req.method === "GET") return json(200, { ok: true, ready: !!key, modes: ["url", "text", "edit", "translate", "file", "doc", "brand"] });
   if (req.method !== "POST") return json(405, { ok: false, error: "Use POST" });
   // Signed-in organizers use every mode. Guests who aren't signed in may only translate a page into their language
   // (the public key passes the platform's check): capped per request and per address.
@@ -406,6 +497,11 @@ async function route(req: Request): Promise<Response> {
     const hits = (ANON_HITS.get(ip) || []).filter((x) => now - x < 600_000);
     if (hits.length >= ANON_MAX_CALLS) return json(429, { ok: false, error: "Busy right now, try again in a few minutes" });
     hits.push(now); ANON_HITS.set(ip, hits); if (ANON_HITS.size > 5000) ANON_HITS.clear();
+  }
+  if (body.mode === "brand") {
+    const u = isPublicHttpUrl(String(body.url || "").trim()); if (!u) return json(400, { ok: false, error: "That link doesn't look like a public web page" });
+    const b = await readBrand(u); if (!b) return json(422, { ok: false, error: "Couldn't read that page" });
+    return json(200, { ok: true, kind: "brand", data: b });
   }
   if (!key) return json(503, { ok: false, error: "Import is not set up yet (missing ANTHROPIC_API_KEY)" });
 

@@ -1459,6 +1459,7 @@ function normalize(c) {
   c.langs = Array.isArray(c.langs) ? c.langs.filter(l => typeof l === 'string' && /^[a-z]{2,3}$/.test(l) && l !== c.lang).slice(0, 12) : [];
   if (c.tr && typeof c.tr === 'object') { const tr = {}; for (const [l, m] of Object.entries(c.tr)) { if (!/^[a-z]{2,3}$/.test(l) || !m || typeof m !== 'object') continue; tr[l] = {}; for (const [k, e] of Object.entries(m)) if (e && typeof e.t === 'string' && typeof e.h === 'string') tr[l][k] = { h: e.h, t: e.t.slice(0, 6000), ...(e.o ? { o: true } : {}) }; } c.tr = tr; } else c.tr = {};
   c.stops = Array.isArray(c.stops) ? c.stops.filter(x => x && typeof x === 'object').slice(0, 20) : [];
+  if (c.logo !== undefined && !(typeof c.logo === 'string' && /^https:\/\/\S+$/.test(c.logo) && c.logo.length < 2000)) delete c.logo; // brand logo (Design → Match your brand)
   delete c.osm; // hosted pages store a nearby-places snapshot beside the config; it never travels in links or drafts
   return c;
 }
@@ -1723,6 +1724,7 @@ function renderEvent(cfg, root, opts = {}) {
       <header class="ev-hero ${cfg.cover ? 'has-cover' : ''}">
         ${cfg.cover ? `<img class="ev-cover" src="${esc(cfg.cover)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
         <div class="ev-hero-in">
+          ${httpsUrl(cfg.logo) ? `<img class="ev-logo" src="${esc(cfg.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
           <p class="ev-kicker">${esc(t(cfg.type || 'Event'))}${v && v.city ? ` · ${esc(v.city)}` : ''}</p>
           <h1 class="ev-title">${esc(cfg.title || t('Untitled event'))}</h1>
           ${cfg.tagline ? `<p class="ev-tagline">${esc(cfg.tagline)}</p>` : ''}
@@ -2572,6 +2574,7 @@ function suRender() {
   LS.set('draft', c); pageSave(LS.get('draftId'), { cfg: c }); suPreview();
   if (n === 0) { const dz = $('[data-su-doc-drop]'); if (dz) { // Start from a document: choose or drop a file
     $('#su-doc-file').addEventListener('change', (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) suDocGo(f); });
+    $('[data-su-brand]')?.addEventListener('change', (e) => LS.set('aiBrand', e.target.checked));
     dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('over'); }); dz.addEventListener('dragleave', () => dz.classList.remove('over'));
     dz.addEventListener('drop', (e) => { e.preventDefault(); dz.classList.remove('over'); const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) suDocGo(f); });
   } }
@@ -5119,6 +5122,8 @@ async function aiResolveVenue(name, address) {
 async function startFromWebsite(url, msgEl, type) {
   const say = (t2) => { if (msgEl) msgEl.textContent = t2; };
   say('Reading the site and filling in your page…');
+  // the site's own colors, font and logo (ai-import "brand"), read alongside when the box is ticked and the function supports it
+  const brandP = LS.get('aiBrand') === false ? Promise.resolve(null) : aiModes().then(m => m.includes('brand') ? aiImport({ mode: 'brand', url }) : null).catch(() => null);
   const j = await aiImport(type ? { url, type } : { url });
   // a category the organizer picked wins over the model's guess
   if (type && TYPES.includes(type)) { j.data = j.data || {}; if (j.data.type !== type) { j.data.type = type; } }
@@ -5128,14 +5133,17 @@ async function startFromWebsite(url, msgEl, type) {
   const v = await aiResolveVenue(j.data.venue_name, j.data.venue_address);
   if (v) { cfg.venue = { name: v.name, address: v.address, lat: v.lat, lon: v.lon, city: v.city, region: v.region, country: v.country, cc: v.cc }; try { cfg.tz = await lookupTZ(v.lat, v.lon); } catch { /* floating */ } }
   say('Pinning the start, finish and other places…'); await aiPinPlaces(cfg).catch(() => {});
+  const bj = await brandP; const bp = bj && brandFromSite(bj.data, cfg.theme);
+  if (bp) { cfg.theme = { ...cfg.theme, accent: bp.accent, mode: bp.mode, font: bp.font }; if (bp.logo) cfg.logo = bp.logo; }
   const pid = newPid(); LS.set('draft', cfg); LS.set('draftHosted', null); LS.set('draftId', pid); pageSave(pid, { cfg });
   SU = null; history.replaceState(null, '', siteBase() + '#page=' + pid);
-  renderBuilder(cfg, `Filled in from ${hostOf(url)}. Check every detail before you publish.`, null, pid);
+  renderBuilder(cfg, `Filled in from ${hostOf(url)}${bp ? ', in its colors' : ''}. Check every detail before you publish.`, null, pid);
 }
 function suAIHTML() {
   return `<div class="su-ai" data-su-ai hidden><div class="su-ai-starts"><button type="button" class="link strong" data-su="ai-open">✦ Start from a website</button><button type="button" class="link strong" data-su="doc-open">✦ Start from a document</button></div>
     <div class="su-ai-form" hidden><p class="hint" data-su-ai-type></p>
       <div class="search"><input id="su-ai-url" type="url" inputmode="url" placeholder="https://yourwedding.com" autocomplete="off"><button type="button" class="btn primary" data-su="ai-go">Fill in</button></div>
+      <label class="chk su-ai-brand"><input type="checkbox" data-su-brand ${LS.get('aiBrand') === false ? '' : 'checked'}> Use the site’s colors and logo</label>
       <p class="hint" data-su-ai-msg role="status" aria-live="polite"></p><div data-su-ai-signin></div></div>
     <div class="su-doc-form" hidden><p class="hint" data-su-ai-type></p>
       <label class="su-doc-drop" data-su-doc-drop><input type="file" id="su-doc-file" accept="application/pdf,.pdf,image/*" hidden><b>Choose a PDF or photo</b><span>or drop it here · an itinerary, invitation or booking confirmation</span></label>
@@ -6193,7 +6201,7 @@ function designHTML(c) {
   lab.schedule = schedTitle(c); if (isTrip(c)) lab.route = 'Route (shown in Itinerary)'; (c.custom || []).forEach(x => { lab[customSid(x)] = x.title; });
   const pre = THEME_PRESETS.find(([, p]) => sameTheme(th, p)); const known = !!COLOR_NAME[th.accent.toLowerCase()]; const custom = !known || (B && B.customColor);
   const sel = (id, key, prev, opts) => `<div class="dsel">${prev}<select id="${id}" data-d="${key}">${opts}</select></div>`;
-  return `<div class="dgrid">
+  return `${brandHTML(c)}<div class="dgrid">
     <div class="field"><label for="d-style">Style</label>${sel('d-style', 'preset', `<span class="dprev${th.mode === 'dark' ? ' dark' : ''}" style="--pa:${esc(th.accent)};--pc:#fff;font-family:${esc(FONTS[th.font].css)}" aria-hidden="true">Aa</span>`, `${pre ? '' : '<option value="" selected>Custom</option>'}${THEME_PRESETS.map(([n]) => `<option value="${esc(n)}" ${pre && pre[0] === n ? 'selected' : ''}>${esc(PRESET_LABEL[n] || n)}</option>`).join('')}`)}</div>
     <div class="field"><label for="d-color">Color</label>${sel('d-color', 'color', `<span class="ddot" style="background:${esc(th.accent)}" aria-hidden="true"></span>`, `${SWATCHES.map(x => `<option value="${x}" ${!custom && x.toLowerCase() === th.accent.toLowerCase() ? 'selected' : ''}>${esc(colorName(x))}</option>`).join('')}<option value="custom" ${custom ? 'selected' : ''}>Custom…</option>`)}</div>
     <div class="field"><label for="d-font">Title font</label>${sel('d-font', 'font', `<span class="dprev" style="font-family:${esc(FONTS[th.font].css)}" aria-hidden="true">Aa</span>`, Object.entries(FONTS).map(([k, x]) => `<option value="${k}" ${k === th.font ? 'selected' : ''}>${esc(x.label)}</option>`).join(''))}</div>
@@ -6201,6 +6209,7 @@ function designHTML(c) {
   </div>
   ${custom ? `<div class="field"><div class="swatches custom-row"><label class="custom-c"><input type="color" data-t="accent" value="${esc(th.accent)}" aria-label="Pick any color"><span>Pick</span></label><input id="f-accent-hex" class="hex" data-hex value="${esc(th.accent)}" maxlength="7" spellcheck="false" aria-label="Color code"></div></div>` : ''}
     ${coverFieldHTML(c)}
+    ${httpsUrl(c.logo) ? `<div class="field"><label>Logo</label><div class="logo-row"><img src="${esc(c.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()"><button type="button" class="link" data-b="logo-clear">Remove logo</button></div></div>` : ''}
     <details class="tr-review" data-acc="design-more" ${B && B.moreOpen ? 'open' : ''}><summary><b>More options</b> <small class="muted">Sections</small></summary><div class="acc-b" style="padding:12px 0 0">
     <div class="field"><label>Sections</label>
       <ol class="order">${order.map((id, i) => `<li class="${sectionShown(c, id) ? '' : 'off'}"><label class="chk"><input type="checkbox" data-sec-on="${id}" ${sectionShown(c, id) ? 'checked' : ''}> ${esc(lab[id])}</label><span class="mv"><button type="button" data-sec-mv="${id}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move ${esc(lab[id])} up">↑</button><button type="button" data-sec-mv="${id}" data-dir="1" ${i === order.length - 1 ? 'disabled' : ''} aria-label="Move ${esc(lab[id])} down">↓</button></span></li>`).join('')}</ol></div>
@@ -6212,6 +6221,8 @@ function designClick(b, cfg) {
   if (d.preset) { const p = THEME_PRESETS.find(x => x[0] === d.preset); if (p) { cfg.theme = { ...cfg.theme, ...p[1] }; loadFont(p[1].font); changed(true); } return true; }
   if (d.secMv) { const o = sectionOrder(cfg); const i = o.indexOf(d.secMv), j = i + +d.dir; if (j >= 0 && j < o.length) { [o[i], o[j]] = [o[j], o[i]]; cfg.order = o; changed(true); } return true; }
   if (d.b === 'cover-clear') { cfg.cover = ''; changed(true); return true; }
+  if (d.b === 'logo-clear') { delete cfg.logo; changed(true); return true; }
+  if (d.brand) return brandClick(b);
   if (d.b === 'type-defaults') { const td = typeDefaults(cfg.type); cfg.theme = { ...td.theme }; cfg.tools = defaultTools(cfg.type); delete cfg.order; ['about', 'details', 'access', 'rsvp', 'schedule'].forEach(k => { cfg.off[k] = false; }); loadFont(cfg.theme.font); changed(true); toast(`${cfg.type} defaults applied`); return true; }
   return false;
 }
@@ -6224,9 +6235,216 @@ function designInput(i, cfg) {
     else if (dk === 'mode') { cfg.theme.mode = i.value === 'dark' ? 'dark' : 'light'; changed(true); }
     return true;
   }
+  if (i.dataset.brandUrl != null) { BR().url = i.value; return true; }
+  if (i.dataset.brandLogo != null || i.dataset.brandFile != null) return true;
   if (i.dataset.secOn) { setSectionShown(cfg, i.dataset.secOn, i.checked); changed(true); return true; }
   if (i.dataset.hex != null) { const v = i.value.trim(); if (/^#[0-9a-f]{6}$/i.test(v)) { cfg.theme.accent = v; const cp = i.closest('.swatches')?.querySelector('[data-t="accent"]'); if (cp) cp.value = v; changed(); } return true; }
   return false;
+}
+// ================= "Match your brand": a website link or an uploaded logo/screenshot → a proposed theme =================
+// Link: ai-import mode "brand" reads the site's theme-color, CSS colors and variables, fonts and logo (server side, no model).
+// Upload: the image's own colors, found here in the browser (k-means over a downscaled copy). Either way the accent is
+// moved just enough to keep WCAG AA (4.5:1) against the page and its button text, and shown as a preview with Apply / Undo.
+const hexRgb = (h) => { const m = /^#?([0-9a-f]{6})$/i.exec(h || ''); if (!m) return null; const n = parseInt(m[1], 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+const rgbHex = (r, g, b) => '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+function rgbHsl([r, g, b]) {
+  r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2; if (mx === mn) return [0, 0, l];
+  const d = mx - mn, s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+  const h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; return [h / 6, s, l];
+}
+function hslHex(h, s, l) {
+  if (!s) return rgbHex(l * 255, l * 255, l * 255);
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+  const f = (t) => { t = (t + 1) % 1; return t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; };
+  return rgbHex(f(h + 1 / 3) * 255, f(h) * 255, f(h - 1 / 3) * 255);
+}
+const relLum = (hex) => { const c = hexRgb(hex); if (!c) return 0; const [r, g, b] = c.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+const contrast = (a, b) => { const x = relLum(a), y = relLum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+// the page's own background and card colors per mode (styles.css .ev / .ev.dark) and its text color
+const PAGE_BG = { light: ['#F2F3F6', '#FFFFFF'], dark: ['#0F1116', '#181B22'] };
+const PAGE_INK = { light: '#12141B', dark: '#EDEFF3' };
+const aaOK = (hex, mode) => PAGE_BG[mode].every(bg => contrast(hex, bg) >= 4.5) && contrast(hex, onAccent(hex)) >= 4.5;
+// same hue and saturation, lightness moved toward readable (darker on light pages, lighter on dark ones)
+function aaAccent(hex, mode) {
+  if (aaOK(hex, mode)) return hex.toLowerCase();
+  const [h, s, l0] = rgbHsl(hexRgb(hex)); const dir = mode === 'dark' ? 1 : -1;
+  for (let i = 1; i <= 100; i++) { const l = l0 + dir * i * 0.01; if (l < 0 || l > 1) break; const x = hslHex(h, s, l); if (aaOK(x, mode)) return x; }
+  return mode === 'dark' ? '#e6e8ee' : '#1f2937';
+}
+// a site's font family → the closest of the page's title fonts
+const FONT_HINTS = [
+  ['condensed', /condensed|narrow|compressed|oswald|bebas|anton|league gothic|big shoulders|fjalla|teko|antonio|alumni sans|tungsten|knockout|druk(?! ?wide)|barlow semi condensed/i],
+  ['wide', /extended|expanded|\bwide\b|unbounded|syncopate|michroma|krona|monument|druk ?wide|archivo black|clash display|lexend (zetta|peta|giga|mega|exa|tera)/i],
+  ['classic', /garamond|cormorant|caslon|didot|bodoni|baskerville|playfair|cinzel|trajan|copperplate|nineties|\bogg\b|canela|gt super|italiana|bellefair|marcellus/i],
+  ['serif', /fraunces|dm serif|recoleta|cooper|young serif|gloock|abril|tiempos|copernicus|new.?spirit|serif display|editorial|domaine|freight|lora|libre baskerville/i],
+  ['field', /newsreader|georgia|merriweather|source serif|pt serif|noto serif|times|charter|crimson|spectral|literata|slab|serif/i],
+];
+function closestFont(fams, cur) {
+  const list = (fams || []).filter(Boolean); if (!list.length) return cur;
+  for (const f of list.slice(0, 2)) { const hit = FONT_HINTS.find(([, re]) => re.test(f)); if (hit) return hit[0]; }
+  return 'grotesk';
+}
+const isNeutral = (hex) => { const [, s, l] = rgbHsl(hexRgb(hex)); return s < 0.2 || l < 0.08 || l > 0.94; };
+// best brand color from weighted candidates [{ hex, w }]: saturated mid-tones win, a dark neutral (black CTAs) next
+function pickAccent(cands, bg) {
+  const agg = new Map(); for (const c of cands) { const h = String(c.hex || '').toLowerCase(); if (hexRgb(h)) agg.set(h, (agg.get(h) || 0) + c.w); }
+  let best = '', bs = 0;
+  for (const [hex, w] of agg) {
+    if (bg && contrast(hex, bg) < 1.25) continue; // the background itself
+    const [, s, l] = rgbHsl(hexRgb(hex));
+    const f = s >= 0.28 && l > 0.12 && l < 0.88 ? 1 + s : l < 0.3 ? 0.4 : 0.03;
+    if (w * f > bs) { bs = w * f; best = hex; }
+  }
+  return best;
+}
+// (library defaults like Swiper's --swiper-theme-color or Bootstrap's --bs-primary aren't the site's brand)
+const SKIP_VAR = /on-|fore|text|background|\bbg\b|-bg|surface|border|shadow|overlay|muted|neutral|gr[ae]y|white|black|swiper|--bs-|bootstrap|--wp--preset|chakra|--mui|--tw-|--rdp|toastify|plyr|fancybox|slick|select2|flatpickr/i;
+// ai-import "brand" data → { accent, mode, font, logo, adjusted }
+function brandFromSite(d, cur) {
+  if (!d) return null;
+  const max = Math.max(1, ...(d.colors || []).map(c => c.n));
+  const theme = d.themeColor && hexRgb(d.themeColor) ? d.themeColor : '';
+  const bg = (d.background && hexRgb(d.background) ? d.background : '') || (theme && isNeutral(theme) ? theme : '') || '#ffffff';
+  const mode = relLum(bg) < 0.2 ? 'dark' : 'light';
+  const cands = [...(d.colors || []).map(c => ({ hex: c.hex, w: (c.n / max) * 100 })), ...(d.vars || []).filter(v => !SKIP_VAR.test(v.name)).map(v => ({ hex: v.hex, w: 40 })), ...(theme ? [{ hex: theme, w: 60 }] : [])];
+  const raw = pickAccent(cands, bg); if (!raw) return null;
+  const accent = aaAccent(raw, mode);
+  return { accent, raw, mode, font: closestFont(d.fonts, cur.font), logo: httpsUrl(d.logo) ? d.logo : '', adjusted: accent !== raw.toLowerCase(), src: 'site' };
+}
+// pixels → up to k color clusters [{ hex, n }] (n = share 0..1), plus the border's main color and whether it's see-through
+function imagePalette(data, w, h, k = 8) {
+  const px = []; let clear = 0; const edge = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4; if (data[i + 3] < 128) { clear++; continue; }
+    const p = [data[i], data[i + 1], data[i + 2]]; px.push(p); if (x === 0 || y === 0 || x === w - 1 || y === h - 1) edge.push(p);
+  }
+  if (!px.length) return { clusters: [], edge: '', clear: 1 };
+  // seeds: the most common colors on a coarse grid, spread apart
+  const grid = new Map(); for (const p of px) { const key = (p[0] >> 5) << 6 | (p[1] >> 5) << 3 | (p[2] >> 5); const g = grid.get(key) || [0, 0, 0, 0]; g[0] += p[0]; g[1] += p[1]; g[2] += p[2]; g[3]++; grid.set(key, g); }
+  const dist = (a, b) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
+  let cen = [...grid.values()].sort((a, b) => b[3] - a[3]).map(g => [g[0] / g[3], g[1] / g[3], g[2] / g[3]]).reduce((acc, c) => { if (acc.length < k && acc.every(a => dist(a, c) > 900)) acc.push(c); return acc; }, []);
+  const lab = new Int16Array(px.length);
+  for (let it = 0; it < 10; it++) {
+    const sum = cen.map(() => [0, 0, 0, 0]);
+    px.forEach((p, i) => { let bi = 0, bd = Infinity; cen.forEach((c, j) => { const d2 = dist(p, c); if (d2 < bd) { bd = d2; bi = j; } }); lab[i] = bi; const s = sum[bi]; s[0] += p[0]; s[1] += p[1]; s[2] += p[2]; s[3]++; });
+    cen = cen.map((c, j) => sum[j][3] ? [sum[j][0] / sum[j][3], sum[j][1] / sum[j][3], sum[j][2] / sum[j][3]] : c);
+  }
+  const n = cen.map(() => 0); lab.forEach(j => { n[j]++; });
+  const clusters = cen.map((c, j) => ({ hex: rgbHex(...c), n: n[j] / px.length })).filter(c => c.n > 0).sort((a, b) => b.n - a.n);
+  let edgeHex = ''; if (edge.length) { const en = cen.map(() => 0); edge.forEach(p => { let bi = 0, bd = Infinity; cen.forEach((c, j) => { const d2 = dist(p, c); if (d2 < bd) { bd = d2; bi = j; } }); en[bi]++; }); const j = en.indexOf(Math.max(...en)); if (en[j] / edge.length > 0.4) edgeHex = rgbHex(...cen[j]); }
+  return { clusters, edge: edgeHex, clear: clear / (w * h) };
+}
+// palette → { accent, mode, font (unchanged), logoOK }: a logo (see-through) keeps the page light unless it's a light logo;
+// a screenshot's border color is its background
+function brandFromPalette(pal, cur) {
+  if (!pal || !pal.clusters.length) return null;
+  const logoLike = pal.clear > 0.05;
+  const bg = logoLike ? '' : pal.edge || pal.clusters[0].hex;
+  const avgL = pal.clusters.reduce((a, c) => a + relLum(c.hex) * c.n, 0);
+  const mode = bg ? (relLum(bg) < 0.2 ? 'dark' : 'light') : avgL > 0.7 ? 'dark' : 'light';
+  const raw = pickAccent(pal.clusters.filter(c => c.n >= 0.01).map(c => ({ hex: c.hex, w: c.n * 100 })), bg || PAGE_BG[mode][0]); if (!raw) return null;
+  const accent = aaAccent(raw, mode);
+  return { accent, raw, mode, font: cur.font, logo: '', logoOK: logoLike, adjusted: accent !== raw.toLowerCase(), src: 'image' };
+}
+async function fileImage(file) {
+  const url = URL.createObjectURL(file);
+  // the object URL stays alive: the preview shows the uploaded logo from it until Apply uploads a copy
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => { URL.revokeObjectURL(url); rej(new Error('Use a photo or screenshot (PNG, JPG).')); }; i.src = url; });
+}
+function paletteOfImage(img, side = 120) {
+  const k = Math.min(1, side / Math.max(img.naturalWidth, img.naturalHeight)); const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, c.width, c.height);
+  return imagePalette(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+}
+// a logo keeps its transparency: PNG, at most 600 px on the long side
+async function logoBlob(img) {
+  const k = Math.min(1, 600 / Math.max(img.naturalWidth, img.naturalHeight)); const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k)); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return new Promise(res => c.toBlob(res, 'image/png'));
+}
+const brandRepaint = () => { if (!B) return; if (B.card) renderSheet(); else buildForm(); };
+const BR = () => (B.brand = B.brand || { url: '' });
+async function brandFromLink() {
+  const st = BR(); const url = normSite(st.url || ''); if (!url) { st.msg = 'That doesn’t look like a website link.'; return brandRepaint(); }
+  if (!LS.get('signedIn')) { st.msg = 'Sign in to read a website, or upload your logo or a screenshot instead.'; return brandRepaint(); }
+  st.busy = true; st.msg = 'Reading the site’s colors…'; st.prop = null; brandRepaint();
+  try {
+    if (!(await aiModes()).includes('brand')) throw new Error('Reading a website isn’t available yet. Upload your logo or a screenshot instead.');
+    const j = await aiImport({ mode: 'brand', url });
+    const p = brandFromSite(j.data, B.cfg.theme);
+    st.prop = p; st.msg = p ? '' : 'No clear brand colors on that site. Try uploading your logo or a screenshot.';
+  } catch (e) { st.msg = e.signin ? 'Sign in to read a website, or upload your logo or a screenshot instead.' : (e.message || 'Couldn’t read that site.'); }
+  st.busy = false; brandRepaint();
+}
+async function brandFromFile(file) {
+  const st = BR(); if (!file) return;
+  if (!/^image\//.test(file.type)) { st.msg = 'Use a photo or screenshot (PNG, JPG).'; return brandRepaint(); }
+  try {
+    const img = await fileImage(file); const p = brandFromPalette(paletteOfImage(img), B.cfg.theme);
+    if (!p) { st.prop = null; st.msg = 'Couldn’t find colors in that image.'; return brandRepaint(); }
+    if (p.logoOK) { p.logoImg = img; p.logo = img.src; p.useLogo = true; }
+    st.prop = p; st.msg = '';
+  } catch (e) { st.prop = null; st.msg = e.message || 'Couldn’t read that image.'; }
+  brandRepaint();
+}
+async function brandApply() {
+  const st = BR(); const p = st.prop; if (!p) return; const cfg = B.cfg;
+  let logo = '';
+  if (p.logo && p.useLogo !== false) {
+    if (p.logoImg) {
+      if (!LS.get('signedIn') || !SB) { st.msg = 'Applied the colors. Sign in to add the logo too.'; }
+      else { try { st.msg = 'Uploading the logo…'; brandRepaint(); const blob = await logoBlob(p.logoImg); const f = await docUpload({ name: 'logo.png' }, { blob, type: 'image/png', name: 'logo.png', kind: 'image' }); logo = f.url; } catch (e) { st.msg = 'Applied the colors; the logo didn’t upload (' + (e.message || 'error') + ').'; } }
+    } else logo = p.logo;
+  }
+  st.undo = { theme: { ...cfg.theme }, logo: cfg.logo || '' };
+  cfg.theme = { ...cfg.theme, accent: p.accent, mode: p.mode, font: p.font }; loadFont(p.font);
+  if (logo) cfg.logo = logo;
+  B.customColor = !COLOR_NAME[p.accent.toLowerCase()];
+  if (!/^Applied/.test(st.msg || '')) st.msg = '';
+  st.prop = null; st.applied = true; changed(true);
+}
+function brandUndo() {
+  const st = BR(); if (!st.undo) return; const cfg = B.cfg;
+  cfg.theme = { ...st.undo.theme }; if (st.undo.logo) cfg.logo = st.undo.logo; else delete cfg.logo; loadFont(cfg.theme.font);
+  B.customColor = !COLOR_NAME[cfg.theme.accent.toLowerCase()]; st.undo = null; st.applied = false; st.msg = 'Back to your previous design.'; changed(true);
+}
+function brandHTML(c) {
+  const st = (B && B.brand) || { url: '' }; const p = st.prop;
+  const prev = p ? (() => {
+    const ink = PAGE_INK[p.mode]; const fnt = FONTS[p.font] || FONTS.field; loadFont(p.font);
+    return `<div class="brand-prev${p.mode === 'dark' ? ' dark' : ''}" style="--pa:${esc(p.accent)};--po:${onAccent(p.accent)};--pi:${ink}">
+      ${p.logo && p.useLogo !== false ? `<img class="bp-logo" src="${esc(p.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
+      <b class="bp-title" style="font-family:${esc(fnt.css)}">${esc(c.title || 'Your event')}</b>
+      <span class="bp-row"><span class="bp-btn">Get directions</span><span class="bp-link">Add to calendar</span></span></div>
+    <ul class="bp-facts">
+      <li><span class="ddot" style="background:${esc(p.accent)}" aria-hidden="true"></span>Color <b>${esc(colorName(p.accent) === 'Custom' ? p.accent.toUpperCase() : colorName(p.accent))}</b>${p.adjusted ? ' <small class="muted">(adjusted so text stays readable)</small>' : ''}</li>
+      <li><span class="ddot${p.mode === 'dark' ? ' dk' : ' lt'}" aria-hidden="true"></span>Background <b>${p.mode === 'dark' ? 'Dark' : 'Light'}</b></li>
+      <li><span class="ddot" style="background:${PAGE_INK[p.mode]}" aria-hidden="true"></span>Text <b>${p.mode === 'dark' ? 'Light on dark' : 'Dark on light'}</b></li>
+      <li><span class="dprev" style="font-family:${esc(fnt.css)}" aria-hidden="true">Aa</span>Title font <b>${esc(fnt.label)}</b>${p.font === c.theme.font ? ' <small class="muted">(unchanged)</small>' : ''}</li>
+    </ul>
+    ${p.logo ? `<label class="chk"><input type="checkbox" data-brand-logo ${p.useLogo !== false ? 'checked' : ''}> Use the logo</label>` : ''}
+    <div class="btns"><button type="button" class="btn primary sm" data-brand="apply">Apply</button><button type="button" class="btn sm ghost" data-brand="cancel">Cancel</button></div>`;
+  })() : '';
+  return `<div class="field brand-m" data-brand-box><label for="d-brand-url">Match your brand</label>
+    <p class="hint">Paste your website, or upload your logo or a screenshot. You’ll see the colors and font before anything changes.</p>
+    ${SB ? `<div class="search"><input id="d-brand-url" type="url" inputmode="url" placeholder="https://yourwebsite.com" autocomplete="off" data-brand-url value="${esc(st.url || '')}"><button type="button" class="btn${st.busy ? ' busy' : ''}" data-brand="go" ${st.busy ? 'disabled' : ''}>Get colors</button></div>` : ''}
+    <div class="brand-up"><label class="btn sm file-pick">Upload logo or screenshot<input type="file" accept="image/*" data-brand-file hidden></label></div>
+    <p class="hint" data-brand-msg role="status" aria-live="polite">${esc(st.msg || '')}${st.undo && !p ? `${st.msg ? ' ' : ''}Brand applied. <button type="button" class="link" data-brand="undo">Undo</button>` : ''}</p>
+    ${prev}</div>`;
+}
+function brandClick(b) {
+  const k = b.dataset.brand; const st = BR();
+  if (k === 'go') { const i = document.querySelector('[data-brand-url]'); if (i) st.url = i.value; if (!st.busy) brandFromLink(); }
+  else if (k === 'apply') brandApply();
+  else if (k === 'cancel') { st.prop = null; st.msg = ''; brandRepaint(); }
+  else if (k === 'undo') brandUndo();
+  return true;
+}
+if (!document._brandWired) {
+  document._brandWired = true;
+  document.addEventListener('change', (e) => { const i = e.target; if (!B || !i.matches) return; if (i.matches('[data-brand-file]')) { const f = i.files && i.files[0]; i.value = ''; brandFromFile(f); } else if (i.matches('[data-brand-logo]')) { const p = BR().prop; if (p) { p.useLogo = i.checked; brandRepaint(); } } });
+  document.addEventListener('keydown', (e) => { const i = e.target; if (B && i.matches && i.matches('[data-brand-url]') && e.key === 'Enter') { e.preventDefault(); BR().url = i.value; if (!BR().busy) brandFromLink(); } });
 }
 // friendly date text over the native picker
 const friendlyDate = (d) => d ? new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(asUTC(d)) : '';
@@ -6311,5 +6529,5 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { ccCatOfTypes, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

@@ -936,7 +936,7 @@ body.doc-dragging::after { content: 'Drop to upload a document'; position: fixed
 @media (hover: hover) and (pointer: fine) { .ph-or { display: inline; } }
 .ph-up input[type="url"] { width: 100%; box-sizing: border-box; }
 .ph-up .hint:empty { display: none; }
-.field .ph-up label.file-pick { font-family: inherit; font-size: .88rem; font-weight: 600; text-transform: none; letter-spacing: normal; color: var(--ink, inherit); margin: 0; }
+.field .ph-up label.file-pick, .field .brand-up label.file-pick, .field .brand-m label.chk { font-family: inherit; font-size: .88rem; font-weight: 600; text-transform: none; letter-spacing: normal; color: var(--ink, inherit); margin: 0; }
 
 /* Nearby: the guest's hotel (bar above the map, deep-blue bed pin, on top; its name + dates on hover / in the tap popup) and saved spots (gold stars) */
 .hotel-bar { margin: 0 0 12px; }
@@ -1179,3 +1179,19 @@ dialog.cc-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .map[data-zb="far"] .ccpin img { transform: scale(.66); }
 .lf-row .gp-search { flex: 1; }
 .lf .ccb-f { min-height: 40px; }
+
+/* Design → Match your brand: preview of the proposed theme, then Apply / Cancel, Undo after */
+.brand-m .search { margin-bottom: 8px; }
+.brand-m .brand-up { display: flex; }
+.brand-prev { margin-top: 10px; display: grid; gap: 10px; justify-items: start; padding: 16px; border-radius: 14px; background: #F2F3F6; color: var(--pi); box-shadow: inset 0 0 0 1px #E1E4EA; }
+.brand-prev.dark { background: #0F1116; box-shadow: inset 0 0 0 1px #2A2E37; }
+.brand-prev .bp-logo { max-height: 44px; max-width: min(200px, 70%); width: auto; height: auto; object-fit: contain; }
+.brand-prev .bp-title { font-size: 1.5rem; line-height: 1.1; color: var(--pi); overflow-wrap: anywhere; }
+.brand-prev .bp-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.brand-prev .bp-btn { background: var(--pa); color: var(--po); border-radius: 999px; padding: .5em 1em; font-weight: 600; font-size: .9rem; }
+.brand-prev .bp-link { color: var(--pa); font-weight: 600; font-size: .9rem; text-decoration: underline; }
+.bp-facts { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 6px; font-size: .9rem; }
+.bp-facts li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.brand-m .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.logo-row { display: flex; align-items: center; gap: 12px; } .logo-row img { max-height: 40px; max-width: 160px; object-fit: contain; background: #F2F3F6; border-radius: 8px; padding: 4px; }
+.ev-logo { display: block; max-height: 56px; max-width: min(220px, 60%); width: auto; height: auto; object-fit: contain; margin: 0 0 12px; }
