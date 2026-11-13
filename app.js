@@ -1999,16 +1999,13 @@ function renderViewer(cfg, { exampleId, tab } = {}) {
   document.title = (cfg.title || 'Event') + ' · 1LinkTrip';
   const packed = location.hash.split('&t=')[0].slice(3);
   const editHref = exampleId ? `#edit-ex=${exampleId}` : `#edit=${packed}`;
-  // the organizer's own long link (this device shared it): edit the page itself, and say when this link is behind it
+  // a long (#e=) link: its organizer (this device has the page) or anyone signed in can save it to My pages, which gives it
+  // the short link that always shows the latest version; other guests see the page as before
   const own = exampleId ? null : ownLongPage(cfg, packed);
-  $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#">${BRAND}</a>${exampleId ? `<span class="vbar-note">${t('Example page')}</span>` : ''}${own ? `<a class="btn sm" href="#page=${esc(own.pid)}" data-onp-open>${t('Edit page')}</a>` : `<a class="btn sm" href="${editHref}">${exampleId ? t('Customize this') : t('Edit a copy')}</a>`}</div><div id="ev-root"></div></div>`;
+  const canSave = !exampleId && SB && (own || LS.get('signedIn'));
+  $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#">${BRAND}</a>${exampleId ? `<span class="vbar-note">${t('Example page')}</span>` : ''}${canSave ? `<button type="button" class="btn sm primary" data-save-mine>${t('Save to My pages')}</button>` : `<a class="btn sm" href="${editHref}">${exampleId ? t('Customize this') : t('Edit a copy')}</a>`}</div><div id="ev-root"></div></div>`;
   $('.vbar').insertAdjacentHTML('beforeend', langPillsHTML(cfg) + langSelectHTML(cfg));
-  $('[data-onp-open]')?.addEventListener('click', () => { window.__onpOpen = true; });
-  if (own && own.hosted) $('.viewer').insertAdjacentHTML('beforeend', `<div class="own-stale" role="status"><span>${t('This is an older link. Your page now has a link that stays up to date.')}</span><a class="btn sm primary" href="${esc(shortURL(own.hosted.slug))}">${t('Open')}</a></div>`);
-  else if (own && builderHash(own.cfg) !== builderHash(cfg)) {
-    $('.viewer').insertAdjacentHTML('beforeend', `<div class="own-stale" role="status"><span>${t('Your latest changes aren’t in this link.')}</span><a class="btn sm primary" href="#page=${esc(own.pid)}" data-own-share>${t('Share new link')}</a></div>`);
-    $('[data-own-share]').addEventListener('click', () => { window.__sharePub = true; });
-  }
+  $('[data-save-mine]')?.addEventListener('click', (e) => saveLongToMine(packed, e.currentTarget));
   guestRender(cfg, $('#ev-root'), { tab });
   const foot = $('.ev-foot a'); if (foot && exampleId) foot.setAttribute('href', editHref);
   if (location.search) $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
@@ -2021,7 +2018,8 @@ function renderBuilder(cfg, source, hosted, pid) {
   LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
   document.title = 'Edit your page · 1LinkTrip';
   B = { cfg: normalize(cfg), venueResults: [], tab: 'edit', card: null, hosted: hosted && hosted.id ? hosted : null }; delete B.cfg.demoTrip; // an example's sample My trip stays on the example
-  { const f = spanFixed(B.cfg); if (f !== B.cfg) { B.origHash = cfgHash(B.cfg); B.cfg = f; } } // stored dates from an old import: fix them for good (a shared page then shows Update page)
+  { const f = spanFixed(B.cfg); if (f !== B.cfg) B.cfg = f; } // stored dates from an old import: fix them for good
+  pagesAll(); // first run: the old single draft joins the list before this page replaces it (else it's listed twice)
   LS.set('draftHosted', B.hosted); B.pid = pid || newPid(); LS.set('draftId', B.pid); LS.set('draft', B.cfg); pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted });
   $('#app').innerHTML = `
   <div class="builder" data-tab="edit">
@@ -2041,16 +2039,11 @@ function renderBuilder(cfg, source, hosted, pid) {
     <div id="pub-host"></div>
     <div class="btns"><button type="button" class="btn primary" data-act="copy">Copy link</button><button type="button" class="btn" data-act="native-share" hidden>Share…</button><button type="button" class="btn" data-act="qr">QR code</button><a class="btn" id="pub-open" href="#" target="_blank" rel="noopener noreferrer">Open page</a><button class="btn ghost">Close</button></div>
   </form></dialog>`;
-  // what guests see on a shared page: the config last pushed (a page opened from My pages is live as opened)
-  B.live = B.hosted ? ((pagesAll().find(x => x.pid === B.pid) || {}).live || B.origHash || cfgHash(B.cfg)) : ''; if (B.hosted) pageSave(B.pid, { live: B.live });
-  B.shared = B.hosted ? '' : sharedHash(pagesAll().find(x => x.pid === B.pid)); // shared before as a long link: what that link shows
   buildForm(); saveStatus('');
   const bl = $('.builder');
   bl.addEventListener('click', (e) => {
     const tb = e.target.closest('[data-tab]'); if (tb && tb.tagName === 'BUTTON') { bl.dataset.tab = tb.dataset.tab; $$('.seg button').forEach(b => b.setAttribute('aria-selected', String(b === tb))); if (tb.dataset.tab === 'preview') { maps.forEach(m => m.invalidateSize()); window.scrollTo(0, 0); } }
     if (e.target.closest('[data-act="publish"]')) publishTranslated();
-    if (e.target.closest('[data-act="update-live"]')) updateLive();
-    if (e.target.closest('[data-act="make-hosted"]')) publishTranslated();
   });
   const dlg = $('#pub');
   dlg.addEventListener('click', (e) => {
@@ -2066,8 +2059,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   $('[data-onp-tg]').addEventListener('change', (e) => { LS.set('onpEdit', e.target.checked); if (!e.target.checked && sh.open && B.onp) sh.close(); preview(); });
   if (!document._onpEsc) { document._onpEsc = true; document.addEventListener('keydown', (e) => { const d = $('#sheet'); if (e.key === 'Escape' && d && d.open && d.classList.contains('onp') && !d.matches(':modal') && !$('#confirmdlg[open]')) d.close(); }); }
   if (window.__onpOpen) { window.__onpOpen = false; bl.dataset.tab = 'preview'; $$('.seg button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === 'preview'))); }
-  if (window.__sharePub) { window.__sharePub = false; setTimeout(() => publishTranslated(), 0); } // "Share new link" on the owner's own long link
-  if (window.__updateLive) { window.__updateLive = false; updateLive().then(() => { if (B && B.justLive && B.hosted) location.href = shortURL(B.hosted.slug); }); } // "Update page" on the owner's own shared page
+  if (window.__sharePub) { window.__sharePub = false; setTimeout(() => publishTranslated(), 0); } // Share from the setup's last step or the owner's own page
   sh.addEventListener('click', (e) => { if (e.target === sh) sh.close(); });
   wireInputs(sh.querySelector('.sheet-in'));
   DU = null; PH = null; wireDocs(sh.querySelector('.sheet-in')); wireDocs($('.b-form')); wirePageDrop(); docAIKnown(); wirePhotos(sh.querySelector('.sheet-in')); wirePhotos($('.b-form'));
@@ -2076,6 +2068,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   if (LS.get('signedIn') && SB) aiModes().then(m => { if (m.includes('translate') && B && !$('[data-card="langs"]')) buildForm(); });
   preview();
   if (window.__openCard) { const id = window.__openCard; window.__openCard = null; openCard(id); }
+  if (acctOn()) acctPushNow(); // signed in: the page is on the account from the start (not shared until Share)
 }
 async function publishTranslated() {
   const c = B.cfg; const langs = (c.langs || []).filter(l => l !== srcLang(c));
@@ -2092,16 +2085,15 @@ function publish(opts = {}) {
   if (problems.length) { toast('Add ' + problems.join(' and ') + ' first'); return; }
   if (!c.ek) c.ek = eventKey(c); // pin the page's key (same value guests' devices already use) so its old links stay recognisable
   if (!$('#pub').open) $('#pub').showModal();
-  // Share makes a short link (one link that Update page keeps current) whenever hosting is set up: signed in → straight
-  // to the short link; signed out → sign in first, or "Share without signing in" for a one-time long link.
+  // Share gives the page's one short link (?e=), the same link forever; signed out → sign in first (or a one-time long link)
   if (!SB || opts.long) return shareLong();
   hostNow();
 }
-// The long link carries the whole page in the URL: a snapshot. Edits after sharing need a new link (the builder says so).
+// The long link carries the whole page in the URL, so later edits don't reach it (signed-out sharing only).
 function shareLong() {
   const c = B.cfg; const url = shareURL(c); pubLink(url, 'Your page is ready to share', 4);
-  LS.set('published:' + Date.now(), { title: c.title, url }); B.shared = cfgHash(c); pageSave(B.pid, { cfg: c, url, shared: B.shared });
-  B.pub = { state: SB ? 'long' : '' }; renderPubHost(); saveStatus(''); renderHostNote();
+  LS.set('published:' + Date.now(), { title: c.title, url }); pageSave(B.pid, { cfg: c, url });
+  B.pub = { state: SB ? 'long' : '' }; renderPubHost();
 }
 // show (url) or hide (null) the link box and its Copy / Share… / QR / Open buttons
 function pubLink(url, title, rows = 2) {
@@ -2110,39 +2102,16 @@ function pubLink(url, title, rows = 2) {
   if (on) { $('#pub-url').value = url; $('#pub-url').rows = rows; $('#pub-open').href = url; }
   if (title) $('#pub h2').textContent = title;
 }
-const savedraft = debounce(() => { LS.set('draft', B.cfg); pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted }); saveStatus('saved'); }, 300);
-// Builder top bar: "Saving…" → "Saved" (this device) after every change; on a shared page with changes guests can't
-// see yet: "Changes not live yet" + Update page (the same publish as Share, without the share sheet) → "Live ✓".
+// Builder top bar: "Saving…" → "Saved". Signed in, Saved means saved to the account, and the page's link (once shared)
+// shows it: there is nothing else to push.
+const savedraft = debounce(() => { if (!B) return; LS.set('draft', B.cfg); pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted }); if (acctOn()) acctPushSoon(); else saveStatus('saved'); }, 300);
 const cfgHash = (c) => hashStr(JSON.stringify(c));
-// a shared page whose saved edits (this device) were never pushed: what the builder would show as "Changes not live yet"
-const builderHash = (cfg) => { const c = spanFixed(normalize(clone(cfg))); delete c.demoTrip; return cfgHash(c); };
-// what a long (#e=) link shared from this device shows: recorded at Share; pages shared before that record it from the link itself
-const sharedHash = (x) => { if (!x || x.hosted) return ''; if (x.shared !== undefined) return x.shared || ''; const m = (x.url || '').match(/#e=([^&]+)/); const c = m && unpackEvent(m[1]); return c ? builderHash(c) : ''; };
-const pageStale = (x) => { if (!x) return false; if (!x.hosted) { const h = sharedHash(x); return !!h && builderHash(x.cfg) !== h; } return !!x.live && builderHash(x.cfg) !== x.live; };
+const builderHash = (cfg) => { const c = spanFixed(normalize(clone(cfg))); delete c.demoTrip; delete c.osm; return cfgHash(c); };
 function saveStatus(st) {
   const el = $('[data-save]'); if (!el || !B) return;
-  const dirty = !!(B.hosted && B.live && cfgHash(B.cfg) !== B.live);
-  const longDirty = !B.hosted && !!B.shared && cfgHash(B.cfg) !== B.shared; // a long link never changes: say so, offer a new one
-  const dev = st === 'saving' ? 'Saving…' : st === 'saved' ? 'Saved' : '';
-  el.innerHTML = B.pushing ? `<span>Updating page…</span>` : dirty ? `<span>${dev ? esc(dev) + ' · ' : ''}Changes not live yet</span><button type="button" class="btn sm" data-act="update-live">Update page</button>`
-    : longDirty ? `<span>${dev ? esc(dev) + ' · ' : ''}Changes not live yet</span><button type="button" class="btn sm" data-act="publish">Share new link</button>`
-    : B.hosted && B.justLive ? `<span class="ok">Live ✓</span>` : dev ? `<span>${esc(dev)}${dev === 'Saved' ? ' <small>on this device</small>' : ''}</span>` : '';
-  el.classList.toggle('dirty', dirty || longDirty);
+  const txt = st === 'saving' ? 'Saving…' : st === 'saved' ? 'Saved' : st === 'local' ? 'Saved on this device' : '';
+  el.innerHTML = txt ? `<span>${esc(txt)}</span>` : '';
 }
-async function updateLive() {
-  if (!B || !B.hosted || B.pushing) return;
-  let user = null; try { user = await sbUser(); } catch { /* below */ }
-  if (!user) { publishTranslated(); return; } // signed out: the Share sheet asks to sign in, then publishes
-  B.pushing = true; saveStatus('');
-  try {
-    const c = B.cfg; const langs = (c.langs || []).filter(l => l !== srcLang(c));
-    if (langs.length && canTranslate() && langs.some(l => Object.keys(staleFields(c, l)).length)) { try { await translateCfg(c); LS.set('draft', B.cfg); } catch { /* publish in the organizer's language */ } }
-    const row = await publishHosted(B.cfg, B.hosted); B.hosted = { id: row.id, slug: row.slug };
-    markLive(); toast('Your page is updated');
-  } catch (e) { toast('Couldn’t update: ' + (e.message || 'try again')); }
-  finally { B.pushing = false; saveStatus(''); }
-}
-function markLive() { B.live = cfgHash(B.cfg); B.justLive = true; pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted, live: B.live }); saveStatus(''); }
 // "Preview in: English | 日本語": the organizer sees the page as guests in each language do (on-page editing stays on the original)
 function pvLangHTML() { const c = B && B.cfg; const ls = c ? [srcLang(c), ...(c.langs || []).filter(l => l !== srcLang(c))] : []; if (ls.length < 2) { if (B) B.pvLang = ''; return ''; }
   if (!ls.includes(B.pvLang)) B.pvLang = ''; const cur = B.pvLang || srcLang(c);
@@ -2153,7 +2122,7 @@ const preview = debounce(() => { const p = $('#preview'); if (!p) return; const 
   if (pl) { const was = LANG; LANG = pl; try { renderEvent(translatedView(B.cfg, pl), p, { preview: true, shareUrl: shareURL(B.cfg), tab, onpage: false, src: B.cfg }); } finally { LANG = was; } }
   else renderEvent(B.cfg, p, { preview: true, shareUrl: shareURL(B.cfg), tab, onpage: onpOn() });
   sc.scrollTop = y; }, 350);
-function changed(rebuild) { if (B) B.justLive = false; saveStatus('saving'); savedraft(); preview(); if (B && (B.cfg.langs || []).length) autoTranslate(); if (rebuild) { if (B.card) renderSheet(); else buildForm(); } }
+function changed(rebuild) { if (B) { B.touched = true; B.seq = (B.seq || 0) + 1; } saveStatus('saving'); savedraft(); preview(); if (B && (B.cfg.langs || []).length) autoTranslate(); if (rebuild) { if (B.card) renderSheet(); else buildForm(); } }
 
 const fieldWrap = (label, html, id) => `<div class="field"><label${id ? ` for="${id}"` : ''}>${esc(label)}</label>${html}</div>`;
 // shorter labels inside a card sheet, where the card title already gives context (the page keeps the full labels)
@@ -2524,9 +2493,10 @@ function suRender() {
     cta = `<button type="button" class="btn primary big" data-su="next" ${c.venue ? '' : 'disabled'}>Continue</button>`;
   } else {
     h = 'Your page is ready';
+    if (acctOn()) setTimeout(() => { const pid = LS.get('draftId'); if (pid) acctSave(pid).catch(() => {}); }, 0); // signed in: on the account (not shared yet)
     const url = shareURL(c); const sugg = (TYPE_CARDS[c.type] || []).slice(0, 2).concat([COMMON_CARDS[0]]);
     body = `<div class="su-done" aria-hidden="true">✓</div>
-      <p class="hint">Saved on this device. Share gives you one link that stays up to date when you edit.</p>
+      <p class="hint">${acctOn() ? 'Saved to My pages.' : 'Saved on this device.'}</p>
       <div class="two su-share"><button type="button" class="btn primary" data-su="share">Share</button><a class="btn" href="${esc(url)}">View page</a></div>
       ${typeof qrButtonHTML === 'function' ? qrButtonHTML() : ''}
       <p class="grp">Add to your page</p>
@@ -2934,6 +2904,9 @@ async function renderHosted(slug, tab) {
   let row = null;
   try { row = await fetchHosted(slug); }
   catch { return hostedProblem(t('Couldn’t load this page. Check your connection and try again.'), true); }
+  if (!row && acctOn() && SLUG_RE.test(slug)) { // the signed-in organizer's own page, not shared yet
+    try { const c = await sb(); const { data } = await c.from('events').select('id,slug,config,updated_at,published').eq('slug', slug).maybeSingle(); if (data) row = data; } catch { /* below */ }
+  }
   if (!row) return hostedProblem(t('This page isn’t available. It may have been removed or hidden by its organizer.'));
   const osm = row.config && row.config.osm; const cfg = normalize(row.config); const hosted = { id: row.id, slug: row.slug, url: shortURL(row.slug) };
   if (osm && cfg.venue && Array.isArray(osm.food)) memo.set(osmKey(cfg.venue.lat, cfg.venue.lon), Promise.resolve(osm));
@@ -2943,10 +2916,10 @@ async function renderHosted(slug, tab) {
   const own = pagesAll().find(p => p.hosted && p.hosted.id === row.id);
   $('.vbar').insertAdjacentHTML('beforeend', `${langPillsHTML(cfg)}${langSelectHTML(cfg)}${own ? `<a class="btn sm" href="#page=${esc(own.pid)}" data-onp-open>${t('Edit page')}</a>` : `<a class="btn sm" href="#edit=${packEvent(cfg)}">${t('Edit a copy')}</a>`}`);
   $('[data-onp-open]')?.addEventListener('click', () => { window.__onpOpen = true; });
-  // the organizer's saved edits that guests (and this link) don't show yet: say so here, where they look at the page
-  if (own && pageStale(own)) {
-    $('.viewer').insertAdjacentHTML('beforeend', `<div class="own-stale" role="status"><span>${t('Your latest changes aren’t live yet.')}</span><a class="btn sm primary" href="#page=${esc(own.pid)}" data-own-update>${t('Update page')}</a></div>`);
-    $('[data-own-update]').addEventListener('click', () => { window.__onpOpen = true; window.__updateLive = true; });
+  // only its organizer can open a page that isn't shared yet: say so, with Share right there
+  if (row.published === false) {
+    $('.viewer').insertAdjacentHTML('beforeend', `<div class="own-stale" role="status"><span>${t('Only you can see this page.')}</span>${own ? `<a class="btn sm primary" href="#page=${esc(own.pid)}" data-own-share>${t('Share')}</a>` : ''}</div>`);
+    $('[data-own-share]')?.addEventListener('click', () => { window.__sharePub = true; });
   }
   guestRender(cfg, $('#ev-root'), { tab, hosted, shareUrl: hosted.url });
   // '#' alone can't leave a ?e= page (the hash doesn't change), so home links point at the app itself
@@ -3055,58 +3028,179 @@ async function authReturn() {
   history.replaceState(null, '', siteBase());
   if (!session) { LS.del('pendingPublish'); return renderMine('', 'That sign-in link has expired or was already used. Send yourself a new one.'); }
   LS.set('signedIn', true);
+  const sync = acctSyncAll(); // this device's pages join the account
+  const ps = LS.get('pendingSave'); LS.del('pendingSave');
+  if (ps && ps.packed) { history.replaceState(null, '', siteBase() + '#e=' + ps.packed); route(); return saveLongToMine(ps.packed, $('[data-save-mine]')); }
   const p = LS.get('pendingPublish'); LS.del('pendingPublish');
   if (p && p.cfg) { LS.set('draft', p.cfg); LS.set('draftHosted', p.hosted || null); history.replaceState(null, '', siteBase() + '#new'); renderBuilder(p.cfg, null, p.hosted || null, LS.get('draftId') || undefined); publish({ host: true }); return; }
   const back = LS.get('afterSignIn'); LS.del('afterSignIn');
   if (back && back !== '#mine' && /^#(mine|new|setup|page=[\w-]+$)/.test(back)) { history.replaceState(null, '', siteBase() + back); return route(); }
   if (back && /^\?e=[a-z0-9-]+(#t=[a-z]+)?$/.test(back)) { history.replaceState(null, '', siteBase() + back); return route(); } // a guest signed in on a hosted page
-  history.replaceState(null, '', siteBase() + '#mine'); renderMine('');
+  history.replaceState(null, '', siteBase() + '#mine'); await sync; renderMine('');
 }
 
-// ---------- organizer: publish to a short link ----------
-async function publishHosted(cfg, hosted) {
-  const c = await sb(); const config = normalize(clone(cfg));
+// ---------- organizer: every page saved to the account ----------
+// Signed in, each page is one events row (owner = you): created when the page is made, kept current as you edit (~2 s
+// after a change), unpublished until the first Share. Share publishes it and gives its short link (?e=), the same link
+// forever; guests always get the latest saved version. Pages made on a device while signed out (or in another browser /
+// the installed app, which keep separate storage) are uploaded on sign-in and on every open, matched by the page key (ek).
+const acctOn = () => !!(SB && LS.get('signedIn'));
+const acctOsm = new Map(); // pid → the nearby-places snapshot last stored with the page
+async function hostConfig(pid, cfg, fetchOsm) {
+  const config = normalize(clone(cfg));
   if (config.venue) { // guests then skip the slow public Overpass servers
     const v = config.venue; const cached = LS.get('c4:' + osmKey(v.lat, v.lon)); const snap = window.OSM_SNAPSHOTS && window.OSM_SNAPSHOTS[osmKey(v.lat, v.lon)];
-    const osm = snap || (cached && cached.d) || await Promise.race([osmNearby(v.lat, v.lon).catch(() => null), sleep(15000).then(() => null)]);
-    if (osm) config.osm = { ...osm, snapshot: osm.snapshot || todayYMD() };
+    const osm = snap || (cached && cached.d) || (fetchOsm ? await Promise.race([osmNearby(v.lat, v.lon).catch(() => null), sleep(15000).then(() => null)]) : null) || acctOsm.get(pid) || config.osm;
+    if (osm) { config.osm = { ...osm, snapshot: osm.snapshot || todayYMD() }; acctOsm.set(pid, osm); }
   }
-  if (hosted && hosted.id) {
-    const { data, error } = await c.from('events').update({ config, published: true }).eq('id', hosted.id).select('id,slug');
-    if (!error && data && data.length) return data[0];
+  return config;
+}
+const acctQ = new Map(); // one save at a time per page, so a page never gets two rows
+function acctSave(pid, opts) {
+  const p = (acctQ.get(pid) || Promise.resolve()).catch(() => {}).then(() => acctSaveNow(pid, opts || {}));
+  acctQ.set(pid, p); return p;
+}
+async function acctSaveNow(pid, { publish = false, fetchOsm = false } = {}) {
+  let x = pagesAll().find(p => p.pid === pid);
+  if (!x || !x.cfg || !String(x.cfg.title || '').trim()) return null;
+  const user = await sbUser(); if (!user) { LS.del('signedIn'); return null; }
+  LS.set('signedIn', true);
+  const c = await sb(); const mine = openPid() === pid;
+  if (!x.cfg.ek) { const ek = eventKey(x.cfg); pageSave(pid, { cfg: { ...x.cfg, ek }, edited: x.edited || x.updated || 0 }); if (mine) B.cfg.ek = ek; x = pagesAll().find(p => p.pid === pid); }
+  const config = await hostConfig(pid, x.cfg, fetchOsm); const patch = publish ? { config, published: true } : { config };
+  const done = (r, pub) => {
+    const hosted = { id: r.id, slug: r.slug, owner: user.id, pub: !!pub };
+    pageSave(pid, { hosted }); if (openPid() === pid) { B.hosted = hosted; LS.set('draftHosted', hosted); }
+    return hosted;
+  };
+  const update = async (id) => { const { data, error } = await c.from('events').update(patch).eq('id', id).select('id,slug,published'); if (error) throw error; return data && data[0]; };
+  if (x.hosted && x.hosted.id) {
+    const r = await update(x.hosted.id); if (r) return done(r, r.published);
+    const { data: seen } = await c.from('events').select('id').eq('id', x.hosted.id).maybeSingle();
+    if (seen) return null; // another account's page: never copied into this one
+    // deleted from the account: saved again below as a new page
+  }
+  // the same page already on the account (saved from another device or browser): one page, the newer version wins
+  const { data: same, error: se } = await c.from('events').select('id,slug,config,published,updated_at').eq('owner', user.id).eq('config->>ek', x.cfg.ek).order('updated_at', { ascending: false }).limit(1);
+  if (se) throw se;
+  const r0 = same && same[0];
+  if (r0) {
+    const rt = Date.parse(r0.updated_at) || 0;
+    if ((mine && B.touched) || (x.edited || 0) > rt) { const r = await update(r0.id); if (r) return done(r, r.published); }
+    else {
+      const cfg = normalize(r0.config); pageSave(pid, { cfg, edited: rt });
+      if (publish && !r0.published) await c.from('events').update({ published: true }).eq('id', r0.id);
+      const h = done(r0, publish || r0.published);
+      if (mine && !B.touched) { B.cfg = cfg; LS.set('draft', cfg); buildForm(); preview(); renderHostNote(); }
+      return h;
+    }
   }
   for (let i = 0; i < 4; i++) {
-    const { data, error } = await c.from('events').insert({ slug: makeSlug(cfg.title), config }).select('id,slug').single();
-    if (!error) return data;
+    const { data, error } = await c.from('events').insert({ slug: makeSlug(x.cfg.title), config, published: !!publish }).select('id,slug,published').single();
+    if (!error) return done(data, data.published);
     if (error.code !== '23505') throw error;
   }
   throw new Error('Could not pick a free link. Try again.');
+}
+const openPid = () => (B && $('.builder') ? B.pid : null);
+// builder autosave to the account: ~2 s after the last change (the device copy is already saved)
+function acctPushSoon() { if (!B) return; clearTimeout(B.pushT); B.pushT = setTimeout(acctPushNow, 2000); }
+function acctPushNow() {
+  if (!B) return Promise.resolve(); clearTimeout(B.pushT); B.pushT = null;
+  const pid = B.pid, seq = B.seq || 0; LS.set('draft', B.cfg); pageSave(pid, { cfg: B.cfg });
+  if (!acctOn()) { if (openPid() === pid) saveStatus('saved'); return Promise.resolve(); }
+  return acctSave(pid).then((h) => { if (openPid() === pid && (B.seq || 0) === seq && !B.pushT) { saveStatus(h ? 'saved' : 'local'); renderHostNote(); } })
+    .catch(() => { if (openPid() === pid && (B.seq || 0) === seq) saveStatus('local'); });
+}
+// leaving the builder or the app: don't wait out the 2 s
+addEventListener('pagehide', () => { if (B && B.pushT) acctPushNow(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && B && B.pushT) acctPushNow(); });
+addEventListener('online', () => { if (openPid() && acctOn()) acctPushNow(); acctSyncAll(); });
+// every open (and right after sign-in): upload this device's pages, bring in the account's pages from elsewhere
+let acctSyncing = null;
+function acctSyncAll() {
+  if (!acctOn()) return Promise.resolve(false);
+  return acctSyncing || (acctSyncing = acctSyncRun().catch(() => false).finally(() => { acctSyncing = null; }));
+}
+async function acctSyncRun() {
+  const user = await sbUser(); if (!user) { LS.del('signedIn'); return false; }
+  const c = await sb();
+  const { data: rows, error } = await c.from('events').select('id,slug,config,published,updated_at').eq('owner', user.id).order('updated_at', { ascending: false }).limit(1000);
+  if (error || !Array.isArray(rows)) return false;
+  const complete = rows.length < 1000; // only a full list can say a page was deleted elsewhere
+  const byId = new Map(rows.map(r => [r.id, r])); let moved = false;
+  for (const x of pagesAll()) {
+    if (openPid() === x.pid) continue; // the page open in the builder saves itself
+    if (x.hosted && x.hosted.id) {
+      const r = byId.get(x.hosted.id);
+      if (!r) { if (complete && x.hosted.owner === user.id) { pageRemove(x.pid); moved = true; } continue; } // deleted from the account elsewhere
+      const rt = Date.parse(r.updated_at) || 0, pub = !!r.published;
+      if ((x.edited || 0) > rt + 1000) { await acctSave(x.pid).catch(() => {}); moved = true; } // edited here while offline
+      else if (builderHash(r.config) !== builderHash(x.cfg)) { pageSave(x.pid, { cfg: normalize(r.config), edited: rt, hosted: { ...x.hosted, owner: user.id, pub } }); moved = true; }
+      else if (x.hosted.pub !== pub || x.hosted.owner !== user.id) pageSave(x.pid, { hosted: { ...x.hosted, owner: user.id, pub } });
+      continue;
+    }
+    if (x.cfg && String(x.cfg.title || '').trim()) { await acctSave(x.pid).catch(() => {}); moved = true; }
+  }
+  const have = new Set(pagesAll().filter(x => x.hosted).map(x => x.hosted.id));
+  rows.filter(r => !have.has(r.id)).reverse().forEach(r => { pageSave(newPid(), { cfg: normalize(r.config), hosted: { id: r.id, slug: r.slug, owner: user.id, pub: !!r.published }, edited: Date.parse(r.updated_at) || 0 }); moved = true; });
+  if (moved) dispatchEvent(new Event('ep-pages'));
+  return true;
+}
+// "Save to My pages" on a long (#e=) link: the page joins the account (its organizer's own page keeps its link public
+// and gets the short link; anyone else gets their own copy, not shared until they Share), then opens at the short link
+async function saveLongToMine(packed, btn) {
+  const cfg = unpackEvent(packed); if (!cfg) return;
+  let user = null; try { user = await sbUser(); } catch { /* below */ }
+  if (!user) { LS.del('signedIn'); return signInDlg('Sign in to save', () => LS.set('pendingSave', { packed })); }
+  if (btn) btn.disabled = true;
+  try {
+    const own = ownLongPage(cfg, packed); let pid = own && own.pid;
+    if (!pid) { const c = clone(cfg); delete c.demoTrip; if (!c.ek) c.ek = eventKey(c); pid = newPid(); pageSave(pid, { cfg: c, url: location.href, edited: 0 }); }
+    const h = await acctSave(pid, { publish: !!own });
+    if (!h) throw new Error('Couldn’t save this page.');
+    location.href = shortURL(h.slug);
+  } catch (e) { if (btn) btn.disabled = false; toast('Couldn’t save: ' + pubWhy(e)); }
+}
+function signInDlg(title, before) {
+  let d = $('#sidlg');
+  if (!d) { d = document.createElement('dialog'); d.id = 'sidlg'; d.className = 'confirm-dlg'; document.body.appendChild(d); }
+  d.innerHTML = `<form class="cf-in" onsubmit="return false"><h2>${esc(title)}</h2>${signInFormHTML('', LS.get('signinEmail') || '')}<div class="btns cf-b"><button type="button" class="btn ghost" data-si-close>Close</button></div></form>`;
+  d.onclick = (e) => {
+    if (e.target === d || e.target.closest('[data-si-close]')) { d.close(); return; }
+    const b = e.target.closest('[data-si],[data-si-oauth]'); if (!b) return;
+    if (b.dataset.siOauth) oauthSignIn(b.dataset.siOauth, before);
+    if (b.dataset.si === 'send') signInSubmit(d, before);
+    if (b.dataset.si === 'retry') signInDlg(title, before);
+  };
+  d.onkeydown = (e) => { if (e.target.id === 'si-email' && e.key === 'Enter') { e.preventDefault(); signInSubmit(d, before); } };
+  if (!d.open) d.showModal();
 }
 const LONG_BTN = `<button type="button" class="link" data-ph="long">Share without signing in</button>`;
 function pubHostHTML() {
   const P = B.pub || {};
   if (!SB) return '';
-  if (P.state === 'busy') return `<div class="pub-host" role="status"><p><b>${B.hosted ? 'Updating your page…' : 'Creating your short link…'}</b></p></div>`;
-  if (P.state === 'done') return `<div class="pub-host ok"><p><b>Short link is live.</b> After you edit, tap Update page and this same link shows the changes. <a href="#mine">Replies in My pages</a></p></div>`;
-  if (P.state === 'signin') return `<div class="pub-host"><p><b>Sign in to get a link you can update later.</b> Your page is saved.</p>${signInFormHTML(P.msg, LS.get('signinEmail') || '')}<p class="pub-alt">${LONG_BTN}<br><small class="muted">You’ll get a one-time link. Edits you make later need a new link.</small></p></div>`;
-  if (P.state === 'long') return `<div class="pub-host"><p><b>This link is a snapshot.</b> Edits you make later won’t reach it; you’d share a new link. <button type="button" class="link" data-ph="go">Get a link you can update</button></p></div>`;
-  return `<div class="pub-host" role="alert"><p><b>Couldn’t create your short link.</b> ${esc(P.msg || '')}</p><button type="button" class="btn primary" data-ph="go">Try again</button><p class="pub-alt">${LONG_BTN}</p></div>`;
+  if (P.state === 'busy') return `<div class="pub-host" role="status"><p><b>Getting your link…</b></p></div>`;
+  if (P.state === 'done') return `<div class="pub-host ok"><p>Your edits show up on this link automatically. <a href="#mine">Replies in My pages</a></p></div>`;
+  if (P.state === 'signin') return `<div class="pub-host"><p><b>Sign in to share</b></p>${signInFormHTML(P.msg, LS.get('signinEmail') || '')}<p class="pub-alt">${LONG_BTN}<br><small class="muted">That link won’t show later edits.</small></p></div>`;
+  if (P.state === 'long') return `<div class="pub-host"><p class="muted small">This link won’t show later edits.</p></div>`;
+  return `<div class="pub-host" role="alert"><p><b>Couldn’t share.</b> ${esc(P.msg || '')}</p><button type="button" class="btn primary" data-ph="go">Try again</button><p class="pub-alt">${LONG_BTN}</p></div>`;
 }
 function renderPubHost() { const box = $('#pub-host'); if (box) box.innerHTML = pubHostHTML(); }
 const pubWhy = (e) => navigator.onLine === false ? 'You’re offline.' : (e && (e.message || e.error_description || e.details)) || 'Try again.';
 async function hostNow() {
   if (!$('#pub').open) $('#pub').showModal();
-  pubLink(null, B.hosted ? 'Updating your page' : 'Getting your link'); B.pub = { state: 'busy' }; renderPubHost();
+  pubLink(null, 'Getting your link'); B.pub = { state: 'busy' }; renderPubHost();
   let user = null;
-  try { user = await sbUser(); } catch (e) { const msg = pubWhy(e); toast('Couldn’t create your short link: ' + msg); B.pub = { state: 'error', msg }; renderPubHost(); return; }
+  try { user = await sbUser(); } catch (e) { const msg = pubWhy(e); toast('Couldn’t share: ' + msg); B.pub = { state: 'error', msg }; renderPubHost(); return; }
   if (!user) { LS.del('signedIn'); pubLink(null, 'Share your page'); B.pub = { state: 'signin' }; renderPubHost(); setTimeout(() => $('#si-email')?.focus(), 0); return; }
+  LS.set('signedIn', true); clearTimeout(B.pushT); B.pushT = null; LS.set('draft', B.cfg); pageSave(B.pid, { cfg: B.cfg });
   try {
-    const row = await publishHosted(B.cfg, B.hosted);
-    B.hosted = { id: row.id, slug: row.slug }; LS.set('draftHosted', B.hosted); LS.set('signedIn', true); B.shared = ''; pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted, shared: '' });
-    const url = shortURL(row.slug); pubLink(url, 'Your short link is ready');
-    LS.set('published:' + Date.now(), { title: B.cfg.title, url });
-    B.pub = { state: 'done' }; renderPubHost(); renderHostNote(); markLive();
-  } catch (e) { const msg = pubWhy(e); toast('Couldn’t create your short link: ' + msg); pubLink(null, 'Share your page'); B.pub = { state: 'error', msg }; renderPubHost(); }
+    const h = await acctSave(B.pid, { publish: true, fetchOsm: true });
+    if (!h) throw new Error('This page belongs to another account. Edit a copy to share it.');
+    const url = shortURL(h.slug); pubLink(url, 'Your link');
+    B.pub = { state: 'done' }; renderPubHost(); renderHostNote(); saveStatus('saved');
+  } catch (e) { const msg = pubWhy(e); toast('Couldn’t share: ' + msg); pubLink(null, 'Share your page'); B.pub = { state: 'error', msg }; renderPubHost(); }
 }
 function wirePubHost() {
   const dlg = $('#pub'); if (!dlg || dlg._host) return; dlg._host = true;
@@ -3120,14 +3214,11 @@ function wirePubHost() {
   });
   dlg.addEventListener('keydown', (e) => { if (e.target.id === 'si-email' && e.key === 'Enter') { e.preventDefault(); signInSubmit(dlg, () => LS.set('pendingPublish', { cfg: B.cfg, hosted: B.hosted })); } });
 }
+// a shared page: its link, at the top of the form
 function renderHostNote() {
-  const f = $('.b-form'); if (!f) return; let n = $('.b-host', f);
-  if (!B.hosted && B.shared && SB) { // shared earlier as a long (snapshot) link: offer the one link that stays current
-    const html = `<p class="b-note b-host b-long">You shared this page as a one-time link, so edits don’t reach it. <button type="button" class="btn sm primary" data-act="make-hosted">Make this link updatable</button> <small class="muted">You’ll get a short link to share once; after that, Update page keeps it current.</small></p>`;
-    if (n) n.outerHTML = html; else f.insertAdjacentHTML('afterbegin', html); return;
-  }
-  if (!B.hosted) { if (n) n.remove(); return; }
-  const html = `<p class="b-note b-host">Editing your page at <a href="${esc(shortURL(B.hosted.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(B.hosted.slug)}</a>. Tap Share to update it. <a href="#mine">My pages</a></p>`;
+  const f = $('.b-form'); if (!f || !B) return; let n = $('.b-host', f);
+  if (!B.hosted || !B.hosted.pub) { if (n) n.remove(); return; }
+  const html = `<p class="b-note b-host">Your link: <a href="${esc(shortURL(B.hosted.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(B.hosted.slug)}</a> · <a href="#mine">My pages</a></p>`;
   if (n) n.outerHTML = html; else f.insertAdjacentHTML('afterbegin', html);
 }
 
@@ -3149,10 +3240,11 @@ async function renderMine(id, notice) {
   LS.set('signedIn', true);
   const c = await sb();
   if (id) return renderMineEvent(id, shell, c, user);
+  await acctSyncAll(); // pages made on this device (or before signing in) are on the account before the list loads
   const { data, error } = await c.from('events').select('id,slug,config,published,updated_at').eq('owner', user.id).order('updated_at', { ascending: false });
   if (error) return shell(`<h1>My pages</h1><p>Couldn’t load your pages. ${esc(error.message)}</p>`);
   shell(`<div class="mine-h"><h1>My pages</h1><span class="muted small">${esc(user.email || '')} · <button type="button" class="link" data-mine="signout">Sign out</button></span></div>
-    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · hidden'}</span><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a></div><div class="btns"><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a><button type="button" class="btn sm" data-mine-edit="${esc(r.id)}">Edit</button><button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button></div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Share, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
+    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · not shared'}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a>` : ''}</div><div class="btns"><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a><button type="button" class="btn sm" data-mine-edit="${esc(r.id)}">Edit</button>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button>` : ''}</div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Share, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
   if (data.length) msgReady().then(async ok => { // "2 new" next to pages with unanswered guest messages
     if (!ok) return; const { data: ms } = await c.from('event_messages').select('event_id,guest,from_host,created_at').in('event_id', data.map(x => x.id)).order('created_at', { ascending: true }).limit(5000);
     data.forEach(ev => { const seen = LS.get('inboxSeen:' + ev.id, {}) || {}; const last = new Map(); (ms || []).filter(x => x.event_id === ev.id).forEach(x => last.set(x.guest, x));
@@ -3163,9 +3255,12 @@ async function renderMine(id, notice) {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.mine === 'signout') { await c.auth.signOut(); LS.del('signedIn'); LS.del('draftHosted'); location.hash = '#'; }
     if (b.dataset.mineCopy) copy(shortURL(b.dataset.mineCopy));
-    if (b.dataset.mineEdit) { const r = data.find(x => x.id === b.dataset.mineEdit); const cfg = normalize(r.config); const ex = pagesAll().find(x => x.hosted && x.hosted.id === r.id); LS.set('draft', cfg); LS.set('draftHosted', { id: r.id, slug: r.slug }); LS.set('draftId', ex ? ex.pid : newPid()); location.hash = '#new'; }
+    if (b.dataset.mineEdit) { const r = data.find(x => x.id === b.dataset.mineEdit); const cfg = normalize(r.config); const ex = pagesAll().find(x => x.hosted && x.hosted.id === r.id); LS.set('draft', cfg); LS.set('draftHosted', { id: r.id, slug: r.slug, owner: user.id, pub: !!r.published }); LS.set('draftId', ex ? ex.pid : newPid()); location.hash = '#new'; }
   });
 }
+// a change made to the account row from My pages (messages on, translated updates) goes into this device's copy too,
+// so the next autosave keeps it
+function devPatchHosted(id, patch) { const x = pagesAll().find(p => p.hosted && p.hosted.id === id); if (x) pageSave(x.pid, { cfg: { ...x.cfg, ...patch }, edited: x.edited || 0 }); }
 let mineOpenThr = [];
 const guestListKey = (id) => 'guests:' + id;
 function parseGuestList(text) {
@@ -3210,14 +3305,14 @@ async function renderMineEvent(id, shell, c, user) {
       ${guests.length ? `<h3 class="sub-h">Haven’t replied (${waiting.length})</h3>${waiting.length ? `<ul class="gl-list">${waiting.map(g => `<li>${esc(g.name || g.email)}${g.name && g.email ? ` <span class="muted small">${esc(g.email)}</span>` : ''}</li>`).join('')}</ul>` : '<p class="muted">Everyone on your list has replied.</p>'}` : ''}
     </section>
     ${msgs ? `<section class="mine-sec" id="mine-groups"><h2>${t('Groups')}</h2><div data-grp-root>${groupsEdHTML(groups)}</div></section>` : ''}
-    <section class="mine-sec"><h2>Page</h2><div class="btns"><button type="button" class="btn sm" data-pg="edit">Edit page</button><button type="button" class="btn sm ghost" data-pg="vis">${r.published ? 'Hide page' : 'Show page again'}</button></div><p class="muted small">${r.published ? 'Anyone with the link can see it.' : 'Hidden: guests see “This page isn’t available”.'}</p></section>`);
+    <section class="mine-sec"><h2>Page</h2><div class="btns"><button type="button" class="btn sm" data-pg="edit">Edit page</button><button type="button" class="btn sm ghost" data-pg="vis">${r.published ? 'Hide page' : 'Show page'}</button></div><p class="muted small">${r.published ? 'Anyone with the link can see it.' : 'Only you can see it.'}</p></section>`);
   const m = $('.mine'); const again = () => { mineOpenThr = [...$$('details.thr[open]', m)].map(d => d.dataset.thr); return renderMine(id); };
   if (msgs) {
     $$('details.thr', m).forEach(d => { if (mineOpenThr.includes(d.dataset.thr)) d.open = true; d.addEventListener('toggle', () => { if (!d.open) return; const xs = msgs.filter(x => x.guest === d.dataset.thr); const last = xs[xs.length - 1]; if (last) { seen[d.dataset.thr] = last.created_at; LS.set(seenKey, seen); d.querySelector('.dot')?.remove(); } }); });
     mineOpenThr = [];
     const gr = m.querySelector('[data-grp-root]'); if (gr) wireGroupsEd(gr, c, id, again);
     wireSendTo(m);
-    m.addEventListener('change', async (e) => { if (e.target.dataset.gmOn == null) return; const on = e.target.checked; const { error } = await c.from('events').update({ config: { ...r.config, guestMessages: on } }).eq('id', id); if (error) { e.target.checked = !on; toast(error.message); } else { r.config.guestMessages = on; toast(on ? t('Guests can message you') : t('Messages off')); } });
+    m.addEventListener('change', async (e) => { if (e.target.dataset.gmOn == null) return; const on = e.target.checked; const { error } = await c.from('events').update({ config: { ...r.config, guestMessages: on } }).eq('id', id); if (error) { e.target.checked = !on; toast(error.message); } else { r.config.guestMessages = on; devPatchHosted(id, { guestMessages: on }); toast(on ? t('Guests can message you') : t('Messages off')); } });
     m.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-gm-send^="h-"]'); if (!b) return; const guest = b.dataset.gmSend.slice(2);
       const box = b.closest('details'); const ta = box.querySelector('textarea'); const hint = box.querySelector('[data-gm-msg]'); const body = (ta.value || '').trim().slice(0, 2000); if (!body) { ta.focus(); return; }
@@ -3246,7 +3341,7 @@ async function renderMineEvent(id, shell, c, user) {
       const langs = (cfg.langs || []).filter(l => l !== srcLang(cfg));
       if (langs.length && canTranslate() && an0 && !gids.length) { hint.textContent = 'Translating for your guests…'; const raw = clone(r.config); raw.tr = raw.tr || {};
         for (const l of langs) { try { const j = await aiImport({ mode: 'translate', fields: { ['ann.' + an0.id]: body }, target: l, source: srcLang(cfg) }); const x = ((j.data && j.data.translations) || [])[0]; if (x) { raw.tr[l] = raw.tr[l] || {}; raw.tr[l]['ann.' + an0.id] = { h: hashStr(body), t: x.text }; } } catch { /* post stays in the original language */ } }
-        await c.from('events').update({ config: raw }).eq('id', id); }
+        await c.from('events').update({ config: raw }).eq('id', id); devPatchHosted(id, { tr: raw.tr }); }
       again();
     }
     if (d.anDel && confirm('Delete this update?')) { await c.from('announcements').delete().eq('id', d.anDel); again(); }
@@ -3257,8 +3352,8 @@ async function renderMineEvent(id, shell, c, user) {
     }
     if (d.gl === 'add') addGuests(parseGuestList($('#gl-paste').value));
     if (d.gl === 'clear' && confirm('Clear your guest list on this device?')) { LS.del(guestListKey(id)); again(); }
-    if (d.pg === 'edit') { const ex = pagesAll().find(x => x.hosted && x.hosted.id === r.id); LS.set('draft', cfg); LS.set('draftHosted', { id: r.id, slug: r.slug }); LS.set('draftId', ex ? ex.pid : newPid()); location.hash = '#new'; }
-    if (d.pg === 'vis') { await c.from('events').update({ published: !r.published }).eq('id', id); again(); }
+    if (d.pg === 'edit') { const ex = pagesAll().find(x => x.hosted && x.hosted.id === r.id); LS.set('draft', cfg); LS.set('draftHosted', { id: r.id, slug: r.slug, owner: user.id, pub: !!r.published }); LS.set('draftId', ex ? ex.pid : newPid()); location.hash = '#new'; }
+    if (d.pg === 'vis') { await c.from('events').update({ published: !r.published }).eq('id', id); const ex = pagesAll().find(x => x.hosted && x.hosted.id === id); if (ex) pageSave(ex.pid, { hosted: { ...ex.hosted, pub: !r.published } }); again(); }
   });
 }
 
@@ -3660,18 +3755,14 @@ function pagesAll() {
 }
 function pageSave(pid, patch) {
   if (!pid) return; const xs = pagesAll(); const i = xs.findIndex(x => x.pid === pid);
-  const e = { ...(i >= 0 ? xs[i] : { pid, url: '', hosted: null }), ...patch, updated: Date.now() };
+  const prev = i >= 0 ? xs[i] : { pid, url: '', hosted: null };
+  const e = { ...prev, ...patch, updated: Date.now() };
+  if (patch.cfg && patch.edited === undefined && JSON.stringify(patch.cfg) !== JSON.stringify(prev.cfg)) e.edited = Date.now(); // when its content last changed (the newer copy wins across devices)
   if (!e.cfg || !(e.cfg.title || '').trim()) return; // untitled scratch drafts stay out of the list
   if (i >= 0) xs[i] = e; else xs.unshift(e);
   LS.set('pages', xs.slice(0, 60));
 }
-// Deleting a page only drops it from this device's list. A page with a short link stays on the server (links you shared keep
-// working), so its id is remembered here to keep it out of the "On your account" list too.
-function pageRemove(pid) {
-  const xs = pagesAll(); const x = xs.find(p => p.pid === pid);
-  if (x && x.hosted && x.hosted.id) { const h = LS.get('hiddenHosted') || []; if (!h.includes(x.hosted.id)) LS.set('hiddenHosted', [x.hosted.id, ...h].slice(0, 200)); }
-  LS.set('pages', xs.filter(p => p.pid !== pid));
-}
+function pageRemove(pid) { LS.set('pages', pagesAll().filter(p => p.pid !== pid)); }
 // In-app "are you sure?" (window.confirm is suppressed in installed iOS web apps and some in-app browsers, where it just returns false).
 // Resolves true only on the destructive button; Cancel, Escape and a tap on the backdrop resolve false.
 function confirmDlg({ title, body = '', ok = 'Delete', cancel = 'Cancel' }) {
@@ -3689,12 +3780,11 @@ function confirmDlg({ title, body = '', ok = 'Delete', cancel = 'Cancel' }) {
 }
 function duplicateCfg(cfg) { const c = spanFixed(normalize(clone(cfg))); delete c.ek; c.title = (c.title || 'Untitled') + ' (copy)'; return c; }
 function myPagesHTML() {
-  const xs = pagesAll().slice().sort((a, b) => b.updated - a.updated); if (!xs.length) return '';
+  const xs = pagesAll().slice().sort((a, b) => (b.edited || b.updated || 0) - (a.edited || a.updated || 0)); if (!xs.length) return '';
   const cur = LS.get('draftId');
-  return `<section class="land-mine" id="my-pages"><h2>My pages <small class="muted">on this device</small></h2><ul class="mp-list">${xs.slice(0, 12).map(x => { const c = spanFixed(normalize(clone(x.cfg))); const open = x.hosted ? shortURL(x.hosted.slug) : x.url;
-    return `<li style="${themeStyle(c.theme)}"><i class="mp-dot" aria-hidden="true"></i><div class="mp-t"><b>${esc(c.title || 'Untitled')}</b><span>${esc([TYPE_LABEL[c.type] || c.type, c.start ? dateRange(c.start, c.end) : '', x.hosted ? 'short link' : open ? 'shared' : 'draft', pageStale(x) ? 'changes not live yet' : '', x.pid === cur ? 'open in editor' : ''].filter(Boolean).join(' · '))}</span></div>
-      <div class="mp-b">${open ? `<a class="btn sm" href="${esc(open)}">Open</a>` : ''}<a class="btn sm ${open ? '' : 'primary'}" href="#page=${esc(x.pid)}">Edit</a><a class="btn sm ghost" href="#dup=${esc(x.pid)}">Duplicate</a><button type="button" class="btn sm ghost" data-mp-del="${esc(x.pid)}" aria-label="Delete ${esc(c.title || 'Untitled')} from this list">Delete</button></div></li>`; }).join('')}</ul>
-    <div data-slot="acct-pages"></div></section>`;
+  return `<section class="land-mine" id="my-pages"><h2>My pages${acctOn() ? '' : ' <small class="muted">on this device</small>'}</h2><ul class="mp-list">${xs.slice(0, 30).map(x => { const c = spanFixed(normalize(clone(x.cfg))); const open = x.hosted ? (x.hosted.pub ? shortURL(x.hosted.slug) : '') : x.url;
+    return `<li style="${themeStyle(c.theme)}"><i class="mp-dot" aria-hidden="true"></i><div class="mp-t"><b>${esc(c.title || 'Untitled')}</b><span>${esc([TYPE_LABEL[c.type] || c.type, c.start ? dateRange(c.start, c.end) : '', open ? 'shared' : '', x.pid === cur ? 'open in editor' : ''].filter(Boolean).join(' · '))}</span></div>
+      <div class="mp-b">${open ? `<a class="btn sm" href="${esc(open)}">Open</a>` : ''}<a class="btn sm ${open ? '' : 'primary'}" href="#page=${esc(x.pid)}">Edit</a><a class="btn sm ghost" href="#dup=${esc(x.pid)}">Duplicate</a><button type="button" class="btn sm ghost" data-mp-del="${esc(x.pid)}" aria-label="Delete ${esc(c.title || 'Untitled')}">Delete</button></div></li>`; }).join('')}</ul></section>`;
 }
 function renderExamples() {
   document.title = 'Example pages · 1LinkTrip'; scrollTo(0, 0);
@@ -3714,17 +3804,22 @@ function wireLanding() {
   const m = $('.land'); if (!m) return;
   m.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-mp-del]'); if (!b) return; const x = pagesAll().find(p => p.pid === b.dataset.mpDel); if (!x) return;
-    if (!await confirmDlg({ title: `Delete “${(x.cfg && x.cfg.title) || 'Untitled'}”?`, body: 'Links you already shared keep working.', ok: 'Delete' })) return;
+    const acct = acctOn() && x.hosted && x.hosted.id;
+    if (!await confirmDlg({ title: `Delete “${(x.cfg && x.cfg.title) || 'Untitled'}”?`, body: acct ? (x.hosted.pub ? 'Its link will stop working.' : '') : x.url ? 'Links you already shared keep working.' : '', ok: 'Delete' })) return;
+    if (acct) { // signed in: gone from the account (every device), not just this list
+      try { const c = await sb(); const { error } = await c.from('events').delete().eq('id', x.hosted.id); if (error) throw error; }
+      catch (err) { toast('Couldn’t delete: ' + pubWhy(err)); return; }
+    }
     pageRemove(x.pid); if (LS.get('draftId') === x.pid) { LS.del('draftId'); LS.del('draft'); LS.del('draftHosted'); } renderLanding();
   });
-  // pages on the account (other devices) when signed in
-  if (LS.get('signedIn') && SB) sbUser().then(async (u) => {
-    if (!u) return; const c = await sb(); const { data } = await c.from('events').select('id,slug,config,updated_at').eq('owner', u.id).order('updated_at', { ascending: false }).limit(20);
-    const local = new Set([...pagesAll().filter(x => x.hosted).map(x => x.hosted.id), ...(LS.get('hiddenHosted') || [])]); const rows = (data || []).filter(r => !local.has(r.id)); const slot = $('[data-slot="acct-pages"]');
-    if (!rows.length || !slot) return;
-    slot.innerHTML = `<h3 class="sub-h">On your account</h3><ul class="mp-list">${rows.map(r => { const c = spanFixed(normalize(r.config)); return `<li style="${themeStyle(c.theme)}"><i class="mp-dot"></i><div class="mp-t"><b>${esc(c.title)}</b><span>${esc([TYPE_LABEL[c.type] || c.type, c.start ? dateRange(c.start, c.end) : '', 'short link'].filter(Boolean).join(' · '))}</span></div><div class="mp-b"><a class="btn sm" href="${esc(shortURL(r.slug))}">Open</a><a class="btn sm" href="#mine/${esc(r.id)}">Replies</a></div></li>`; }).join('')}</ul>`;
-  }).catch(() => {});
 }
+// the account's pages arrived or changed (sync on open / sign-in): refresh whatever list is on screen
+addEventListener('ep-pages', () => {
+  const land = $('.land.home');
+  if (land) { const h = myPagesHTML(), sec = $('#my-pages', land); if (sec) { if (h) sec.outerHTML = h; else sec.remove(); } else if (h) $('.land-hero', land)?.insertAdjacentHTML('afterend', h); }
+  const v = $('.viewer .vbar a[href^="#edit="]'); const slug = new URLSearchParams(location.search).get('e');
+  if (v && slug) { const own = pagesAll().find(p => p.hosted && p.hosted.slug === slug); if (own) { v.outerHTML = `<a class="btn sm" href="#page=${esc(own.pid)}" data-onp-open>${t('Edit page')}</a>`; $('[data-onp-open]')?.addEventListener('click', () => { window.__onpOpen = true; }); } }
+});
 
 // ================= Nearby from Google Places (when a key is set): list + pins + tappable map POIs → in-app card =================
 // One request per category / cuisine / dietary search, cached per event for 3 days. Open now, rating and price filter
@@ -5553,6 +5648,7 @@ function whenToggle(c) {
 
 // ---------- router ----------
 function route() {
+  if (B && B.pushT) acctPushNow(); // leaving the builder: save to the account now
   const full = location.hash.slice(1);
   if (/(^|&)(access_token|error_description|error_code)=/.test(full)) return authReturn();
   const [h, tab] = full.split('&t=');
@@ -5577,5 +5673,6 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, pageStale, docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
+window.__ep = { startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

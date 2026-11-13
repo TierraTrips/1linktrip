@@ -121,7 +121,7 @@ function fakeSupabase(user) {
     await page.click('[data-su="next"]'); await page.click('[data-su="skip"]'); await page.waitForSelector('[data-su="share"]');
     ok(!(await page.$('.su-link')), 'no long link handed out on the last step');
     await page.click('[data-su="share"]'); await page.waitForSelector('#pub[open] .signin', { timeout: 15000 });
-    ok(/Sign in to get a link you can update later/.test(await page.textContent('#pub')), 'Share → builder share sheet (sign in for an updatable link)');
+    ok(/Sign in to share/.test(await page.textContent('#pub')), 'Share → builder share sheet (Sign in to share)');
     ok(!page._err.length, 'no page errors ' + page._err.join(' | '));
     await ctx.close();
   }

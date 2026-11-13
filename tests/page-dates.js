@@ -1,6 +1,6 @@
 // A page imported before the trip-span fix (stored Jun 2–3; the trip's own flights say Apr 25 – Jun 2) shows the real
 // span everywhere dates are listed (My pages card, Duplicate), and opening it in the builder saves the corrected dates
-// into the page for good: a shared page then shows "Changes not live yet → Update page", and the guest's My trip
+// into the page for good (a shared page saves it to the account like any edit; no Update page), and the guest's My trip
 // bookings stay with the corrected page (same page key). A page with right dates is left untouched. 390.
 //
 //   python3 -m http.server 18765 --bind 127.0.0.1 &  node tests/page-dates.js
@@ -37,7 +37,7 @@ const FLIGHTS = [{ id: 'b2', kind: 'flight', name: 'UA 7924 Tokyo HND → New Yo
   await page.waitForTimeout(500);
   const st = await page.evaluate(() => { const p = JSON.parse(localStorage.getItem('ep:pages')).find(x => x.pid === 'pbad'); return { draft: JSON.parse(localStorage.getItem('ep:draft')), saved: p.cfg, live: p.live, bar: document.querySelector('[data-save]').textContent }; });
   ok(st.draft.start === '2027-04-25' && st.draft.end === '2027-06-02' && st.saved.start === '2027-04-25', `builder saves the corrected dates (${st.saved.start} – ${st.saved.end})`);
-  ok(/Changes not live yet/.test(st.bar) && /Update page/.test(st.bar), `shared page shows Update page: "${st.bar}"`);
+  ok(!/not live|Update page/.test(st.bar), `shared page: no "not live" / Update page (edits save to the page itself): "${st.bar}"`);
   // the corrected page keeps the guest's bookings (same key)
   await page.goto(BASE + '#e=' + await page.evaluate((c) => window.__ep.packEvent(c), st.saved)); await page.waitForSelector('.stub');
   ok(/Apr 25/.test(await page.textContent('.stub-cell b')), 'guest page of the corrected page: Apr 25');
