@@ -3973,21 +3973,37 @@ function ccPinURL(k, saved) {
   const u = 'data:image/svg+xml,' + encodeURIComponent(svg); ccPinMemo.set(key, u); return u;
 }
 const ccPinSize = (z) => z >= 15 ? 34 : z >= 13 ? 29 : 23; // markers shrink as the map zooms out
-// a place's category from Google types / a type label / a name
+// a place's category: Google Places types first (primaryType, then types[]) through an explicit table; a word-boundary
+// keyword guess only when no type maps (a type label like "Coffee shop", or a plan/booking name)
+const GT_CAT = {
+  lodging: 'hotels', hotel: 'hotels', motel: 'hotels', hostel: 'hotels', resort_hotel: 'hotels', japanese_inn: 'hotels', inn: 'hotels', guest_house: 'hotels', bed_and_breakfast: 'hotels', extended_stay_hotel: 'hotels', budget_japanese_inn: 'hotels', capsule_hotel: 'hotels', farmstay: 'hotels', cottage: 'hotels', private_guest_room: 'hotels', campground: 'hotels',
+  cafe: 'cafes', coffee_shop: 'cafes', bakery: 'cafes', tea_house: 'cafes', cafeteria: 'cafes', cat_cafe: 'cafes', dog_cafe: 'cafes', dessert_shop: 'cafes', pastry_shop: 'cafes', confectionery: 'cafes', ice_cream_shop: 'cafes', juice_shop: 'cafes', donut_shop: 'cafes', chocolate_shop: 'cafes', bagel_shop: 'cafes', acai_shop: 'cafes', candy_store: 'cafes',
+  bar: 'bars', pub: 'bars', night_club: 'bars', wine_bar: 'bars', cocktail_bar: 'bars', sports_bar: 'bars', lounge_bar: 'bars', irish_pub: 'bars', beer_garden: 'bars', brewpub: 'bars', brewery: 'bars', winery: 'bars', hookah_bar: 'bars', karaoke: 'tours',
+  restaurant: 'restaurants', food: 'restaurants', meal_takeaway: 'restaurants', meal_delivery: 'restaurants', food_court: 'restaurants', diner: 'restaurants', steak_house: 'restaurants', bar_and_grill: 'restaurants', deli: 'restaurants', bistro: 'restaurants', buffet_restaurant: 'restaurants', sandwich_shop: 'restaurants', snack_bar: 'restaurants', noodle_shop: 'restaurants', yakitori_restaurant: 'restaurants',
+  museum: 'sights', art_gallery: 'sights', tourist_attraction: 'sights', historical_landmark: 'sights', historical_place: 'sights', monument: 'sights', cultural_landmark: 'sights', church: 'sights', hindu_temple: 'sights', buddhist_temple: 'sights', shinto_shrine: 'sights', place_of_worship: 'sights', mosque: 'sights', synagogue: 'sights', castle: 'sights', palace: 'sights', observation_deck: 'sights', sculpture: 'sights', plaza: 'sights', garden: 'sights', botanical_garden: 'sights', cultural_center: 'sights', visitor_center: 'sights', art_studio: 'sights', auditorium: 'sights',
+  tour_agency: 'tours', travel_agency: 'tours', tourist_information_center: 'tours', amusement_park: 'tours', amusement_center: 'tours', aquarium: 'tours', zoo: 'tours', wildlife_park: 'tours', water_park: 'tours', park: 'tours', national_park: 'tours', state_park: 'tours', city_park: 'tours', hiking_area: 'tours', beach: 'tours', marina: 'tours', ski_resort: 'tours', spa: 'tours', public_bath: 'tours', sauna: 'tours', bowling_alley: 'tours', movie_theater: 'tours', performing_arts_theater: 'tours', concert_hall: 'tours', opera_house: 'tours', stadium: 'tours', arena: 'tours', event_venue: 'tours', escape_room: 'tours', video_arcade: 'tours', casino: 'tours', golf_course: 'tours', ferris_wheel: 'tours', roller_coaster: 'tours', planetarium: 'tours', cooking_school: 'tours', adventure_sports_center: 'tours',
+  shopping_mall: 'shopping', department_store: 'shopping', market: 'shopping', supermarket: 'shopping', grocery_store: 'shopping', convenience_store: 'shopping', gift_shop: 'shopping', store: 'shopping', book_store: 'shopping', clothing_store: 'shopping', pharmacy: 'shopping', drugstore: 'shopping', flea_market: 'shopping', farmers_market: 'shopping', outlet_mall: 'shopping', asian_grocery_store: 'shopping', food_store: 'shopping', liquor_store: 'shopping',
+  airport: 'transport', international_airport: 'transport', train_station: 'transport', subway_station: 'transport', bus_station: 'transport', transit_station: 'transport', light_rail_station: 'transport', ferry_terminal: 'transport', car_rental: 'transport', taxi_stand: 'transport', bus_stop: 'transport', heliport: 'transport',
+};
+const gtCat = (t) => { t = String(t || '').toLowerCase(); if (!t) return ''; if (GT_CAT[t]) return GT_CAT[t];
+  if (/_restaurant$/.test(t)) return 'restaurants'; if (/_(bar|pub)$/.test(t)) return 'bars'; if (/_(cafe|coffee_shop|bakery)$/.test(t)) return 'cafes';
+  if (/_(hotel|inn|lodging)$/.test(t)) return 'hotels'; if (/_(store|mall|market|shop)$/.test(t)) return 'shopping'; if (/_(museum|gallery|temple|shrine|church|landmark)$/.test(t)) return 'sights';
+  if (/_(station|airport)$/.test(t)) return 'transport'; if (/_(park|tour)$/.test(t)) return 'tours'; return ''; };
+function ccKeyword(s) {
+  s = ' ' + String(s || '').toLowerCase().replace(/_/g, ' ') + ' ';
+  if (/\b(lodging|hotel|hostel|motel|ryokan|guest ?house|resort|inn|check[- ]?in)s?(?![a-zà-ÿ])/.test(s)) return 'hotels';
+  if (/\b(cafe|café|coffee|coffee shop|tea house|bakery|kissa|patisserie)s?(?![a-zà-ÿ])/.test(s)) return 'cafes';
+  if (/\b(restaurants?|dinner|lunch|breakfast|brunch|food|meal|ramen|sushi|yakitori|izakaya|takoyaki|okonomiyaki|diner|steak ?house|pizza|noodles?|bistro|eatery|trattoria|tasting)s?(?![a-zà-ÿ])/.test(s)) return 'restaurants';
+  if (/\b(bar|pub|wine bar|brewery|night ?club|cocktails?|beer|sake)s?(?![a-zà-ÿ])/.test(s)) return 'bars';
+  if (/\b(airport|station|train|shinkansen|transit|subway|bus|ferry|car rental|rent-a-car|flight|fly|land at)s?(?![a-zà-ÿ])/.test(s)) return 'transport';
+  if (/\b(shopping|store|market|mall|shop|boutique|department store|outlet)s?(?![a-zà-ÿ])/.test(s)) return 'shopping';
+  if (/\b(tours?|travel agency|tour agency|experiences?|amusement|aquarium|zoo|spa|onsen|theater|theatre|karaoke|class|workshop|activity|tickets?|teamlab|cruise)s?(?![a-zà-ÿ])/.test(s)) return 'tours';
+  if (/\b(tourist|museum|gallery|park|temple|shrine|church|landmark|monument|castle|attraction|viewpoint|garden|scenic|historical|sight|tower|palace|grove|ji)s?(?![a-zà-ÿ])/.test(s)) return 'sights';
+  return '';
+}
 function ccCatOfTypes(types, label) {
-  const one = (s) => {
-    s = ' ' + String(s || '').toLowerCase().replace(/_/g, ' ') + ' ';
-    if (/lodging|hotel|hostel|motel|ryokan|guest ?house|resort|\binn\b|check[- ]?in/.test(s)) return 'hotels';
-    if (/\b(cafe|café|coffee|tea house|bakery|kissa|patisserie)/.test(s)) return 'cafes';
-    if (/\b(restaurant|dinner|lunch|breakfast|brunch|food|meal|ramen|sushi|yakitori|izakaya|takoyaki|okonomiyaki|diner|steak|pizza|noodle|bistro|eatery|trattoria|tasting)/.test(s)) return 'restaurants';
-    if (/\b(bar|pub|wine|brewery|night club|cocktail|beer|sake)\b/.test(s)) return 'bars';
-    if (/\b(airport|station|train|shinkansen|transit|subway|bus|ferry|car rental|rent-a-car|flight|fly|land at)\b/.test(s)) return 'transport';
-    if (/\b(shopping|store|market|mall|shop|boutique|department|outlet)/.test(s)) return 'shopping';
-    if (/\b(tours?|travel agency|tour agency|experiences?|amusement|aquarium|zoo|spa|onsen|theater|theatre|karaoke|class|workshop|activity|tickets?|teamlab|cruise)\b/.test(s)) return 'tours';
-    if (/\b(tourist|museum|gallery|park|temple|shrine|church|landmark|monument|castle|attraction|viewpoint|garden|scenic|historical|sight|tower|palace|grove|ji)\b/.test(s)) return 'sights';
-    return '';
-  };
-  const ts = types || []; return one(ts[0]) || one(label) || ts.slice(1).map(one).find(Boolean) || '';
+  for (const t of types || []) { const c = gtCat(t); if (c) return c; }
+  return ccKeyword(label);
 }
 // ---- state per trip per guest (this device): scope 'nearby' (what Nearby searches) and 'trip' (My trip + Itinerary) ----
 let ccLive = false; // a guest view (not the builder preview): selections go into the address bar
@@ -4084,16 +4100,16 @@ const GP_FOOD = new Set(['restaurants', 'cafes', 'bars']);
 const GP_CUISINES = ['american', 'barbecue', 'brazilian', 'breakfast', 'brunch', 'chinese', 'french', 'greek', 'hamburger', 'indian', 'indonesian', 'italian', 'japanese', 'korean', 'lebanese', 'mediterranean', 'mexican', 'middle_eastern', 'pizza', 'ramen', 'seafood', 'spanish', 'steak_house', 'sushi', 'thai', 'turkish', 'vegan', 'vegetarian', 'vietnamese'];
 const gpCuisineType = (c) => c === 'steak_house' ? 'steak_house' : c + '_restaurant';
 const GP_DIETS = [['vegetarian', 'Vegetarian', 'vegetarian'], ['vegan', 'Vegan', 'vegan'], ['gluten_free', 'Gluten-free', 'gluten free'], ['halal', 'Halal', 'halal'], ['kosher', 'Kosher', 'kosher']];
-const GP_LIST_MASK = 'places.id,places.displayName,places.location,places.rating,places.userRatingCount,places.priceLevel,places.primaryType,places.primaryTypeDisplayName,places.currentOpeningHours.openNow,places.shortFormattedAddress';
+const GP_LIST_MASK = 'places.id,places.displayName,places.location,places.rating,places.userRatingCount,places.priceLevel,places.primaryType,places.primaryTypeDisplayName,places.types,places.currentOpeningHours.openNow,places.shortFormattedAddress';
 const GP_CARD_MASK = 'id,displayName,location,formattedAddress,rating,userRatingCount,priceLevel,primaryTypeDisplayName,regularOpeningHours.weekdayDescriptions,currentOpeningHours.openNow,websiteUri,nationalPhoneNumber,internationalPhoneNumber,googleMapsUri,photos,servesVegetarianFood,reservable,types,primaryType';
 let gpBroken = false; // set when the Places API refuses (quota, key): pages fall back to OpenStreetMap
 const gpRow = (x, v) => ({ id: x.id, name: (x.displayName && x.displayName.text) || '', lat: x.location && x.location.latitude, lon: x.location && x.location.longitude,
-  rating: x.rating || 0, count: x.userRatingCount || 0, price: G_PRICE[x.priceLevel] || '', type: (x.primaryTypeDisplayName && x.primaryTypeDisplayName.text) || '', ptype: x.primaryType || '',
+  rating: x.rating || 0, count: x.userRatingCount || 0, price: G_PRICE[x.priceLevel] || '', type: (x.primaryTypeDisplayName && x.primaryTypeDisplayName.text) || '', ptype: x.primaryType || '', types: x.types || [],
   open: x.currentOpeningHours ? !!x.currentOpeningHours.openNow : null, addr: x.shortFormattedAddress || x.formattedAddress || '',
   d: x.location ? distM(v.lat, v.lon, x.location.latitude, x.location.longitude) : 0 });
 function gpQueryKey(f) { if (f.q) return `q:${f.q.toLowerCase()}:${f.diet}`; return f.diet ? `diet:${f.cat}:${f.diet}` : f.cuisine && f.cat === 'restaurants' ? `cuisine:${f.cuisine}` : `cat:${f.cat}`; }
 function gpSearch(cfg, f, center) {
-  const v = center || cfg.venue; const qk = gpQueryKey(f); const key = `gq2:${osmKey(v.lat, v.lon)}${v.r ? ':r' + v.r : ''}:${qk}`;
+  const v = center || cfg.venue; const qk = gpQueryKey(f); const key = `gq3:${osmKey(v.lat, v.lon)}${v.r ? ':r' + v.r : ''}:${qk}`;
   const c = LS.get(key); if (c && (Date.now() - c.t < G_TTL || navigator.onLine === false)) return Promise.resolve(c.d);
   if (memo.has(key)) return memo.get(key);
   const cat = GP_CATS.find(x => x[0] === f.cat) || GP_CATS[0]; const rad = v.r || cat[3]; const circle = { center: { latitude: v.lat, longitude: v.lon }, radius: rad };
@@ -4133,8 +4149,9 @@ function gpFilter(rows, f) {
   const xs = rows.filter(r => (!f.open || r.open === true) && (!f.stars || r.rating >= f.stars) && (!f.price || r.price === f.price) && (!f.dist || r.d <= f.dist));
   return f.sort === 'rating' ? lfSort(xs, 'rating') : xs;
 }
-// which icon a Google row gets: the chosen category, else what Google calls it (a text search mixes them)
-const gpRowCat = (f, r) => (!f.q && f.cat) || ccCatOfTypes([r.ptype], r.type) || '';
+// which icon a Google row gets: the place's own Google type (a Cafés search also returns museums and hotels that have a
+// café); the chosen category only when Google gives no usable type
+const gpRowCat = (f, r) => ccCatOfTypes([r.ptype, ...(r.types || [])], r.type) || (!f.q && f.cat) || '';
 const gpActive = (f) => (f.cuisine ? 1 : 0) + (f.diet ? 1 : 0) + (f.open ? 1 : 0) + (f.stars ? 1 : 0) + (f.price ? 1 : 0) + (f.dist ? 1 : 0) + (f.sort === 'rating' ? 1 : 0);
 function gpSheetHTML(cfg, f, n) {
   const food = GP_FOOD.has(f.cat) || (!!f.q && !f.cat); const priced = f.cat !== 'sights' && f.cat !== 'tours';
@@ -6282,5 +6299,5 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { ccCatOfTypes, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
