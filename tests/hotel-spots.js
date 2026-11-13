@@ -1,6 +1,6 @@
 // Nearby, per route city: "Your hotel" — from the guest's own hotel booking (My trip), else the host's stay on the
-// itinerary for that leg, else one the guest sets (search + Find). It is a large coral bed pin with a permanent label,
-// highest on the map, with a key + a "Hotel" button that re-centers on it. Nearby searches start at the hotel and
+// itinerary for that leg, else one the guest sets (search + Find). It is a deep-blue bed pin with no text until hovered or
+// tapped (popup with name + dates), highest on the map, with a key + a "Hotel" button that re-centers on it. Nearby searches start at the hotel and
 // distances are measured from it. ☆ on any place saves it (plan item, synced like My trip), shows as a gold star pin,
 // and is listed per city in My trip → Saved spots with Open in Google Maps, plus Save all to Google Maps (a KML file)
 // with the My Maps note. 390 + 320.
@@ -44,8 +44,9 @@ function fakeGoogleMaps() {
     setOptions() {}
   }
   window.__markers = [];
-  class Marker { constructor(o) { this.o = o; this.on = !!o.map; window.__markers.push(this); } setMap(m) { this.on = !!m; } addListener() { return { remove() {} }; } }
-  class InfoWindow { setContent() {} open() {} }
+  class Marker { constructor(o) { this.o = o; this.on = !!o.map; window.__markers.push(this); } setMap(m) { this.on = !!m; } setLabel(l) { this.o.label = l; } addListener(ev, f) { return on(this, ev, f); } }
+  class InfoWindow { constructor() { window.__info = this; this.at = null; this.html = ''; } setContent(h) { this.html = h; } open(o) { this.at = o.anchor; } close() { this.at = null; } addListener(ev, f) { return on(this, ev, f); } }
+  window.__fire = fire;
   class Point { constructor(x, y) { this.x = x; this.y = y; } }
   class Size { constructor(w, h) { this.w = w; this.h = h; } }
   window.google = { maps: { Map, Marker, InfoWindow, LatLngBounds, LatLng, Point, Size, SymbolPath: { CIRCLE: 0 }, event: { trigger() {}, addListenerOnce: (o, ev, f) => { const h = on(o, ev, (a) => { h.remove(); f(a); }); return h; } } } };
@@ -91,10 +92,10 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
     await page.waitForTimeout(400);
     const bar = await page.textContent('[data-slot="hotel"]');
     ok(/Your hotel in Tokyo/.test(bar) && /From your bookings/.test(bar), `@${w} Tokyo hotel from the guest's booking: ${bar.replace(/\s+/g, ' ')}`);
-    const hm = await page.evaluate(() => window.__markers.filter(m => m.on && m.o.zIndex === 5000).map(m => ({ lat: m.o.position.lat, lbl: m.o.label && m.o.label.text, url: (m.o.icon || {}).url || '', w: m.o.icon.scaledSize.w, z: m.o.zIndex })));
+    const hm = await page.evaluate(() => window.__markers.filter(m => m.on && m.o.zIndex === 5000).map(m => ({ lat: m.o.position.lat, lbl: m.tip, shown: m.o.label || null, url: (m.o.icon || {}).url || '', w: m.o.icon.scaledSize.w, z: m.o.zIndex })));
     const maxZ = await page.evaluate(() => Math.max(...window.__markers.filter(m => m.on).map(m => m.o.zIndex || 0)));
     hm.sort((a, b) => b.lat - a.lat); // other cities' hotels may already be found too
-    ok(hm.length >= 1 && near(hm[0].lat, 35.6627) && /^Park Hotel Tokyo( · |$)/.test(hm[0].lbl) && /1E3A8A/.test(decodeURIComponent(hm[0].url)) && hm[0].w === 32 && maxZ === 5000, `@${w} hotel marker: deep-blue bed pin, pin-sized, labelled, on top ${JSON.stringify(hm)}`);
+    ok(hm.length >= 1 && near(hm[0].lat, 35.6627) && /^Park Hotel Tokyo( · |$)/.test(hm[0].lbl) && hm.every(x => x.shown === null) && /1E3A8A/.test(decodeURIComponent(hm[0].url)) && hm[0].w === 32 && maxZ === 5000, `@${w} hotel marker: deep-blue bed pin, pin-sized, no label until hover/tap, on top ${JSON.stringify(hm)}`);
     const nb = [...reqs].reverse().find(x => /searchNearby/.test(x.url));
     ok(nb && near(nb.b.locationRestriction.circle.center.latitude, 35.6627) && near(nb.b.locationRestriction.circle.center.longitude, 139.7576), `@${w} Nearby searches start at the hotel`);
     ok(/Your hotel/.test(await page.textContent('[data-slot="map-key"]')) && !!(await page.$('[data-slot="map-key"] [data-hotel-go]')), `@${w} map key + Hotel button`);
@@ -146,8 +147,9 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
   }
 
   // ---------- part 2: the drawn map (OpenStreetMap, real tiles) for a legibility check ----------
-  {
-    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+  for (const w of [390, 1280]) {
+    const desk = w > 900;
+    const ctx = await browser.newContext({ viewport: { width: w, height: desk ? 900 : 844 }, deviceScaleFactor: 2, isMobile: !desk, hasTouch: !desk, serviceWorkers: 'block' });
     const page = await ctx.newPage(); const errors = []; page.on('pageerror', e => errors.push(String(e)));
     await page.route('**/google-config.js', r => r.fulfill({ contentType: 'text/javascript', body: 'window.EP_GOOGLE = { key: "" };' }));
     await page.route(/overpass|maps\.mail\.ru|open-meteo|timeapi|nominatim|photon/, r => r.abort());
@@ -159,10 +161,23 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
       { id: 's2', src: 'osm', ref: 'n2', name: 'Hamarikyu Gardens', lat: 35.6600, lon: 139.7630, addr: '', type: 'activity', day: '' }])); }, [k]);
     const packed = await page.evaluate((c) => window.__ep.packEvent(c), { ...one, venue: { ...one.venue, lat: 35.6655, lon: 139.7620 } });
     await page.goto(BASE + '#e=' + packed + '&t=nearby'); await page.waitForSelector('.hpin', { timeout: 15000 }); await page.waitForTimeout(2500);
-    const z = await page.evaluate(() => { const h = document.querySelector('.hpin'); const zs = [...document.querySelectorAll('.leaflet-marker-icon')].map(e => +e.style.zIndex); return { h: +h.style.zIndex, max: Math.max(...zs), lbl: h.querySelector('.map-lbl').textContent, stars: document.querySelectorAll('.spin img, .ccpin.sv img').length, cats: [...document.querySelectorAll('.ccpin.sv img')].map(i => /%23(E25A1C|0B7A8A)/i.test(i.src) && /E8A100/i.test(decodeURIComponent(i.src))) }; });
-    ok(z.h === z.max && /^Park Hotel Tokyo( · |$)/.test(z.lbl) && z.stars === 2 && z.cats.length === 2 && z.cats.every(Boolean), `OSM map: hotel pin on top with its label, 2 saved pins (category icon + gold star) ${JSON.stringify(z)}`);
-    if (SHOTS) await page.locator('#sec-map').screenshot({ path: `${SHOTS}/hotel-map-osm-390.png` });
-    ok(errors.length === 0, `OSM: no page errors ${errors.join(' ')}`);
+    const z = await page.evaluate(() => { const h = document.querySelector('.hpin'); const zs = [...document.querySelectorAll('.leaflet-marker-icon')].map(e => +e.style.zIndex); return { h: +h.style.zIndex, max: Math.max(...zs), lbl: h.textContent.trim() + document.querySelectorAll('#sec-map .map-lbl, #sec-map .leaflet-tooltip').length, stars: document.querySelectorAll('.spin img, .ccpin.sv img').length, cats: [...document.querySelectorAll('.ccpin.sv img')].map(i => /%23(E25A1C|0B7A8A)/i.test(i.src) && /E8A100/i.test(decodeURIComponent(i.src))) }; });
+    ok(z.h === z.max && z.lbl === '0' && z.stars === 2 && z.cats.length === 2 && z.cats.every(Boolean), `OSM @${w}: hotel pin on top, no text on the map, 2 saved pins (category icon + gold star) ${JSON.stringify(z)}`);
+    const tipT = () => page.$$eval('#sec-map .leaflet-tooltip.map-tip.hotel', ts => ts.map(t => t.textContent).join());
+    const popT = () => page.$$eval('#sec-map .leaflet-popup-content', ps => ps.map(p => p.textContent).join());
+    if (desk) { await page.hover('.hpin'); await page.waitForTimeout(200); ok(/^Park Hotel Tokyo/.test(await tipT()), `OSM @${w}: hover shows the hotel tooltip (${await tipT()})`);
+      if (SHOTS) await page.locator('#sec-map').screenshot({ path: `${SHOTS}/hotel-map-osm-${w}-hover.png` });
+      await page.mouse.move(5, 5); await page.waitForTimeout(200); ok(await tipT() === '', `OSM @${w}: tooltip gone after hover`); }
+    else { await page.hover('.hpin').catch(() => {}); ok(await tipT() === '', `OSM @${w}: no hover tooltip on a phone`); }
+    const tapPin = () => page.locator('.hpin').dispatchEvent('click');
+    await tapPin(); await page.waitForTimeout(300); const pt = await popT();
+    ok(/^Park Hotel Tokyo/.test(pt) && await tipT() === (desk ? await tipT() : ''), `OSM @${w}: tap opens the popup (${pt})`);
+    if (SHOTS) await page.locator('#sec-map').screenshot({ path: `${SHOTS}/hotel-map-osm-${w}-tap.png` });
+    await tapPin(); await page.waitForTimeout(300); ok(await popT() === '', `OSM @${w}: tap again closes it`);
+    await tapPin(); await page.waitForTimeout(300); const mb = await page.locator('[data-slot="map"]').boundingBox(); await page.mouse.click(mb.x + 15, mb.y + mb.height - 60); await page.waitForTimeout(300);
+    ok(await popT() === '', `OSM @${w}: tapping the map closes it`);
+    if (SHOTS) await page.locator('#sec-map').screenshot({ path: `${SHOTS}/hotel-map-osm-${w}.png` });
+    ok(errors.length === 0, `OSM @${w}: no page errors ${errors.join(' ')}`);
     await ctx.close();
   }
   await browser.close();

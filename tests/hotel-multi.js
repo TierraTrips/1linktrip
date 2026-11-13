@@ -1,7 +1,8 @@
 // A route that comes back to a city (Tokyo → Kyoto → Tokyo) has ONE Tokyo in Nearby (one stop chip) holding both of its
 // hotels: each pinned and labelled with its dates, chips above the map (All / Hotel A Apr 1–4 / Hotel B Apr 8–10) switch
 // between them, re-centering the map and re-anchoring Nearby searches; All shows both (search from the city). The
-// Itinerary still lists both Tokyo legs by date, and tapping either opens Tokyo in Nearby. 390 + 320.
+// Itinerary still lists both Tokyo legs by date, and tapping either opens Tokyo in Nearby. The hotel pins carry no
+// text until hovered (mouse) or tapped (popup with name + dates; tap again or the map closes it). 390 + 320 + 1280.
 //
 //   python3 -m http.server 18765 --bind 127.0.0.1 &  node tests/hotel-multi.js
 const { chromium } = require(process.env.PW || 'playwright');
@@ -30,8 +31,9 @@ function fakeGoogleMaps() {
     setOptions() {}
   }
   window.__markers = [];
-  class Marker { constructor(o) { this.o = o; this.on = !!o.map; window.__markers.push(this); } setMap(m) { this.on = !!m; } addListener() { return { remove() {} }; } }
-  class InfoWindow { setContent() {} open() {} }
+  class Marker { constructor(o) { this.o = o; this.on = !!o.map; window.__markers.push(this); } setMap(m) { this.on = !!m; } setLabel(l) { this.o.label = l; } addListener(ev, f) { return on(this, ev, f); } }
+  class InfoWindow { constructor() { window.__info = this; this.at = null; this.html = ''; } setContent(h) { this.html = h; } open(o) { this.at = o.anchor; } close() { this.at = null; } addListener(ev, f) { return on(this, ev, f); } }
+  window.__fire = fire;
   class Point { constructor(x, y) { this.x = x; this.y = y; } }
   class Size { constructor(w, h) { this.w = w; this.h = h; } }
   window.google = { maps: { Map, Marker, InfoWindow, LatLngBounds, LatLng, Point, Size, SymbolPath: { CIRCLE: 0 }, event: { trigger() {}, addListenerOnce: (o, ev, f) => { const h = on(o, ev, (a) => { h.remove(); f(a); }); return h; } } } };
@@ -47,8 +49,9 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
 const near = (a, b, e = 1e-3) => Math.abs(a - b) < e;
 (async () => {
   const browser = await chromium.launch();
-  for (const w of [390, 320]) {
-    const ctx = await browser.newContext({ viewport: { width: w, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+  for (const w of [390, 320, 1280]) {
+    const desk = w > 900;
+    const ctx = await browser.newContext({ viewport: { width: w, height: desk ? 900 : 844 }, deviceScaleFactor: 2, isMobile: !desk, hasTouch: !desk, serviceWorkers: 'block' });
     const page = await ctx.newPage(); const errors = []; page.on('pageerror', e => errors.push(String(e)));
     await page.addInitScript(fakeGoogleMaps); const reqs = [];
     await page.route('https://places.googleapis.com/**', async (r) => { const b = JSON.parse(r.request().postData() || '{}'); reqs.push({ url: r.request().url(), b });
@@ -65,8 +68,23 @@ const near = (a, b, e = 1e-3) => Math.abs(a - b) < e;
     ok((await cityOpts(page)).join() === 'Tokyo,Kyoto', `@${w} one Tokyo in the City dropdown for both Tokyo legs`);
     const chips = await page.$$eval('[data-hotel-pick]', bs => bs.map(b => b.textContent.replace(/\s+/g, ' ').trim()));
     ok(chips.join('|') === 'All|Hotel A Apr 1–4|Hotel B Apr 8–10', `@${w} hotel chips ${chips.join('|')}`);
-    const pins = await page.evaluate(() => window.__markers.filter(m => m.on && m.o.zIndex === 5000).map(m => m.o.label.text).sort());
+    const pins = await page.evaluate(() => window.__markers.filter(m => m.on && m.o.zIndex === 5000).map(m => m.tip).sort());
     ok(pins.join('|') === 'Hotel A · Apr 1–4|Hotel B · Apr 8–10', `@${w} both hotels pinned with dates ${pins.join('|')}`);
+    // no text on the map until hover (mouse) / tap (popup)
+    const hA = 'window.__markers.find(m => m.on && m.o.zIndex === 5000 && /Hotel A/.test(m.tip))';
+    const lbl = () => page.evaluate(`(() => { const m = ${hA}; return m.o.label ? m.o.label.text : null; })()`);
+    const venueLbl = await page.evaluate(() => window.__markers.filter(m => m.on && m.o.zIndex === 1000).map(m => m.o.label || null));
+    ok(await lbl() === null && venueLbl.every(x => x === null), `@${w} hotel + venue pins show no label by default`);
+    await page.evaluate(`window.__fire(${hA}, 'mouseover')`);
+    if (desk) { ok(await lbl() === 'Hotel A · Apr 1–4' && await page.evaluate(`${hA}.o.label.className`) === 'gmap-lbl hotel', `@${w} hover shows name + dates (${await lbl()})`);
+      await page.evaluate(`window.__fire(${hA}, 'mouseout')`); ok(await lbl() === null, `@${w} label hides again on mouseout`); }
+    else ok(await lbl() === null, `@${w} phone: no hover label`);
+    const popAt = () => page.evaluate(`(() => { const i = window.__info; return i && i.at === ${hA} ? i.html : null; })()`);
+    await page.evaluate(`window.__fire(${hA}, 'click')`); await page.waitForTimeout(150);
+    const ph = await popAt(); ok(/<b>Hotel A<\/b>/.test(ph || '') && /Apr 1–4/.test(ph || ''), `@${w} tap opens the popup with name + dates: ${ph}`);
+    await page.evaluate(`window.__fire(${hA}, 'click')`); ok(await popAt() === null, `@${w} tap again closes it`);
+    await page.evaluate(`window.__fire(${hA}, 'click')`); await page.waitForTimeout(100); await page.evaluate(() => window.__fire(window.__gmap, 'click', {}));
+    ok(await popAt() === null && await lbl() === null, `@${w} tapping the map closes it`);
     const nb = () => [...reqs].reverse().find(x => /searchNearby/.test(x.url)).b.locationRestriction.circle.center;
     await page.waitForTimeout(300); ok(near(nb().latitude, 35.69), `@${w} search starts at Hotel A`);
     await page.click('[data-hotel-pick="1"]'); await page.waitForTimeout(400);
@@ -75,7 +93,7 @@ const near = (a, b, e = 1e-3) => Math.abs(a - b) < e;
     await page.click('[data-hotel-pick="-1"]'); await page.waitForTimeout(400);
     const allC = await page.evaluate(() => window.__gmap.c.lat); const pl = await page.evaluate(() => window.__markers.filter(m => m.on && m.o.zIndex === 500).map(m => m.o.position.lat)[0]);
     ok(near(pl, 35.6764) && Math.abs(allC - 35.675) < 2e-3, `@${w} All → both in view, places from the city (${pl}, map ${allC})`);
-    if (SHOTS && w === 390) await page.locator('#sec-map').screenshot({ path: `${SHOTS}/hotel-multi-390.png` });
+    if (SHOTS && (w === 390 || desk)) await page.locator('#sec-map').screenshot({ path: `${SHOTS}/hotel-multi-${w}.png` });
     ok((await overflow(page)) === 0, `@${w} no overflow`);
     // the Itinerary still has both Tokyo legs; the second opens Tokyo in Nearby
     await page.click('[data-tab-go="event"]'); await page.waitForSelector('#sec-schedule .leg');

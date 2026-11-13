@@ -69,7 +69,7 @@ const importAI = async (page, items) => { await page.click('[data-tab-go="mytrip
 const mapPick = async (page, q) => { await page.click('[data-tab-go="nearby"]'); await page.waitForSelector('[data-slot="hotel"]');
   if (await page.$('[data-slot="hotel"] [data-hotel-add]')) await page.click('[data-slot="hotel"] [data-hotel-add]');
   await page.fill('[data-hotel-q]', q); await page.click('[data-hotel-find]'); await page.waitForTimeout(600); };
-const hotelPins = (page) => page.evaluate(() => window.__markers.filter(m => m.on && m.o.zIndex === 5000).map(m => m.o.label.text));
+const hotelPins = (page) => page.evaluate(() => window.__markers.filter(m => m.on && m.o.zIndex === 5000).map(m => m.tip));
 
 (async () => {
   const browser = await chromium.launch();

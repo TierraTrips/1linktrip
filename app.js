@@ -3693,6 +3693,9 @@ function loadGoogleMaps() {
   }));
 }
 // map marks: the guest's hotel is a deep-blue pin with a white bed (same size as the other pins, top of the stack); saved spots are gold stars
+const mapHover = () => !!(window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches);
+const hotelKey = (items) => JSON.stringify(items.map(x => [x.lat, x.lon, x.title, x.label, x.dates]));
+const hotelPop = (x) => `<b>${esc(x.name || x.title || '')}</b>${x.dates ? `<br>${esc(x.dates)}` : ''}`;
 const pinText = (s) => { s = String(s || ''); return s.length > 22 ? s.slice(0, 21).trim() + '…' : s; };
 const HOTEL_PIN = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 48 60"><defs><filter id="s" x="-40%" y="-30%" width="180%" height="160%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity=".4"/></filter></defs><path filter="url(#s)" d="M24 3C13 3 4 11.6 4 22.4 4 36.6 24 57 24 57s20-20.4 20-34.6C44 11.6 35 3 24 3z" fill="#1E3A8A" stroke="#fff" stroke-width="3.5"/><g fill="#fff"><rect x="12" y="15" width="3.2" height="17" rx="1.2"/><rect x="12" y="26" width="24" height="3.2" rx="1"/><rect x="32.8" y="22" width="3.2" height="10" rx="1.2"/><circle cx="19.6" cy="21.4" r="2.9"/><rect x="23.6" y="19" width="12.4" height="5.6" rx="2.4"/></g></svg>');
 const STAR_PIN = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34"><defs><filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#000" flood-opacity=".4"/></filter></defs><path filter="url(#s)" d="M17 2.5l4.3 8.9 9.7 1.4-7 6.8 1.7 9.7-8.7-4.6-8.7 4.6 1.7-9.7-7-6.8 9.7-1.4z" fill="#E8A100" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/></svg>');
@@ -3704,13 +3707,19 @@ function googleAdapter(g, el, c) {
   const gIc = (k, sv) => { const z = ccPinSize(map.getZoom() || 15) + (sv ? 4 : 0); return { url: ccPinURL(k, sv), scaledSize: new g.Size(z, z), anchor: new g.Point(z / 2, z / 2) }; };
   try { map.addListener('zoom_changed', () => { const z = ccPinSize(map.getZoom() || 15); if (z === ccSz) return; ccSz = z; ccMs.forEach(([m, k, sv]) => m.setIcon && m.setIcon(gIc(k, sv))); }); } catch { /* stand-in maps */ }
   const ccReg = (m, k, sv) => { const e = [m, k, sv]; ccMs.add(e); return () => ccMs.delete(e); };
-  const pop = (m, html) => m.addListener('click', () => { info.setContent(html); info.open({ anchor: m, map }); });
+  // one info popup: tap a marker to open it, tap the same marker again or the map to close it
+  const infoAt = (m, html) => { if (info._m === m) { info.close(); info._m = null; return; } info.setContent(html); info.open({ anchor: m, map }); info._m = m; };
+  try { info.addListener('closeclick', () => { info._m = null; }); map.addListener('click', () => { if (info._m) { info.close(); info._m = null; } }); } catch { /* stand-in maps */ }
+  const pop = (m, html) => m.addListener('click', () => infoAt(m, html));
+  // name labels only on hover (mouse); on a phone the tap popup carries the name
+  const tip = (m, text, cls, fs) => { m.tip = text; if (!mapHover()) return; const l = { text, className: cls, color: '#12141B', fontSize: fs, fontWeight: '700' }; m.addListener('mouseover', () => m.setLabel(l)); m.addListener('mouseout', () => m.setLabel(null)); };
   return {
     kind: 'google', map,
     center: (lat, lon, z) => { map.setCenter({ lat, lng: lon }); if (z) map.setZoom(z); },
     fit: (pts) => { const b = new g.LatLngBounds(); pts.forEach(([la, lo]) => b.extend({ lat: la, lng: lo })); map.fitBounds(b, 60); g.event.addListenerOnce(map, 'idle', () => { if (map.getZoom() > 16) map.setZoom(16); }); },
-    pin: (lat, lon, { title, html, color }) => { const m = new g.Marker({ map, position: { lat, lng: lon }, title, zIndex: 1000, label: title ? { text: pinText(title), className: 'gmap-lbl', color: '#12141B', fontSize: '11px', fontWeight: '700' } : undefined, icon: { path: 'M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z', fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 1.15, anchor: new g.Point(12, 36), labelOrigin: new g.Point(12, 46) } }); pop(m, html); all.push(m); },
-    hotelPins: (() => { let ms = []; return (items) => { ms.forEach(m => m.setMap(null)); ms = items.map(x => { const m = new g.Marker({ map, position: { lat: x.lat, lng: x.lon }, title: x.title, zIndex: 5000, optimized: false, label: { text: x.label, className: 'gmap-lbl hotel', color: '#12141B', fontSize: '12px', fontWeight: '700' }, icon: { url: HOTEL_PIN, scaledSize: new g.Size(32, 40), anchor: new g.Point(16, 38), labelOrigin: new g.Point(16, 49) } }); m.addListener('click', () => x.onClick && x.onClick()); return m; }); }; })(),
+    pin: (lat, lon, { title, html, color }) => { const m = new g.Marker({ map, position: { lat, lng: lon }, title, zIndex: 1000, icon: { path: 'M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z', fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 1.15, anchor: new g.Point(12, 36), labelOrigin: new g.Point(12, 46) } }); if (title) tip(m, pinText(title), 'gmap-lbl', '11px'); pop(m, html); all.push(m); },
+    // the same hotels again (a tap re-renders the bar) keep their markers, so the tap's popup stays open
+    hotelPins: (() => { let ms = [], key = '', cur = []; return (items) => { const k = hotelKey(items); cur = items; if (k === key) return; key = k; if (ms.includes(info._m)) { info.close(); info._m = null; } ms.forEach(m => m.setMap(null)); ms = items.map((x, i) => { const m = new g.Marker({ map, position: { lat: x.lat, lng: x.lon }, title: x.title, zIndex: 5000, optimized: false, icon: { url: HOTEL_PIN, scaledSize: new g.Size(32, 40), anchor: new g.Point(16, 38), labelOrigin: new g.Point(16, 49) } }); tip(m, x.label, 'gmap-lbl hotel', '12px'); m.addListener('click', () => { const y = cur[i] || x; if (y.onClick) y.onClick(); infoAt(m, hotelPop(y)); }); return m; }); }; })(),
     label: (lat, lon, { title, text, html }) => { const m = new g.Marker({ map, position: { lat, lng: lon }, title, zIndex: 900, label: { text, fontSize: '11px', fontWeight: '700', color: '#12141B' }, icon: { path: g.SymbolPath.CIRCLE, scale: 0 } }); pop(m, html); all.push(m); },
     group: (color) => { let ms = [], vis = true; return {
       set: (items) => { ms.forEach(m => { m.setMap(null); m._un && m._un(); }); ms = items.map(x => { const m = new g.Marker({ map: vis ? map : null, position: { lat: x.lat, lng: x.lon }, title: x.title, optimized: x.ic == null, icon: x.ic != null ? gIc(x.ic) : { path: g.SymbolPath.CIRCLE, scale: 6, fillColor: color, fillOpacity: .95, strokeColor: '#fff', strokeWeight: 1.5 } }); if (x.ic != null) m._un = ccReg(m, x.ic); if (x.onClick) m.addListener('click', x.onClick); else if (x.html) pop(m, x.html); return m; }); },
@@ -3729,14 +3738,15 @@ function leafletAdapter(el, c) {
   const map = Lf.map(el, { scrollWheelZoom: false, zoomControl: false, attributionControl: true }).setView([c.lat, c.lon], c.zoom || 15);
   Lf.control.zoom({ position: 'topright' }).addTo(map); el._leafletMap = map;
   const zb = () => { const z = map.getZoom(); el.dataset.zb = z >= 15 ? '' : z >= 13 ? 'mid' : 'far'; }; map.on('zoomend', zb); zb();
+  const lTip = (m, text, cls) => (text && mapHover() ? m.bindTooltip(esc(text), { direction: 'bottom', className: 'map-tip' + cls }) : m); // name on hover only (a tap opens the popup)
   const ccMk = (x, sv, zi) => Lf.marker([x.lat, x.lon], { icon: Lf.divIcon({ className: 'ccpin' + (sv ? ' sv' : ''), html: `<img src="${ccPinURL(x.ic, sv)}" alt="">`, iconSize: [36, 36], iconAnchor: [18, 18] }), title: x.title, zIndexOffset: zi });
   Lf.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
   return {
     kind: 'leaflet', map,
     center: (lat, lon, z) => map.setView([lat, lon], z || map.getZoom()),
     fit: (pts) => map.fitBounds(pts, { padding: [50, 50], maxZoom: 16 }),
-    pin: (lat, lon, { title, html, color }) => Lf.marker([lat, lon], { icon: Lf.divIcon({ className: 'pin', html: `<span style="--accent:${color}"></span>${title ? `<em class="map-lbl">${esc(pinText(title))}</em>` : ''}`, iconSize: [30, 40], iconAnchor: [15, 38] }), title, zIndexOffset: 1000 }).addTo(map).bindPopup(html),
-    hotelPins: (() => { let lg = null; return (items) => { if (!lg) lg = Lf.layerGroup().addTo(map); lg.clearLayers(); items.forEach(x => Lf.marker([x.lat, x.lon], { icon: Lf.divIcon({ className: 'hpin', html: `<img src="${HOTEL_PIN}" alt=""><em class="map-lbl hotel">${esc(x.label)}</em>`, iconSize: [32, 40], iconAnchor: [16, 38] }), title: x.title, zIndexOffset: 5000 }).on('click', () => x.onClick && x.onClick()).addTo(lg)); }; })(),
+    pin: (lat, lon, { title, html, color }) => lTip(Lf.marker([lat, lon], { icon: Lf.divIcon({ className: 'pin', html: `<span style="--accent:${color}"></span>`, iconSize: [30, 40], iconAnchor: [15, 38], tooltipAnchor: [0, 2] }), title, zIndexOffset: 1000 }), title && pinText(title), '').addTo(map).bindPopup(html),
+    hotelPins: (() => { let lg = null, key = '', cur = []; return (items) => { if (!lg) lg = Lf.layerGroup().addTo(map); const k = hotelKey(items); cur = items; if (k === key) return; key = k; lg.clearLayers(); items.forEach((x, i) => lTip(Lf.marker([x.lat, x.lon], { icon: Lf.divIcon({ className: 'hpin', html: `<img src="${HOTEL_PIN}" alt="">`, iconSize: [32, 40], iconAnchor: [16, 38], tooltipAnchor: [0, 3] }), title: x.title, zIndexOffset: 5000 }), x.label, ' hotel').bindPopup(hotelPop(x), { offset: [0, -30] }).on('click', () => { const y = cur[i] || x; if (y.onClick) y.onClick(); }).addTo(lg)); }; })(),
     label: (lat, lon, { title, text, html }) => Lf.marker([lat, lon], { icon: Lf.divIcon({ className: 'tpin', html: `<span>${esc(text)}</span>`, iconSize: null, iconAnchor: [0, 0] }), title, zIndexOffset: 900 }).addTo(map).bindPopup(html),
     group: (color) => { const lg = Lf.layerGroup().addTo(map); return {
       set: (items) => { lg.clearLayers(); items.forEach(x => { const m = x.ic != null ? ccMk(x, false, 0) : Lf.circleMarker([x.lat, x.lon], { radius: 6, color: '#fff', weight: 1.5, fillColor: color, fillOpacity: .95 }); if (x.onClick) m.on('click', x.onClick); else if (x.html) m.bindPopup(x.html); m.addTo(lg); }); },
@@ -3764,7 +3774,6 @@ function wireMap(cfg, art, opts) {
   const viewArea = () => { const a = st.adapter; const w = a && a.view ? a.view() : null; if (!w || !isFinite(w.lat)) return null; return { lat: +w.lat.toFixed(5), lon: +w.lon.toFixed(5), r: Math.round(Math.min(50000, Math.max(250, distM(w.lat, w.lon, w.ne[0], w.ne[1])))) }; };
   const areaMoved = (a, b) => !b || distM(a.lat, a.lon, b.lat, b.lon) > 0.3 * Math.min(a.r, b.r) || a.r < b.r * 0.45 || a.r > b.r * 2.2;
   const onMoved = () => {
-    const a0 = st.adapter; if (a0 && a0.zoom) el.classList.toggle('z-close', a0.zoom() >= 17); // street level: pin labels give way
     const now = viewArea(); if (!now || !areaBtn) return;
     if (!st.area) { st.area = now; return; } // the first view after drawing is the starting area
     areaBtn.hidden = !(st.areaFns.length && areaMoved(now, st.area));
@@ -4835,7 +4844,7 @@ function wireHotel(cfg, art, mapCtl) {
     art._hotelPt = h; art._fromHotel = !!h; art._center = h ? { lat: h.lat, lon: h.lon } : ss[art._stop]; return true; };
   const ui = (force) => {
     const all = hotelsNow(cfg); const sp = art.querySelector('#sec-spots .sec-b'); if (sp) sp.innerHTML = spotsHTML(cfg);
-    if (mapCtl) mapCtl.setHotels([].concat(...all.map((hs, i) => hs.filter(h => h.lat != null).map((h, k) => ({ lat: h.lat, lon: h.lon, title: `${t('Your hotel')}: ${h.name}`, label: [pinText(h.name), hotelDates(h)].filter(Boolean).join(' · '), onClick: () => { art._stop = i; art._pick[i] = all[i].indexOf(h); ui(); } })))));
+    if (mapCtl) mapCtl.setHotels([].concat(...all.map((hs, i) => hs.filter(h => h.lat != null).map((h, k) => ({ lat: h.lat, lon: h.lon, title: `${t('Your hotel')}: ${h.name}`, name: h.name, dates: hotelDates(h), label: [pinText(h.name), hotelDates(h)].filter(Boolean).join(' · '), onClick: () => { art._stop = i; art._pick[i] = all[i].indexOf(h); ui(); } })))));
     if (bar) { bar.innerHTML = hotelBarHTML(cfg, art); const q = bar.querySelector('[data-hotel-q]'); if (q) placeAutocomplete(q, { bias: () => ss[art._stop], onPick: (id, tok) => gpVenue(id, tok).then(v => { art._hotelEdit = false; setHotel(cfg, art, art._stop, v); }).catch(() => toast(t('Couldn’t load that place right now.'))) }); }
     const cur = art._hotelAt(art._stop); const saved = planLoad(cfg).some(x => x.lat != null && !x.hotel);
     if (key) key.innerHTML = cur || saved ? `${cur ? `<span class="mk"><img src="${HOTEL_PIN}" alt="">${t('Your hotel')}</span>` : ''}${saved ? `<span class="mk"><img src="${STAR_PIN}" alt="">${t('Saved')}</span>` : ''}${cur ? `<button type="button" class="mk-go" data-hotel-go>${t('Hotel')}</button>` : ''}` : '';
