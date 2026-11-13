@@ -497,7 +497,7 @@ const VENDORS = [
   [/amtrak/i, 'train', 'Amtrak'], [/eurostar/i, 'train', 'Eurostar'], [/trainline/i, 'train', 'Trainline'], [/\bsncf\b/i, 'train', 'SNCF'], [/\brenfe\b/i, 'train', 'Renfe'], [/via rail/i, 'train', 'VIA Rail'],
   [/marriott/i, 'hotel', 'Marriott'], [/hilton/i, 'hotel', 'Hilton'], [/hyatt/i, 'hotel', 'Hyatt'], [/\bihg\b|holiday inn/i, 'hotel', 'IHG'], [/booking\.com/i, 'hotel', 'Booking.com'], [/hotels\.com/i, 'hotel', 'Hotels.com'], [/expedia/i, 'hotel', 'Expedia']
 ];
-const ITIN_KINDS = { flight: 'Flight', hotel: 'Hotel', stay: 'Rental home', car: 'Rental car', food: 'Restaurant', train: 'Train', other: 'Other' };
+const ITIN_KINDS = { flight: 'Flight', hotel: 'Hotel', stay: 'Rental home', car: 'Rental car', food: 'Restaurant', train: 'Train', tour: 'Tour or activity', other: 'Other' };
 
 function parseReservation(text, refDate) {
   const raw = String(text || ''); const r = { kind: '', name: '', start: '', end: '', address: '', confNo: '', link: '', flight: '', note: '', ...(viaGuess(raw) ? { via: viaGuess(raw) } : {}) };
@@ -651,6 +651,7 @@ function itinFormHTML(x, i, air = []) {
       ${f('viaOther', 'Where', 'text', t('Site or agency')).replace('<div class="field', `<div${x.via === 'other' ? '' : ' hidden'} class="field`)}
       ${f('note', 'Note', 'text', k === 'flight' ? t('Confirmation code, last name') : '', 'wide')}
     </div>
+    <details class="more-f"${x.det ? ' open' : ''}><summary>${t('More details')}</summary><div data-det-slot>${detFormHTML(x)}</div></details>
     <div class="btns"><button type="button" class="btn primary" data-itin-save="${i == null ? '' : i}">${t('Save')}</button><button type="button" class="btn ghost" data-itin-cancel>${t('Cancel')}</button>${i != null ? `<button type="button" class="btn ghost" data-itin-del="${i}">${t('Remove')}</button>` : ''}</div>
   </form>`;
 }
@@ -1582,7 +1583,7 @@ function bookingsHTML(cfg) {
     const when = x.start ? fmt(x.start.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' }) + (x.start.length > 10 ? ' · ' + fmtTime(x.start.slice(11, 16)) : '') + (x.kind === 'flight' && x.start.length > 10 && flightArrLabel(x) ? ' · ' + flightArrLabel(x) : '') : '';
     const via = viaOf(x); const viaUrl = via && via.url;
     const links = [fl.status ? ext(fl.status, t('Flight status'), 'mini-b') : '', viaUrl ? ext(viaUrl, `${t('Manage booking')} · ${via.name}`, 'mini-b') : fl.manage ? ext(fl.manage, t('Manage booking'), 'mini-b') : '', x.link ? ext(x.link, t('Open booking'), 'mini-b') : '', x.address ? ext(L.place(x.address), 'Google Maps', 'mini-b') : ''].join('');
-    return `<li><div><b>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${x.note ? `<span>${esc(x.note)}</span>` : ''}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button></div></div></li>`;
+    return `<li><div><b>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${x.note ? `<span>${esc(x.note)}</span>` : ''}${x.id ? detBlockHTML(x, 'bk:' + x.id, false) : ''}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button></div></div></li>`;
   }).join('')}</ul>` : ''}
   <div class="btns itin-btns"><button type="button" class="btn primary" data-itin-add>+ ${t('Add a booking')}</button>${items.length ? `<button type="button" class="btn" data-itin-ics>${t('Add to calendar')}</button>` : ''}</div><div data-slot="itin-form"></div>`;
 }
@@ -1726,7 +1727,7 @@ function wireEvent(cfg, art, seq, air, opts) {
   // one open menu at a time; tapping elsewhere closes it
   art.addEventListener('toggle', (e) => { if (e.target.matches('details.menu') && e.target.open) $$('details.menu[open]', art).forEach(d => { if (d !== e.target) d.open = false; }); }, true);
   if (!document._menuCloser) { document._menuCloser = true; document.addEventListener('click', (e) => { if (!e.target.closest('details.menu')) $$('details.menu[open]').forEach(d => { d.open = false; }); }); }
-  wireItin(cfg, art); wirePacking(cfg, art); wireShopping(cfg, art);
+  wireItin(cfg, art); wireDetails(cfg, art); wirePacking(cfg, art); wireShopping(cfg, art);
   if (!v) wirePlan(cfg, art, null);
   art.querySelector('[data-lang]')?.addEventListener('change', (e) => setGuestLang(e.target.value));
   if (!v) return;
@@ -1875,7 +1876,7 @@ function bkReviewHTML(xs) {
       ${inp(x, i, 'name', 'Name')}
       ${inp(x, i, 'start', x.kind === 'flight' ? 'Departs' : 'Starts', 'when')}${inp(x, i, 'end', x.kind === 'flight' ? 'Arrives' : 'Ends', 'when')}
       ${x.kind === 'flight' ? inp(x, i, 'to', 'Arriving at') + inp(x, i, 'confNo', 'Confirmation') : inp(x, i, 'address', 'Address')}
-    </div><button type="button" class="mini-b" data-rv-del="${i}">${t('Remove')}</button></li>`).join('')}</ul>
+    </div>${detLines(x).length || detAmen(x).length ? `<p class="muted small rv-det">${esc(detLines(x).concat(detAmen(x)).join(' · '))}</p>` : ''}<button type="button" class="mini-b" data-rv-del="${i}">${t('Remove')}</button></li>`).join('')}</ul>
     <div class="btns"><button type="button" class="btn primary" data-rv-save>${esc(t('Save all ({n})', { n: xs.length }))}</button><button type="button" class="btn ghost" data-itin-cancel>${t('Cancel')}</button></div></div>`;
 }
 const blobB64 = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(new Error(t('Couldn’t read it.'))); r.readAsDataURL(b); });
@@ -1937,6 +1938,7 @@ function wireItin(cfg, art) {
     const sio = e.target.closest('[data-si-oauth]'); if (sio) { oauthSignIn(sio.dataset.siOauth); return; }
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
     if (d.si === 'send') { signInSubmit(b.closest('.bk-signin')); return; }
+    if (d.detAmen && draft) { const on = new Set(detVal(draft, 'amen') || []); on.has(d.detAmen) ? on.delete(d.detAmen) : on.add(d.detAmen); detSet(draft, 'amen', [...on]); b.classList.toggle('on', on.has(d.detAmen)); b.setAttribute('aria-pressed', String(on.has(d.detAmen))); return; }
     if ('itinAdd' in d) openChooser();
     else if (d.itinMode === 'paste') { const slot = sheet(bkPasteHTML()); slot.querySelector('#it-paste').focus(); aiReady().then(ok => { const a = slot.querySelector('[data-itin-ai]'); if (a && ok) a.hidden = false; }); }
     else if (d.itinMode === 'file') { const slot = sheet(bkFileHTML()); if (!LS.get('signedIn')) askSignIn(slot); }
@@ -1978,9 +1980,11 @@ function wireItin(cfg, art) {
   body.addEventListener('input', (e) => {
     const x = e.target;
     if (x.dataset.rv != null) { const r = review[+x.dataset.rv]; if (!r) return; r[x.dataset.rk] = x.value; if (x.dataset.rk === 'kind') openReview(review); return; }
+    if (draft && x.dataset.det) { detSet(draft, x.dataset.det, x.value.trim().slice(0, 200)); return; }
     if (!draft || !x.dataset.it) return;
     draft[x.dataset.it] = x.value;
     if (x.dataset.it === 'kind' || x.dataset.it === 'via') fill();
+    if (x.dataset.it === 'kind') { const ds = formSlot().querySelector('[data-det-slot]'); if (ds) ds.innerHTML = detFormHTML(draft); }
     if (x.dataset.it === 'flight') { // airline + number: the card names itself; status and manage links appear once saved
       const n = flightName(x.value); const ni = formSlot().querySelector('#it-name');
       if (n && (!draft.name || draft.name === autoName)) { draft.name = autoName = n; ni.value = n; }
@@ -4022,7 +4026,7 @@ function planCardClick(cfg, art, dlg, e, place) {
   return true;
 }
 const PTYPES = [['flight', 'Flights'], ['stay', 'Hotels & stays'], ['transport', 'Transport'], ['food', 'Restaurants'], ['activity', 'Tours & activities'], ['other', 'Other']];
-const itinType = (x) => ({ flight: 'flight', hotel: 'stay', stay: 'stay', car: 'transport', train: 'transport', food: 'food' }[x.kind] || 'other');
+const itinType = (x) => ({ flight: 'flight', hotel: 'stay', stay: 'stay', car: 'transport', train: 'transport', food: 'food', tour: 'activity' }[x.kind] || 'other');
 // type from a Google place's types or an OpenStreetMap category
 function placeType(types, cat) {
   const ts = (types || []).join(' ') + ' ' + (cat || '');
@@ -4051,7 +4055,7 @@ function planHTML(cfg) {
       <div class="plan-main"><button type="button" class="link plan-name" data-plan-card="${esc(x.id)}">${esc(x.name)}</button>
         <span class="muted small">${esc([view === 'type' && x.day ? dayLabel(cfg, x.day) : '', x.time ? fmtTime(x.time) : '', x.addr].filter(Boolean).join(' · '))}</span>
         ${x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}${x.note ? `<span class="small">${esc(x.note)}</span>` : ''}
-        <div class="plan-book"><label class="chk"><input type="checkbox" data-plan-booked ${x.booked ? 'checked' : ''}> ${t('Booked')}</label>${x.booked ? `<input class="plan-conf" data-plan-conf value="${esc(x.conf || '')}" placeholder="${t('Confirmation #')}" aria-label="${t('Confirmation #')}">` : ''}</div></div>
+        <div class="plan-book"><label class="chk"><input type="checkbox" data-plan-booked ${x.booked ? 'checked' : ''}> ${t('Booked')}</label>${x.booked ? `<input class="plan-conf" data-plan-conf value="${esc(x.conf || '')}" placeholder="${t('Confirmation #')}" aria-label="${t('Confirmation #')}">` : ''}</div>${detBlockHTML(x, 'pl:' + x.id, true)}</div>
       <div class="plan-ctl"><select data-plan-move aria-label="${t('Move to day')}"><option value="">${t('Saved for later')}</option>${days.map(d => `<option value="${d}" ${x.day === d ? 'selected' : ''}>${esc(dayLabel(cfg, d))}</option>`).join('')}</select>
         <select data-plan-type aria-label="${t('Type')}">${PTYPES.map(([v, l]) => `<option value="${v}" ${x.type === v ? 'selected' : ''}>${t(l)}</option>`).join('')}</select>
         <span class="mv"><button type="button" data-plan-mv="-1" aria-label="${t('Move up')}">↑</button><button type="button" data-plan-mv="1" aria-label="${t('Move down')}">↓</button></span><button type="button" class="link" data-plan-del>${t('Remove')}</button></div></li>`;
@@ -4086,7 +4090,7 @@ function wirePlan(cfg, art, mapCtl) {
     if (b.dataset.planMv) { const same = xs.map((y, j) => [y, j]).filter(([y]) => y.day === xs[i].day).map(([, j]) => j); const k = same.indexOf(i) + +b.dataset.planMv; if (k >= 0 && k < same.length) { const j = same[k]; [xs[i], xs[j]] = [xs[j], xs[i]]; planSave(cfg, xs); render(); } }
   });
   body.addEventListener('change', (e) => {
-    const el = e.target; const li = el.closest('[data-plan-id]'); if (!li) return; const xs = planLoad(cfg); const x = xs.find(y => y.id === li.dataset.planId); if (!x) return;
+    const el = e.target; if (el.closest('[data-pdet],[data-ph-add]')) return; const li = el.closest('[data-plan-id]'); if (!li) return; const xs = planLoad(cfg); const x = xs.find(y => y.id === li.dataset.planId); if (!x) return;
     if (el.matches('[data-plan-move]')) { x.day = el.value; if (!x.day) x.time = ''; }
     if (el.matches('[data-plan-booked]')) x.booked = el.checked;
     if (el.matches('[data-plan-type]')) x.type = el.value;
@@ -4279,6 +4283,115 @@ async function bkSave(cfg, art, adds, slot) {
     itinSave(cfg, rep ? xs.filter(y => y.id !== old.id).concat(add) : xs.concat(add)); bkChanged(art);
   }
   return r;
+}
+
+// ================= richer bookings and places: details per type + photos =================
+// x.det holds the structured details of a booking (My trip → bookings) or a place in the plan: hotel room / beds /
+// guests / amenities / free cancellation / price; tour meeting point / duration / included / price; flight seat / cabin
+// / baggage; car class. Times are NOT duplicated: check-in/out, pick-up/drop-off and a tour's start come from the item's
+// own start/end. x.photos = [{ url } | { g: Google photo name, by, uri }]: the guest's uploads (Storage 'event-files',
+// their own folder; signed out: small on-device copies) and, for a place with a Google place id, Google's photo with
+// its author attribution. Shown folded behind the item (tap Details). Merged like any other field (bkMerge).
+const AMENITIES = [['breakfast', 'Breakfast'], ['wifi', 'Wi-Fi'], ['pool', 'Pool'], ['gym', 'Gym'], ['parking', 'Parking'], ['ac', 'Air conditioning'], ['kitchen', 'Kitchen'], ['laundry', 'Laundry'], ['spa', 'Spa'], ['shuttle', 'Airport shuttle'], ['pets', 'Pets allowed']];
+const CABINS = [['economy', 'Economy'], ['premium', 'Premium economy'], ['business', 'Business'], ['first', 'First']];
+const DET = {
+  lodge: [['room', 'Room type'], ['beds', 'Beds'], ['guests', 'Guests', 'number'], ['amen', 'Amenities', 'amen'], ['cancelBy', 'Free cancellation until', 'date'], ['price', 'Price paid']],
+  tour: [['meet', 'Meeting point'], ['duration', 'Duration'], ['incl', 'What’s included'], ['price', 'Price']],
+  food: [['party', 'Party size', 'number'], ['price', 'Price']],
+  flight: [['seat', 'Seat'], ['cabin', 'Cabin', 'cabin'], ['bags', 'Baggage']],
+  train: [['seat', 'Seat'], ['cabin', 'Class']],
+  car: [['carClass', 'Car class'], ['price', 'Price paid']],
+};
+const detGroup = (x) => { const k = x.kind, ty = x.type; return LODGE.has(k) || (!k && ty === 'stay') ? 'lodge' : k === 'flight' ? 'flight' : k === 'car' ? 'car' : k === 'train' ? 'train' : k === 'food' || (!k && ty === 'food') ? 'food' : k === 'tour' || k === 'other' || (!k && (ty === 'activity' || ty === 'other')) ? 'tour' : ''; };
+const detVal = (x, key) => (x.det || {})[key];
+function detSet(x, key, v) { const d = { ...(x.det || {}) }; if (v == null || v === '' || (Array.isArray(v) && !v.length)) delete d[key]; else d[key] = v; if (Object.keys(d).length) x.det = d; else delete x.det; return x; }
+// the read view: "Room type: King deluxe", "Check-in 3:00 PM", amenities…
+function detLines(x) {
+  const g = detGroup(x); const out = []; const tm = (s) => s && s.length > 10 ? fmtTime(s.slice(11, 16)) : '';
+  if (g === 'lodge') { if (tm(x.start)) out.push(t('Check-in {t}', { t: tm(x.start) })); if (tm(x.end)) out.push(t('Check-out {t}', { t: tm(x.end) })); }
+  if (g === 'car') { if (tm(x.start)) out.push(t('Pick-up {t}', { t: tm(x.start) })); if (tm(x.end)) out.push(t('Drop-off {t}', { t: tm(x.end) })); }
+  if (g === 'tour' && (tm(x.start) || x.time)) out.push(t('Starts {t}', { t: tm(x.start) || fmtTime(x.time) }));
+  (DET[g] || []).forEach(([k, label, ty]) => { const v = detVal(x, k); if (!bkFilled(v)) return;
+    if (ty === 'amen') return; if (ty === 'cabin') out.push(`${t(label)}: ${t((CABINS.find(c => c[0] === v) || [v, v])[1])}`);
+    else if (ty === 'date') out.push(`${t(label)}: ${fmt(v, { month: 'short', day: 'numeric' })}`); else out.push(`${t(label)}: ${v}`); });
+  return out;
+}
+const detAmen = (x) => (detVal(x, 'amen') || []).map(a => t((AMENITIES.find(y => y[0] === a) || [a, a])[1]));
+// inputs for one item; attr = 'data-det' (booking form) or 'data-pdet' (a plan row, saved on change)
+function detFormHTML(x, attr = 'data-det', idp = 'dt') {
+  const g = detGroup(x); if (!DET[g]) return '';
+  return `<div class="det-f">${DET[g].map(([k, label, ty]) => {
+    const id = `${idp}-${k}`; const v = detVal(x, k);
+    if (ty === 'amen') { const on = v || []; return `<div class="field wide"><span class="lbl-s">${t(label)}</span><div class="chips amen">${AMENITIES.map(([a, l]) => `<button type="button" class="chip ${on.includes(a) ? 'on' : ''}" ${attr}-amen="${a}" aria-pressed="${on.includes(a)}">${t(l)}</button>`).join('')}</div></div>`; }
+    if (ty === 'cabin') return `<div class="field"><label for="${id}">${t(label)}</label><select id="${id}" ${attr}="${k}"><option value="">${t('Choose')}</option>${CABINS.map(([c, l]) => `<option value="${c}" ${c === v ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></div>`;
+    return `<div class="field${k === 'incl' || k === 'meet' ? ' wide' : ''}"><label for="${id}">${t(label)}</label><input id="${id}" type="${ty === 'number' ? 'number' : ty === 'date' ? 'date' : 'text'}"${ty === 'number' ? ' min="1" max="99"' : ''} ${attr}="${k}" value="${esc(v == null ? '' : v)}" maxlength="200"></div>`;
+  }).join('')}</div>`;
+}
+const photoSrc = (p) => p.g ? (GKEY ? gPhotoURL(p.g).replace('maxWidthPx=800', 'maxWidthPx=400') : '') : p.url || '';
+// the small gallery; ref = 'bk:<id>' | 'pl:<id>'
+function galleryHTML(x, ref) {
+  const ps = (x.photos || []).filter(photoSrc);
+  const by = ps.filter(p => p.g && p.by).map(p => p.uri ? `<a href="${esc(p.uri)}" target="_blank" rel="noopener noreferrer">${esc(p.by)}</a>` : esc(p.by));
+  return `<div class="gal" data-gal="${esc(ref)}">${ps.map((p, k) => `<figure><img src="${esc(photoSrc(p))}" alt="${esc(x.name || '')}" loading="lazy" onerror="this.closest('figure').hidden=true">${p.g ? '' : `<button type="button" class="ph-x" data-ph-del="${esc(ref)}" data-ph-i="${(x.photos || []).indexOf(p)}" aria-label="${esc(t('Remove photo'))}">×</button>`}</figure>`).join('')}<label class="ph-add" aria-label="${esc(t('Add a photo'))}"><input type="file" accept="image/*" multiple data-ph-add="${esc(ref)}" hidden><span aria-hidden="true">+</span><small>${t('Photo')}</small></label></div>${by.length ? `<p class="muted small g-attr">${t('Photos')}: ${[...new Set(by)].join(', ')} · Google</p>` : ''}`;
+}
+// "Details" under an item: the read lines, amenities, photos, (plan rows) the inputs
+const OPEN_DET = new Set();
+function detBlockHTML(x, ref, editable) {
+  const ls = detLines(x), am = detAmen(x), n = (x.photos || []).filter(photoSrc).length;
+  const sum = [ls.length || am.length ? t('Details') : '', n ? t('{n} photos', { n }) : ''].filter(Boolean).join(' · ') || t('Details & photos');
+  return `<details class="det"${OPEN_DET.has(ref) ? ' open' : ''} data-det-ref="${esc(ref)}"><summary>${esc(sum)}</summary>
+    ${editable ? detFormHTML(x, 'data-pdet', 'pd-' + ref.replace(/\W/g, '')) : `${ls.length ? `<div class="det-l">${ls.map(l => `<span>${esc(l)}</span>`).join('')}</div>` : ''}${am.length ? `<p class="det-am">${am.map(a => `<span class="tag">${esc(a)}</span>`).join('')}</p>` : ''}`}
+    ${galleryHTML(x, ref)}</details>`;
+}
+// a booking or plan item by ref: read / change (saves + re-renders everything that shows it)
+function itemByRef(cfg, ref) { const [k, id] = String(ref).split(/:(.+)/); const xs = k === 'bk' ? itinLoad(cfg) : planLoad(cfg); return xs.find(x => x.id === id) || null; }
+function itemMutate(cfg, art, ref, fn) {
+  const [k, id] = String(ref).split(/:(.+)/); const xs = k === 'bk' ? itinLoad(cfg) : planLoad(cfg); const x = xs.find(y => y.id === id); if (!x) return false;
+  fn(x); if (k === 'bk') { itinSave(cfg, xs); bkChanged(art); if (LS.get('signedIn')) syncPush(cfg); } else { planSave(cfg, xs); art._planChanged && art._planChanged(); }
+  return true;
+}
+// photos: signed in → Storage (≈300 KB JPEG, the guest's own folder); signed out → a small copy on this device (3 per item)
+const PHOTO_MAX = 8, LOCAL_PHOTO_MAX = 3;
+const blobDataURL = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(new Error(t('Couldn’t read it.'))); r.readAsDataURL(b); });
+async function photoAdd(f) {
+  if (!/^image\//.test(f.type || '')) throw new Error(t('Use a photo, screenshot or PDF.'));
+  const user = await myGuestUser();
+  if (!user) return { url: await blobDataURL(await shrinkPhoto(f, 60e3, 640)), local: 1 };
+  const blob = await shrinkPhoto(f, 300e3, 1600); const path = `${user.id}/trip-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+  const c = await sb(); const { error } = await c.storage.from(DOC_BUCKET).upload(path, blob, { contentType: 'image/jpeg', cacheControl: '31536000', upsert: false });
+  if (error) throw new Error(error.message || t('Upload failed.'));
+  return { url: c.storage.from(DOC_BUCKET).getPublicUrl(path).data.publicUrl };
+}
+// a Google photo for an item with a Google place id: fetched once, kept on the item (name + author attribution)
+const placeIdOf = (x) => { const r = x.ref && (x.src === 'g' || x.pin || /^ChIJ|^[A-Za-z0-9_-]{20,}$/.test(x.ref)) ? x.ref : LODGE.has(x.kind) ? (bkGeo(x).ref || '') : ''; return r && !/^\d+$/.test(r) ? r : ''; };
+async function gPhotoPull(cfg, art, ref) {
+  const x = itemByRef(cfg, ref); if (!x || !GKEY || x.gph || (x.photos || []).some(p => p.g)) return;
+  const id = placeIdOf(x); if (!id) return;
+  let ph = []; try { const j = await gFetch(`https://places.googleapis.com/v1/places/${enc(id)}`, null, 'photos'); ph = (j.photos || []).slice(0, 2).map(p => { const a = (p.authorAttributions || [])[0] || {}; return { g: p.name, by: a.displayName || '', uri: a.uri || '' }; }); } catch { return; }
+  itemMutate(cfg, art, ref, (y) => { y.gph = 1; if (ph.length) y.photos = (y.photos || []).concat(ph); });
+}
+// one listener per page: details open state, photo add/remove, plan-row detail inputs, booking-form detail inputs
+function wireDetails(cfg, art) {
+  if (art._detWired) return; art._detWired = true;
+  art.addEventListener('toggle', (e) => { const d = e.target; if (!d.matches || !d.matches('details.det')) return; const ref = d.dataset.detRef;
+    if (d.open) { OPEN_DET.add(ref); gPhotoPull(cfg, art, ref).catch(() => {}); } else OPEN_DET.delete(ref); }, true);
+  art.addEventListener('change', async (e) => {
+    const inp = e.target.closest('[data-ph-add]'); if (inp && inp.files && inp.files.length) {
+      const ref = inp.dataset.phAdd; const x = itemByRef(cfg, ref); if (!x) return; const lab = inp.closest('.ph-add'); lab && lab.classList.add('busy');
+      const files = [...inp.files]; inp.value = ''; const got = [];
+      for (const f of files) { const have = (x.photos || []).length + got.length; const local = (x.photos || []).concat(got).filter(p => p.local).length;
+        if (have >= PHOTO_MAX) { toast(t('Up to {n} photos', { n: PHOTO_MAX })); break; }
+        if (!LS.get('signedIn') && local >= LOCAL_PHOTO_MAX) { toast(t('Sign in to add more photos')); break; }
+        try { got.push(await photoAdd(f)); } catch (err) { toast(err.message || t('Upload failed.')); break; } }
+      lab && lab.classList.remove('busy'); OPEN_DET.add(ref);
+      if (got.length) { try { itemMutate(cfg, art, ref, (y) => { y.photos = (y.photos || []).concat(got); }); } catch { toast(t('Not enough space on this device. Sign in to keep photos.')); } }
+      return; }
+    const pd = e.target.closest('[data-pdet]'); if (pd) { const ref = pd.closest('[data-det-ref]').dataset.detRef; OPEN_DET.add(ref); itemMutate(cfg, art, ref, (y) => detSet(y, pd.dataset.pdet, pd.type === 'number' ? (pd.value ? String(Math.max(1, Math.min(99, +pd.value))) : '') : pd.value.trim().slice(0, 200))); }
+  });
+  art.addEventListener('click', (e) => {
+    const del = e.target.closest('[data-ph-del]'); if (del) { e.preventDefault(); const ref = del.dataset.phDel, i = +del.dataset.phI; OPEN_DET.add(ref); itemMutate(cfg, art, ref, (y) => { y.photos = (y.photos || []).filter((_, k) => k !== i); }); return; }
+    const am = e.target.closest('[data-pdet-amen]'); if (am) { const ref = am.closest('[data-det-ref]').dataset.detRef; OPEN_DET.add(ref); itemMutate(cfg, art, ref, (y) => { const on = new Set(detVal(y, 'amen') || []); on.has(am.dataset.pdetAmen) ? on.delete(am.dataset.pdetAmen) : on.add(am.dataset.pdetAmen); detSet(y, 'amen', [...on]); }); }
+  });
 }
 
 // ================= the guest's hotel per city + saved spots (★) =================
@@ -4716,14 +4829,25 @@ async function suAIGo() {
   }
 }
 // "Read with AI" in the guest booking form: every reservation in a pasted confirmation becomes a booking
-const AI_KIND = { flight: 'flight', hotel: 'hotel', stay: 'stay', car: 'car', train: 'train', food: 'food', tour: 'other', other: 'other' };
+// the details a confirmation states (ai-import v16 fields) → x.det, only what's there
+function aiDet(x) {
+  const c = (v, n = 120) => cleanText(v == null ? '' : String(v), n); const d = {};
+  const put = (k, v) => { if (bkFilled(v)) d[k] = v; };
+  put('room', c(x.room_type)); put('beds', c(x.beds)); put('guests', /^\d{1,2}$/.test(c(x.guests)) ? c(x.guests) : '');
+  put('amen', (Array.isArray(x.amenities) ? x.amenities : []).map(a => String(a).toLowerCase()).filter(a => AMENITIES.some(y => y[0] === a)).slice(0, 12));
+  put('cancelBy', /^\d{4}-\d{2}-\d{2}$/.test(c(x.cancel_by)) ? c(x.cancel_by) : ''); put('price', c(x.price, 40));
+  put('seat', c(x.seat, 20)); put('cabin', CABINS.some(y => y[0] === x.cabin) ? x.cabin : ''); put('bags', c(x.baggage)); put('carClass', c(x.car_class, 60));
+  put('meet', c(x.meeting_point, 200)); put('duration', c(x.duration, 40)); put('incl', c(x.included, 200)); put('party', /^\d{1,2}$/.test(c(x.party_size)) ? c(x.party_size) : '');
+  return Object.keys(d).length ? { det: d } : {};
+}
+const AI_KIND = { flight: 'flight', hotel: 'hotel', stay: 'stay', car: 'car', train: 'train', food: 'food', tour: 'tour', other: 'other' };
 function aiItemsToBookings(items) {
   return (items || []).slice(0, 40).map(x => {
     const st = String(x.start || ''), en = String(x.end || '');
     const okDT = (s) => /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(s) ? s : '';
     return { kind: AI_KIND[x.type] || 'other', name: cleanText(x.name || x.provider, 120), start: okDT(st), end: okDT(en), address: cleanText(x.address, 200), confNo: cleanText(x.confirmation, 60),
       ...(() => { const bt = cleanText(x.booked_through || '', 60); const k = viaGuess(bt) || viaGuess(x.link) || (bt && /direct/i.test(bt) ? 'direct' : ''); return k ? { via: k } : bt ? { via: 'other', viaOther: bt } : {}; })(),
-      link: httpsUrl(x.link), flight: cleanText(x.flight_number, 12), to: AI_KIND[x.type] === 'flight' ? cleanText(x.to, 60) : '', ...(AI_KIND[x.type] === 'flight' && x.from ? { from: cleanText(x.from, 60) } : {}), note: cleanText([x.from && x.to ? `${x.from} → ${x.to}` : '', x.note].filter(Boolean).join(' · '), 300) };
+      ...aiDet(x), link: httpsUrl(x.link), flight: cleanText(x.flight_number, 12), to: AI_KIND[x.type] === 'flight' ? cleanText(x.to, 60) : '', ...(AI_KIND[x.type] === 'flight' && x.from ? { from: cleanText(x.from, 60) } : {}), note: cleanText([x.from && x.to ? `${x.from} → ${x.to}` : '', x.note].filter(Boolean).join(' · '), 300) };
   }).map(flightArriveFix).filter(x => x.name || x.start);
 }
 

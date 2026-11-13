@@ -1084,3 +1084,21 @@ html.is-offline body::before { content: 'Offline'; position: fixed; top: max(12p
 .tr-status { display: grid; gap: 6px; margin: 4px 0 8px; } .tr-lang { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 10px; background: var(--field); border-radius: 10px; }
 .tr-lang b { min-width: 6em; } .tr-st { font-size: .9rem; color: var(--slate); } .tr-st.ok { color: #1B7F3B; font-weight: 600; } .tr-st.busy { font-style: italic; } .tr-lang .link { margin-left: auto; font-size: .88rem; }
 .pv-lang { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: 12px; } .pv-l { font: inherit; font-size: .82rem; border: 1px solid var(--rule); border-radius: 999px; padding: 3px 10px; background: var(--card, #fff); cursor: pointer; } .pv-l.on { background: var(--ink, #123); color: #fff; border-color: transparent; }
+/* booking / place details + photos (folded behind the item) */
+details.det { margin: 6px 0 2px; font-size: .88rem; }
+details.det > summary { cursor: pointer; color: var(--accent, var(--gate)); font-weight: 600; font-size: .82rem; list-style: none; }
+details.det > summary::-webkit-details-marker { display: none; }
+details.det > summary::after { content: ' ›'; } details.det[open] > summary::after { content: ' ⌄'; }
+.det-l { list-style: none; padding: 0; margin: 6px 0 4px; display: grid; gap: 2px; } .det-l > span { display: block; font-size: .85rem; }
+.det-am { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; } .det-am .tag { font-size: .75rem; padding: 2px 8px; border-radius: 999px; background: var(--chip, #EEF0F4); }
+.det-f { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; } .det-f .wide { grid-column: 1 / -1; } .det-f .field { min-width: 0; } .det-f input, .det-f select { width: 100%; min-width: 0; }
+.det-f .lbl-s { display: block; font-size: .8rem; margin-bottom: 4px; color: var(--muted, var(--slate)); }
+.chips.amen { display: flex; flex-wrap: wrap; gap: 6px; } .chips.amen .chip { font-size: .78rem; padding: .3em .7em; }
+.more-f { margin: 0 0 12px; } .more-f > summary { cursor: pointer; font-weight: 600; font-size: .9rem; }
+.gal { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; }
+.gal figure { position: relative; margin: 0; width: 72px; height: 72px; border-radius: 10px; overflow: hidden; background: var(--fog, #EEF0F4); }
+.gal img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.gal .ph-x { position: absolute; top: 2px; right: 2px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 14px; line-height: 22px; padding: 0; cursor: pointer; }
+.gal .ph-add { width: 72px; height: 72px; border-radius: 10px; border: 1.5px dashed var(--rule, #CBD0DA); display: grid; place-content: center; text-align: center; cursor: pointer; color: var(--muted, var(--slate)); }
+.gal .ph-add span { font-size: 1.3rem; line-height: 1; } .gal .ph-add small { font-size: .7rem; } .gal .ph-add.busy { opacity: .5; pointer-events: none; }
+.rv-det { margin: 6px 0; }
