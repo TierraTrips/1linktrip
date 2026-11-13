@@ -941,14 +941,14 @@ body.doc-dragging::after { content: 'Drop to upload a document'; position: fixed
 /* Nearby: the guest's hotel (bar above the map, deep-blue bed pin, on top; its name + dates on hover / in the tap popup) and saved spots (gold stars) */
 .hotel-bar { margin: 0 0 12px; }
 .hb { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; border: 1.5px solid color-mix(in srgb, #1E3A8A 40%, transparent); background: color-mix(in srgb, #1E3A8A 6%, var(--card, #fff)); }
-.hb-ic { width: 30px; height: 38px; flex: none; }
+.hb-ic { width: 34px; height: 38px; flex: none; object-fit: contain; }
 .hb-t { flex: 1; min-width: 0; display: grid; gap: 1px; } .hb-t b { overflow-wrap: anywhere; } .hb-t .lbl { margin: 0; }
 .hb-set { display: grid; gap: 6px; } .hb-set label { font-weight: 600; font-size: .92rem; } .hb-set .link { justify-self: start; }
 .hb-set .search { display: flex; gap: 8px; } .hb-set .search input, .hb-set .ac-wrap { flex: 1; min-width: 0; }
-.hpin { overflow: visible; } .hpin img { width: 32px; height: 40px; display: block; }
-.gmap-lbl { background: #fff; padding: 2px 7px; border-radius: 9px; box-shadow: 0 1px 4px rgba(0,0,0,.35); } .gmap-lbl.hotel { border: 1.5px solid #1E3A8A; }
+.hpin { overflow: visible; } .hpin img { width: 58px; height: 63px; display: block; }
+.gmap-lbl { background: #fff; padding: 2px 7px; border-radius: 9px; box-shadow: 0 1px 4px rgba(0,0,0,.35); } .gmap-lbl.hotel { border: 2px solid #F59E0B; }
 .leaflet-tooltip.map-tip { font: 700 11px/1.2 var(--sans, system-ui, sans-serif); color: #12141B; background: #fff; padding: 2px 7px; border: 0; border-radius: 9px; box-shadow: 0 1px 4px rgba(0,0,0,.35); white-space: nowrap; }
-.leaflet-tooltip.map-tip::before { display: none; } .leaflet-tooltip.map-tip.hotel { font-size: 12px; border: 1.5px solid #1E3A8A; }
+.leaflet-tooltip.map-tip::before { display: none; } .leaflet-tooltip.map-tip.hotel { font-size: 12px; border: 2px solid #F59E0B; }
 .spin img { width: 34px; height: 34px; display: block; }
 .spin span { display: none; }
 .map-key { position: absolute; left: 10px; bottom: 30px; z-index: 500; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 20px); pointer-events: none; }

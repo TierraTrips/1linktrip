@@ -95,7 +95,10 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
     const hm = await page.evaluate(() => window.__markers.filter(m => m.on && m.o.zIndex === 5000).map(m => ({ lat: m.o.position.lat, lbl: m.tip, shown: m.o.label || null, url: (m.o.icon || {}).url || '', w: m.o.icon.scaledSize.w, z: m.o.zIndex })));
     const maxZ = await page.evaluate(() => Math.max(...window.__markers.filter(m => m.on).map(m => m.o.zIndex || 0)));
     hm.sort((a, b) => b.lat - a.lat); // other cities' hotels may already be found too
-    ok(hm.length >= 1 && near(hm[0].lat, 35.6627) && /^Park Hotel Tokyo( · |$)/.test(hm[0].lbl) && hm.every(x => x.shown === null) && /1E3A8A/.test(decodeURIComponent(hm[0].url)) && hm[0].w === 32 && maxZ === 5000, `@${w} hotel marker: deep-blue bed pin, pin-sized, no label until hover/tap, on top ${JSON.stringify(hm)}`);
+    ok(hm.length >= 1 && near(hm[0].lat, 35.6627) && /^Park Hotel Tokyo( · |$)/.test(hm[0].lbl) && hm.every(x => x.shown === null) && /fill="#F59E0B" stroke="#fff"/.test(decodeURIComponent(hm[0].url)) && /fill="#1E3A8A"/.test(decodeURIComponent(hm[0].url)) && hm[0].w === 58 && maxZ === 5000, `@${w} hotel marker: big amber pin (white outline, navy bed), no label until hover/tap, on top ${JSON.stringify(hm.map(x => ({ ...x, url: x.url.length })))}`);
+    // the chosen hotel must not look like the other Hotels results (small deep-blue category circles)
+    const other = await page.evaluate(() => { const c = window.__markers.find(m => m.on && m.o.zIndex !== 5000 && m.o.icon && m.o.icon.url && /fill="#1E3A8A" stroke/.test(decodeURIComponent(m.o.icon.url))); return c ? c.o.icon.scaledSize.w : null; });
+    ok(other == null || hm[0].w >= other * 1.5, `@${w} the selected hotel is >=1.5x a regular hotel marker (${hm[0].w} vs ${other})`);
     const nb = [...reqs].reverse().find(x => /searchNearby/.test(x.url));
     ok(nb && near(nb.b.locationRestriction.circle.center.latitude, 35.6627) && near(nb.b.locationRestriction.circle.center.longitude, 139.7576), `@${w} Nearby searches start at the hotel`);
     ok(/Your hotel/.test(await page.textContent('[data-slot="map-key"]')) && !!(await page.$('[data-slot="map-key"] [data-hotel-go]')), `@${w} map key + Hotel button`);
@@ -162,6 +165,8 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
     const packed = await page.evaluate((c) => window.__ep.packEvent(c), { ...one, venue: { ...one.venue, lat: 35.6655, lon: 139.7620 } });
     await page.goto(BASE + '#e=' + packed + '&t=nearby'); await page.waitForSelector('.hpin', { timeout: 15000 }); await page.waitForTimeout(2500);
     const z = await page.evaluate(() => { const h = document.querySelector('.hpin'); const zs = [...document.querySelectorAll('.leaflet-marker-icon')].map(e => +e.style.zIndex); return { h: +h.style.zIndex, max: Math.max(...zs), lbl: h.textContent.trim() + document.querySelectorAll('#sec-map .map-lbl, #sec-map .leaflet-tooltip').length, stars: document.querySelectorAll('.spin img, .ccpin.sv img').length, cats: [...document.querySelectorAll('.ccpin.sv img')].map(i => /%23(E25A1C|0B7A8A)/i.test(i.src) && /E8A100/i.test(decodeURIComponent(i.src))) }; });
+    const hs = await page.evaluate(() => { const i = document.querySelector('.hpin img'); const r = i.getBoundingClientRect(); return { w: r.width, amber: /fill="#F59E0B" stroke="#fff"/.test(decodeURIComponent(i.src)) }; });
+    ok(hs.w >= 56 && hs.amber, `OSM @${w}: selected hotel is the big amber pin ${JSON.stringify(hs)}`);
     ok(z.h === z.max && z.lbl === '0' && z.stars === 2 && z.cats.length === 2 && z.cats.every(Boolean), `OSM @${w}: hotel pin on top, no text on the map, 2 saved pins (category icon + gold star) ${JSON.stringify(z)}`);
     const tipT = () => page.$$eval('#sec-map .leaflet-tooltip.map-tip.hotel', ts => ts.map(t => t.textContent).join());
     const popT = () => page.$$eval('#sec-map .leaflet-popup-content', ps => ps.map(p => p.textContent).join());
