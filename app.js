@@ -5362,12 +5362,24 @@ const AIRLINE_BOOK = {
   LH: ['Lufthansa', () => 'https://www.lufthansa.com/us/en/homepage'], JL: ['JAL', () => 'https://www.jal.co.jp/flights/en-us/'], NH: ['ANA', () => 'https://www.ana.co.jp/en/us/'],
   EK: ['Emirates', () => 'https://www.emirates.com/us/english/'], QF: ['Qantas', () => 'https://www.qantas.com/us/en.html'],
 };
+// carriers serving the arrival airport: the country's own airlines (airlines.js: flag, domestic, low-cost) first, then the
+// international majors above; deduped by code and name. Majors with a route template keep their deep link.
+function airlinesFor(ap) {
+  const reg = ap && ap.cc ? (window.REGIONAL_AIRLINES || {})[String(ap.cc).toUpperCase()] || [] : [];
+  const seen = new Set(); const out = [];
+  const add = (code, name, url) => { const kn = 'n:' + name.toLowerCase(); if ((code && seen.has(code)) || seen.has(kn)) return; if (code) seen.add(code); seen.add(kn); out.push({ code, name, url, regional: !!url }); };
+  reg.forEach(([c, n, u]) => add(c, n, u));
+  Object.entries(AIRLINE_BOOK).forEach(([c, [n]]) => add(c, n, ''));
+  return out;
+}
 function airlinePickHTML(cfg, air, ap = chosenAirport(cfg, air)) {
   const o = LS.get('origin'); if (!air.length) return '';
-  const cur = LS.get('airline') || '';
-  const tr = tripDates(cfg); const n = tr.guests || 1;
-  const link = cur && AIRLINE_BOOK[cur] && ap ? [ap].map(a => { const [name, fn] = AIRLINE_BOOK[cur]; return ext(fn(o || '', a.iata, tr.arrive, tr.leave, n), `${esc(t('Book with {b}', { b: name }))}${o ? ` <small>${esc(o)} → ${esc(a.iata)}</small>` : ''}`, 'row-link'); }).join('') : '';
-  return `<div class="airline-pick"><label class="pf-sel"><span>${t('Booking with a specific airline?')}</span><select data-airline><option value="">${t('Choose an airline')}</option>${Object.entries(AIRLINE_BOOK).map(([k, [name]]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></label>${link ? `<div class="row-links">${link}</div>` : ''}</div>`;
+  const tr = tripDates(cfg); const n = tr.guests || 1; const SHOW = 6;
+  const list = airlinesFor(ap);
+  const href = (a) => AIRLINE_BOOK[a.code] && ap ? AIRLINE_BOOK[a.code][1](o || '', ap.iata, tr.arrive, tr.leave, n) : a.url || (AIRLINE_BOOK[a.code] ? AIRLINE_BOOK[a.code][1]('', '', '', '', n) : '');
+  const where = ap ? `${ap.city || ap.name} (${ap.iata})` : '';
+  return `<div class="airline-pick"><h3 class="sub-h al-h">${where ? esc(t('Airlines serving {a}', { a: where })) : t('Booking with a specific airline?')}</h3>
+    <ul class="al-chips">${list.map((a, i) => `<li class="${i >= SHOW ? 'more' : ''}">${ext(href(a), esc(a.name), 'chip al-chip')}</li>`).join('')}${list.length > SHOW ? `<li class="more-li"><button type="button" class="chip al-more" data-more>${t('Show {n} more', { n: list.length - SHOW })}</button></li>` : ''}</ul></div>`;
 }
 // rental counters at the arrival airport (Google), each to its own brand site
 const CAR_BRANDS = [['avis', 'Avis', /\bavis\b/i], ['budget', 'Budget', /\bbudget\b/i], ['hertz', 'Hertz', /\bhertz\b/i], ['enterprise', 'Enterprise', /enterprise/i], ['national', 'National', /\bnational\b/i], ['alamo', 'Alamo', /\balamo\b/i], ['sixt', 'Sixt', /\bsixt\b/i], ['thrifty', 'Thrifty', /thrifty/i], ['dollar', 'Dollar', /\bdollar\b/i], ['europcar', 'Europcar', /europcar/i]];
@@ -6299,5 +6311,5 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { ccCatOfTypes, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { ccCatOfTypes, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
