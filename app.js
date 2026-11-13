@@ -469,7 +469,7 @@ function typeInfoHTML(cfg, opt = {}) {
   if (rows.length) out.push(`<ul class="links">${rows.join('')}</ul>`);
   if (!opt.skipBlock && ['blockHotel', 'blockUrl', 'blockCode', 'blockBy'].some(has)) {
     const sub = [d.blockCode ? t('Code {c}', { c: d.blockCode }) : '', d.blockBy ? t('Book by {d}', { d: dt(d.blockBy) }) : ''].filter(Boolean).join(' · ');
-    out.push(`<h3 class="sub-h">${t('Room block')}</h3><ul class="links"${edA('x:blockHotel')}>${d.blockUrl ? linkRow(d.blockHotel || t('Book the room block'), d.blockUrl, sub || hostOf(d.blockUrl)) : noteRow(d.blockHotel || 'Room block', sub)}</ul>`);
+    out.push(`<h3 class="sub-h">${t('Room block')}</h3><ul class="links"${edA('x:blockHotel')}>${d.blockUrl ? linkRow(d.blockHotel || t('Book the room block'), d.blockUrl, sub || hostOf(d.blockUrl)) : noteRow(d.blockHotel || t('Room block'), sub)}</ul>`);
   }
   const lines = (k) => String(d[k] || '').split('\n').map(x => x.trim()).filter(Boolean);
   if (has('stops')) out.push(`<h3 class="sub-h">${esc(t(lab.stops))}</h3><ul class="links">${lines('stops').map(x => `<li><a href="${esc(L.place(x, v ? (v.country || '') : ''))}" target="_blank" rel="noopener noreferrer"><b>${esc(x)}</b><span>Google Maps</span>${arrow}</a></li>`).join('')}</ul>`);
@@ -1065,7 +1065,7 @@ function weatherHTML(w, cfg) {
     const [label, ic] = w.kind === 'typical' ? (d.wet / (d.of || 1) >= 0.5 ? ['Often wet', 'rain'] : d.wet ? ['Mostly dry', 'part'] : ['Usually dry', 'sun']) : WMO(d.code);
     return `<div class="wx-d"><span class="wx-date">${esc(fmt(d.date, { weekday: 'short' }))}<small>${esc(fmt(d.date, { month: 'short', day: 'numeric' }))}</small></span>${icon(ic)}
       <span class="wx-t"><b>${fmtTemp(d.hi, u)}°</b><span>${fmtTemp(d.lo, u)}°${u}</span></span>
-      <span class="wx-x">${w.kind === 'typical' ? t('Rain {n} of {m} yrs', { n: d.wet, m: d.of }) : w.kind === 'past' ? `${d.precip ? d.precip.toFixed(2) + ' in' : t('Dry')}` : d.pop != null ? t('{n}% rain', { n: d.pop }) : esc(t(label))}</span>
+      <span class="wx-x">${w.kind === 'typical' ? t('Rain {n} of {m} yrs', { n: d.wet, m: d.of }) : w.kind === 'past' ? `${d.precip ? (u === 'C' ? (d.precip * 25.4).toFixed(d.precip * 25.4 < 10 ? 1 : 0) + ' mm' : d.precip.toFixed(2) + ' in') : t('Dry')}` : d.pop != null ? t('{n}% rain', { n: d.pop }) : esc(t(label))}</span>
       <span class="wx-l">${esc(t(label))}</span></div>`;
   }).join('')}</div>`;
 }
@@ -1892,7 +1892,7 @@ function wireEvent(cfg, art, seq, air, opts) {
   if (T.nearby || T.stay || T.travel || T.tours) {
     nearby(v.lat, v.lon).then(d => {
       if (!alive()) return; art._osm = d; art._useSrc(d.src === 'google' ? 'google' : 'osm');
-      const ft = art.querySelector('.ev-foot p'); if (ft && d.snapshot) ft.insertAdjacentHTML('beforeend', ` · ${esc(t('Nearby places as mapped on {d}', { d: d.snapshot }))}`);
+      const at = art.querySelector('.ev-foot [data-slot="attrib"]'); if (at && d.snapshot && !art.querySelector('.ev-foot [data-slot="snap"]')) at.insertAdjacentHTML('beforebegin', `<p data-slot="snap">${esc(t('Nearby places as mapped on {d}', { d: d.snapshot }))}</p>`);
       if (slot('hotels')) slot('hotels').innerHTML = hotelsHTML(cfg, withArt(d, art));
       if (slot('sights')) slot('sights').innerHTML = sightsHTML(cfg, withArt(d, art));
       if (slot('transit')) slot('transit').innerHTML = transitHTML(cfg, d);
@@ -2071,8 +2071,9 @@ function renderViewer(cfg, { exampleId, tab } = {}) {
   // the short link that always shows the latest version; other guests see the page as before
   const own = exampleId ? null : ownLongPage(cfg, packed);
   const canSave = !exampleId && SB && (own || LS.get('signedIn'));
-  $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#">${BRAND}</a>${exampleId ? `<span class="vbar-note">${t('Example page')}</span>` : ''}${canSave ? `<button type="button" class="btn sm primary" data-save-mine>${t('Save to My pages')}</button>` : `<a class="btn sm" href="${editHref}">${exampleId ? t('Customize this') : t('Edit a copy')}</a>`}</div><div id="ev-root"></div></div>`;
+  $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#">${BRAND}</a>${exampleId ? `<span class="vbar-note">${t('Example page')}</span>` : ''}${canSave ? `<button type="button" class="btn sm primary" data-save-mine>${t('Save to My pages')}</button>` : vbarEditHTML(editHref, exampleId ? t('Customize this') : t('Edit a copy'))}</div><div id="ev-root"></div></div>`;
   $('.vbar').insertAdjacentHTML('beforeend', langPillsHTML(cfg) + langSelectHTML(cfg));
+  requestAnimationFrame(pillInView);
   $('[data-save-mine]')?.addEventListener('click', (e) => saveLongToMine(packed, e.currentTarget));
   guestRender(cfg, $('#ev-root'), { tab });
   const foot = $('.ev-foot a'); if (foot && exampleId) foot.setAttribute('href', editHref);
@@ -2983,7 +2984,8 @@ async function renderHosted(slug, tab) {
   LANG = guestLangPick(cfg); document.documentElement.lang = LANG; document.documentElement.dir = RTL.has(LANG) ? 'rtl' : 'ltr';
   // the organizer (this device has the page in My pages) edits the page itself, on the page; everyone else gets a copy
   const own = pagesAll().find(p => p.hosted && p.hosted.id === row.id);
-  $('.vbar').insertAdjacentHTML('beforeend', `${langPillsHTML(cfg)}${langSelectHTML(cfg)}${own ? `<a class="btn sm" href="#page=${esc(own.pid)}" data-onp-open>${t('Edit page')}</a>` : `<a class="btn sm" href="#edit=${packEvent(cfg)}">${t('Edit a copy')}</a>`}`);
+  $('.vbar').insertAdjacentHTML('beforeend', `${langPillsHTML(cfg)}${langSelectHTML(cfg)}${own ? vbarEditHTML(`#page=${esc(own.pid)}`, t('Edit page'), ' data-onp-open') : vbarEditHTML(`#edit=${packEvent(cfg)}`, t('Edit a copy'))}`);
+  requestAnimationFrame(pillInView);
   $('[data-onp-open]')?.addEventListener('click', () => { window.__onpOpen = true; });
   // only its organizer can open a page that isn't shared yet: say so, with Share right there
   if (row.published === false) {
@@ -3628,8 +3630,8 @@ function wirePlaces(cfg, art, data, setMarkers, center) {
 // and one Place Details when a place card is opened (photo + hours). Nothing is fetched on filter changes.
 const GKEY = window.EP_GOOGLE && window.EP_GOOGLE.key ? window.EP_GOOGLE.key : '';
 // footer credits for the sources that actually supplied the page's map and places
-const attribHTML = (srcs) => [srcs.has('google') && !(gpBroken && gmapsBroken) ? 'Maps and places © Google' : '', srcs.has('osm') ? 'Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>' : '',
-  'Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a>'].filter(Boolean).join(' · ');
+const attribHTML = (srcs) => [srcs.has('google') && !(gpBroken && gmapsBroken) ? esc(t('Maps and places © Google')) : '', srcs.has('osm') ? `${esc(t('Map data ©'))} <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">${esc(t('OpenStreetMap contributors'))}</a>` : '',
+  `${esc(t('Weather by'))} <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a>`].filter(Boolean).join(' · ');
 const G_TYPES = { restaurant: ['restaurant'], cafe: ['cafe', 'coffee_shop'], bar: ['bar', 'pub'], fast_food: ['fast_food_restaurant'] };
 const G_PRICE = { PRICE_LEVEL_INEXPENSIVE: '$', PRICE_LEVEL_MODERATE: '$$', PRICE_LEVEL_EXPENSIVE: '$$$', PRICE_LEVEL_VERY_EXPENSIVE: '$$$$' };
 const G_TTL = 3 * 864e5;
@@ -4104,6 +4106,8 @@ const GP_CUISINES = ['american', 'barbecue', 'brazilian', 'breakfast', 'brunch',
 const gpCuisineType = (c) => c === 'steak_house' ? 'steak_house' : c + '_restaurant';
 const GP_DIETS = [['vegetarian', 'Vegetarian', 'vegetarian'], ['vegan', 'Vegan', 'vegan'], ['gluten_free', 'Gluten-free', 'gluten free'], ['halal', 'Halal', 'halal'], ['kosher', 'Kosher', 'kosher']];
 const GP_LIST_MASK = 'places.id,places.displayName,places.location,places.rating,places.userRatingCount,places.priceLevel,places.primaryType,places.primaryTypeDisplayName,places.types,places.currentOpeningHours.openNow,places.shortFormattedAddress';
+// business websites from Google often carry the owner's utm_ tags; guests get the plain address (no tracking params on outbound links)
+const cleanWeb = (u) => { if (!u) return ''; try { const x = new URL(u); [...x.searchParams.keys()].filter(k => /^(utm_|gclid$|fbclid$|msclkid$|mc_)/i.test(k)).forEach(k => x.searchParams.delete(k)); return x.href; } catch { return u; } };
 const GP_CARD_MASK = 'id,displayName,location,formattedAddress,rating,userRatingCount,priceLevel,primaryTypeDisplayName,regularOpeningHours.weekdayDescriptions,currentOpeningHours.openNow,websiteUri,nationalPhoneNumber,internationalPhoneNumber,googleMapsUri,photos,servesVegetarianFood,reservable,types,primaryType';
 let gpBroken = false; // set when the Places API refuses (quota, key): pages fall back to OpenStreetMap
 const gpRow = (x, v) => ({ id: x.id, name: (x.displayName && x.displayName.text) || '', lat: x.location && x.location.latitude, lon: x.location && x.location.longitude,
@@ -4143,7 +4147,7 @@ function gpDetails(id, session) {
     const d = { id: x.id, name: (x.displayName && x.displayName.text) || '', lat: x.location && x.location.latitude, lon: x.location && x.location.longitude, addr: x.formattedAddress || '',
       rating: x.rating || 0, count: x.userRatingCount || 0, price: G_PRICE[x.priceLevel] || '', type: (x.primaryTypeDisplayName && x.primaryTypeDisplayName.text) || '',
       hours: (x.regularOpeningHours && x.regularOpeningHours.weekdayDescriptions) || [], open: x.currentOpeningHours ? !!x.currentOpeningHours.openNow : null,
-      web: x.websiteUri || '', phone: x.internationalPhoneNumber || x.nationalPhoneNumber || '', phoneLocal: x.nationalPhoneNumber || '', url: x.googleMapsUri || '', photos: ph,
+      web: cleanWeb(x.websiteUri), phone: x.internationalPhoneNumber || x.nationalPhoneNumber || '', phoneLocal: x.nationalPhoneNumber || '', url: x.googleMapsUri || '', photos: ph,
       veg: !!x.servesVegetarianFood, reservable: !!x.reservable, food: (x.types || []).some(t => /restaurant|food|meal/.test(t)), types: x.types || [], ptype: x.primaryType || '' };
     LS.set(key, { t: Date.now(), d }); return d;
   });
@@ -5401,7 +5405,7 @@ function carBrandURL(brand, ap) { // Avis and Budget airport pages prefill the p
 function gpCars(cfg, ap) {
   const key = `gcar1:${ap.iata}`; const c = LS.get(key); if (c && Date.now() - c.t < 7 * 864e5) return Promise.resolve(c.d);
   return gFetch('https://places.googleapis.com/v1/places:searchNearby', { includedTypes: ['car_rental'], maxResultCount: 20, locationRestriction: { circle: { center: { latitude: ap.lat, longitude: ap.lon }, radius: 4000 } } }, 'places.id,places.displayName,places.websiteUri,places.rating,places.userRatingCount')
-    .then(j => { const seen = new Set(); const d = (j.places || []).map(x => { const name = (x.displayName && x.displayName.text) || ''; const b = (CAR_BRANDS.find(([, , re]) => re.test(name)) || [])[0] || ''; return { id: x.id, name, brand: b, web: x.websiteUri || '', rating: x.rating || 0, count: x.userRatingCount || 0 }; })
+    .then(j => { const seen = new Set(); const d = (j.places || []).map(x => { const name = (x.displayName && x.displayName.text) || ''; const b = (CAR_BRANDS.find(([, , re]) => re.test(name)) || [])[0] || ''; return { id: x.id, name, brand: b, web: cleanWeb(x.websiteUri), rating: x.rating || 0, count: x.userRatingCount || 0 }; })
       .filter(x => { const k = x.brand || x.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8); LS.set(key, { t: Date.now(), d }); return d; });
 }
 // counters at the arrival airport and in town around the venue, each with rating, open now and distance
@@ -5409,7 +5413,7 @@ const GCAR_MASK = 'places.id,places.displayName,places.websiteUri,places.rating,
 function gpCarsNear(lat, lon, radius, key) {
   const c = LS.get(key); if (c && Date.now() - c.t < 3 * 864e5) return Promise.resolve(c.d);
   return gFetch('https://places.googleapis.com/v1/places:searchNearby', { includedTypes: ['car_rental'], maxResultCount: 20, rankPreference: 'DISTANCE', locationRestriction: { circle: { center: { latitude: lat, longitude: lon }, radius } } }, GCAR_MASK)
-    .then(j => { const d = (j.places || []).filter(x => x.location).map(x => { const name = (x.displayName && x.displayName.text) || ''; return { id: x.id, name, brand: (CAR_BRANDS.find(([, , re]) => re.test(name)) || [])[0] || '', web: x.websiteUri || '', rating: x.rating || 0, count: x.userRatingCount || 0,
+    .then(j => { const d = (j.places || []).filter(x => x.location).map(x => { const name = (x.displayName && x.displayName.text) || ''; return { id: x.id, name, brand: (CAR_BRANDS.find(([, , re]) => re.test(name)) || [])[0] || '', web: cleanWeb(x.websiteUri), rating: x.rating || 0, count: x.userRatingCount || 0,
       open: x.currentOpeningHours ? !!x.currentOpeningHours.openNow : null, addr: x.shortFormattedAddress || '', maps: x.googleMapsUri || '', d: Math.round(distM(lat, lon, x.location.latitude, x.location.longitude)) }; }); LS.set(key, { t: Date.now(), d }); return d; });
 }
 function gpCarsAll(cfg, ap) {
@@ -6069,9 +6073,12 @@ function guestLangPick(cfg) {
   const nav = (navigator.languages || [navigator.language || 'en']).map(x => String(x).slice(0, 2).toLowerCase());
   return nav.find(l => (cfg.langs || []).includes(l) || l === srcLang(cfg)) || nav.find(ok) || srcLang(cfg);
 }
+// the viewer bar's edit link: a pencil + label; on narrow phones that show language pills only the pencil (label stays as aria-label)
+const vbarEditHTML = (href, label, attrs = '') => `<a class="btn sm vbar-edit" href="${href}" aria-label="${esc(label)}"${attrs}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg><span>${esc(label)}</span></a>`;
 // the host's own languages as a switch at the top of the page ("English · 日本語"); other languages stay in the picker
 const langPillsHTML = (cfg) => { const ls = [srcLang(cfg), ...(cfg.langs || []).filter(l => l !== srcLang(cfg))]; if (ls.length < 2) return '';
   return `<span class="lang-pills" role="group" aria-label="Language">${ls.map(l => `<button type="button" class="lang-pill ${l === LANG ? 'on' : ''}" aria-pressed="${l === LANG}" data-lang-pill="${l}" lang="${l}">${esc(langName(l))}</button>`).join('')}</span>`; };
+const pillInView = () => { const on = document.querySelector('.vbar .lang-pill.on'); const box = on && on.parentElement; if (box && box.scrollWidth > box.clientWidth) box.scrollLeft = on.offsetLeft - (box.clientWidth - on.offsetWidth) / 2; };
 document.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.vbar [data-lang-pill]'); if (b && b.dataset.langPill !== LANG) setGuestLang(b.dataset.langPill); });
 const langSelectHTML = (cfg) => `<select class="lang-sel" data-lang aria-label="Language">${pageLangs(cfg).map(k => `<option value="${k}" ${k === LANG ? 'selected' : ''}>${esc(langName(k))}${(cfg.langs || []).includes(k) || k === srcLang(cfg) ? '' : ' ·'}</option>`).join('')}</select>`;
 // choosing a language also rewrites a ?lang= in the address, so the choice wins over the link it came from

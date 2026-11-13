@@ -1195,3 +1195,16 @@ dialog.cc-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .brand-m .btns { display: flex; gap: 8px; flex-wrap: wrap; }
 .logo-row { display: flex; align-items: center; gap: 12px; } .logo-row img { max-height: 40px; max-width: 160px; object-fit: contain; background: #F2F3F6; border-radius: 8px; padding: 4px; }
 .ev-logo { display: block; max-height: 56px; max-width: min(220px, 60%); width: auto; height: auto; object-fit: contain; margin: 0 0 12px; }
+/* the host's language pills give way on narrow phones (3+ languages): they scroll inside their pill instead of pushing the bar off-screen */
+.vbar .lang-pills { flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.vbar .lang-pills::-webkit-scrollbar { display: none; }
+.vbar .vbar-edit svg { display: none; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 429px) { .vbar:has(.lang-pills) .lang-pills { margin-left: auto; } .vbar:has(.lang-pills) .vbar-edit { padding: 0; width: 36px; min-height: 36px; justify-content: center; } .vbar:has(.lang-pills) .vbar-edit span { display: none; } .vbar:has(.lang-pills) .vbar-edit svg { display: block; } }
+/* long tab names (Veranstaltung, In der Nähe…) wrap inside their quarter instead of widening the bar past a 320 px screen */
+.ev-tabs { grid-auto-columns: minmax(0, 1fr); }
+.ev-tabs button span { max-width: 100%; text-align: center; line-height: 1.15; overflow-wrap: anywhere; hyphens: auto; }
+/* summary card on a 320 px phone in German/Portuguese/Italian: long button labels wrap instead of widening the page */
+.stub { grid-template-columns: minmax(0, 1fr) 104px; }
+.stub-actions { min-width: 0; }
+.stub-actions .btn { white-space: normal; text-align: center; max-width: 100%; }
+@container (min-width: 600px) { .stub { grid-template-columns: minmax(0, 1fr) 140px; } }
