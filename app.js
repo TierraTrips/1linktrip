@@ -2024,6 +2024,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   $('[data-onp-tg]').addEventListener('change', (e) => { LS.set('onpEdit', e.target.checked); if (!e.target.checked && sh.open && B.onp) sh.close(); preview(); });
   if (!document._onpEsc) { document._onpEsc = true; document.addEventListener('keydown', (e) => { const d = $('#sheet'); if (e.key === 'Escape' && d && d.open && d.classList.contains('onp') && !d.matches(':modal') && !$('#confirmdlg[open]')) d.close(); }); }
   if (window.__onpOpen) { window.__onpOpen = false; bl.dataset.tab = 'preview'; $$('.seg button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === 'preview'))); }
+  if (window.__updateLive) { window.__updateLive = false; updateLive().then(() => { if (B && B.justLive && B.hosted) location.href = shortURL(B.hosted.slug); }); } // "Update page" on the owner's own shared page
   sh.addEventListener('click', (e) => { if (e.target === sh) sh.close(); });
   wireInputs(sh.querySelector('.sheet-in'));
   DU = null; PH = null; wireDocs(sh.querySelector('.sheet-in')); wireDocs($('.b-form')); wirePageDrop(); docAIKnown(); wirePhotos(sh.querySelector('.sheet-in')); wirePhotos($('.b-form'));
@@ -2057,6 +2058,8 @@ const savedraft = debounce(() => { LS.set('draft', B.cfg); pageSave(B.pid, { cfg
 // Builder top bar: "Saving…" → "Saved" (this device) after every change; on a shared page with changes guests can't
 // see yet: "Changes not live yet" + Update page (the same publish as Share, without the share sheet) → "Live ✓".
 const cfgHash = (c) => hashStr(JSON.stringify(c));
+// a shared page whose saved edits (this device) were never pushed: what the builder would show as "Changes not live yet"
+const pageStale = (x) => { if (!x || !x.hosted || !x.live) return false; const c = spanFixed(normalize(clone(x.cfg))); delete c.demoTrip; return cfgHash(c) !== x.live; };
 function saveStatus(st) {
   const el = $('[data-save]'); if (!el || !B) return;
   const dirty = !!(B.hosted && B.live && cfgHash(B.cfg) !== B.live);
@@ -2865,6 +2868,11 @@ async function renderHosted(slug, tab) {
   const own = pagesAll().find(p => p.hosted && p.hosted.id === row.id);
   $('.vbar').insertAdjacentHTML('beforeend', `${langSelectHTML(cfg)}${own ? `<a class="btn sm" href="#page=${esc(own.pid)}" data-onp-open>${t('Edit page')}</a>` : `<a class="btn sm" href="#edit=${packEvent(cfg)}">${t('Edit a copy')}</a>`}`);
   $('[data-onp-open]')?.addEventListener('click', () => { window.__onpOpen = true; });
+  // the organizer's saved edits that guests (and this link) don't show yet: say so here, where they look at the page
+  if (own && pageStale(own)) {
+    $('.viewer').insertAdjacentHTML('beforeend', `<div class="own-stale" role="status"><span>${t('Your latest changes aren’t live yet.')}</span><a class="btn sm primary" href="#page=${esc(own.pid)}" data-own-update>${t('Update page')}</a></div>`);
+    $('[data-own-update]').addEventListener('click', () => { window.__onpOpen = true; window.__updateLive = true; });
+  }
   guestRender(cfg, $('#ev-root'), { tab, hosted, shareUrl: hosted.url });
   // '#' alone can't leave a ?e= page (the hash doesn't change), so home links point at the app itself
   $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
@@ -3601,7 +3609,7 @@ function myPagesHTML() {
   const xs = pagesAll().slice().sort((a, b) => b.updated - a.updated); if (!xs.length) return '';
   const cur = LS.get('draftId');
   return `<section class="land-mine" id="my-pages"><h2>My pages <small class="muted">on this device</small></h2><ul class="mp-list">${xs.slice(0, 12).map(x => { const c = spanFixed(normalize(clone(x.cfg))); const open = x.hosted ? shortURL(x.hosted.slug) : x.url;
-    return `<li style="${themeStyle(c.theme)}"><i class="mp-dot" aria-hidden="true"></i><div class="mp-t"><b>${esc(c.title || 'Untitled')}</b><span>${esc([TYPE_LABEL[c.type] || c.type, c.start ? dateRange(c.start, c.end) : '', x.hosted ? 'short link' : open ? 'shared' : 'draft', x.pid === cur ? 'open in editor' : ''].filter(Boolean).join(' · '))}</span></div>
+    return `<li style="${themeStyle(c.theme)}"><i class="mp-dot" aria-hidden="true"></i><div class="mp-t"><b>${esc(c.title || 'Untitled')}</b><span>${esc([TYPE_LABEL[c.type] || c.type, c.start ? dateRange(c.start, c.end) : '', x.hosted ? 'short link' : open ? 'shared' : 'draft', pageStale(x) ? 'changes not live yet' : '', x.pid === cur ? 'open in editor' : ''].filter(Boolean).join(' · '))}</span></div>
       <div class="mp-b">${open ? `<a class="btn sm" href="${esc(open)}">Open</a>` : ''}<a class="btn sm ${open ? '' : 'primary'}" href="#page=${esc(x.pid)}">Edit</a><a class="btn sm ghost" href="#dup=${esc(x.pid)}">Duplicate</a><button type="button" class="btn sm ghost" data-mp-del="${esc(x.pid)}" aria-label="Delete ${esc(c.title || 'Untitled')} from this list">Delete</button></div></li>`; }).join('')}</ul>
     <div data-slot="acct-pages"></div></section>`;
 }
@@ -5422,5 +5430,5 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
-window.__ep = { docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { pageStale, docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
