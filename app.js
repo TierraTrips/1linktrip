@@ -1613,8 +1613,8 @@ function roomBlockHTML(cfg) {
 }
 function nearbyTabHTML(cfg) {
   const T = cfg.tools; const out = [];
-  if (T.nearby) out.push(`<div class="ccb-wrap" data-slot="near-cc"></div>`);
-  if (T.nearby) out.push(sec('map', t('Map'), `<div class="map-off" data-slot="map-off"></div><div class="hotel-bar" data-slot="hotel"></div><div class="map-wrap"><div class="map" data-slot="map" role="region" aria-label="${t('Map of the venue and surroundings')}"></div><div class="map-key" data-slot="map-key"></div><div class="map-legend" data-slot="legend"></div></div><div class="map-cats" data-slot="map-cats" aria-hidden="true"></div>`));
+  if (T.nearby) out.push(sec('map', t('Map'), `<div class="map-off" data-slot="map-off"></div><div class="hotel-bar" data-slot="hotel"></div><div class="map-wrap"><div class="map" data-slot="map" role="region" aria-label="${t('Map of the venue and surroundings')}"></div><div class="map-key" data-slot="map-key"></div><div class="map-legend" data-slot="legend"></div></div>`));
+  if (T.nearby) out.push(`<div class="ccb-wrap" data-slot="near-cc"><div class="map-cats" data-slot="map-cats" aria-hidden="true"></div></div>`); // city tabs, category chips, search + Filters: right under the map
   if (T.nearby) out.push(sec('food', t('Places nearby'), `<div data-slot="food">${loading(t('places to eat'))}</div>`));
   if (T.tours) out.push(sec('tours', t('Things to do'), toursHTML(cfg)));
   return out.join('');
@@ -3519,8 +3519,8 @@ function placesBar(cfg, data, art, box) {
   if (f.open) ps.push(['open', t('Open now')]); if (f.dist) ps.push(['dist', t((DISTS.find(x => x[0] === +f.dist) || [0, ''])[1])]);
   if (f.stars) ps.push(['stars', `★ ${f.stars.toFixed(1)}+`]); if (f.price) ps.push(['price', f.price]);
   ccFill(box, {
-    row: (ss.length ? ddHTML({ key: 'city', aria: t('City'), value: String(art._stop || 0), ph: t('City'), cls: 'dd-city', opts: ss.map(c => ({ v: String(c.i), l: c.l })) }) : '')
-      + ddHTML({ key: 'cat', aria: t('Category'), value: f.cat, ph: t('Category'), cls: 'dd-cat', opts: PLACE_CATS.filter(([k]) => counts[k] || f.cat === k).map(([k, l]) => ({ v: k, l: t(l), ic: OSM_CC[k], n: counts[k] || 0 })) }),
+    row: (ss.length ? ccTabs({ key: 'city', aria: t('City'), value: String(art._stop || 0), ph: t('City'), cls: 'dd-city', opts: ss.map(c => ({ v: String(c.i), l: c.l })) }) : '')
+      + ccChips({ key: 'cat', aria: t('Category'), value: f.cat, ph: t('Category'), cls: 'dd-cat', opts: PLACE_CATS.filter(([k]) => counts[k] || f.cat === k).map(([k, l]) => ({ v: k, l: t(l), ic: OSM_CC[k], n: counts[k] || 0 })) }),
     filt: ccFiltersBtn(pfActive(f), false),
     pills: ccPills(ps, 'data-pf-clear'), sheet: ccSheet(body, n === 1 ? t('Show 1 place') : t('Show {n} places', { n }), 'data-pf-clear') });
 }
@@ -4002,35 +4002,25 @@ function ccFromURL(cfg) {
   return true;
 }
 // ---- the pieces ----
-// a dropdown: a button showing the choice, a list of options (with the category icons); fires a bubbling 'dd' event
-function ddHTML(o) {
-  const cur = o.opts.find(x => x.v === o.value);
-  return `<div class="dd ${o.cls || ''}" data-dd="${esc(o.key)}"><button type="button" class="dd-b${cur && cur.v ? ' set' : ''}" data-dd-btn aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(o.aria + ': ' + (cur ? cur.l : o.ph))}">${cur && cur.ic ? ccIcon(cur.ic) : ''}<span class="dd-l">${esc(cur ? cur.l : o.ph)}</span><i class="dd-car" aria-hidden="true"></i></button><div class="dd-pop" role="listbox" aria-label="${esc(o.aria)}" hidden>${o.opts.map(x => `<button type="button" role="option" class="dd-o" data-dd-v="${esc(x.v)}" aria-selected="${x.v === o.value}"${x.dim ? ' data-dim' : ''}>${x.ic ? ccIcon(x.ic) : ''}<span>${esc(x.l)}</span>${x.n != null ? `<small>${x.n}</small>` : ''}</button>`).join('')}</div></div>`;
-}
-const ddClose = (p) => { p.hidden = true; const b = p.previousElementSibling; if (b) b.setAttribute('aria-expanded', 'false'); };
+// city tabs (tap to switch) and category chips (icon + label in the category's color; tap the active one again to clear)
+const ccTabs = (o) => `<div class="cc-tabs" role="tablist" aria-label="${esc(o.aria)}" data-dd="${esc(o.key)}">${o.opts.map(x => `<button type="button" role="tab" class="cc-tab" data-dd-v="${esc(x.v)}" aria-selected="${x.v === o.value}">${esc(x.l)}</button>`).join('')}</div>`;
+const ccChips = (o) => `<div class="cc-chips" role="group" aria-label="${esc(o.aria)}" data-dd="${esc(o.key)}">${o.opts.map(x => `<button type="button" class="cc-chip" data-dd-v="${esc(x.v)}" aria-pressed="${x.v === o.value}" style="--cc:${ccColor(x.ic)}">${x.ic ? ccIcon(x.ic) : ''}<span>${esc(x.l)}</span>${x.n != null ? `<small>${x.n}</small>` : ''}</button>`).join('')}</div>`;
+// a tap on a city tab / category chip fires a bubbling 'dd' event { key, v } from its row
 document.addEventListener('click', (e) => {
-  const b = e.target.closest('[data-dd-btn]'); const o = !b && e.target.closest('[data-dd-v]');
-  document.querySelectorAll('.dd-pop:not([hidden])').forEach(p => { if (!b || p !== b.nextElementSibling) ddClose(p); });
-  if (b) { const p = b.nextElementSibling; if (!p.hidden) { ddClose(p); return; }
-    p.hidden = false; b.setAttribute('aria-expanded', 'true'); p.classList.remove('r'); const r = p.getBoundingClientRect(); if (r.right > document.documentElement.clientWidth - 6) p.classList.add('r');
-    (p.querySelector('[aria-selected="true"]') || p.querySelector('button')).focus({ preventScroll: true }); return; }
-  if (o) { const dd = o.closest('[data-dd]'); dd.dispatchEvent(new CustomEvent('dd', { bubbles: true, detail: { key: dd.dataset.dd, v: o.dataset.ddV } })); }
-});
-document.addEventListener('keydown', (e) => {
-  const p = e.target.closest && e.target.closest('.dd'); if (!p) return; const pop = p.querySelector('.dd-pop'); if (!pop || pop.hidden) return;
-  if (e.key === 'Escape') { ddClose(pop); p.querySelector('[data-dd-btn]').focus(); e.preventDefault(); }
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { const xs = [...pop.querySelectorAll('button')]; const i = xs.indexOf(document.activeElement); const n = xs[(i + (e.key === 'ArrowDown' ? 1 : -1) + xs.length) % xs.length]; if (n) n.focus(); e.preventDefault(); }
+  const o = e.target.closest('[data-dd-v]'); if (!o) return; const dd = o.closest('[data-dd]'); if (!dd) return;
+  dd.dispatchEvent(new CustomEvent('dd', { bubbles: true, detail: { key: dd.dataset.dd, v: o.dataset.ddV } }));
 });
 // the bar: drawn once (the search box keeps focus); its row, pills and sheet are refilled on every change
 const ccShell = (id, search) => `<div class="ccb" data-ccb="${esc(id)}"><div class="ccb-row" data-ccb-row></div><div class="ccb-row2">${search || ''}<span class="ccb-fs" data-ccb-f></span></div><div class="ccb-pills" data-ccb-pills></div><dialog class="cc-sheet" data-ccb-sheet aria-label="${esc(t('Filters'))}"></dialog></div>`;
-const ccFiltersBtn = (n, off) => `<button type="button" class="dd-b ccb-f${n ? ' set' : ''}" data-cc-filters aria-haspopup="dialog" aria-label="${esc(n ? t('Filters') + ' (' + n + ')' : t('Filters'))}"${off ? ' disabled' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4"/></svg><span class="dd-l">${esc(t('Filters'))}</span>${n ? `<b class="ccb-n">${n}</b>` : ''}</button>`;
+const ccFiltersBtn = (n, off) => `<button type="button" class="ccb-f${n ? ' set' : ''}" data-cc-filters aria-haspopup="dialog" aria-label="${esc(n ? t('Filters') + ' (' + n + ')' : t('Filters'))}"${off ? ' disabled' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4"/></svg><span class="dd-l">${esc(t('Filters'))}</span>${n ? `<b class="ccb-n">${n}</b>` : ''}</button>`;
 const ccPills = (ps, clear) => ps.map(([k, l]) => `<button type="button" class="pill" data-cc-pill="${esc(k)}" aria-label="${esc(t('Remove {s}', { s: l }))}"><span>${esc(l)}</span><i aria-hidden="true">×</i></button>`).join('') + (ps.length > 1 ? `<button type="button" class="link pill-clear" ${clear}>${esc(t('Clear all'))}</button>` : '');
 const ccSheet = (body, done, clear) => `<div class="cc-in"><div class="cc-top"><h2>${esc(t('Filters'))}</h2><button type="button" class="x" data-cc-close aria-label="${esc(t('Close'))}">×</button></div><div class="cc-body">${body}</div><div class="cc-foot"><button type="button" class="btn" ${clear}>${esc(t('Clear filters'))}</button><button type="button" class="btn primary" data-cc-close>${esc(done)}</button></div></div>`;
 const ccGroup = (label, inner) => `<div class="cc-g"><h3>${esc(label)}</h3><div class="chips">${inner}</div></div>`;
 const ccChip = (on, attrs, label) => `<button type="button" class="chip ${on ? 'on' : ''}" ${attrs} aria-pressed="${!!on}">${label}</button>`;
 function ccFill(box, { row, filt, pills, sheet }) {
   const r = box.querySelector('[data-ccb-row]'), p = box.querySelector('[data-ccb-pills]'), s = box.querySelector('[data-ccb-sheet]'), fb = box.querySelector('[data-ccb-f]');
-  if (r) { const open = r.querySelector('.dd-pop:not([hidden])'); if (!open) r.innerHTML = row; r.hidden = !row; }
+  if (r) { const xs = [...r.querySelectorAll('.cc-tabs, .cc-chips')].map(x => x.scrollLeft); r.innerHTML = row; r.hidden = !row;
+    [...r.querySelectorAll('.cc-tabs, .cc-chips')].forEach((x, i) => { x.scrollLeft = xs[i] || 0; const a = x.querySelector('[aria-selected="true"],[aria-pressed="true"]'); if (a && (a.offsetLeft < x.scrollLeft || a.offsetLeft + a.offsetWidth > x.scrollLeft + x.clientWidth)) x.scrollLeft = a.offsetLeft - 12; }); }
   if (fb) fb.innerHTML = filt || '';
   if (p) { p.innerHTML = pills; p.hidden = !pills; }
   if (s) { const sc = s.querySelector('.cc-body'); const y = sc ? sc.scrollTop : 0; s.innerHTML = sheet; const sc2 = s.querySelector('.cc-body'); if (sc2) sc2.scrollTop = y; }
@@ -4222,8 +4212,8 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
     const f = art._gp; const n = rows && (f.cat || f.q) ? gpFilter(rows, f).length : null;
     qIn.placeholder = ph();
     ccFill(box, {
-      row: (ss.length > 1 ? ddHTML({ key: 'city', aria: t('City'), value: String(art._stop || 0), ph: t('City'), cls: 'dd-city', opts: ss.map((x, i) => ({ v: String(i), l: x.name || x.city })) }) : '')
-        + ddHTML({ key: 'cat', aria: t('Category'), value: f.q ? '' : f.cat, ph: t('Category'), cls: 'dd-cat', opts: CC_NEAR.map(([k, l]) => ({ v: k, l: t(l), ic: k })) }),
+      row: (ss.length > 1 ? ccTabs({ key: 'city', aria: t('City'), value: String(art._stop || 0), ph: t('City'), cls: 'dd-city', opts: ss.map((x, i) => ({ v: String(i), l: x.name || x.city })) }) : '')
+        + ccChips({ key: 'cat', aria: t('Category'), value: f.q ? '' : f.cat, ph: t('Category'), cls: 'dd-cat', opts: CC_NEAR.map(([k, l]) => ({ v: k, l: t(l), ic: k })) }),
       filt: ccFiltersBtn(gpActive(f), !f.cat && !f.q),
       pills: gpPills(cfg, f), sheet: gpSheetHTML(cfg, f, n) });
   };
@@ -4271,7 +4261,7 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
   s.addEventListener('click', onBar); if (bar !== s) bar.addEventListener('click', onBar);
   bar.addEventListener('dd', (e) => {
     const { key, v } = e.detail; const f = art._gp;
-    if (key === 'city') { art._nearCity(+v); return; }
+    if (key === 'city') { if (+v !== (art._stop || 0)) art._nearCity(+v); return; }
     if (key === 'cat') { f.cat = f.cat === v && !f.q ? '' : v; f.cuisine = ''; f.price = ''; f.q = ''; qIn.value = ''; if (!GP_FOOD.has(f.cat)) f.diet = ''; load(); save(true); }
   });
   bar.addEventListener('change', debounce((e) => { const i = e.target; if (!i.dataset.gp) return; art._gp[i.dataset.gp] = i.value; if (i.dataset.gp === 'diet' && i.value) art._gp.cuisine = ''; load(); }, 250));
@@ -4379,8 +4369,8 @@ function wireTripCC(cfg, art, opts) {
       + (where === 'trip' ? ccGroup(t('Group by'), [['day', 'By day'], ['type', 'By type']].map(([k, l]) => ccChip((F.st.group || LS.get('planview:' + syncKey(cfg)) || 'day') === k, `data-cct-group="${k}"`, esc(t(l)))).join('')) : '');
     const sl = (SHOW.find(x => x[0] === F.show) || [0, ''])[1];
     ccFill(box, {
-      row: (cities.length ? ddHTML({ key: 'city', aria: t('City'), value: F.ci >= 0 ? String(F.ci) : '', ph: t('All cities'), cls: 'dd-city', opts: [{ v: '', l: t('All cities') }].concat(cities.map(c => ({ v: String(c.i), l: c.l }))) }) : '')
-        + ddHTML({ key: 'cat', aria: t('Category'), value: F.cat, ph: t('All categories'), cls: 'dd-cat', opts: [{ v: '', l: t('All categories'), ic: 'all' }].concat(CC_CATS.filter(([k]) => n[k] || F.cat === k).map(([k, l]) => ({ v: k, l: t(l), ic: k, n: n[k] || 0 }))) }),
+      row: (cities.length ? ccTabs({ key: 'city', aria: t('City'), value: F.ci >= 0 ? String(F.ci) : '', ph: t('All cities'), cls: 'dd-city', opts: [{ v: '', l: t('All') }].concat(cities.map(c => ({ v: String(c.i), l: c.l }))) }) : '')
+        + ccChips({ key: 'cat', aria: t('Category'), value: F.cat, ph: t('All categories'), cls: 'dd-cat', opts: CC_CATS.filter(([k]) => n[k] || F.cat === k).map(([k, l]) => ({ v: k, l: t(l), ic: k, n: n[k] || 0 })) }),
       filt: ccFiltersBtn(F.show ? 1 : 0),
       pills: F.show ? ccPills([['show', t(sl)]], '') : '', sheet: ccSheet(body, t('Done'), 'data-cct-sub') });
   };
@@ -4398,7 +4388,7 @@ function wireTripCC(cfg, art, opts) {
   art.addEventListener('dd', (e) => {
     if (!mine(e.target)) return; const { key, v } = e.detail; const cities = ccCities(cfg);
     if (key === 'city') ccSet(cfg, 'trip', { city: v === '' ? '' : (cities[+v] || {}).k || '' });
-    if (key === 'cat') ccSet(cfg, 'trip', { cat: v });
+    if (key === 'cat') ccSet(cfg, 'trip', { cat: ccTrip(cfg).cat === v ? '' : v });
     refresh();
   });
   art.addEventListener('input', debounce((e) => { if (!e.target.matches || !e.target.matches('[data-cct-q]')) return; ccSet(cfg, 'trip', { q: e.target.value.slice(0, 60) }, false); refresh(); }, 120));

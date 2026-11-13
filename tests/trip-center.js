@@ -9,7 +9,8 @@
 // Google Maps JS is an in-page stand-in; Places answers are generated.
 const { chromium } = require(process.env.PW || 'playwright');
 const BASE = process.env.BASE || 'http://127.0.0.1:18765/';
-const pick = async (page, key, v, box = '[data-ccb="near"]') => { await page.click(`${box} [data-dd="${key}"] [data-dd-btn]`); await page.click(`${box} [data-dd="${key}"] [data-dd-v="${v}"]`); }; // City / Category dropdowns
+const pick = async (page, key, v, box = '[data-ccb="near"]') => { await page.click(`${box} [data-dd="${key}"] [data-dd-v="${v}"]`); }; // tap a city tab / category chip
+const selLabel = (page, key, box = '[data-ccb="near"]') => page.$$eval(`${box} [data-dd="${key}"] [aria-selected="true"], ${box} [data-dd="${key}"] [aria-pressed="true"]`, bs => bs.map(b => (b.querySelector('span:not(.cci)') || b).textContent).join());
 const cityOpts = (page) => page.$$eval('[data-ccb="near"] [data-dd="city"] [data-dd-v]', bs => bs.map(b => b.textContent));
 const cityNow = (page) => page.$eval('[data-ccb="near"] [data-dd="city"] [data-dd-v][aria-selected="true"]', b => b.dataset.ddV);
 const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m}`); if (!c) fails.push(m); };

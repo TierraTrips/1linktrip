@@ -1112,37 +1112,33 @@ details.sp-menu > summary.mini-b::after { content: ' ▾'; font-size: .8em; }
 
 /* ---- City × Category bar: [City ▾] [Category ▾] [Filters n] + search, pills under it, sub-filters in a bottom sheet ---- */
 .ccb { display: grid; gap: 8px; }
-.ccb-wrap:empty { display: none; }
+.ccb-wrap:empty, .ccb-wrap:has(> .map-cats:only-child:empty) { display: none; }
 .ccb-wrap.in-sec { margin: 2px 0 12px; }
-.ccb-row { display: flex; gap: 8px; align-items: center; min-width: 0; }
-.ccb-row > .dd { flex: 1 1 auto; min-width: 0; }
-.ccb-row > .dd-city { flex: 0 1 auto; max-width: 48%; }
-.dd-city .dd-b { width: auto; max-width: 100%; }
+[data-slot="near-cc"] .ccb, [data-slot="trip-cc"] .ccb { background: var(--card, #fff); border-radius: 16px; padding: 12px; }
+.ccb-row { display: grid; gap: 8px; min-width: 0; }
+.ccb-row[hidden] { display: none; }
 .ccb .gp-search { margin: 0; flex: 1 1 auto; min-width: 0; }
 .ccb-row2 { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .ccb-fs { display: contents; }
-.ccb-row[hidden] { display: none; }
-.dd { position: relative; }
-.dd-b { display: inline-flex; align-items: center; gap: 7px; width: 100%; min-height: 44px; padding: 0 12px 0 14px; border: 1.5px solid var(--line, var(--rule)); border-radius: 999px; background: var(--card, #fff); color: var(--ink); font: inherit; font-weight: 650; font-size: .95rem; cursor: pointer; text-align: left; }
-.dd-b .cci { margin-left: -6px; }
-.dd-b.set { border-color: color-mix(in srgb, var(--accent) 55%, var(--line, #ddd)); }
-.dd-b:disabled { opacity: .45; cursor: default; }
-.dd-l { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dd-car { flex: none; width: 7px; height: 7px; margin: -3px 2px 0 2px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); opacity: .7; }
-.dd-pop { position: absolute; z-index: 950; top: calc(100% + 6px); left: 0; min-width: 230px; max-width: calc(100vw - 24px); max-height: min(62vh, 440px); overflow-y: auto; display: grid; gap: 2px; padding: 6px; background: var(--card, #fff); color: var(--ink); border: 1px solid var(--line, var(--rule)); border-radius: 14px; box-shadow: 0 18px 40px -16px rgba(0,0,0,.4); }
-.dd-pop[hidden] { display: none; }
-.dd-pop.r { left: auto; right: 0; }
-.dd-o { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 10px; border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; font-weight: 600; font-size: .95rem; text-align: left; cursor: pointer; }
-.dd-o:hover, .dd-o:focus-visible { background: var(--chip, #EEF0F4); outline: none; }
-.dd-o[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.dd-o > span:not(.cci) { flex: 1; }
-.dd-o small { color: var(--muted, var(--slate)); font-weight: 500; font-variant-numeric: tabular-nums; }
-.dd-o[data-dim] { opacity: .5; }
-.ccb-f { flex: none; width: auto; padding: 0 14px; }
+/* city tabs: one segmented row, scrolls sideways when the trip has many cities */
+.cc-tabs { display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--chip, #EEF0F4); overflow-x: auto; scrollbar-width: none; }
+.cc-tabs::-webkit-scrollbar, .cc-chips::-webkit-scrollbar { display: none; }
+.cc-tab { flex: 1 0 auto; min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: none; color: var(--muted, var(--slate)); font: inherit; font-weight: 650; font-size: .95rem; white-space: nowrap; cursor: pointer; }
+.cc-tab[aria-selected="true"] { background: var(--card, #fff); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.14); }
+/* category chips: icon + short label in the category's color */
+.cc-chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -2px; padding: 2px; }
+.cc-chip { flex: none; display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 0 14px 0 8px; border: 1.5px solid var(--line, var(--rule)); border-radius: 999px; background: var(--card, #fff); color: var(--ink); font: inherit; font-weight: 650; font-size: .9rem; white-space: nowrap; cursor: pointer; }
+.cc-chip small { color: var(--muted, var(--slate)); font-weight: 500; }
+.cc-chip[aria-pressed="true"] { background: var(--cc); border-color: var(--cc); color: #fff; }
+.cc-chip[aria-pressed="true"] small { color: rgba(255,255,255,.85); }
+.cc-chip[aria-pressed="true"] .cci { background: rgba(255,255,255,.22); }
+.cc-chip .cci { width: 28px; height: 28px; }
+.ccb-f { flex: none; display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 0 14px; border: 1.5px solid var(--line, var(--rule)); border-radius: 999px; background: var(--card, #fff); color: var(--ink); font: inherit; font-weight: 650; font-size: .95rem; cursor: pointer; }
+.ccb-f.set { border-color: color-mix(in srgb, var(--accent) 55%, var(--line, #ddd)); }
+.ccb-f:disabled { opacity: .45; cursor: default; }
 .ccb-f svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
 .ccb-n { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: var(--on-accent, #fff); font-size: .75rem; }
 @media (max-width: 520px) { .ccb-f .dd-l { display: none; } .ccb-f { padding: 0 11px; gap: 4px; } }
-@media (max-width: 360px) { .dd-b { padding: 0 9px 0 12px; font-size: .9rem; gap: 5px; } .dd-b .cci { width: 22px; height: 22px; margin-left: -7px; } }
 .cci { flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--cc, #5C6370); }
 .cci svg { width: 16px; height: 16px; }
 .ccb-pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
@@ -1172,7 +1168,7 @@ dialog.cc-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .plan-t .cci { width: 24px; height: 24px; } .plan-t .cci svg { width: 15px; height: 15px; }
 .plan-t > span { min-width: 0; overflow-wrap: anywhere; }
 .spot-star { font-style: normal; color: #E8A100; }
-.map-cats { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: .78rem; font-weight: 600; color: var(--muted, var(--slate)); }
+.map-cats { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: -4px 6px 8px; font-size: .78rem; font-weight: 600; color: var(--muted, var(--slate)); }
 .map-cats:empty { display: none; }
 .map-cats > span { display: inline-flex; align-items: center; gap: 5px; }
 .map-cats .cci { width: 18px; height: 18px; } .map-cats .cci svg { width: 12px; height: 12px; }

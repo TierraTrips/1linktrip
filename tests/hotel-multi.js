@@ -7,7 +7,8 @@
 const { chromium } = require(process.env.PW || 'playwright');
 const BASE = process.env.BASE || 'http://127.0.0.1:18765/';
 const SHOTS = process.env.SHOTS || '';
-const pick = async (page, key, v, box = '[data-ccb="near"]') => { await page.click(`${box} [data-dd="${key}"] [data-dd-btn]`); await page.click(`${box} [data-dd="${key}"] [data-dd-v="${v}"]`); }; // City / Category dropdowns
+const pick = async (page, key, v, box = '[data-ccb="near"]') => { await page.click(`${box} [data-dd="${key}"] [data-dd-v="${v}"]`); }; // tap a city tab / category chip
+const selLabel = (page, key, box = '[data-ccb="near"]') => page.$$eval(`${box} [data-dd="${key}"] [aria-selected="true"], ${box} [data-dd="${key}"] [aria-pressed="true"]`, bs => bs.map(b => (b.querySelector('span:not(.cci)') || b).textContent).join());
 const cityOpts = (page) => page.$$eval('[data-ccb="near"] [data-dd="city"] [data-dd-v]', bs => bs.map(b => b.textContent));
 const cityNow = (page) => page.$eval('[data-ccb="near"] [data-dd="city"] [data-dd-v][aria-selected="true"]', b => b.dataset.ddV);
 const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m}`); if (!c) fails.push(m); };
@@ -81,7 +82,7 @@ const near = (a, b, e = 1e-3) => Math.abs(a - b) < e;
     ok((await page.$$eval('#sec-schedule .leg-h b', bs => bs.map(b => b.textContent))).join() === 'Tokyo,Kyoto,Tokyo', `@${w} itinerary keeps both Tokyo legs`);
     // (Nearby is a hidden tab now) — go via the itinerary instead
     await page.click('#sec-schedule [data-route-stop="2"]'); await page.waitForTimeout(300);
-    ok(await cityNow(page) === '0' && await page.textContent('[data-ccb="near"] [data-dd="city"] .dd-l') === 'Tokyo', `@${w} second Tokyo leg → Tokyo in Nearby`);
+    ok(await cityNow(page) === '0' && await selLabel(page, 'city') === 'Tokyo', `@${w} second Tokyo leg → Tokyo in Nearby`);
     await page.click('[data-tab-go="mytrip"]');
     const sp = await page.textContent('#sec-spots'); ok(/Hotel A[\s\S]*Hotel B/.test(sp), `@${w} My trip lists both Tokyo hotels: ${sp.replace(/\s+/g, ' ').slice(0, 200)}`);
     ok(errors.length === 0, `@${w} no page errors ${errors.join(' ')}`);

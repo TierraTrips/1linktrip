@@ -1,5 +1,5 @@
 // City × Category, one compact bar everywhere places/plans are listed (?demo=japan: Tokyo, Kyoto, Osaka, Tokyo again).
-// Nearby: [City ▾] [Category ▾] + search + Filters. City = the route cities (Tokyo once), choosing one re-centers the map
+// Nearby, under the map: city tabs, category icon chips, search + Filters. City = the route cities (Tokyo once); a tap re-centers the map
 // on that city's hotel and searches there; Category drives the Places query (Restaurants, Cafés, Bars, Sights, Things to
 // do, Shopping, Hotels); text search is scoped to the chosen city ("ramen" in Kyoto); sub-filters live in a bottom
 // sheet and show as removable pills. Each category has one icon + color: dropdown, list rows and map markers alike;
@@ -17,8 +17,9 @@ const SHOTS = process.env.SHOTS || '';
 const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m}`); if (!c) fails.push(m); };
 const near = (a, b, d = 0.03) => Math.abs(a - b) < d;
 const NB = '[data-ccb="near"]', TRIP = '[data-ccb="trip"]', ITIN = '[data-ccb="itin"]';
-const pick = async (page, key, v, box = NB) => { await page.click(`${box} [data-dd="${key}"] [data-dd-btn]`); await page.click(`${box} [data-dd="${key}"] [data-dd-v="${v}"]`); await page.waitForTimeout(250); };
-const label = (page, key, box = NB) => page.textContent(`${box} [data-dd="${key}"] .dd-l`);
+const pick = async (page, key, v, box = NB) => { await page.click(`${box} [data-dd="${key}"] [data-dd-v="${v}"]`); await page.waitForTimeout(250); }; // tap a city tab / category chip
+const selLabel = (page, key, box = NB) => page.$$eval(`${box} [data-dd="${key}"] [aria-selected="true"], ${box} [data-dd="${key}"] [aria-pressed="true"]`, bs => bs.map(b => (b.querySelector('span:not(.cci)') || b).textContent).join());
+const label = selLabel; // the selected city tab / pressed category chip ('' = none)
 const overflow = (page, sel) => page.evaluate((sel) => {
   const cw = document.documentElement.clientWidth;
   return [...document.querySelectorAll(sel + ' *')].filter(e => {
@@ -94,7 +95,9 @@ const ctr = (x) => (x.b.locationRestriction || x.b.locationBias).circle.center;
     ok(new Set(cats.map(c => c[2])).size === 7 && cats.every(c => c[2] === '#' + COLOR[c[0]]), `@${w} one icon color per category in the dropdown`);
     ok(await label(page, 'city') === 'Tokyo' && await label(page, 'cat') === 'Restaurants', `@${w} opens on Tokyo · Restaurants`);
     let s = lastSearch(reqs); ok(s.b.includedTypes.includes('restaurant') && near(ctr(s).latitude, HOTELS['park hotel tokyo'][0]), `@${w} Tokyo search starts at the Tokyo hotel`);
-    ok(!(await page.$('.chips.stop-chips, .pf-cats')), `@${w} no chip rows for cities or categories`);
+    ok(!(await page.$('.chips.stop-chips, .pf-cats, .dd-pop')), `@${w} no old chip rows, no dropdowns`);
+    const lay = await page.evaluate(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(); return { map: r('#sec-map').bottom, bar: r('[data-slot="near-cc"] .ccb').top, list: r('#sec-food').top, tabs: r('[data-ccb="near"] .cc-tabs').top, chips: r('[data-ccb="near"] .cc-chips').top, q: r('[data-ccb="near"] [data-gp-q]').top }; });
+    ok(lay.bar >= lay.map && lay.bar < lay.list && lay.tabs < lay.chips && lay.chips < lay.q, `@${w} under the map: city tabs, then category chips, then search ${JSON.stringify(lay)}`);
     // ---- City → that city's hotel, Category → the query ----
     await pick(page, 'city', '1'); await page.waitForTimeout(400);
     s = lastSearch(reqs); ok(near(ctr(s).latitude, HOTELS['hotel granvia kyoto'][0], 0.002) && near(ctr(s).longitude, HOTELS['hotel granvia kyoto'][1], 0.002) && s.b.includedTypes.includes('restaurant'), `@${w} Kyoto: restaurants around Hotel Granvia Kyoto ${JSON.stringify(ctr(s))}`);
@@ -122,7 +125,7 @@ const ctr = (x) => (x.b.locationRestriction || x.b.locationBias).circle.center;
     s = lastSearch(reqs); const names = await page.$$eval('[data-gp-body] .place-row b', bs => bs.map(b => b.textContent));
     ok(s.b.textQuery === 'ramen' && near(ctr(s).latitude, HOTELS['hotel granvia kyoto'][0], 0.002), `@${w} “ramen” searched around Kyoto`);
     ok(names.length === 4 && !names.includes('Far away ramen'), `@${w} only Kyoto's ramen listed (${names.length})`);
-    ok(await label(page, 'cat') === 'Category', `@${w} a text search clears the category`);
+    ok(await label(page, 'cat') === '', `@${w} a text search clears the category`);
     await page.click('[data-gp-q-clear]'); await page.waitForTimeout(200);
     await pick(page, 'cat', 'restaurants'); await page.waitForTimeout(300);
     // ---- Filters sheet + pills ----
@@ -155,11 +158,12 @@ const ctr = (x) => (x.b.locationRestriction || x.b.locationBias).circle.center;
     const sz = await page.evaluate(() => window.__markers.filter(m => m.on && (m.o.zIndex || 500) === 500).map(m => m.o.icon.scaledSize.w));
     ok(sz.length && sz.every(x => x < 30), `@${w} markers shrink when zoomed out (${sz[0]} px)`);
     // ---- dropdown fits the screen; no overflow ----
-    await page.click(`${NB} [data-dd="cat"] [data-dd-btn]`);
-    const pop = await page.$eval(`${NB} [data-dd="cat"] .dd-pop`, p => { const r = p.getBoundingClientRect(); return [r.left, r.right, document.documentElement.clientWidth, [...p.querySelectorAll('button')].every(b => b.getBoundingClientRect().height >= 44)]; });
-    ok(pop[0] >= 0 && pop[1] <= pop[2] && pop[3], `@${w} category list on screen, 44 px rows ${JSON.stringify(pop)}`);
+    const rows = await page.$eval(`${NB} .cc-chips`, p => { const r = p.getBoundingClientRect(); return [r.left, r.right, document.documentElement.clientWidth, getComputedStyle(p).overflowX, p.scrollWidth > p.clientWidth, [...p.querySelectorAll('button'), ...p.closest('.ccb').querySelectorAll('.cc-tab')].every(b => b.getBoundingClientRect().height >= 44)]; });
+    ok(rows[0] >= 0 && rows[1] <= rows[2] && rows[3] === 'auto' && rows[4] && rows[5], `@${w} chips: one sideways-scrolling row on screen, 44 px tap targets ${JSON.stringify(rows)}`);
+    await page.click(`${NB} [data-dd="cat"] [data-dd-v="hotels"]`); await page.waitForTimeout(250);
+    ok(await page.$eval(`${NB} [data-dd="cat"] [data-dd-v="hotels"]`, b => { const r = b.getBoundingClientRect(), p = b.parentElement.getBoundingClientRect(); return r.left >= p.left - 1 && r.right <= p.right + 1 && getComputedStyle(b).backgroundColor === 'rgb(30, 58, 138)'; }), `@${w} the far chip scrolls into view when picked, filled with its color`);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/cc-cat-${w}.png` });
-    await page.keyboard.press('Escape');
+    await pick(page, 'cat', 'restaurants');
     ok((await overflow(page, '[data-panel="nearby"]')).length === 0, `@${w} Nearby: no overflow ${await overflow(page, '[data-panel="nearby"]')}`);
     // ---- remembered per trip ----
     await page.goto(BASE + '?demo=japan#t=nearby'); await page.waitForSelector('[data-gp-body] .place-row', { timeout: 15000 }); await page.waitForTimeout(500);
@@ -167,7 +171,7 @@ const ctr = (x) => (x.b.locationRestriction || x.b.locationBias).circle.center;
     ok((await page.$$eval('[data-gp-body] .place-row b', bs => bs.map(b => b.textContent))).every(x => /@34\.99/.test(x)), `@${w} reopened: Kyoto's places listed`);
     // ---- My trip: Kyoto · Restaurants ----
     await page.click('.ev-tabs [data-tab-go="mytrip"]'); await page.waitForSelector(`${TRIP} [data-dd="cat"]`);
-    ok(await label(page, 'city', TRIP) === 'All cities' && await label(page, 'cat', TRIP) === 'All categories', `@${w} My trip opens on everything`);
+    ok(await label(page, 'city', TRIP) === 'All' && await label(page, 'cat', TRIP) === '', `@${w} My trip opens on everything`);
     const allPlan = await page.$$eval('#sec-plan .plan-row', xs => xs.length);
     await pick(page, 'city', '1', TRIP); await pick(page, 'cat', 'restaurants', TRIP);
     const plan = await page.$$eval('#sec-plan .plan-row', xs => xs.map(x => x.querySelector('.plan-name, .plan-t > span:not(.cci)').textContent));
@@ -179,6 +183,7 @@ const ctr = (x) => (x.b.locationRestriction || x.b.locationBias).circle.center;
     const bk = await page.$$eval('#sec-itinerary ul.bookings > li:not([hidden]) b', bs => bs.map(b => b.textContent));
     ok(bk.join() === 'Hotel Granvia Kyoto', `@${w} Kyoto · Hotels → ${bk}`);
     const catCounts = await page.$$eval(`${TRIP} [data-dd="cat"] [data-dd-v] small`, xs => xs.map(x => +x.textContent));
+    await pick(page, 'cat', 'hotels', TRIP); ok(await label(page, 'cat', TRIP) === '' && (await page.$$eval('#sec-itinerary ul.bookings > li:not([hidden])', xs => xs.length)) > 1, `@${w} tapping the active chip again clears it`); await pick(page, 'cat', 'hotels', TRIP);
     ok(catCounts.length >= 3 && catCounts.every(n => n > 0), `@${w} category list shows Kyoto counts ${catCounts}`);
     // All cities · Cafés, then Saved only + search (focus kept while typing)
     await pick(page, 'city', '', TRIP); await pick(page, 'cat', 'cafes', TRIP);
@@ -199,7 +204,7 @@ const ctr = (x) => (x.b.locationRestriction || x.b.locationBias).circle.center;
     await pick(page, 'city', '1', ITIN); await pick(page, 'cat', 'restaurants', ITIN);
     const legs = await page.$$eval('#sec-schedule .leg-h b', bs => bs.map(b => b.textContent)); const items = await page.$$eval('#sec-schedule .tl li b', bs => bs.map(b => b.textContent.trim()));
     ok(legs.join() === 'Kyoto' && items.length >= 1 && items.every(x => /Nishiki/.test(x)), `@${w} Itinerary Kyoto · Restaurants: ${legs} → ${items.join(' | ')}`);
-    await pick(page, 'cat', '', ITIN);
+    await pick(page, 'cat', 'restaurants', ITIN); // tap again: every category
     const kyotoAll = await page.$$eval('#sec-schedule .tl li b', bs => bs.map(b => b.textContent.trim()));
     ok(kyotoAll.some(x => /Fushimi Inari/.test(x)) && !kyotoAll.some(x => /Tsukiji|Dotonbori/.test(x)), `@${w} Itinerary Kyoto · everything: ${kyotoAll.length} items, no Tokyo/Osaka`);
     if (SHOTS) await page.locator('#sec-schedule').screenshot({ path: `${SHOTS}/cc-itin-${w}.png` });
@@ -225,7 +230,8 @@ const ctr = (x) => (x.b.locationRestriction || x.b.locationBias).circle.center;
     const { ctx, page, errors } = await mk(browser, 390, 'ja-JP');
     await page.goto(BASE); await page.waitForFunction(() => window.__ep); await page.evaluate(() => localStorage.clear());
     await page.goto(BASE + '?demo=japan&lang=ja#t=mytrip'); await page.waitForSelector(`${TRIP} [data-dd="cat"]`, { timeout: 15000 }); await page.waitForTimeout(400);
-    ok(await label(page, 'city', TRIP) === 'すべての都市' && await label(page, 'cat', TRIP) === 'すべてのカテゴリ', `ja: ${await label(page, 'city', TRIP)} · ${await label(page, 'cat', TRIP)}`);
+    const jaChips = await page.$$eval(`${TRIP} [data-dd="cat"] [data-dd-v] span:not(.cci)`, xs => xs.map(x => x.textContent));
+    ok(await label(page, 'city', TRIP) === 'すべて' && jaChips.includes('レストラン') && jaChips.includes('カフェ'), `ja: ${await label(page, 'city', TRIP)} · ${jaChips.join(' ')}`);
     const ph = await page.getAttribute(`${TRIP} [data-cct-q]`, 'placeholder'); ok(ph === '旅行内を検索', `ja: search placeholder ${ph}`);
     await page.click('.ev-tabs [data-tab-go="nearby"]'); await page.waitForSelector('[data-gp-body] .place-row', { timeout: 15000 });
     ok(/で検索$/.test(await page.getAttribute('[data-gp-q]', 'placeholder')) && await label(page, 'cat') !== 'Restaurants', `ja: Nearby “${await page.getAttribute('[data-gp-q]', 'placeholder')}” · ${await label(page, 'cat')}`);
