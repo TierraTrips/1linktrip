@@ -536,8 +536,8 @@ function parseReservation(text, refDate) {
   // dates and times
   const ref = refDate ? asUTC(refDate) : new Date();
   const mk = (y, mo, d) => { if (!(mo >= 1 && mo <= 12 && d >= 1 && d <= 31)) return ''; if (!y) { const cands = [ref.getUTCFullYear() - 1, ref.getUTCFullYear(), ref.getUTCFullYear() + 1].map(yy => `${yy}-${pad(mo)}-${pad(d)}`); return cands.sort((a, b) => Math.abs(asUTC(a) - ref) - Math.abs(asUTC(b) - ref))[0]; } return `${y < 100 ? 2000 + y : y}-${pad(mo)}-${pad(d)}`; };
-  const DATE_RE = /\b(\d{4})-(\d{2})-(\d{2})\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?|\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?(?:\s+(\d{4}))?|\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/gi;
-  const datesIn = (l) => [...l.matchAll(DATE_RE)].map(m => m[1] ? mk(+m[1], +m[2], +m[3]) : m[4] ? mk(+m[6] || 0, MONTHS.indexOf(m[4].toLowerCase()) + 1, +m[5]) : m[8] ? mk(+m[9] || 0, MONTHS.indexOf(m[8].toLowerCase()) + 1, +m[7]) : mk(+m[12], +m[10], +m[11])).filter(Boolean);
+  const DATE_RE = /\b(\d{4})-(\d{2})-(\d{2})\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?|\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?(?:\s+(\d{4}))?|\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b|\b(\d{1,2})(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(\d{2}(?:\d{2})?)?\b/gi; // last: airline style 25APR, 25APR27
+  const datesIn = (l) => [...l.matchAll(DATE_RE)].map(m => m[1] ? mk(+m[1], +m[2], +m[3]) : m[4] ? mk(+m[6] || 0, MONTHS.indexOf(m[4].toLowerCase()) + 1, +m[5]) : m[8] ? mk(+m[9] || 0, MONTHS.indexOf(m[8].toLowerCase()) + 1, +m[7]) : m[13] ? mk(+m[15] || 0, MONTHS.indexOf(m[14].toLowerCase()) + 1, +m[13]) : mk(+m[12], +m[10], +m[11])).filter(Boolean);
   const TIME_RE = /\b(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\.?(?![a-z])|\b(noon)\b|\b([01]?\d|2[0-3]):([0-5]\d)\b/gi;
   const timesIn = (l) => [...l.matchAll(TIME_RE)].map(m => { if (m[4]) return '12:00'; if (m[3]) { let h = +m[1] % 12; if (/p/i.test(m[3])) h += 12; return `${pad(h)}:${m[2] || '00'}`; } return `${pad(+m[5])}:${m[6]}`; });
   const dateIn = (l) => datesIn(l)[0] || '', timeIn = (l) => timesIn(l)[0] || '';
@@ -1661,8 +1661,47 @@ function eventTabHTML(cfg) {
 // A trip whose destination is a country or region ("Japan") has no useful point for maps, searches or airports: use the
 // first route stop's point instead (the destination name stays as written). Stops without a map point are found by city.
 const isCoarseVenue = (v) => !!v && (!v.city || (!!v.country && v.name.trim().toLowerCase() === v.country.trim().toLowerCase()));
+// Sample content from an example page ("Customize this" on Japan in spring): the example's own itinerary items and route
+// stops, verbatim (date + time + title; name + dates). Once the trip's own plans (an imported document, the host's own
+// items or stops) are wholly apart from them, they are stale placeholders: they opened the itinerary on the example's
+// "Fri, Apr 2 · Land at Haneda" and stretched the trip's dates back to it. sampleDropped removes them, and dates that
+// came from the sample become the trip's own span. A page still built on the example (sample overlaps its plans) is untouched.
+let SAMPLE = null;
+const sampleSets = () => {
+  if (!SAMPLE) { SAMPLE = { s: new Set(), r: new Set() }; Object.values(window.EXAMPLES || {}).forEach(e => { (e.schedule || []).forEach(y => SAMPLE.s.add([y.date, y.time || '', y.title].join('|'))); (e.stops || []).forEach(y => SAMPLE.r.add([y.name, y.from || '', y.to || ''].join('|'))); }); }
+  return SAMPLE;
+};
+const isSampleItem = (x) => !!x && sampleSets().s.has([x.date, x.time || '', x.title].join('|'));
+const isSampleStop = (x) => !!x && sampleSets().r.has([x.name, x.from || '', x.to || ''].join('|'));
+// the dates the page's sample content covers, or null
+function sampleSpan(cfg) {
+  const ds = (cfg.schedule || []).filter(isSampleItem).map(x => x.date).concat((cfg.stops || []).filter(isSampleStop).flatMap(x => [x.from, x.to])).filter(isoDay).sort();
+  return ds.length ? [ds[0], ds[ds.length - 1]] : null;
+}
+// the page's own dates are still the example's (nothing but sample content set them)
+function sampleDates(cfg) {
+  const sp = isTrip(cfg) && sampleSpan(cfg); const s0 = (cfg.start || '').slice(0, 10), e0 = (cfg.end || cfg.start || '').slice(0, 10);
+  return !!sp && isoDay(s0) && s0 >= addDays(sp[0], -3) && e0 <= addDays(sp[1], 3);
+}
+function sampleDropped(cfg) {
+  if (!cfg || !isTrip(cfg)) return cfg;
+  const sch = Array.isArray(cfg.schedule) ? cfg.schedule : [], st = Array.isArray(cfg.stops) ? cfg.stops : [];
+  const ss = sch.filter(isSampleItem), sr = st.filter(isSampleStop); if (!ss.length && !sr.length) return cfg;
+  const ownStops = st.filter(x => x && x.name && !isSampleStop(x)), ownItems = sch.filter(x => x && isoDay(x.date) && !isSampleItem(x));
+  if (!ownStops.length && ownItems.length < 2) return cfg; // nothing (or one stray item) of their own yet: the example is still the plan
+  const own = ownStops.flatMap(x => [x.from, x.to]).concat(ownItems.map(x => x.date)).filter(isoDay).sort(); if (!own.length) return cfg;
+  const lo = addDays(own[0], -3), hi = addDays(own[own.length - 1], 3);
+  const samp = sampleSpan(cfg);
+  if (!samp || !(samp[1] < lo || samp[0] > hi)) return cfg; // the sample still overlaps their plans: the host's call
+  const out = { ...cfg, schedule: sch.filter(x => !isSampleItem(x)), stops: st.filter(x => !isSampleStop(x)) };
+  const sLo = addDays(samp[0], -3), sHi = addDays(samp[1], 3), fromSample = (d) => isoDay(d) && d >= sLo && d <= sHi && (d < lo || d > hi);
+  const s0 = (cfg.start || '').slice(0, 10), e0 = (cfg.end || '').slice(0, 10);
+  if (fromSample(s0) || fromSample(e0)) { const sp = tripSpan(own) || [own[0], own[own.length - 1]]; out._ek = eventKey(cfg); out.start = sp[0]; out.end = sp[1] > sp[0] ? sp[1] : ''; }
+  return out;
+}
 function tripView(cfg) {
   if (!isTrip(cfg)) return cfg;
+  cfg = sampleDropped(cfg);
   // evidence: route legs, the guest's own flights (departure dates), the itinerary's dated items (outliers dropped)
   const fl = itinLoad(cfg).filter(x => x.kind === 'flight').flatMap(x => [(x.start || '').slice(0, 10), (x.end || '').slice(0, 10)]); // departure and (time-zone-corrected) arrival days
   const sp = tripSpan(stopsOf(cfg).flatMap(x => [x.from, x.to]).concat(fl, (cfg.schedule || []).map(x => x.date)).filter(isoDay));
@@ -1680,8 +1719,9 @@ function tripView(cfg) {
 // (ek pins the page's original key, so guests' My trip / packing / plans on their devices stay with the page).
 function spanFixed(cfg) {
   if (!cfg || !cfg.start || !isTrip(cfg)) return cfg;
-  const v = tripView(cfg); if (v.start === cfg.start && (v.end || '') === (cfg.end || '')) return cfg;
-  return { ...cfg, start: v.start, end: v.end, ek: cfg.ek || eventKey(cfg) };
+  const v = tripView(cfg); const same = (a, b) => JSON.stringify(a || []) === JSON.stringify(b || []);
+  if (v.start === cfg.start && (v.end || '') === (cfg.end || '') && same(v.schedule, cfg.schedule) && same(v.stops, cfg.stops)) return cfg;
+  return { ...cfg, start: v.start, end: v.end, schedule: v.schedule, stops: v.stops, ek: cfg.ek || eventKey(cfg) };
 }
 const tripCC = (cfg) => (cfg.venue && cfg.venue.cc) || (stopsOf(cfg).find(x => x.cc) || {}).cc || '';
 // a city-level point for a route stop: never a country, inside the trip's country, a city/town result preferred
@@ -5740,7 +5780,7 @@ function docItems(cfg, d, scope) {
   }
   if (tripish && want('route')) stops.forEach(x => add('route', x));
   if (scope === 'auto' && !cfg.venue && !stops.length && cleanText(d.venue_name, 140)) add('basics', { key: 'venue', title: cleanText(d.venue_name, 140), text: cleanText(d.venue_address, 200) });
-  if (want('schedule')) C.schedule.forEach(x => isTrip(cfg) && scope === 'auto' && !x.date ? add('notes', { title: x.title, text: x.note }) : add('schedule', { date: x.date, time: x.time, title: x.title, text: x.note, kind: x.kind || '' }));
+  if (want('schedule')) C.schedule.forEach(x => isTrip(cfg) && scope === 'auto' && !x.date ? add('notes', { title: x.title, text: x.note }) : add('schedule', { date: x.date, time: x.time, title: x.title, text: x.note, kind: x.kind || '', ...(span ? { span } : {}) }));
   if (want('notes')) C.notes.forEach(x => add('notes', { title: x.label, text: x.text, url: x.url }));
   if (want('about')) { if (C.host) add('about', { key: 'host', text: C.host }); if (C.description) add('about', { text: cleanLong(d.description, 3000) || C.description }); }
   const tc = (TYPE_CARDS[cfg.type] || []).find(x => x[0] === scope); const sp = typeSpec(cfg);
@@ -5873,6 +5913,10 @@ async function docApply(cfg, items) {
     const f0 = next.stops.find(s => s.lat != null);
     if (!next.venue && f0) { next.venue = { name: f0.name, address: f0.address, lat: f0.lat, lon: f0.lon, city: f0.city, region: f0.region, country: f0.country, cc: f0.cc }; next.tz = await lookupTZ(f0.lat, f0.lon).catch(() => ''); }
   }
+  // a page still on an example's dates (Customize this → Upload a document): the document's own dates are the trip, so its
+  // items are fitted to the document's span, not squeezed into the example's ten days (or dropped to Unscheduled)
+  const docSpan = (live.find(x => Array.isArray(x.span)) || {}).span; const sp0 = sampleSpan(next);
+  const fitTo = isTrip(next) && docSpan && sampleDates(next) && sp0 && (docSpan[1] < addDays(sp0[0], -3) || docSpan[0] > addDays(sp0[1], 3)) ? docSpan : null;
   for (const x of live) {
     const title = cleanText(x.title, 120), text = cleanLong(x.text, 3000), date = isoDay(x.date), time = isoTime(x.time); let m;
     if (x.sec === 'basics') {
@@ -5880,7 +5924,7 @@ async function docApply(cfg, items) {
       if (x.key === 'dates') { const s = isWhen(x.date || '') ? x.date : ''; if (s) { next.start = s; next.end = isWhen(x.end || '') && x.end.slice(0, 10) >= s.slice(0, 10) ? x.end : ''; } }
       if (x.key === 'venue' && title && !next.venue) { const r = await aiResolveVenue(title, cleanText(x.text, 200)).catch(() => null); if (r) { next.venue = { name: r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc }; next.tz = await lookupTZ(r.lat, r.lon).catch(() => ''); } }
     } else if (x.sec === 'schedule') {
-      const it = { date: isTrip(next) ? fitTripDate(next.start, next.end, date) : date || next.start.slice(0, 10), time, title: title || cleanText(text, 120), note: title ? cleanText(text, 200) : '', ...(PLAN_KINDS[x.kind] ? { kind: x.kind } : {}) };
+      const it = { date: isTrip(next) ? (fitTo ? fitTripDate(fitTo[0], fitTo[1], date) : fitTripDate(next.start, next.end, date)) : date || next.start.slice(0, 10), time, title: title || cleanText(text, 120), note: title ? cleanText(text, 200) : '', ...(PLAN_KINDS[x.kind] ? { kind: x.kind } : {}) };
       if (it.title && !next.schedule.some(y => y.date === it.date && y.time === it.time && y.title === it.title)) next.schedule.push(it);
     } else if (x.sec === 'notes') { const label = title || cleanText(text, 60); if (label && !next.notes.some(y => y.label === label && (y.text || '') === (title ? cleanText(text, 600) : ''))) next.notes.push({ label, text: title ? cleanText(text, 600) : '', url: httpsUrl(x.url || '') }); }
     else if (x.sec === 'custom') {
@@ -5906,7 +5950,8 @@ async function docApply(cfg, items) {
     } else if ((m = x.sec.match(/^access:(\w+)$/))) { if (text) next.access = { ...(next.access || {}), [m[1]]: cleanText(text, 300) }; }
   }
   if (next.end && next.start && next.end.slice(0, 10) < next.start.slice(0, 10)) next.end = '';
-  return normalize(next);
+  const out = sampleDropped(next); delete out._ek; // the example's sample itinerary / route, wholly apart from the document's: gone
+  return normalize(out);
 }
 
 // ---- the control: in each section sheet, and once on the main page ----
@@ -6590,5 +6635,5 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
