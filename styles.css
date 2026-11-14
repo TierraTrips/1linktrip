@@ -30,6 +30,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btns { display: flex; flex-wrap: wrap; gap: .5rem; }
 .toast, #toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); background: var(--ink); color: #fff; padding: .7em 1.2em; border-radius: 999px; font-weight: 600; opacity: 0; pointer-events: none; transition: .2s; z-index: 9999; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
+#toast.act { pointer-events: auto; display: flex; align-items: center; gap: .8em; max-width: calc(100vw - 24px); white-space: nowrap; }
+#toast .toast-act { font: inherit; color: #fff; background: none; border: 0; padding: .2em .1em; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; min-height: 32px; }
+/* Delete in My pages: a quiet button that still reads as destructive */
+[data-mp-del].btn, [data-mine-del].btn { color: var(--route-ink); }
 
 /* brand lockup: the chain-link mark + the wordmark "1LinkTrip" in heavy Public Sans with a coral 1 (brand/1linktrip, direction B).
    The 1 is Route coral only where the wordmark is >= 18.67px bold (WCAG AA large text, 3.2:1 on paper); smaller lockups use --route-ink. */

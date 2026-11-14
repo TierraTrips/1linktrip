@@ -19,7 +19,7 @@ const LS = {
 };
 
 function toast(msg) {
-  const el = $('#toast'); el.textContent = msg; el.classList.add('show');
+  const el = $('#toast'); el.textContent = msg; el.classList.remove('act'); el.classList.add('show');
   clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('show'), 2200);
 }
 
@@ -3134,6 +3134,7 @@ function acctSave(pid, opts) {
 async function acctSaveNow(pid, { publish = false, fetchOsm = false } = {}) {
   let x = pagesAll().find(p => p.pid === pid);
   if (!x || !x.cfg || !String(x.cfg.title || '').trim()) return null;
+  if (pageGone({ pid, id: x.hosted && x.hosted.id, ek: x.cfg.ek })) return null; // deleted: never saved again
   const user = await sbUser(); if (!user) { LS.del('signedIn'); return null; }
   LS.set('signedIn', true);
   const c = await sb(); const mine = openPid() === pid;
@@ -3196,12 +3197,18 @@ function acctSyncAll() {
 async function acctSyncRun() {
   const user = await sbUser(); if (!user) { LS.del('signedIn'); return false; }
   const c = await sb();
-  const { data: rows, error } = await c.from('events').select('id,slug,config,published,updated_at').eq('owner', user.id).order('updated_at', { ascending: false }).limit(1000);
+  let { data: rows, error } = await c.from('events').select('id,slug,config,published,updated_at').eq('owner', user.id).order('updated_at', { ascending: false }).limit(1000);
   if (error || !Array.isArray(rows)) return false;
   const complete = rows.length < 1000; // only a full list can say a page was deleted elsewhere
-  const byId = new Map(rows.map(r => [r.id, r])); let moved = false;
+  let moved = false;
+  // pages deleted on this device while signed out (or while a delete couldn't reach the account): delete them now, own rows only
+  const gone = goneGet();
+  for (const r of rows.filter(r => gone.ids.includes(r.id))) { const { error: de } = await c.from('events').delete().eq('id', r.id).eq('owner', user.id); if (!de) moved = true; }
+  rows = rows.filter(r => !gone.ids.includes(r.id));
+  const byId = new Map(rows.map(r => [r.id, r]));
   for (const x of pagesAll()) {
     if (openPid() === x.pid) continue; // the page open in the builder saves itself
+    if (pageGone({ pid: x.pid, id: x.hosted && x.hosted.id, ek: x.cfg && x.cfg.ek })) { pageRemove(x.pid); moved = true; continue; } // a copy of a deleted page
     if (x.hosted && x.hosted.id) {
       const r = byId.get(x.hosted.id);
       if (!r) { if (complete && x.hosted.owner === user.id) { pageRemove(x.pid); moved = true; } continue; } // deleted from the account elsewhere
@@ -3315,7 +3322,7 @@ async function renderMine(id, notice) {
   const { data, error } = await c.from('events').select('id,slug,config,published,updated_at').eq('owner', user.id).order('updated_at', { ascending: false });
   if (error) return shell(`<h1>My pages</h1><p>Couldn’t load your pages. ${esc(error.message)}</p>`);
   shell(`<div class="mine-h"><h1>My pages</h1><span class="muted small">${esc(user.email || '')} · <button type="button" class="link" data-mine="signout">Sign out</button></span></div>
-    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · not shared'}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a>` : ''}</div><div class="btns"><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a><button type="button" class="btn sm" data-mine-edit="${esc(r.id)}">Edit</button>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button>` : ''}</div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Share, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
+    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · not shared'}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a>` : ''}</div><div class="btns"><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a><button type="button" class="btn sm" data-mine-edit="${esc(r.id)}">Edit</button>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button>` : ''}<button type="button" class="btn sm ghost" data-mine-del="${esc(r.id)}" aria-label="Delete ${esc(cfg.title || 'Untitled')}">Delete</button></div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Share, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
   if (data.length) msgReady().then(async ok => { // "2 new" next to pages with unanswered guest messages
     if (!ok) return; const { data: ms } = await c.from('event_messages').select('event_id,guest,from_host,created_at').in('event_id', data.map(x => x.id)).order('created_at', { ascending: true }).limit(5000);
     data.forEach(ev => { const seen = LS.get('inboxSeen:' + ev.id, {}) || {}; const last = new Map(); (ms || []).filter(x => x.event_id === ev.id).forEach(x => last.set(x.guest, x));
@@ -3326,6 +3333,13 @@ async function renderMine(id, notice) {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.mine === 'signout') { await c.auth.signOut(); LS.del('signedIn'); LS.del('draftHosted'); location.hash = '#'; }
     if (b.dataset.mineCopy) copy(shortURL(b.dataset.mineCopy));
+    if (b.dataset.mineDel) {
+      const r = data.find(x => x.id === b.dataset.mineDel); if (!r) return; const name = normalize(r.config).title || 'Untitled';
+      if (!await confirmDlg({ title: `Delete “${name}”?`, body: `It’s removed from your account on every device${r.published ? ', its link stops working,' : ''} and its replies and updates are deleted too.`, ok: 'Delete' })) return;
+      b.disabled = true;
+      try { await pageDelete({ id: r.id }); } catch (err) { b.disabled = false; toast('Couldn’t delete: ' + pubWhy(err)); return; }
+      await renderMine(''); toast(`Deleted “${name}”`);
+    }
     if (b.dataset.mineEdit) { const r = data.find(x => x.id === b.dataset.mineEdit); const cfg = normalize(r.config); const ex = pagesAll().find(x => x.hosted && x.hosted.id === r.id); LS.set('draft', cfg); LS.set('draftHosted', { id: r.id, slug: r.slug, owner: user.id, pub: !!r.published }); LS.set('draftId', ex ? ex.pid : newPid()); location.hash = '#new'; }
   });
 }
@@ -3880,7 +3894,7 @@ function pagesAll() {
   return xs;
 }
 function pageSave(pid, patch) {
-  if (!pid) return; const xs = pagesAll(); const i = xs.findIndex(x => x.pid === pid);
+  if (!pid || pageGone({ pid })) return; const xs = pagesAll(); const i = xs.findIndex(x => x.pid === pid);
   const prev = i >= 0 ? xs[i] : { pid, url: '', hosted: null };
   const e = { ...prev, ...patch, updated: Date.now() };
   if (patch.cfg && patch.edited === undefined && JSON.stringify(patch.cfg) !== JSON.stringify(prev.cfg)) e.edited = Date.now(); // when its content last changed (the newer copy wins across devices)
@@ -3889,6 +3903,41 @@ function pageSave(pid, patch) {
   LS.set('pages', xs.slice(0, 60));
 }
 function pageRemove(pid) { LS.set('pages', pagesAll().filter(p => p.pid !== pid)); }
+// Deleted pages leave a tombstone (page id, account row id, page key) so nothing brings them back: not an autosave still
+// queued or running in another tab, not the upload of this device's pages on sign-in, not the account's pages coming down.
+// A row deleted while signed out is deleted from the account on the next sync (only rows this account owns).
+const GONE_MAX = 300;
+const goneGet = () => { const g = LS.get('deleted'); return { pids: [], ids: [], eks: [], ...(g && typeof g === 'object' ? g : {}) }; };
+function pageGone({ pid, id, ek }) { const g = goneGet(); return !!((pid && g.pids.includes(pid)) || (id && g.ids.includes(id)) || (ek && g.eks.includes(ek))); }
+function goneMark({ pids = [], ids = [], eks = [] }, on = true) {
+  const g = goneGet(); const upd = (xs, add) => (on ? [...xs.filter(v => !add.includes(v)), ...add] : xs.filter(v => !add.includes(v))).slice(-GONE_MAX);
+  LS.set('deleted', { pids: upd(g.pids, pids.filter(Boolean)), ids: upd(g.ids, ids.filter(Boolean)), eks: upd(g.eks, eks.filter(Boolean)) });
+}
+// Delete a page everywhere it lives: every copy on this device (by page id or account row) and, signed in, its account row
+// (owner only: RLS, plus owner = you here). Returns { undo } for a page that only lived on this device, else {}.
+async function pageDelete({ pid, id }) {
+  const xs = pagesAll(); const local = xs.filter(x => (pid && x.pid === pid) || (id && x.hosted && x.hosted.id === id));
+  const rowId = id || (local.find(x => x.hosted && x.hosted.id) || {}).hosted?.id || null;
+  if (rowId && acctOn()) { // throws (nothing removed) if the account delete fails
+    const user = await sbUser(); if (!user) throw new Error('Sign in again to delete it from your account.');
+    const c = await sb(); const { error } = await c.from('events').delete().eq('id', rowId).eq('owner', user.id); if (error) throw error;
+  }
+  const mark = { pids: local.map(x => x.pid), ids: rowId ? [rowId] : [], eks: local.map(x => x.cfg && x.cfg.ek) };
+  goneMark(mark);
+  if (B && mark.pids.includes(B.pid)) { clearTimeout(B.pushT); B.pushT = null; }
+  LS.set('pages', xs.filter(x => !local.includes(x)));
+  const wasOpen = mark.pids.includes(LS.get('draftId')); const keep = wasOpen ? { draft: LS.get('draft'), draftHosted: LS.get('draftHosted'), draftId: LS.get('draftId') } : null;
+  if (wasOpen) { LS.del('draftId'); LS.del('draft'); LS.del('draftHosted'); }
+  if (rowId) return {};
+  return { undo: () => { goneMark(mark, false); const cur = pagesAll(); LS.set('pages', [...local.filter(x => !cur.some(y => y.pid === x.pid)), ...cur].slice(0, 60)); if (keep) Object.entries(keep).forEach(([k, v]) => v == null ? LS.del(k) : LS.set(k, v)); } };
+}
+// a toast with one action button (Undo); stays a little longer than a plain toast
+function toastAction(msg, label, fn) {
+  const el = $('#toast'); el.textContent = msg + ' ';
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-act'; b.textContent = label;
+  b.addEventListener('click', () => { el.classList.remove('show', 'act'); fn(); }, { once: true }); el.appendChild(b);
+  el.classList.add('show', 'act'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('show', 'act'), 6000);
+}
 // In-app "are you sure?" (window.confirm is suppressed in installed iOS web apps and some in-app browsers, where it just returns false).
 // Resolves true only on the destructive button; Cancel, Escape and a tap on the backdrop resolve false.
 function confirmDlg({ title, body = '', ok = 'Delete', cancel = 'Cancel' }) {
@@ -3930,13 +3979,13 @@ function wireLanding() {
   const m = $('.land'); if (!m) return;
   m.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-mp-del]'); if (!b) return; const x = pagesAll().find(p => p.pid === b.dataset.mpDel); if (!x) return;
-    const acct = acctOn() && x.hosted && x.hosted.id;
-    if (!await confirmDlg({ title: `Delete “${(x.cfg && x.cfg.title) || 'Untitled'}”?`, body: acct ? (x.hosted.pub ? 'Its link will stop working.' : '') : x.url ? 'Links you already shared keep working.' : '', ok: 'Delete' })) return;
-    if (acct) { // signed in: gone from the account (every device), not just this list
-      try { const c = await sb(); const { error } = await c.from('events').delete().eq('id', x.hosted.id); if (error) throw error; }
-      catch (err) { toast('Couldn’t delete: ' + pubWhy(err)); return; }
-    }
-    pageRemove(x.pid); if (LS.get('draftId') === x.pid) { LS.del('draftId'); LS.del('draft'); LS.del('draftHosted'); } renderLanding();
+    const name = (x.cfg && x.cfg.title) || 'Untitled';
+    const body = x.hosted && x.hosted.id ? (acctOn() ? `It’s removed from your account on every device${x.hosted.pub ? ' and its link stops working' : ''}.` : 'It’s also removed from your account the next time you sign in.')
+      : x.url ? 'Links you already shared keep working.' : 'It’s only saved on this device.';
+    if (!await confirmDlg({ title: `Delete “${name}”?`, body, ok: 'Delete' })) return;
+    let r; try { b.disabled = true; r = await pageDelete({ pid: x.pid }); } catch (err) { b.disabled = false; toast('Couldn’t delete: ' + pubWhy(err)); return; }
+    renderLanding();
+    if (r.undo) toastAction("Page deleted.", 'Undo', () => { r.undo(); renderLanding(); }); else toast(`Deleted “${name}”`);
   });
 }
 // the account's pages arrived or changed (sync on open / sign-in): refresh whatever list is on screen
