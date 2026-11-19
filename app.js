@@ -1459,6 +1459,9 @@ function normalize(c) {
   c.langs = Array.isArray(c.langs) ? c.langs.filter(l => typeof l === 'string' && /^[a-z]{2,3}$/.test(l) && l !== c.lang).slice(0, 12) : [];
   if (c.tr && typeof c.tr === 'object') { const tr = {}; for (const [l, m] of Object.entries(c.tr)) { if (!/^[a-z]{2,3}$/.test(l) || !m || typeof m !== 'object') continue; tr[l] = {}; for (const [k, e] of Object.entries(m)) if (e && typeof e.t === 'string' && typeof e.h === 'string') tr[l][k] = { h: e.h, t: e.t.slice(0, 6000), ...(e.o ? { o: true } : {}) }; } c.tr = tr; } else c.tr = {};
   c.stops = Array.isArray(c.stops) ? c.stops.filter(x => x && typeof x === 'object').slice(0, 20) : [];
+  c.stops.forEach((x, i) => { if (typeof x.id !== 'string' || !/^[\w-]{1,40}$/.test(x.id)) x.id = 'st' + i + Math.abs([...String(x.name || '') + (x.from || '')].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) | 0, 7)).toString(36).slice(0, 6); });
+  { const seen = new Set(); c.stops.forEach((x, i) => { if (seen.has(x.id)) x.id += '-' + i; seen.add(x.id); }); }
+  if (c.shifts !== undefined) { c.shifts = Array.isArray(c.shifts) ? c.shifts.filter(x => x && typeof x.id === 'string' && /^[\w-]{1,40}$/.test(x.id) && Number.isInteger(x.d) && Math.abs(x.d) <= 800 && (x.from === '' || isoDay(x.from))).map(x => ({ id: x.id, from: x.from, d: x.d })).slice(-20) : []; if (!c.shifts.length) delete c.shifts; } // Move trip dates: guests' saved places follow
   if (c.logo !== undefined && !(typeof c.logo === 'string' && /^https:\/\/\S+$/.test(c.logo) && c.logo.length < 2000)) delete c.logo; // brand logo (Design → Match your brand)
   delete c.osm; // hosted pages store a nearby-places snapshot beside the config; it never travels in links or drafts
   return c;
@@ -1644,7 +1647,7 @@ function bookingsHTML(cfg) {
     const via = viaOf(x); const viaUrl = via && via.url;
     const links = [fl.status ? ext(fl.status, t('Flight status'), 'mini-b') : '', viaUrl ? ext(viaUrl, `${t('Manage booking')} · ${via.name}`, 'mini-b') : fl.manage ? ext(fl.manage, t('Manage booking'), 'mini-b') : '', x.link ? ext(x.link, t('Open booking'), 'mini-b') : ''].join('');
     const it = ccBkItem(cfg, x);
-    return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div>${x.id ? `<button type="button" class="pr-go bk-go" data-ds="bk:${esc(x.id)}">${thumbHTML(x, it.cat)}<span class="pr-tx">` : '<span class="pr-tx">'}<b class="plan-t"><span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${detVal(x, 'room') ? `<span class="bk-room">${esc(detVal(x, 'room'))}</span>` : ''}${x.note ? `<span class="pr-note">${esc(x.note)}</span>` : ''}${x.id ? '</span><i class="tl-chev" aria-hidden="true"></i></button>' : '</span>'}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button></div></div></li>`;
+    return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div>${x.id ? `<button type="button" class="pr-go bk-go" data-ds="bk:${esc(x.id)}">${thumbHTML(x, it.cat)}<span class="pr-tx">` : '<span class="pr-tx">'}<b class="plan-t"><span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${bkOffTrip(cfg, x) ? `<span class="bk-warn">${esc(t('Not on the trip dates'))}</span>` : ''}${detVal(x, 'room') ? `<span class="bk-room">${esc(detVal(x, 'room'))}</span>` : ''}${x.note ? `<span class="pr-note">${esc(x.note)}</span>` : ''}${x.id ? '</span><i class="tl-chev" aria-hidden="true"></i></button>' : '</span>'}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button></div></div></li>`;
   }).join('')}</ul>${ccNoneHTML().replace('class="muted cc-none"', `class="muted cc-none"${order.some(([x]) => F.ok(ccBkItem(cfg, x))) ? ' hidden' : ''}`)}` : ''}
   <div class="btns itin-btns"><button type="button" class="btn primary" data-itin-add>+ ${t('Add a booking')}</button>${items.length ? `<button type="button" class="btn" data-itin-ics>${t('Add to calendar')}</button>` : ''}</div><div data-slot="itin-form"></div>`;
 }
@@ -1748,18 +1751,26 @@ async function geocodeCity(name, country, cc) {
   const out = r ? { name, address: r.address || r.name, lat: r.lat, lon: r.lon, city: r.city || name, region: r.region || '', country: r.country || country || '', cc: r.cc || cc || '' } : null;
   LS.set(k, out || { miss: 1 }); return out;
 }
+// a stop whose name isn't in its own city / address: renamed without moving its point (pages edited before 11/19 could
+// keep the old city's point, so "Takayama" showed Kyoto's map). Looked up by name; replaced only when 50 km+ off.
+const foldTxt = (x) => String(x || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const stopSuspect = (s) => s.lat != null && !!s.name && !s._ok && !!(s.city || s.address) && !foldTxt([s.city, s.address, s.region].join(' ')).includes(foldTxt(s.name).split(/[\s,(]+/).filter(Boolean)[0] || '\u0000');
+const stopsNeedRepair = (cfg) => isTrip(cfg) && stopsOf(cfg).some(s => s.lat == null || stopSuspect(s));
 async function repairStops(cfg) {
-  const ss = stopsOf(cfg).filter(s => s.lat == null); if (!ss.length || !isTrip(cfg)) return false;
+  const ss = stopsOf(cfg).filter(s => s.lat == null || stopSuspect(s)); if (!ss.length || !isTrip(cfg)) return false;
   const cc = tripCC(cfg), country = (cfg.venue && cfg.venue.country) || (stopsOf(cfg).find(x => x.country) || {}).country || ''; let n = 0;
-  for (const s of ss) { const r = await geocodeCity(s.name, s.country || country, s.cc || cc); if (r) { Object.assign(s, { address: s.address || r.address, lat: r.lat, lon: r.lon, city: s.city || r.city, region: s.region || r.region, country: s.country || r.country, cc: s.cc || r.cc }); n++; } }
+  for (const s of ss) { const r = await geocodeCity(s.name, s.country || country, s.cc || cc);
+    if (s.lat != null) { if (r && distM(r.lat, r.lon, s.lat, s.lon) > 50000) { Object.assign(s, { address: r.address, lat: r.lat, lon: r.lon, city: r.city || s.name, region: r.region || '' }); n++; } else Object.defineProperty(s, '_ok', { value: 1, enumerable: false, configurable: true }); continue; }
+    if (r) { Object.assign(s, { address: s.address || r.address, lat: r.lat, lon: r.lon, city: s.city || r.city, region: s.region || r.region, country: s.country || r.country, cc: s.cc || r.cc }); n++; } }
   return n > 0;
 }
 function renderEvent(cfg, root, opts = {}) {
-  if (!opts.repaired && isTrip(cfg) && stopsOf(cfg).some(s => s.lat == null)) {
+  if (!opts.repaired && stopsNeedRepair(cfg)) {
     const seq0 = renderSeq + 1; repairStops(cfg).then(ok => { if (ok && renderSeq === seq0 && document.body.contains(root)) { const p = root.querySelector('.ev-panel:not([hidden])'); renderEvent(cfg, root, { ...opts, repaired: true, tab: p ? p.dataset.panel : opts.tab }); } }).catch(() => {});
   }
   if (!opts.src) opts = { ...opts, src: cfg }; // "Edit a copy" and the language picker keep the page as written
   cfg = tripView(cfg);
+  if (!opts.preview && !opts.onpage) applyShifts(cfg); // the organizer moved the trip: this device's saved places follow
   // ?city=kyoto&cat=restaurants: that city and category in Nearby, My trip and the Itinerary (opens Nearby unless a tab is asked for)
   ccLive = !opts.preview && !opts.onpage; const ccLink = ccLive ? ccFromURL(cfg) : false;
   if (ccLink && !opts.tab) opts = { ...opts, tab: ccCatId(new URLSearchParams(location.search).get('cat')) === 'transport' ? 'mytrip' : 'nearby' };
@@ -2373,6 +2384,7 @@ function wireInputs(root) {
     else if (i.id === 'f-site') B.site = i.value;
     else if (typeof extraInput === 'function') extraInput(i, cfg);
   };
+  root.onchange = (e) => { routeChange(e.target, c()); };
   root.onkeydown = (e) => { if ((e.target.id === 'vq' || e.target.id === 'vq-sh') && e.key === 'Enter') { e.preventDefault(); venueSearch(); } if (e.target.id === 'f-site' && e.key === 'Enter') { e.preventDefault(); aboutFill(); } };
   root.onclick = (e) => {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset; const cfg = c();
@@ -4653,8 +4665,10 @@ const bkGeo = (x) => { if (x.lat != null) return { ref: x.ref || '', lat: x.lat,
 // which route city a hotel is in (-1 = can't tell)
 function bkCity(cfg, x) {
   const n = hotelStops(cfg).length; if (n < 2) return 0;
-  const d = bkDay(x.start); if (d && !x.guess) return stopOfDay(cfg, d);
-  const g = bkGeo(x); if (g.lat != null) return nearestStop(cfg, g);
+  const d = bkDay(x.start); const g = bkGeo(x);
+  if (d && !x.guess) { const i = stopOfDay(cfg, d); const hs = hotelStops(cfg); if (g.lat == null || !hs[i] || distM(hs[i].lat, hs[i].lon, g.lat, g.lon) < 80000) return i; }
+  if (g.lat != null) return nearestStop(cfg, g);
+  if (x.stopId) { const j = hotelStops(cfg).findIndex(c => c.legs.some(l => l.id === x.stopId)); if (j >= 0) return j; }
   return x.city != null ? x.city : d ? stopOfDay(cfg, d) : -1;
 }
 // 'same' (one thing, merge) | 'conflict' (two hotels for the same nights in one city) | ''
@@ -4925,7 +4939,7 @@ function dsBookingHTML(cfg, x, back) {
   const idx = itinLoad(cfg).findIndex(y => y.id === x.id);
   return `${dsHead({ back, icon: ccIcon(cat), kicker: [t(ITIN_KINDS[x.kind] || 'Booking'), city].filter(Boolean).join(' · '), title: x.name || t(ITIN_KINDS[x.kind] || 'Booking'),
       sub: g === 'lodge' && bkDay(x.start) ? esc(dateRange(bkDay(x.start), bkDay(x.end) || bkDay(x.start))) : '' })}
-    <div class="ds-b">${dsFacts(fs)}${am.length ? `<p class="ds-tags">${am.map(a => `<span class="tag">${esc(a)}</span>`).join('')}</p>` : ''}${PERF}
+    <div class="ds-b">${bkOffTrip(cfg, x) ? `<p class="ds-warn" role="note">${esc(t('These dates don’t match the trip ({d}). Check this booking.', { d: routeSpan(cfg) ? dateRange(...routeSpan(cfg)) : '' }))}</p>` : ''}${dsFacts(fs)}${am.length ? `<p class="ds-tags">${am.map(a => `<span class="tag">${esc(a)}</span>`).join('')}</p>` : ''}${PERF}
     ${x.kind === 'flight' ? '' : dsWhereHTML(x.name || '', x.address || '', geo, pid, cat, { q: [x.name, x.address].filter(Boolean).join(', '), key: [x.name, x.address].filter(Boolean).join(', ') })}
     ${x.note ? `<section class="ds-sec"><h3>${t('Notes')}</h3><p class="ds-note">${esc(x.note).replace(/\n/g, '<br>')}</p></section>` : ''}
     ${x.id ? dsPhotosHTML(x, 'bk:' + x.id) : ''}
@@ -5135,7 +5149,7 @@ function hotelCands(cfg) {
 // pick on this map ('set' = picked here, no booking details yet, so it can be removed here).
 function hotelsNow(cfg) {
   const ss = hotelStops(cfg); const cands = hotelCands(cfg); const geo = (q) => q ? LS.get(hgeoKey(q)) : null;
-  return ss.map((s, i) => {
+  const out = ss.map((s, i) => {
     const mine = itinLoad(cfg).filter(x => LODGE.has(x.kind) && (x.name || x.address) && Math.max(0, Math.min(ss.length - 1, bkCity(cfg, x))) === i).map(x => {
       const q = [x.name, x.address].filter(Boolean).join(', '); const g = x.lat != null ? { lat: x.lat, lon: x.lon, ref: x.ref || '' } : geo(q);
       const h = { src: x.pin && x.guess && !x.confNo ? 'set' : 'booking', id: x.id, name: x.name || t('Your hotel'), q, addr: x.address || '', from: bkDay(x.start), to: bkDay(x.end), ref: x.ref || '' };
@@ -5144,6 +5158,11 @@ function hotelsNow(cfg) {
     const host = cands[i].filter(c => !mine.some(x => nameLike(x.name, c.name))).map(c => { const g = geo(c.q); return g && g.miss ? null : g ? { ...c, lat: g.lat, lon: g.lon, addr: c.addr || g.addr || '', ref: g.ref || '' } : { ...c, lat: null }; }).filter(Boolean);
     return mine.concat(host).sort((a, b) => (a.from || '9999').localeCompare(b.from || '9999'));
   });
+  // a hotel belongs to the city it is in: one placed by its dates (or an old cached point) in a city 80 km+ away moves to
+  // the route city it is actually near — after a stop is renamed or replaced, its old hotel no longer shows as its hotel
+  if (ss.length > 1) out.forEach((hs, i) => hs.slice().forEach(h => { if (h.lat == null) return; const s = ss[i]; if (distM(s.lat, s.lon, h.lat, h.lon) < 80000) return;
+    const j = nearestStop(cfg, h); if (j !== i && distM(ss[j].lat, ss[j].lon, h.lat, h.lon) < 80000) { hs.splice(hs.indexOf(h), 1); out[j].push(h); out[j].sort((a, b) => (a.from || '9999').localeCompare(b.from || '9999')); } }));
+  return out;
 }
 const hotelDates = (h) => h.from ? dateRange(h.from, h.to && h.to > h.from ? h.to : h.from).replace(/, \d{4}$/, '') : '';
 async function resolveHotels(cfg) {
@@ -5161,7 +5180,7 @@ async function resolveHotels(cfg) {
 function setHotel(cfg, art, i, p) {
   if (!p) return Promise.resolve();
   const d = hotelGuessDates(cfg, i, itinLoad(cfg));
-  const add = { id: newBkId(), kind: 'hotel', name: p.name || '', address: p.address || '', ref: p.gid || '', lat: p.lat, lon: p.lon, city: i, pin: 1, guess: 1, start: d[0], end: d[1] };
+  const add = { id: newBkId(), kind: 'hotel', name: p.name || '', address: p.address || '', ref: p.gid || '', lat: p.lat, lon: p.lon, city: i, stopId: ((hotelStops(cfg)[i] || {}).legs || [])[0]?.id || '', pin: 1, guess: 1, start: d[0], end: d[1] };
   const slot = () => { const bar = art.querySelector('[data-slot="hotel"]'); if (!bar) return null; let s = art.querySelector('[data-slot="hotel-ask"]'); if (!s) { bar.insertAdjacentHTML('beforebegin', '<div data-slot="hotel-ask"></div>'); s = bar.previousElementSibling; } return s; };
   return bkSave(cfg, art, [add], slot);
 }
@@ -5593,38 +5612,154 @@ const stopFor = (cfg, d) => stopsOf(cfg).find(s => s.from && s.to && d >= s.from
 const stopRange = (s) => s.from ? (s.to && s.to !== s.from ? dateRange(s.from, s.to) : dateRange(s.from, s.from)) : '';
 const CUR = { jp: '¥', gb: '£', ie: '€', fr: '€', de: '€', it: '€', es: '€', pt: '€', nl: '€', be: '€', at: '€', fi: '€', gr: '€', kr: '₩', in: '₹', cn: '¥', th: '฿', ch: 'CHF ', mx: '$' };
 const priceSym = (cfg, p) => { const cc = (cfg.venue && cfg.venue.cc) || ''; const sym = CUR[cc]; return p && sym && sym !== '$' ? p.replace(/\$/g, sym.trim()) : p; };
+// ---- route dates: stops stay in date order, insert between stops, nights, move the whole trip ----
+// A stop with an Arrive date sits where its dates put it (re-sorted when a stop is added or its dates are set); stops
+// without dates keep their place. Every stop has a stable id (st…) so anything tied to a stop follows it, not its position.
+const stopDated = (s) => !!(s && isoDay(String(s.from || '').slice(0, 10)));
+const newStopId = () => 'st' + Date.now().toString(36).slice(-5) + Math.random().toString(36).slice(2, 6);
+const shiftDay = (d, n) => d && isoDay(String(d).slice(0, 10)) ? addDays(d.slice(0, 10), n) + d.slice(10) : d;
+const nightsOf = (s) => stopDated(s) && isoDay(s.to || '') ? daysBetween(s.from, s.to) : null;
+const nightsTxt = (n) => n === 1 ? '1 night' : `${n} nights`;
+function sortStops(cfg) {
+  const ss = Array.isArray(cfg.stops) ? cfg.stops : []; const slots = ss.map((s, i) => stopDated(s) ? i : -1).filter(i => i >= 0);
+  const dated = slots.map(i => ss[i]).map((s, k) => [s, k]).sort((a, b) => a[0].from.localeCompare(b[0].from) || String(a[0].to || '').localeCompare(String(b[0].to || '')) || a[1] - b[1]).map(x => x[0]);
+  let moved = false; slots.forEach((i, k) => { if (ss[i] !== dated[k]) { moved = true; ss[i] = dated[k]; } }); return moved;
+}
+// the trip's dates grow to cover its stops (never shrink: Move trip dates does that)
+function fitTripToStops(cfg) {
+  const ds = (cfg.stops || []).filter(stopDated).flatMap(s => [s.from.slice(0, 10), isoDay(s.to || '') || s.from.slice(0, 10)]).sort(); if (!ds.length || !cfg.start) return;
+  if (ds[0] < cfg.start.slice(0, 10)) cfg.start = ds[0] + cfg.start.slice(10);
+  const e = (cfg.end || cfg.start).slice(0, 10); if (ds[ds.length - 1] > e) cfg.end = ds[ds.length - 1] + (cfg.end || '').slice(10);
+}
+// move dates by n days: the whole trip (from = '') or everything from a day on (Make room). Stops, the itinerary and the
+// trip's dates move here; each guest's own saved-place days follow on their device (cfg.shifts, applied once each).
+// Bookings (flights, hotels with confirmations) never move: they are real reservations — they get flagged instead.
+// firstStop (Make room): that stop and every stop after it in the route move; itinerary days from `from` on move.
+function shiftDates(cfg, from, n, firstStop = null) {
+  if (!n) return; if (!cfg.ek) cfg.ek = eventKey(cfg); // the page keeps its key, so guests' My trip stays with it
+  const hit = (d) => !!d && !!isoDay(String(d).slice(0, 10)) && (!from || d.slice(0, 10) >= from);
+  const ss = cfg.stops || []; const k0 = firstStop ? ss.indexOf(firstStop) : -1;
+  ss.forEach((s, k) => { if (k0 >= 0 ? k >= k0 && stopDated(s) : hit(s.from)) { s.from = shiftDay(s.from, n); if (s.to) s.to = shiftDay(s.to, n); } });
+  (cfg.schedule || []).forEach(x => { if (hit(x.date)) x.date = shiftDay(x.date, n); });
+  if (cfg.start && (!from || hit(cfg.start))) cfg.start = shiftDay(cfg.start, n);
+  if (cfg.end && (!from || hit(cfg.end))) cfg.end = shiftDay(cfg.end, n);
+  const id = 'sh' + Date.now().toString(36); cfg.shifts = (cfg.shifts || []).concat([{ id, from: from || '', d: n }]).slice(-20);
+  applyShifts(cfg); fitTripToStops(cfg);
+}
+// this device's saved places (My trip) follow the organizer's date moves, each move once
+function applyShifts(cfg) {
+  const sh = Array.isArray(cfg.shifts) ? cfg.shifts : []; if (!sh.length) return false;
+  const k = 'shifted:' + syncKey(cfg); const done = new Set(LS.get(k, [])); const todo = sh.filter(x => x && x.id && !done.has(x.id)); if (!todo.length) return false;
+  const stored = LS.get(planKey(cfg), null);
+  if (Array.isArray(stored) && stored.length) { todo.forEach(s => stored.forEach(p => { if (p.day && (!s.from || p.day >= s.from)) p.day = addDays(p.day, s.d); })); LS.set(planKey(cfg), stored); }
+  todo.forEach(s => done.add(s.id)); LS.set(k, [...done].slice(-40)); return true;
+}
+// a booking whose dates fall outside the trip (after the organizer moved it): flagged, never changed
+function bkOffTrip(cfg, x) {
+  const s = bkDay(x.start); if (!s || !isTrip(cfg)) return false; const e = bkDay(x.end) || s;
+  const ds = stopsOf(cfg).filter(stopDated).flatMap(y => [y.from.slice(0, 10), isoDay(y.to || '') || y.from.slice(0, 10)]).sort();
+  const a = ds.length ? ds[0] : (cfg.start || '').slice(0, 10), b = ds.length ? ds[ds.length - 1] : (cfg.end || cfg.start || '').slice(0, 10); if (!a) return false;
+  return e < addDays(a, -1) || s > addDays(b, 1);
+}
+const routeSpan = (cfg) => { const ds = stopsOf(cfg).filter(stopDated).flatMap(y => [y.from.slice(0, 10), isoDay(y.to || '') || y.from.slice(0, 10)]).sort(); return ds.length ? [ds[0], ds[ds.length - 1]] : cfg.start ? [cfg.start.slice(0, 10), (cfg.end || cfg.start).slice(0, 10)] : null; };
+const tripSpanTxt = (c) => c.start ? dateRange(c.start.slice(0, 10), (c.end || c.start).slice(0, 10)) : '';
+// the "Move trip dates" panel: new first day → what moves (old → new), what doesn't (bookings), Move / Cancel
+function shiftPanelHTML(c) {
+  const to = B.shift && B.shift.start; const n = to && c.start ? daysBetween(c.start.slice(0, 10), to) : 0;
+  const arrow = (a, b) => `<span class="sh-old">${esc(a)}</span> → <b>${esc(b)}</b>`;
+  const sim = n ? (() => { const x = clone(c); (x.stops || []).forEach(s => { if (stopDated(s)) { s.from = shiftDay(s.from, n); if (s.to) s.to = shiftDay(s.to, n); } }); x.start = shiftDay(x.start, n); if (x.end) x.end = shiftDay(x.end, n); return x; })() : null;
+  const items = (c.schedule || []).filter(x => isoDay(x.date || '')).length;
+  const bks = n ? itinLoad(c).filter(x => bkDay(x.start)).filter(x => bkOffTrip(sim, x)) : [];
+  return `<div class="sh-panel" data-sh-panel><div class="field"><label for="sh-start">New first day</label><input id="sh-start" type="date" data-sh-start value="${esc(to || '')}"></div>
+    ${n ? `<p class="sh-sum">${arrow(tripSpanTxt(c), tripSpanTxt(sim))} <small>${Math.abs(n)} day${Math.abs(n) === 1 ? '' : 's'} ${n > 0 ? 'later' : 'earlier'}</small></p>
+      <ul class="sh-list">${stopsOf(c).filter(stopDated).map(s => { const y = sim.stops[c.stops.indexOf(s)]; return `<li>${esc(s.name)}: ${arrow(stopRange(s), stopRange(y))}</li>`; }).join('')}
+        ${items ? `<li>${items} itinerary item${items === 1 ? '' : 's'} move with their days</li>` : ''}<li>Places guests saved to a day move with it</li></ul>
+      ${bks.length ? `<p class="sh-warn"><b>Bookings keep their dates.</b> Flights and hotels already booked don’t move — change them with the airline or hotel. These will show “Not on the trip dates”: ${bks.map(x => esc(`${x.name || t(ITIN_KINDS[x.kind] || 'Booking')} (${dateRange(bkDay(x.start), bkDay(x.end) || bkDay(x.start)).replace(/, \d{4}$/, '')})`)).join(', ')}.</p>` : `<p class="hint">Guests’ own flight and hotel bookings keep their dates and are flagged if they no longer match.</p>`}`
+      : to ? '<p class="hint">That’s already the first day.</p>' : '<p class="hint">Pick the trip’s new first day. Every stop and itinerary day moves by the same number of days.</p>'}
+    <div class="btns"><button type="button" class="btn primary" data-sh="apply"${n ? '' : ' disabled'}>Move trip</button><button type="button" class="btn ghost" data-sh="cancel">Cancel</button></div></div>`;
+}
 function routeHTML(c, only = null) {
   const ss = Array.isArray(c.stops) ? c.stops : [];
-  return `<ol class="route-ed">${ss.map((s, i) => only != null && i !== only ? '' : `<li class="rowed">
+  const prevDated = (i) => { for (let j = i - 1; j >= 0; j--) if (stopDated(ss[j])) return ss[j]; return null; };
+  // gentle notes between stops: an overlap (with Make room) or a gap (with Insert a stop here)
+  const note = (s, i) => { const p = prevDated(i); if (!p || !stopDated(s) || !isoDay(p.to || '')) return '';
+    const d = daysBetween(p.to, s.from.slice(0, 10)); const pn = p.name || 'the stop before';
+    if (d < 0) return `<p class="st-note warn">Overlaps ${esc(pn)} by ${nightsTxt(-d)}. <button type="button" class="link" data-st-push="${i}" data-n="${-d}">Move ${esc(s.name || 'this stop')} and later stops ${-d} day${-d === 1 ? '' : 's'} later</button></p>`;
+    if (d > 0) return `<p class="st-note">${nightsTxt(d)} with no stop after ${esc(pn)}. <button type="button" class="link" data-st-ins="${ss.indexOf(p)}">Insert a stop here</button></p>`;
+    return ''; };
+  const row = (s, i) => { const n = nightsOf(s);
+    return `<li class="rowed st-row${B && B.flashStop === s ? ' flash' : ''}" data-st-row="${i}">
       ${s.name ? `<div class="venue-sel"><div><b>${esc(s.name)}</b><span>${esc([s.region, s.country].filter(Boolean).join(', '))}</span></div><button type="button" class="btn sm" data-st-clear="${i}">Change</button></div>`
         : `<div class="field"><label for="st-q-${i}">City or place</label><div class="search"><input id="st-q-${i}" data-st-q="${i}" placeholder="Kyoto" autocomplete="off"><button type="button" class="btn" data-st-find="${i}">Find</button></div></div>`}
-      <div class="two"><div class="field"><label for="st-from-${i}">Arrive</label><input id="st-from-${i}" type="date" data-st="${i}" data-k="from" value="${esc(s.from || '')}"></div><div class="field"><label for="st-to-${i}">Leave</label><input id="st-to-${i}" type="date" data-st="${i}" data-k="to" value="${esc(s.to || '')}"></div></div>
-      <div class="plan-ctl"><span class="mv"><button type="button" data-st-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-st-mv="${i}" data-dir="1" ${i === ss.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button></span><button type="button" class="link" data-st-del="${i}">Remove</button></div>
-    </li>`).join('')}</ol>
-    ${only != null ? '' : '<button type="button" class="btn sm" data-st-add>+ Add a stop</button>'}`;
+      <div class="st-dates"><div class="two"><div class="field"><label for="st-from-${i}">Arrive</label><input id="st-from-${i}" type="date" data-st="${i}" data-k="from" value="${esc(s.from || '')}"></div><div class="field"><label for="st-to-${i}">Leave</label><input id="st-to-${i}" type="date" data-st="${i}" data-k="to" value="${esc(s.to || '')}" min="${esc(s.from || '')}"></div></div>
+</div>
+      ${note(s, i)}
+      <div class="plan-ctl st-foot">${stopDated(s) ? `<div class="st-nights" role="group" aria-label="Nights"><button type="button" data-st-n="${i}" data-dir="-1" ${n ? '' : 'disabled'} aria-label="One night fewer">−</button><span>${n == null ? 'Set the leave date' : n === 0 ? 'Day trip' : nightsTxt(n)}</span><button type="button" data-st-n="${i}" data-dir="1" aria-label="One more night">+</button></div>` : ''}<span class="mv"><button type="button" data-st-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-st-mv="${i}" data-dir="1" ${i === ss.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button></span><button type="button" class="link" data-st-del="${i}">Remove</button></div>
+    </li>`; };
+  if (only != null) return `<ol class="route-ed">${ss[only] ? row(ss[only], only) : ''}</ol>`;
+  const nd = ss.filter(stopDated).length;
+  return `${c.start && isTrip(c) ? `<div class="rt-sum"><div><span class="lbl-s">Trip dates</span><b>${esc(tripSpanTxt(c))}</b>${nd ? `<small>${ss.filter(x => x.name).length} stop${ss.filter(x => x.name).length === 1 ? '' : 's'} · in date order</small>` : ''}</div>${B && B.shift ? '' : `<div class="rt-acts">${B && B.shiftUndo ? '<button type="button" class="btn sm ghost" data-sh="undo">Undo move</button>' : ''}<button type="button" class="btn sm" data-sh="open">Move trip dates</button></div>`}</div>${B && B.shift ? shiftPanelHTML(c) : ''}` : ''}
+    <ol class="route-ed">${ss.map((s, i) => row(s, i) + (i < ss.length - 1 ? `<li class="st-ins"><button type="button" data-st-ins="${i}" aria-label="Insert a stop after ${esc(s.name || 'this stop')}">+ Insert a stop</button></li>` : '')).join('')}</ol>
+    <button type="button" class="btn sm" data-st-add>+ Add a stop</button>`;
 }
 function setStop(cfg, i, v) {
   const prev = cfg.stops[i] || {};
-  cfg.stops[i] = { name: v.name, address: v.address, lat: v.lat, lon: v.lon, city: v.city || v.name, region: v.region, country: v.country, cc: v.cc, from: prev.from || '', to: prev.to || '' };
+  // a new place: its own point, city and address (nothing kept from the place it replaces but its dates and id)
+  cfg.stops[i] = { id: prev.id || newStopId(), name: v.name, address: v.address, lat: v.lat, lon: v.lon, city: v.city || v.name, region: v.region, country: v.country, cc: v.cc, from: prev.from || '', to: prev.to || '' };
   if (!cfg.venue && i === 0) { cfg.venue = { name: v.name, address: v.address, lat: v.lat, lon: v.lon, city: v.city || v.name, region: v.region, country: v.country, cc: v.cc }; lookupTZ(v.lat, v.lon).then(tz => { cfg.tz = tz; changed(); }).catch(() => {}); }
-  changed(true);
+  if (B && onpIdxFix) onpIdxFix(prev, cfg.stops[i]);
+  routeSettle(cfg, cfg.stops[i]); changed(true);
+}
+const onpIdxFix = (a, b) => { if (B && B.focus && B.focus.o === a) B.focus.o = b; };
+// after a stop's dates or place changed: date order, the trip's dates cover the route; the moved stop flashes once
+function routeSettle(cfg, s) {
+  const moved = sortStops(cfg); fitTripToStops(cfg);
+  if (moved && s && s.name) { B.flashStop = s; toast(`${s.name} moved to its place in the route`); setTimeout(() => { if (B && B.flashStop === s) B.flashStop = null; }, 2500); }
+  return moved;
 }
 function routeClick(b, cfg) {
-  const d = b.dataset; if (!('stAdd' in d || d.stDel || d.stMv || d.stClear || d.stFind)) return false;
+  const d = b.dataset; if (!('stAdd' in d || d.stDel || d.stMv || d.stClear || d.stFind || d.stIns != null || d.stN != null || d.stPush != null || d.sh)) return false;
   cfg.stops = Array.isArray(cfg.stops) ? cfg.stops : [];
-  if ('stAdd' in d) { const last = cfg.stops[cfg.stops.length - 1]; const from = last && last.to ? last.to : cfg.start.slice(0, 10); cfg.stops.push({ name: '', from, to: '' }); changed(true); setTimeout(() => $(`#st-q-${cfg.stops.length - 1}`)?.focus(), 40); }
+  const focusNew = (x) => setTimeout(() => { const k = cfg.stops.indexOf(x); $(`#st-q-${k}`)?.focus(); $(`[data-st-row="${k}"]`)?.scrollIntoView({ block: 'nearest' }); }, 40);
+  if ('stAdd' in d) { const ds = cfg.stops.filter(stopDated); const last = ds[ds.length - 1]; const from = last && last.to ? last.to : cfg.start.slice(0, 10); const x = { id: newStopId(), name: '', from, to: '' }; cfg.stops.push(x); changed(true); focusNew(x); }
+  if (d.stIns != null) { // between stop i and the next: the gap's dates, else one night from where stop i ends
+    const i = +d.stIns; const p = cfg.stops[i], nx = cfg.stops.slice(i + 1).find(stopDated);
+    const from = p && (isoDay(p.to || '') || isoDay((p.from || '').slice(0, 10))) || (cfg.start || '').slice(0, 10);
+    const to = from ? (nx && nx.from.slice(0, 10) > from ? nx.from.slice(0, 10) : addDays(from, 1)) : '';
+    const x = { id: newStopId(), name: '', from, to }; cfg.stops.splice(i + 1, 0, x); B.flashStop = x; changed(true); focusNew(x); }
+  if (d.stN != null) { const s = cfg.stops[+d.stN]; if (s && stopDated(s)) { const n = Math.max(0, (nightsOf(s) ?? 0) + +d.dir); s.to = addDays(s.from.slice(0, 10), n); routeSettle(cfg, s); changed(true); } }
+  if (d.stPush != null) { const s = cfg.stops[+d.stPush]; const n = +d.n; if (s && stopDated(s) && n > 0) { shiftDates(cfg, addDays(s.from.slice(0, 10), n), n, s); /* the overlapped stop keeps its own days */ toast(`Moved ${s.name || 'the stop'} and later stops ${n} day${n === 1 ? '' : 's'} later`); changed(true); } }
   if (d.stDel) { cfg.stops.splice(+d.stDel, 1); changed(true); }
   if (d.stMv) { const i = +d.stMv, j = i + +d.dir; if (j >= 0 && j < cfg.stops.length) { [cfg.stops[i], cfg.stops[j]] = [cfg.stops[j], cfg.stops[i]]; changed(true); } }
-  if (d.stClear) { const s = cfg.stops[+d.stClear]; cfg.stops[+d.stClear] = { name: '', from: s.from, to: s.to }; changed(true); }
+  if (d.stClear) { const s = cfg.stops[+d.stClear]; const x = { id: s.id || newStopId(), name: '', from: s.from, to: s.to }; onpIdxFix(s, x); cfg.stops[+d.stClear] = x; changed(true); }
   if (d.stFind) { const i = +d.stFind; const q = ($(`#st-q-${i}`) || {}).value || ''; if (q.trim().length < 2) return true;
     geocode(q.trim()).then(rs => { const cc = tripCC(cfg); const ok = rs.filter(x => !(x.types || []).some(ty => ty === 'country' || ty === 'continent')); const r = ok.find(x => !cc || !x.cc || x.cc === cc) || ok[0] || rs[0]; if (!r) { toast('No match. Try adding the country.'); return; } setStop(cfg, i, r); }).catch(() => toast('Search is unavailable right now')); }
+  if (d.sh === 'open') { B.shiftUndo = null; B.shift = { start: '' }; renderSheet(); setTimeout(() => $('#sh-start')?.focus(), 40); }
+  if (d.sh === 'cancel') { B.shift = null; renderSheet(); }
+  if (d.sh === 'undo' && B.shiftUndo) { B.shiftUndo(); toast('Trip dates put back'); }
+  if (d.sh === 'apply' && B.shift && B.shift.start && cfg.start) {
+    const n = daysBetween(cfg.start.slice(0, 10), B.shift.start); if (!n) return true;
+    const snap = clone(cfg); const pk = planKey(cfg), plan0 = LS.get(pk, null), sk = 'shifted:' + syncKey(cfg), done0 = LS.get(sk, null);
+    shiftDates(cfg, '', n); B.shift = null; changed(true);
+    B.shiftUndo = () => { B.shiftUndo = null; Object.keys(cfg).forEach(k => delete cfg[k]); Object.assign(cfg, snap); if (plan0 == null) LS.del(pk); else LS.set(pk, plan0); if (done0 == null) LS.del(sk); else LS.set(sk, done0); changed(true); };
+    renderSheet(); toast(`Trip moved to ${tripSpanTxt(cfg)}`);
+  }
   return true;
 }
 function routeInput(i, cfg) {
+  if (i.dataset.shStart != null) return true; // read on change
   if (i.dataset.st == null) return false;
   const s = cfg.stops[+i.dataset.st]; if (!s) return true; s[i.dataset.k] = i.value;
   if (i.dataset.k === 'from' && s.to && s.to < s.from) s.to = '';
   changed(); return true;
+}
+// a date committed (picker closed / field left): date order, trip span, nights + notes repainted
+function routeChange(i, cfg) {
+  if (i.dataset.shStart != null) { B.shift = { start: isoDay(i.value) }; renderSheet(); setTimeout(() => $('#sh-start')?.focus(), 0); return true; }
+  if (i.dataset.st == null || !['from', 'to'].includes(i.dataset.k)) return false;
+  const s = cfg.stops[+i.dataset.st]; if (!s) return true;
+  if (i.dataset.k === 'from' && stopDated(s) && !s.to) { const x = cfg.stops[+i.dataset.st + 1]; if (!x || !stopDated(x) || x.from.slice(0, 10) > s.from) s.to = addDays(s.from.slice(0, 10), 1); }
+  routeSettle(cfg, s); changed(true); return true;
 }
 function wireRouteAC(cfg) {
   $$('#sheet [data-st-q]').forEach(inp => placeAutocomplete(inp, { bias: () => cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(v => setStop(cfg, +inp.dataset.stQ, v)).catch(() => toast('Couldn’t load that place')) }));
@@ -6903,5 +7038,5 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

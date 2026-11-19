@@ -1328,3 +1328,33 @@ dialog.ds-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .rm-b:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .tl-tx > b { color: var(--ink); }
 .tl-chev::before, .ds-chev::before { content: '›'; }
+
+/* ================= builder: route dates (date order, insert, nights, move the trip) ================= */
+.rt-sum { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--rule, #CCDDD9); margin: 0 0 12px; }
+.rt-sum > div { display: grid; gap: 1px; min-width: 0; } .rt-sum b { font-size: 1.02rem; } .rt-sum small { color: var(--slate); font-size: .82rem; }
+.rt-sum .lbl-s, .sh-panel label { font: 600 .66rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--slate); }
+.sh-panel { display: grid; gap: 10px; padding: 14px; border-radius: 12px; background: var(--tint); margin: -4px 0 12px; }
+.sh-sum { margin: 0; font-size: 1rem; } .sh-sum small { display: block; color: var(--slate); font-size: .84rem; margin-top: 2px; }
+.sh-old { color: var(--slate); text-decoration: line-through; text-decoration-thickness: 1px; }
+.sh-list { margin: 0; padding-left: 18px; display: grid; gap: 3px; font-size: .9rem; }
+.sh-warn { margin: 0; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, #E8A100 14%, var(--paper, #fff)); font-size: .88rem; line-height: 1.45; }
+.sh-panel .btns { display: flex; gap: 8px; flex-wrap: wrap; margin: 0; }
+.st-dates { display: grid; gap: 8px; }
+.st-nights { display: inline-flex; align-items: center; gap: 0; justify-self: start; border: 1.5px solid var(--rule, #CCDDD9); border-radius: 999px; background: var(--paper, #fff); }
+.st-nights button { width: 40px; height: 36px; border: 0; background: none; font-size: 1.2rem; line-height: 1; cursor: pointer; color: var(--ink); border-radius: 999px; }
+.st-nights button:disabled { opacity: .3; cursor: default; } .st-nights span { min-width: 84px; text-align: center; font-weight: 600; font-size: .9rem; }
+.st-note { margin: 0; font-size: .86rem; color: var(--slate); line-height: 1.45; } .st-note.warn { color: var(--route-ink, #B4402F); }
+.st-note .link { font-size: inherit; padding: 0; text-align: left; }
+.st-ins { list-style: none; display: flex; align-items: center; gap: 8px; margin: -4px 0; }
+.st-ins::before, .st-ins::after { content: ''; flex: 1; height: 0; border-top: 1.5px dashed var(--rule, #CCDDD9); }
+.st-ins button { border: 1.5px solid var(--rule, #CCDDD9); background: var(--paper, #fff); color: var(--ink); border-radius: 999px; padding: 4px 12px; font: 600 .8rem var(--sans); cursor: pointer; min-height: 30px; }
+.st-ins button:hover { border-color: var(--ink); }
+@media (prefers-reduced-motion: no-preference) { .st-row.flash { animation: st-flash 1.6s ease-out; } @keyframes st-flash { 0%, 30% { box-shadow: 0 0 0 3px var(--route, #E35B47); } 100% { box-shadow: 0 0 0 0 transparent; } } }
+.st-row.flash { outline: 2px solid color-mix(in srgb, var(--route, #E35B47) 60%, transparent); outline-offset: 0; }
+/* a booking that no longer matches the trip's dates */
+.bookings .pr-tx > span.bk-warn, .ds-warn { color: #8A5A00 !important; font-weight: 600; white-space: normal; }
+.bookings .pr-tx > span.bk-warn::before { content: '⚠ '; }
+.ds-warn { margin: 0; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, #E8A100 14%, var(--card)); font-size: .9rem; }
+.ev.dark .ds-warn, .ev.dark .bookings .pr-tx > span.bk-warn { color: #F2C14E !important; }
+.st-foot .st-nights { margin-right: auto; }
+.rt-acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
