@@ -4,7 +4,7 @@
 // every item on it (tap one → its sheet → Back); a plan place's sheet changes its day / category / booked and removes
 // it with Undo; the sheet is in the address bar (?d=) so Back closes it and the link reopens it. The trip Itinerary
 // opens on 3 days with "Show all n days"; long About text and notes show "Read more". Saved spots: one folding group per
-// category with counts and compact rows. No overflow at 390 / 320, no page errors.
+// category with counts and compact rows. My pages: View + Edit. No overflow at 390 / 320, no page errors.
 //
 //   python3 -m http.server 18765 --bind 127.0.0.1 &  node tests/detail-sheets.js
 const { chromium } = require(process.env.PW || 'playwright');
@@ -124,6 +124,17 @@ const sheet = (page) => page.evaluate(() => { const d = document.querySelector('
       ok(!page._err.length, `@${w} no page errors ${page._err.join(' | ')}`);
       await ctx.close();
     }
+    // ---- My pages: View + Edit ----
+    const { ctx, page } = await setup(browser, 390);
+    await page.evaluate((c) => { localStorage.clear(); localStorage.setItem('ep:pages', JSON.stringify([{ pid: 'pa', cfg: c, url: '', hosted: null, edited: 1 }, { pid: 'pb', cfg: { ...c, title: 'Shared one' }, url: '', hosted: { id: 'r1', slug: 'abc123', owner: 'u', pub: true }, edited: 2 }])); }, CFG);
+    await page.goto(BASE + '#'); await page.waitForSelector('#my-pages');
+    const mp = await page.$$eval('#my-pages .mp-list li', ls => ls.map(l => ({ t: l.querySelector('b').textContent, b: [...l.querySelectorAll('.mp-b a, .mp-b button')].map(x => x.textContent), view: l.querySelector('.mp-b a').href })));
+    ok(mp.length === 2 && mp.every(x => x.b.slice(0, 2).join() === 'View,Edit' && x.b.includes('Delete') && !x.b.includes('Open')), `My pages: View + Edit (+ Duplicate, Delete) ${JSON.stringify(mp.map(x => x.b))}`);
+    ok(mp.find(x => x.t === 'Shared one').view.endsWith('?e=abc123') && /#e=/.test(mp.find(x => x.t === 'Sheets trip').view), 'View: the short link, or the page itself when not shared');
+    await page.click('#my-pages li:has-text("Sheets trip") .mp-b a:has-text("View")'); await page.waitForSelector('.ev');
+    ok(!!(await page.$('.ev-title')) && !(await page.$('.b-head, .builder')), 'View opens the guest page');
+    ok(!page._err.length, `no page errors ${page._err.join(' | ')}`);
+    await ctx.close();
   } finally { await browser.close(); }
   console.log(fails.length ? `\n${fails.length} failed` : '\nall passed');
   process.exit(fails.length ? 1 : 0);
