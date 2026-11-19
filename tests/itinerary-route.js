@@ -68,10 +68,11 @@ const JAPAN = {
     ok(after.length === 1 && /Unscheduled/.test(after[0]) && /Pick up JR passes/.test(after[0]), `@${w} undated items after the legs ${JSON.stringify(after)}`);
     ok(!!(await page.$('#sec-schedule .route-docs li')) && await page.$eval('#sec-schedule .route-docs b', e => e.textContent) === 'Route map.pdf', `@${w} route document inside the Itinerary`);
     ok(await page.$eval('#sec-schedule .day-h', e => !e.querySelector('.day-city')), `@${w} no repeated city tag on days inside a leg`);
-    const det = () => page.$eval('#sec-schedule details.tl-d', d => ({ open: d.open, vis: d.querySelector(':scope > span').checkVisibility(), title: d.querySelector('summary b').textContent }));
-    let d0 = await det(); ok(d0.title === 'Shinkansen to Kyoto' && !d0.open && !d0.vis, `@${w} an item's note is tucked behind a tap`);
-    await page.click('#sec-schedule details.tl-d summary'); d0 = await det(); ok(d0.open && d0.vis, `@${w} tap shows it inline`);
-    await page.click('#sec-schedule details.tl-d summary');
+    const row = await page.$$eval('#sec-schedule .tl-go', bs => bs.map(b => ({ title: b.querySelector('b').textContent, ref: b.dataset.ds, txt: b.textContent })).find(r => r.title === 'Shinkansen to Kyoto'));
+    ok(row && /^ev:\d+$/.test(row.ref) && !/\S/.test(row.txt.replace(row.title, '')), `@${w} an item is one line, its note behind a tap ${JSON.stringify(row)}`);
+    await page.click(`#sec-schedule .tl-go[data-ds="${row.ref}"]`); await page.waitForSelector('dialog.ds-sheet[open]');
+    ok(await page.$eval('dialog.ds-sheet .ds-t', e => e.textContent) === 'Shinkansen to Kyoto' && (await page.$$('dialog.ds-sheet .ds-note')).length === 1, `@${w} tap opens its sheet with the note`);
+    await page.click('dialog.ds-sheet [data-ds-close]'); await page.waitForTimeout(200);
     const of = await overflow(page); ok(of.length === 0, `@${w} no overflow ${of.join(' ')}`);
     if (SHOTS) { await page.locator('#sec-schedule').scrollIntoViewIfNeeded(); await page.locator('#sec-schedule').screenshot({ path: `${SHOTS}/itin-route-${w}.png` }); }
     if (w === 390) {

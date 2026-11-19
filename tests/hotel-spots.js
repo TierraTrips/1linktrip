@@ -135,10 +135,11 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
 
     // My trip → Saved spots
     await page.click('[data-tab-go="mytrip"]'); await page.waitForSelector('#sec-spots');
-    const sp = await page.$$eval('#sec-spots .sub-h', hs => hs.map(h => h.textContent));
-    ok(sp.join() === 'Tokyo,Kyoto,Osaka', `@${w} saved spots grouped by city ${sp}`);
-    const tokyo = await page.$$eval('#sec-spots .spots', ls => [...ls[0].querySelectorAll('li')].map(li => ({ t: li.querySelector('b').textContent, href: li.querySelector('a').href, a: li.querySelector('a').textContent })));
-    ok(tokyo.length === 2 && /Park Hotel Tokyo/.test(tokyo[0].t) && tokyo.every(x => x.a === 'Open in Google Maps' && x.href.startsWith('https://www.google.com/maps/search/?api=1&query=')) && /query_place_id=/.test(tokyo[1].href), `@${w} Tokyo: hotel + saved spot with Google Maps links ${JSON.stringify(tokyo)}`);
+    const sp = await page.$$eval('#sec-spots .sp-h', hs => hs.map(h => h.textContent));
+    ok(sp[0] === 'Hotels' && sp.length >= 2, `@${w} saved spots grouped by category, hotels first ${sp}`);
+    const rows = await page.$$eval('#sec-spots .spots li', ls => ls.map(li => ({ t: li.querySelector('b').textContent, m: li.querySelector('small').textContent, href: li.querySelector('a').href, a: li.querySelector('a').getAttribute('aria-label') })));
+    const ph = rows.find(x => /Park Hotel Tokyo/.test(x.t)), ry = rows.find(x => /^Cafe 0 near/.test(x.t));
+    ok(ph && /Your hotel/.test(ph.m) && /Tokyo/.test(ph.m) && ry && rows.every(x => /^Open .+ in Google Maps$/.test(x.a) && x.href.startsWith('https://www.google.com/maps/search/?api=1&query=')) && /query_place_id=/.test(ry.href), `@${w} hotel + saved spot (city on the row) with Google Maps links ${JSON.stringify(rows.slice(0, 3))}`);
     ok(/Import into Google My Maps — shows in the Google Maps app under Saved → Maps/.test(await page.textContent('#sec-spots')), `@${w} My Maps note`);
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#sec-spots [data-kml]')]);
     const kml = fs.readFileSync(await dl.path(), 'utf8');

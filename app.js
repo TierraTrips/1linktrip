@@ -1490,7 +1490,7 @@ function customSecHTML(cfg, sid) {
   const x = (cfg.custom || []).find(y => customSid(y) === sid); if (!x || !(x.title || '').trim() || cfg.off[sid]) return '';
   const img = httpsUrl(x.img), url = httpsUrl(x.url);
   const body = (img ? `<img class="cs-img" src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '')
-    + (x.text || '').split(/\n\s*\n/).filter(p => p.trim()).map(p => `<p>${esc(p.trim()).replace(/\n/g, '<br>')}</p>`).join('')
+    + ((x.text || '').trim() ? `<div class="rm-box">${(x.text || '').split(/\n\s*\n/).filter(p => p.trim()).map(p => `<p>${esc(p.trim()).replace(/\n/g, '<br>')}</p>`).join('')}</div>` : '')
     + (url ? `<ul class="links"><li><a href="${esc(url)}" target="_blank" rel="noopener noreferrer"><b>${esc((x.label || '').trim() || hostOf(url))}</b>${(x.label || '').trim() ? `<span>${esc(hostOf(url))}</span>` : ''}${arrow}</a></li></ul>` : '')
     + docsHTML(cfg, [sid]);
   return sec(sid, x.title, body, 'cs');
@@ -1504,7 +1504,7 @@ function needToKnowHTML(cfg) {
 }
 function aboutHTML(cfg) {
   if (cfg.off.about || !(cfg.description || cfg.host)) return '';
-  return `${cfg.host ? `<p class="host"><span class="lbl">${t('Hosted by')}</span> ${esc(cfg.host)}</p>` : ''}${cfg.description.split(/\n\s*\n/).filter(Boolean).map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}`;
+  return `${cfg.host ? `<p class="host"><span class="lbl">${t('Hosted by')}</span> ${esc(cfg.host)}</p>` : ''}${cfg.description ? `<div class="rm-box">${cfg.description.split(/\n\s*\n/).filter(Boolean).map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}</div>` : ''}`;
 }
 const scheduleSecHTML = (cfg) => sec('schedule', t(schedTitle(cfg)), (ccItinOn(cfg) ? '<div class="ccb-wrap in-sec" data-slot="itin-cc"></div>' : '') + `<div data-slot="sched-body">${scheduleHTML(cfg)}</div>` + (cfg.off.schedule ? '' : docsHTML(cfg, ['schedule'])) + (routeInItin(cfg) && !cfg.off.route ? docsHTML(cfg, ['route']).replace(/^<ul class="docs/, '<ul class="route-docs docs') : ''), isTrip(cfg) ? 'itin' : '');
 // trips show their route (cities + dates) as the Itinerary's legs instead of a separate Route section
@@ -1517,19 +1517,25 @@ function legOf(ss, d) {
   return best;
 }
 // the Itinerary for a trip: one block per route stop (tap → Nearby for that stop), its days under it; undated days last
-function legsHTML(cfg, ss, days, dayHTML, dropEmpty = false) {
+function legsHTML(cfg, ss, days, dayHTML, dropEmpty = false, hide = null) {
   const by = ss.map(() => []), rest = []; const nb = tabsFor(cfg).some(x => x[0] === 'nearby');
   days.forEach(e => { const i = e[0] ? legOf(ss, e[0]) : -1; (i >= 0 ? by[i] : rest).push(e); });
   const head = (s, i) => { const inner = `<span class="leg-t"><b>${esc(s.name)}</b>${stopRange(s) ? `<small>${esc(stopRange(s))}</small>` : ''}</span>`;
     const ea = edA('st:' + (cfg.stops || []).indexOf(s)); i = stopsOf(cfg).indexOf(s);
     return s.lat != null && nb ? `<button type="button" class="leg-h" data-route-stop="${i}"${ea}>${inner}<i class="leg-go" aria-hidden="true">›</i></button>` : `<div class="leg-h"${ea}>${inner}</div>`; };
-  return `<ol class="legs">${ss.map((s, i) => dropEmpty && !by[i].length ? '' : `<li class="leg">${head(s, i)}${by[i].length ? `<div class="leg-days">${by[i].map(dayHTML).join('')}</div>` : ''}</li>`).join('')}</ol>${rest.map(dayHTML).join('')}`;
+  return `<ol class="legs">${ss.map((s, i) => dropEmpty && !by[i].length ? '' : `<li class="leg${hide && by[i].length && by[i].every(e => hide.has(e[0])) ? ' l-more' : ''}">${head(s, i)}${by[i].length ? `<div class="leg-days">${by[i].map(dayHTML).join('')}</div>` : ''}</li>`).join('')}</ol>${rest.map(dayHTML).join('')}`;
 }
 // one schedule: the organizer's items, with the guest's own bookings mixed in
+// the trip Itinerary opens on a few days (today's, else the first) with "Show all n days"; a filter or the builder shows all
+const SCHED_ALL = new Set(); const SCHED_FOLD_AT = 5, SCHED_SHOW = 3;
+function schedFold(cfg, keys, F) {
+  const ds = keys.filter(Boolean).sort(); if (!isTrip(cfg) || ONP || (F && F.on) || ds.length < SCHED_FOLD_AT || SCHED_ALL.has(itinKey(cfg))) return { hide: new Set(), n: ds.length, folded: false };
+  const today = todayYMD(cfg.tz); let i = today >= ds[0] && today <= ds[ds.length - 1] ? ds.findIndex(d => d >= today) : 0; if (i < 0) i = 0;
+  const show = new Set(ds.slice(i, i + SCHED_SHOW)); return { hide: new Set(keys.filter(k => !show.has(k))), n: ds.length, folded: true };
+}
+// one schedule: the organizer's items, with the guest's own bookings mixed in. Every row, and every day, opens its sheet.
 function scheduleHTML(cfg) {
-  const fit = (d) => isTrip(cfg) && d ? fitTripDate(cfg.start, cfg.end, d, false) : d || '';
-  const evs = cfg.off.schedule ? [] : cfg.schedule.filter(x => x.title).map(x => { const d = fit(x.date); return { ev: true, start: d + (d && x.time ? 'T' + x.time : ''), name: x.title, note: x.note, kind: x.kind || '', si: cfg.schedule.indexOf(x), _cc: { city: d ? stopOfDay(cfg, d) : -1, cat: ccCatOfEv(x), text: [x.title, x.note].join(' '), host: true } }; });
-  const mine = cfg.tools.mytrip ? itinLoad(cfg).map((x, i) => ({ ...x, i, _cc: ccBkItem(cfg, x) })).concat(itinLoad(cfg).filter(x => LODGE.has(x.kind) && bkDay(x.end) > bkDay(x.start) && bkDay(x.start)).map(x => ({ ...x, co: true, start: x.end, _cc: ccBkItem(cfg, x) }))).concat(planLoad(cfg).filter(x => x.day).map(x => ({ kind: '', name: x.name, start: x.day + (x.time ? 'T' + x.time : ''), confNo: x.booked ? x.conf : '', note: x.note, _cc: { city: ccCityOfPlan(cfg, x), cat: ccCatOfPlan(x), text: [x.name, x.addr, x.note].join(' '), saved: true, booked: !!x.booked } }))) : [];
+  const { evs, mine } = schedEntries(cfg);
   let legs = routeInItin(cfg) && !cfg.off.route ? stopsOf(cfg) : null;
   if (!evs.length && !mine.length && !legs) return '';
   const F = ccItinOn(cfg) ? ccTrip(cfg) : null;
@@ -1538,23 +1544,31 @@ function scheduleHTML(cfg) {
   if (F && legs && F.ci >= 0) legs = legs.filter(s => cityOfStop(cfg, stopsOf(cfg).indexOf(s)) === F.ci);
   const all = (view === 'event' ? evs : evs.concat(mine)).filter(x => !F || !F.on || F.ok(x._cc)).sort((a, b) => (a.start || '9999').slice(0, 10).localeCompare((b.start || '9999').slice(0, 10)) || key(a).localeCompare(key(b)));
   const days = {}; all.forEach(x => (days[(x.start || '').slice(0, 10)] = days[(x.start || '').slice(0, 10)] || []).push(x));
+  const fold = schedFold(cfg, Object.keys(days), F);
   const tm = (s) => fmtTime((s || '').slice(11, 16));
   const tripHead = (d) => d ? `${cfg.start && d >= cfg.start.slice(0, 10) ? esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 })) + ' · ' : ''}${esc(fmt(d, { weekday: 'short', month: 'short', day: 'numeric' }))}${!legs && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? ` <span class="day-city">${esc(stopFor(cfg, d).name)}</span>` : ''}` : t('Unscheduled');
-  const dayHTML = ([d, xs]) => `<div class="day"${ONP && d ? ` data-day="${esc(d)}"` : ''}><h3 class="day-h"${isTrip(cfg) && d ? edA('day:' + d) : ''}>${isTrip(cfg) ? tripHead(d) : d ? `${isTrip(cfg) && cfg.start && d >= cfg.start.slice(0, 10) ? `<span class="dayn">${esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 }))}</span> ` : ''}${esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' }))}${!legs && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? ` <span class="day-city">${esc(stopFor(cfg, d).name)}</span>` : ''}` : t(isTrip(cfg) ? 'Unscheduled' : 'Anytime')}</h3><ol class="tl">${xs.map(x => {
-    // trips: one clean line per item; its details open with a tap
+  const evHead = (d) => d ? `${esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' }))}${!legs && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? ` <span class="day-city">${esc(stopFor(cfg, d).name)}</span>` : ''}` : t(isTrip(cfg) ? 'Unscheduled' : 'Anytime');
+  // a row: the builder keeps its inline details (on-page editing taps the row); guests get one tappable line → its sheet
+  const go = (ref, inner) => !ONP && ref ? `<button type="button" class="tl-go" data-ds="${esc(ref)}">${inner}<i class="tl-chev" aria-hidden="true"></i></button>` : inner;
+  const dayHTML = ([d, xs]) => { const head = isTrip(cfg) ? tripHead(d) : evHead(d);
+    return `<div class="day${fold.hide.has(d) ? ' d-more' : ''}"${ONP && d ? ` data-day="${esc(d)}"` : ''}><h3 class="day-h"${isTrip(cfg) && d ? edA('day:' + d) : ''}>${!ONP && d ? `<button type="button" class="day-go" data-ds="day:${esc(d)}"><span>${head}</span><i class="tl-chev" aria-hidden="true"></i></button>` : head}</h3><ol class="tl">${xs.map(x => {
     const more = (title, body) => body ? `<details class="tl-d"><summary><b>${title}</b><i class="tl-dot" aria-hidden="true"></i><span class="sr">${t('Details')}</span></summary><span>${body}</span></details>` : `<b>${title}</b>`;
-    if (x.ev && isTrip(cfg)) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"${edA('s:' + x.si)}><time>${esc(tm(x.start))}</time><div>${more(esc(x.name), x.note ? esc(x.note) : '')}</div></li>`;
-    if (x.ev) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"${edA('s:' + x.si)}><time>${esc(tm(x.start)) || (isTrip(cfg) ? '' : '—')}</time><div><b>${esc(x.name)}${x.kind && x.kind !== 'activity' ? ` <em class="kind">${esc(t(PLAN_KINDS[x.kind] || ''))}</em>` : ''}</b>${x.note ? `<span>${esc(x.note)}</span>` : ''}</div></li>`;
-    if (x.co) return `<li class="mine co"><time>${esc(tm(x.start)) || '—'}</time><div><b>${esc(t('Check out · {n}', { n: x.name || t(ITIN_KINDS[x.kind] || 'Hotel') }))}</b></div></li>`;
+    if (x.ev && isTrip(cfg)) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"${edA('s:' + x.si)}><time>${esc(tm(x.start))}</time><div>${ONP ? more(esc(x.name), x.note ? esc(x.note) : '') : go(x.ref, `<b>${esc(x.name)}</b>`)}</div></li>`;
+    if (x.ev) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"${edA('s:' + x.si)}><time>${esc(tm(x.start)) || (isTrip(cfg) ? '' : '—')}</time><div>${go(x.ref, `<span class="tl-tx"><b>${esc(x.name)}${x.kind && x.kind !== 'activity' ? ` <em class="kind">${esc(t(PLAN_KINDS[x.kind] || ''))}</em>` : ''}</b>${x.note ? `<span>${esc(x.note)}</span>` : ''}</span>`)}</div></li>`;
+    if (x.co) return `<li class="mine co"><time>${esc(tm(x.start)) || '—'}</time><div>${go(x.ref, `<b>${esc(t('Check out · {n}', { n: x.name || t(ITIN_KINDS[x.kind] || 'Hotel') }))}</b>`)}</div></li>`;
     const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
     const until = x.kind === 'flight' && x.start && x.start.length > 10 && flightArrLabel(x) ? flightArrLabel(x) : x.end ? (x.end.slice(0, 10) !== (x.start || '').slice(0, 10) ? t('until {d}', { d: fmt(x.end.slice(0, 10), { month: 'short', day: 'numeric' }) }) : t('until {d}', { d: tm(x.end) })) : '';
+    const yours = `${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))} <em class="yours">${t(x.pl ? 'Saved' : 'Yours')}</em>`;
     if (isTrip(cfg)) { const det = esc([t(ITIN_KINDS[x.kind] || ''), until, x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · ')) + (fl.status ? ' ' + ext(fl.status, t('Flight status') + ' ↗', 'tl-link') : '');
-      return `<li class="mine"><time>${esc(tm(x.start)) || '—'}</time><div>${more(`${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))} <em class="yours">${t('Yours')}</em>`, det)}</div></li>`; }
-    return `<li class="mine"><time>${esc(tm(x.start)) || '—'}</time><div><b>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))} <em class="yours">${t('Yours')}</em></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), until, x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>${fl.status ? ext(fl.status, t('Flight status') + ' ↗', 'tl-link') : ''}</div></li>`;
-  }).join('')}</ol></div>`;
+      return `<li class="mine"><time>${esc(tm(x.start)) || '—'}</time><div>${ONP || !x.ref ? more(yours, det) : go(x.ref, `<b>${yours}</b>`)}</div></li>`; }
+    const sub = esc([t(ITIN_KINDS[x.kind] || ''), until, x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '));
+    return `<li class="mine"><time>${esc(tm(x.start)) || '—'}</time><div>${!ONP && x.ref ? go(x.ref, `<span class="tl-tx"><b>${yours}</b><span>${sub}</span></span>`) : `<b>${yours}</b><span>${sub}</span>${fl.status ? ext(fl.status, t('Flight status') + ' ↗', 'tl-link') : ''}`}</div></li>`;
+  }).join('')}</ol></div>`; };
   if (F && F.on && !all.length) return ccNoneHTML();
+  const body = legs ? legsHTML(cfg, legs, Object.entries(days), dayHTML, !!(F && F.sub), fold.hide) : Object.entries(days).map(dayHTML).join('');
+  const more = fold.folded ? `<button type="button" class="btn sm sched-all" data-sched-all="1">${esc(t('Show all {n} days', { n: fold.n }))}</button>` : !ONP && SCHED_ALL.has(itinKey(cfg)) && isTrip(cfg) && !(F && F.on) ? `<button type="button" class="btn sm sched-all" data-sched-all="0">${esc(t('Show fewer days'))}</button>` : '';
   return `${mine.length && !F ? `<div class="seg2 sched-seg" role="group"><button type="button" data-sched="all" class="${view === 'all' ? 'on' : ''}" aria-pressed="${view === 'all'}">${t('Everything')}</button><button type="button" data-sched="event" class="${view === 'event' ? 'on' : ''}" aria-pressed="${view === 'event'}">${t('Event only')}</button></div>` : ''}
-  ${legs ? legsHTML(cfg, legs, Object.entries(days), dayHTML, !!(F && F.sub)) : Object.entries(days).map(dayHTML).join('')}`;
+  <div class="sched-days${fold.folded ? ' folded' : ''}">${body}</div>${more}`;
 }
 function stubSideHTML(cfg, ap) {
   const v = cfg.venue;
@@ -1628,9 +1642,9 @@ function bookingsHTML(cfg) {
     const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
     const when = x.start ? fmt(x.start.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' }) + (x.start.length > 10 ? ' · ' + fmtTime(x.start.slice(11, 16)) : '') + (x.kind === 'flight' && x.start.length > 10 && flightArrLabel(x) ? ' · ' + flightArrLabel(x) : '') : '';
     const via = viaOf(x); const viaUrl = via && via.url;
-    const links = [fl.status ? ext(fl.status, t('Flight status'), 'mini-b') : '', viaUrl ? ext(viaUrl, `${t('Manage booking')} · ${via.name}`, 'mini-b') : fl.manage ? ext(fl.manage, t('Manage booking'), 'mini-b') : '', x.link ? ext(x.link, t('Open booking'), 'mini-b') : '', x.address ? ext(L.place(x.address), 'Google Maps', 'mini-b') : ''].join('');
+    const links = [fl.status ? ext(fl.status, t('Flight status'), 'mini-b') : '', viaUrl ? ext(viaUrl, `${t('Manage booking')} · ${via.name}`, 'mini-b') : fl.manage ? ext(fl.manage, t('Manage booking'), 'mini-b') : '', x.link ? ext(x.link, t('Open booking'), 'mini-b') : ''].join('');
     const it = ccBkItem(cfg, x);
-    return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div><b class="plan-t">${ccIcon(it.cat)}<span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${x.note ? `<span>${esc(x.note)}</span>` : ''}${x.id ? detBlockHTML(x, 'bk:' + x.id, false) : ''}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button></div></div></li>`;
+    return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div>${x.id ? `<button type="button" class="pr-go bk-go" data-ds="bk:${esc(x.id)}">${thumbHTML(x, it.cat)}<span class="pr-tx">` : '<span class="pr-tx">'}<b class="plan-t"><span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${detVal(x, 'room') ? `<span class="bk-room">${esc(detVal(x, 'room'))}</span>` : ''}${x.note ? `<span class="pr-note">${esc(x.note)}</span>` : ''}${x.id ? '</span><i class="tl-chev" aria-hidden="true"></i></button>' : '</span>'}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button></div></div></li>`;
   }).join('')}</ul>${ccNoneHTML().replace('class="muted cc-none"', `class="muted cc-none"${order.some(([x]) => F.ok(ccBkItem(cfg, x))) ? ' hidden' : ''}`)}` : ''}
   <div class="btns itin-btns"><button type="button" class="btn primary" data-itin-add>+ ${t('Add a booking')}</button>${items.length ? `<button type="button" class="btn" data-itin-ics>${t('Add to calendar')}</button>` : ''}</div><div data-slot="itin-form"></div>`;
 }
@@ -1787,7 +1801,7 @@ function renderEvent(cfg, root, opts = {}) {
   // a source is credited once it actually supplies the map or places (OpenStreetMap only when Google is unavailable)
   art._useSrc = (k) => { art._srcs.add(k); const el = art.querySelector('[data-slot="attrib"]'); if (el) el.innerHTML = attribHTML(art._srcs); };
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-gpid]'); if (b && art._openGPlace) art._openGPlace(b.dataset.gpid); });
-  wireEvent(cfg, art, seq, air, opts); wireOffline(cfg, art, opts); if (!opts.preview) wireCollapse(cfg, art);
+  wireEvent(cfg, art, seq, air, opts); wireDetailTaps(cfg, art, opts); if (!opts.onpage) wireReadMore(art); wireOffline(cfg, art, opts); if (!opts.preview) wireCollapse(cfg, art);
   if (opts.hosted && typeof wireHosted === 'function') wireHosted(cfg, art, opts.hosted, opts);
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-route-stop]'); if (!b || !art.querySelector('[data-panel="nearby"]')) return; showTab(art, 'nearby', opts); const ci = cityOfStop(cfg, +b.dataset.routeStop); if (art._nearCity) art._nearCity(ci); else if (art._osmCity) art._osmCity(ci); });
   if (opts.onpage && typeof onpDecorate === 'function') onpDecorate(cfg, art);
@@ -1807,7 +1821,8 @@ function wireEvent(cfg, art, seq, air, opts) {
   const renderSchedule = () => { const w = slot('schedule-wrap'); if (!w) return; ONP = !!opts.onpage; try { w.innerHTML = scheduleSecHTML(cfg); } finally { ONP = false; } if (opts.onpage && typeof onpDecorate === 'function') onpDecorate(cfg, art); };
   art._renderSchedule = () => { renderSchedule(); art._cx && art._cx(); art._ccBars && art._ccBars(); }; // a new booking can fold its Travel part
   art.addEventListener('click', (e) => {
-    const a = e.target.closest('[data-act],[data-food],[data-tmode],[data-tab-go],[data-sched],[data-more]'); if (!a) return;
+    const a = e.target.closest('[data-act],[data-food],[data-tmode],[data-tab-go],[data-sched],[data-sched-all],[data-more]'); if (!a) return;
+    if (a.dataset.schedAll) { const k = itinKey(cfg); if (a.dataset.schedAll === '1') SCHED_ALL.add(k); else SCHED_ALL.delete(k); renderSchedule(); if (a.dataset.schedAll === '0') art.querySelector('#sec-schedule')?.scrollIntoView({ block: 'start' }); return; }
     if (a.dataset.tabGo) showTab(art, a.dataset.tabGo, opts);
     else if (a.dataset.tmode) { const k = a.dataset.tmode; const sel = new Set(LS.get(eventKey(cfg), [])); k === 'all' ? sel.clear() : sel.has(k) ? sel.delete(k) : sel.add(k); LS.set(eventKey(cfg), [...sel]); applyModes(); }
     else if (a.dataset.sched) { LS.set('schedview:' + itinKey(cfg), a.dataset.sched); renderSchedule(); }
@@ -4461,15 +4476,13 @@ function planHTML(cfg) {
   const F = ccTrip(cfg); const view = F.st.group || LS.get('planview:' + syncKey(cfg)) || 'day';
   const xs = all.filter(x => F.ok(ccItem(x)));
   const days = planDays(cfg); const byTime = (a, b) => (a.time || '').localeCompare(b.time || '') || a.order - b.order;
-  const row = (x) => x.ent === 'book' ? `<li class="plan-row bk"><div class="plan-main"><b class="plan-t">${ccIcon(x.cc)}<span>${esc(x.name)}</span></b><span class="muted small">${esc([x.kindLabel, x.day ? dayLabel(cfg, x.day) : '', x.time ? fmtTime(x.time) : '', x.conf ? t('Conf. {n}', { n: x.conf }) : ''].filter(Boolean).join(' · '))}</span></div><div class="plan-ctl"><button type="button" class="link" data-bk-edit="${x.bi}">${t('Edit booking')}</button></div></li>`
-    : `<li class="plan-row ${x.booked ? 'booked' : ''}" data-plan-id="${esc(x.id)}">
-      <div class="plan-main"><span class="plan-t">${ccIcon(x.cc)}<button type="button" class="link plan-name" data-plan-card="${esc(x.id)}">${esc(x.name)}</button></span>
-        <span class="muted small">${esc([view === 'type' && x.day ? dayLabel(cfg, x.day) : '', x.time ? fmtTime(x.time) : '', x.addr].filter(Boolean).join(' · '))}</span>
-        ${x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}${x.note ? `<span class="small">${esc(x.note)}</span>` : ''}
-        <div class="plan-book"><label class="chk"><input type="checkbox" data-plan-booked ${x.booked ? 'checked' : ''}> ${t('Booked')}</label>${x.booked ? `<input class="plan-conf" data-plan-conf value="${esc(x.conf || '')}" placeholder="${t('Confirmation #')}" aria-label="${t('Confirmation #')}">` : ''}</div>${detBlockHTML(x, 'pl:' + x.id, true)}</div>
-      <div class="plan-ctl"><select data-plan-move aria-label="${t('Move to day')}"><option value="">${t('Saved for later')}</option>${days.map(d => `<option value="${d}" ${x.day === d ? 'selected' : ''}>${esc(dayLabel(cfg, d))}</option>`).join('')}</select>
-        <select data-plan-type aria-label="${t('Category')}">${CC_CATS.map(([v, l]) => `<option value="${v}" ${x.cc === v ? 'selected' : ''}>${t(l)}</option>`).join('')}<option value="" ${x.cc ? '' : 'selected'}>${t('Other')}</option></select>
-        <span class="mv"><button type="button" data-plan-mv="-1" aria-label="${t('Move up')}">↑</button><button type="button" data-plan-mv="1" aria-label="${t('Move down')}">↓</button></span><button type="button" class="link" data-plan-del>${t('Remove')}</button></div></li>`;
+  // compact rows; tap → the item's sheet (details, photos, day, category, booked, move, remove)
+  const bks = itinLoad(cfg);
+  const row = (x) => { const bk = x.ent === 'book' ? bks[x.bi] : null; const ref = bk ? (bk.id ? 'bk:' + bk.id : '') : 'pl:' + x.id;
+    const meta = x.ent === 'book' ? [x.kindLabel, view === 'type' && x.day ? dayLabel(cfg, x.day) : '', x.time ? fmtTime(x.time) : '', x.conf ? t('Conf. {n}', { n: x.conf }) : '']
+      : [view === 'type' && x.day ? dayLabel(cfg, x.day) : '', x.time ? fmtTime(x.time) : '', x.addr ? x.addr.split(',').slice(0, 2).join(',') : ''];
+    const name = x.ent === 'book' ? `<b class="plan-t"><span>${esc(x.name)}</span></b>` : `<b class="plan-t"><span class="plan-name">${esc(x.name)}</span></b>`;
+    return `<li class="plan-row${x.ent === 'book' ? ' bk' : ''}${x.booked && x.ent !== 'book' ? ' booked' : ''}"${x.ent === 'book' ? '' : ` data-plan-id="${esc(x.id)}"`}><button type="button" class="pr-go"${ref ? ` data-ds="${esc(ref)}"` : ''}>${thumbHTML(bk || planLoad(cfg).find(y => y.id === x.id) || x, x.cc)}<span class="pr-tx">${name}<small>${esc(meta.filter(Boolean).join(' · '))}</small>${x.ent !== 'book' && (x.rating || x.booked || x.note) ? `<span class="pr-x">${x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}${x.booked ? `<em class="pr-bk">✓ ${t('Booked')}</em>` : ''}${x.note ? `<span class="pr-note">${esc(x.note)}</span>` : ''}</span>` : ''}</span><i class="tl-chev" aria-hidden="true"></i></button></li>`; };
   let groups;
   if (view === 'type') {
     groups = CC_CATS.map(([k]) => k).concat(['']).map(k => [k ? ccLabel(k) : t('Other'), xs.filter(x => x.cc === k).sort((a, b) => (a.day || '9999').localeCompare(b.day || '9999') || byTime(a, b))]).filter(([, g]) => g.length);
@@ -4533,7 +4546,7 @@ function wirePlan(cfg, art, mapCtl) {
   const sec0 = art.querySelector('#sec-plan'); const body = sec0 && sec0.querySelector('.sec-b');
   const pins = () => { if (mapCtl) mapCtl.setSaved(planLoad(cfg).filter(x => x.lat != null && !x.hotel).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, ic: ccCatOfPlan(x), onClick: () => openPlan(x) }))); };
   const openPlan = (x) => { if (x.src === 'g' && art._openGPlace) art._openGPlace(x.ref); else if (art._openPlace) art._openPlace(x.ref); };
-  const render = () => { if (body) body.innerHTML = planHTML(cfg); art._renderSchedule && art._renderSchedule(); pins(); const sp = art.querySelector('#sec-spots .sec-b'); if (sp) sp.innerHTML = spotsHTML(cfg); art._hotelUI && art._hotelUI(); };
+  const render = () => { if (body) body.innerHTML = planHTML(cfg); art._renderSchedule && art._renderSchedule(); pins(); const sp = art.querySelector('#sec-spots .sec-b'); if (sp) sp.innerHTML = spotsHTML(cfg); art._hotelUI && art._hotelUI(); dsRefresh(art); };
   art._planChanged = render; pins();
   if (LS.get('signedIn') && cfg.tools.mytrip) syncPull(cfg, art).catch(() => {});
   if (!body) return;
@@ -4804,7 +4817,7 @@ function detBlockHTML(x, ref, editable) {
 function itemByRef(cfg, ref) { const [k, id] = String(ref).split(/:(.+)/); const xs = k === 'bk' ? itinLoad(cfg) : planLoad(cfg); return xs.find(x => x.id === id) || null; }
 function itemMutate(cfg, art, ref, fn) {
   const [k, id] = String(ref).split(/:(.+)/); const xs = k === 'bk' ? itinLoad(cfg) : planLoad(cfg); const x = xs.find(y => y.id === id); if (!x) return false;
-  fn(x); if (k === 'bk') { itinSave(cfg, xs); bkChanged(art); if (LS.get('signedIn')) syncPush(cfg); } else { planSave(cfg, xs); art._planChanged && art._planChanged(); }
+  fn(x); if (k === 'bk') { itinSave(cfg, xs); bkChanged(art); if (LS.get('signedIn')) syncPush(cfg); } else { planSave(cfg, xs); art._planChanged && art._planChanged(); } dsRefresh(art);
   return true;
 }
 // photos: signed in → Storage (≈300 KB JPEG, the guest's own folder); signed out → a small copy on this device (3 per item)
@@ -4849,6 +4862,246 @@ function wireDetails(cfg, art) {
     const del = e.target.closest('[data-ph-del]'); if (del) { e.preventDefault(); const ref = del.dataset.phDel, i = +del.dataset.phI; OPEN_DET.add(ref); itemMutate(cfg, art, ref, (y) => { y.photos = (y.photos || []).filter((_, k) => k !== i); }); return; }
     const am = e.target.closest('[data-pdet-amen]'); if (am) { const ref = am.closest('[data-det-ref]').dataset.detRef; OPEN_DET.add(ref); itemMutate(cfg, art, ref, (y) => { const on = new Set(detVal(y, 'amen') || []); on.has(am.dataset.pdetAmen) ? on.delete(am.dataset.pdetAmen) : on.add(am.dataset.pdetAmen); detSet(y, 'amen', [...on]); }); }
   });
+}
+
+// ================= detail sheets: tap a booking, a place, a plan item, a day or a schedule item → one sheet =================
+// One pattern everywhere: a bottom sheet (centered card on wide screens) with the thing's key facts on top, a ticket-style
+// perforation, then where it is (address, small map, Open in Google Maps), notes, photos (add from the camera roll) and its
+// actions. Refs: bk:<booking id> · pl:<plan/saved place id> · ev:<schedule index> · day:<YYYY-MM-DD> · hh:<host hotel name>.
+// The open sheet is in the address bar (?d=<ref>) so Back closes it and the link opens it again; Back inside the sheet
+// returns to the sheet it came from (a day → one of its items).
+const dsDay = (s) => s ? fmt(s.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+const dsTm = (s) => s && s.length > 10 ? fmtTime(s.slice(11, 16)) : '';
+const hostHotelName = (title) => String(title || '').replace(/^\s*check[- ]?in\s*[:\-–—·]?\s*(at\s+)?/i, '').trim();
+const isHostHotel = (x) => !!x && HOTEL_RE.test(x.title || '') && !/check[- ]?out/i.test(x.title || '');
+// everything on the trip's schedule (the organizer's items + the guest's bookings and planned places), each with its sheet ref
+function schedEntries(cfg) {
+  const fit = (d) => isTrip(cfg) && d ? fitTripDate(cfg.start, cfg.end, d, false) : d || '';
+  const evs = cfg.off.schedule ? [] : cfg.schedule.filter(x => x.title).map(x => { const d = fit(x.date); return { ev: true, ref: 'ev:' + cfg.schedule.indexOf(x), start: d + (d && x.time ? 'T' + x.time : ''), name: x.title, note: x.note, kind: x.kind || '', si: cfg.schedule.indexOf(x), _cc: { city: d ? stopOfDay(cfg, d) : -1, cat: ccCatOfEv(x), text: [x.title, x.note].join(' '), host: true } }; });
+  const mine = cfg.tools.mytrip ? itinLoad(cfg).map((x, i) => ({ ...x, i, ref: x.id ? 'bk:' + x.id : '', _cc: ccBkItem(cfg, x) }))
+    .concat(itinLoad(cfg).filter(x => LODGE.has(x.kind) && bkDay(x.end) > bkDay(x.start) && bkDay(x.start)).map(x => ({ ...x, co: true, ref: x.id ? 'bk:' + x.id : '', start: x.end, _cc: ccBkItem(cfg, x) })))
+    .concat(planLoad(cfg).filter(x => x.day).map(x => ({ kind: '', pl: true, ref: 'pl:' + x.id, name: x.name, start: x.day + (x.time ? 'T' + x.time : ''), confNo: x.booked ? x.conf : '', note: x.note, _cc: { city: ccCityOfPlan(cfg, x), cat: ccCatOfPlan(x), text: [x.name, x.addr, x.note].join(' '), saved: true, booked: !!x.booked } }))) : [];
+  return { evs, mine };
+}
+// the guest's booking for a hotel the organizer put on the itinerary (same name), if they added one
+const bookingForHotel = (cfg, name) => name ? itinLoad(cfg).find(x => LODGE.has(x.kind) && x.name && nameLike(x.name, name)) || null : null;
+const dsFact = (k, v) => v ? `<div class="ds-f"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>` : '';
+const dsMapsURL = (name, addr, geo, pid) => `https://www.google.com/maps/search/?api=1&query=${enc(addr ? `${name}, ${addr}` : geo && geo.lat != null ? `${geo.lat},${geo.lon}` : name)}${pid ? '&query_place_id=' + enc(pid) : ''}`;
+const dsDirURL = (name, addr, geo) => `https://www.google.com/maps/dir/?api=1&destination=${enc(geo && geo.lat != null && !addr ? `${geo.lat},${geo.lon}` : [name, addr].filter(Boolean).join(', '))}`;
+// "Where": address, a small map when the place has a point, Open in Google Maps + Directions
+function dsWhereHTML(name, addr, geo, pid, cat, opts = {}) {
+  if (!name && !addr) return '';
+  const pt = geo && geo.lat != null;
+  return `<section class="ds-sec ds-where"><h3>${t('Location')}</h3>${addr ? `<p class="ds-addr">${esc(addr)}</p>` : ''}
+    <div class="ds-map${pt ? '' : ' empty'}" data-ds-map${pt ? ` data-lat="${geo.lat}" data-lon="${geo.lon}"` : ''} data-cat="${esc(cat || '')}" data-q="${esc(opts.q || '')}"${opts.key ? ` data-key="${esc(opts.key)}"` : ''} aria-hidden="true"></div>
+    <div class="ds-links"><a class="btn sm primary" href="${esc(dsMapsURL(name, addr, geo, pid))}" target="_blank" rel="noopener noreferrer">${t('Open in Google Maps')}</a><a class="btn sm" href="${esc(dsDirURL(name, addr, geo))}" target="_blank" rel="noopener noreferrer">${t('Directions')}</a></div></section>`;
+}
+function dsPhotosHTML(x, ref) {
+  return `<section class="ds-sec ds-ph" data-ph-ref="${esc(ref)}"><h3>${t('Photos')}</h3>${galleryHTML(x, ref)}<p class="muted small ds-ph-hint">${esc(t(LS.get('signedIn') ? 'Add photos from your phone or computer' : 'Add photos from your phone or computer — sign in to keep more than 3'))}</p></section>`;
+}
+const dsHead = (o) => `<header class="ds-h">
+    <div class="ds-bar">${o.back ? `<button type="button" class="ds-back" data-ds-back aria-label="${esc(t('Back'))}">‹ ${esc(t('Back'))}</button>` : '<span></span>'}<button type="button" class="ds-x" data-ds-close aria-label="${esc(t('Close'))}">×</button></div>
+    <p class="ds-k">${o.icon || ''}<span>${esc(o.kicker || '')}</span></p><h2 class="ds-t" id="ds-title">${esc(o.title)}</h2>${o.sub ? `<p class="ds-sub">${o.sub}</p>` : ''}</header>`;
+const dsFacts = (fs) => { const h = fs.filter(Boolean).join(''); return h ? `<dl class="ds-facts">${h}</dl>` : ''; };
+const PERF = '<div class="ds-perf" aria-hidden="true"></div>';
+// a booking: hotel (check-in/out, nights, room type, beds, guests, amenities, cancellation, price), flight, train, car, tour…
+function dsBookingHTML(cfg, x, back) {
+  const g = detGroup(x); const via = viaOf(x); const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
+  const cat = ccCatOfBooking(x); const city = bkDay(x.start) && stopsOf(cfg).length > 1 && stopFor(cfg, bkDay(x.start)) ? stopFor(cfg, bkDay(x.start)).name : '';
+  const fs = [];
+  if (g === 'lodge') {
+    const n = bkDay(x.start) && bkDay(x.end) ? daysBetween(bkDay(x.start), bkDay(x.end)) : 0;
+    fs.push(dsFact(t('Check-in'), [dsDay(x.start), dsTm(x.start)].filter(Boolean).join(' · ')), dsFact(t('Check-out'), [dsDay(x.end), dsTm(x.end)].filter(Boolean).join(' · ')), n > 0 ? dsFact(t('Nights'), String(n)) : '');
+  } else if (g === 'car') fs.push(dsFact(t('Pick-up'), [dsDay(x.start), dsTm(x.start)].filter(Boolean).join(' · ')), dsFact(t('Drop-off'), [dsDay(x.end), dsTm(x.end)].filter(Boolean).join(' · ')));
+  else if (x.kind === 'flight') fs.push(dsFact(t('Departs'), [dsDay(x.start), dsTm(x.start)].filter(Boolean).join(' · ')), dsFact(t('Lands'), x.start && x.start.length > 10 && flightArrLabel(x) ? flightArrLabel(x).replace(t('Arrives') + ' ', '') : ''), dsFact(t('Flight'), x.flight || ''));
+  else fs.push(dsFact(t('When'), [dsDay(x.start), dsTm(x.start)].filter(Boolean).join(' · ')), x.end ? dsFact(t('Until'), [bkDay(x.end) !== bkDay(x.start) ? dsDay(x.end) : '', dsTm(x.end)].filter(Boolean).join(' · ')) : '');
+  (DET[g] || []).forEach(([k, label, ty]) => { const v = detVal(x, k); if (!bkFilled(v) || ty === 'amen') return;
+    fs.push(dsFact(t(label), ty === 'cabin' ? t((CABINS.find(c => c[0] === v) || [v, v])[1]) : ty === 'date' ? fmt(v, { month: 'short', day: 'numeric' }) : String(v))); });
+  fs.push(dsFact(t('Confirmation'), x.confNo || ''), dsFact(t('Booked through'), via ? via.name || (via.key === 'direct' ? t('Direct') : '') : ''));
+  const am = detAmen(x); const geo = bkGeo(x); const pid = placeIdOf(x);
+  const links = [via && via.url ? ext(via.url, `${t('Manage booking')} · ${via.name}`, 'btn sm') : fl.manage ? ext(fl.manage, t('Manage booking'), 'btn sm') : '', fl.status ? ext(fl.status, t('Flight status'), 'btn sm') : '', x.link ? ext(x.link, t('Open booking'), 'btn sm') : ''].join('');
+  const idx = itinLoad(cfg).findIndex(y => y.id === x.id);
+  return `${dsHead({ back, icon: ccIcon(cat), kicker: [t(ITIN_KINDS[x.kind] || 'Booking'), city].filter(Boolean).join(' · '), title: x.name || t(ITIN_KINDS[x.kind] || 'Booking'),
+      sub: g === 'lodge' && bkDay(x.start) ? esc(dateRange(bkDay(x.start), bkDay(x.end) || bkDay(x.start))) : '' })}
+    <div class="ds-b">${dsFacts(fs)}${am.length ? `<p class="ds-tags">${am.map(a => `<span class="tag">${esc(a)}</span>`).join('')}</p>` : ''}${PERF}
+    ${x.kind === 'flight' ? '' : dsWhereHTML(x.name || '', x.address || '', geo, pid, cat, { q: [x.name, x.address].filter(Boolean).join(', '), key: [x.name, x.address].filter(Boolean).join(', ') })}
+    ${x.note ? `<section class="ds-sec"><h3>${t('Notes')}</h3><p class="ds-note">${esc(x.note).replace(/\n/g, '<br>')}</p></section>` : ''}
+    ${x.id ? dsPhotosHTML(x, 'bk:' + x.id) : ''}
+    <div class="ds-acts">${links}${idx >= 0 ? `<button type="button" class="btn sm ghost" data-ds-edit="${idx}">${t('Edit booking')}</button>` : ''}</div></div>`;
+}
+// a saved / planned place: what and where, the guest's plan for it (day, category, booked), details, photos
+function dsPlaceHTML(cfg, x, back) {
+  const cat = ccCatOfPlan(x); const days = planDays(cfg); const ls = detLines(x);
+  const fs = [dsFact(t('Day'), x.day ? dayLabel(cfg, x.day) : t('Saved for later')), dsFact(t('Time'), x.time ? fmtTime(x.time) : ''), dsFact(t('Confirmation'), x.booked ? x.conf || '' : ''),
+    ...ls.map(l => { const m = l.match(/^([^:]+):\s*(.+)$/); return m ? dsFact(m[1], m[2]) : ''; })];
+  const geo = x.lat != null ? { lat: x.lat, lon: x.lon } : null;
+  return `${dsHead({ back, icon: ccIcon(cat), kicker: [ccLabel(cat), x.booked ? t('Booked') : ''].filter(Boolean).join(' · '), title: x.name || t('Place'), sub: x.rating ? gRatingHTML(x) : '' })}
+    <div class="ds-b">${dsFacts(fs)}${detAmen(x).length ? `<p class="ds-tags">${detAmen(x).map(a => `<span class="tag">${esc(a)}</span>`).join('')}</p>` : ''}${PERF}
+    ${dsWhereHTML(x.name || '', x.addr || '', geo, x.src === 'g' ? x.ref : '', cat)}
+    ${x.hours ? `<section class="ds-sec"><h3>${t('Hours')}</h3><p class="ds-note">${esc(prettyHours(x.hours))}</p></section>` : ''}
+    ${x.note ? `<section class="ds-sec"><h3>${t('Notes')}</h3><p class="ds-note">${esc(x.note)}</p></section>` : ''}
+    ${dsPhotosHTML(x, 'pl:' + x.id)}
+    <section class="ds-sec ds-plan" data-ds-plan="${esc(x.id)}"><h3>${t('Your plan')}</h3>
+      <div class="two"><label class="field"><span>${t('Day')}</span><select data-dsp="day"><option value="">${t('Saved for later')}</option>${days.map(d => `<option value="${d}" ${x.day === d ? 'selected' : ''}>${esc(dayLabel(cfg, d))}</option>`).join('')}</select></label>
+      <label class="field"><span>${t('Time (optional)')}</span><input type="time" data-dsp="time" value="${esc(x.time || '')}"${x.day ? '' : ' disabled'}></label></div>
+      <div class="two"><label class="field"><span>${t('Category')}</span><select data-dsp="cat">${CC_CATS.map(([v, l]) => `<option value="${v}" ${cat === v ? 'selected' : ''}>${t(l)}</option>`).join('')}<option value="" ${cat ? '' : 'selected'}>${t('Other')}</option></select></label>
+      <label class="field"><span>${t('Note (optional)')}</span><input data-dsp="note" maxlength="200" value="${esc(x.note || '')}"></label></div>
+      <div class="plan-book"><label class="chk"><input type="checkbox" data-dsp="booked" ${x.booked ? 'checked' : ''}> ${t('Booked')}</label>${x.booked ? `<input class="plan-conf" data-dsp="conf" value="${esc(x.conf || '')}" placeholder="${t('Confirmation #')}" aria-label="${t('Confirmation #')}">` : ''}</div>
+      ${x.day ? `<div class="ds-mv"><button type="button" class="btn sm" data-ds-mv="-1">↑ ${t('Earlier in the day')}</button><button type="button" class="btn sm" data-ds-mv="1">↓ ${t('Later in the day')}</button></div>` : ''}
+      ${DET[detGroup(x)] ? `<details class="ds-more" data-det-ref="pl:${esc(x.id)}"${OPEN_DET.has('pl:' + x.id) ? ' open' : ''}><summary>${t('More details')}</summary>${detFormHTML(x, 'data-pdet', 'ds-' + x.id.replace(/\W/g, ''))}</details>` : ''}
+    </section>
+    <div class="ds-acts">${x.src === 'g' && x.ref ? `<button type="button" class="btn sm" data-ds-gp="${esc(x.ref)}">${t('More about this place')}</button>` : ''}<button type="button" class="btn sm ghost danger-t" data-ds-del="${esc(x.id)}">${t('Remove from my trip')}</button></div></div>`;
+}
+// a hotel the organizer listed (Check in: …) — and the guest's own booking for it when they have one
+function dsHostHotelHTML(cfg, name, when, back, ev) {
+  const bk = bookingForHotel(cfg, name); if (bk) return dsBookingHTML(cfg, bk, back);
+  const geo = LS.get(hgeoKey(name)); const g = geo && !geo.miss ? geo : null; const city = when && stopsOf(cfg).length > 1 && stopFor(cfg, when) ? stopFor(cfg, when).name : '';
+  const leg = legOfDay(cfg, when);
+  return `${dsHead({ back, icon: ccIcon('hotels'), kicker: [t('Hotel'), city].filter(Boolean).join(' · '), title: name, sub: when ? esc(dateRange(when, leg && leg.to && leg.to > when ? leg.to : when)) : '' })}
+    <div class="ds-b">${dsFacts([dsFact(t('Check-in'), [dsDay(when), ev && ev.time ? fmtTime(ev.time) : ''].filter(Boolean).join(' · ')), leg && leg.to && leg.to > when ? dsFact(t('Check-out'), dsDay(leg.to)) : ''])}
+    ${ev && ev.note ? `<p class="ds-note">${esc(ev.note)}</p>` : ''}${PERF}
+    ${dsWhereHTML(name, g ? g.addr || '' : '', g, g ? g.ref || '' : '', 'hotels', { q: [name, city || (cfg.venue && cfg.venue.city) || ''].filter(Boolean).join(', '), key: name })}
+    ${cfg.tools.mytrip ? `<section class="ds-sec ds-cta"><p class="muted small">${t('Staying here? Add your booking to keep your room type and confirmation with the trip.')}</p><button type="button" class="btn sm" data-ds-addbk>+ ${t('Add a booking')}</button></section>` : ''}</div>`;
+}
+// one item on the organizer's schedule
+function dsEventHTML(cfg, si, back) {
+  const x = cfg.schedule[si]; if (!x) return '';
+  const d = isTrip(cfg) && x.date ? fitTripDate(cfg.start, cfg.end, x.date, false) : x.date || '';
+  if (isTrip(cfg) && isHostHotel(x)) return dsHostHotelHTML(cfg, hostHotelName(x.title), d, back, x);
+  const v = cfg.venue; const city = d && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? stopFor(cfg, d) : null; const cat = ccCatOfEv(x);
+  return `${dsHead({ back, icon: ccIcon(cat || 'pin'), kicker: [x.kind && x.kind !== 'activity' ? t(PLAN_KINDS[x.kind] || '') : isTrip(cfg) ? t('Plan') : t(cfg.type || 'Event'), city ? city.name : ''].filter(Boolean).join(' · '), title: x.title })}
+    <div class="ds-b">${dsFacts([dsFact(t('Date'), d ? fmt(d, { weekday: 'long', month: 'long', day: 'numeric' }) : ''), dsFact(t('Time'), x.time ? fmtTime(x.time) : '')])}
+    ${x.note ? `<p class="ds-note ds-lead">${esc(x.note).replace(/\n/g, '<br>')}</p>` : ''}${PERF}
+    ${isTrip(cfg) ? dsWhereHTML(x.title, city ? [city.city || city.name, city.country].filter(Boolean).join(', ') : '', null, '', cat, { q: [x.title, city ? city.city || city.name : v && v.city].filter(Boolean).join(', ') }).replace(`<h3>${t('Location')}</h3>`, `<h3>${t('Find it')}</h3>`)
+      : v ? dsWhereHTML(v.name || '', v.address && v.address !== v.name ? v.address : '', v, '', '') : ''}</div>`;
+}
+// a day: every plan, booking and stay on it, each tappable
+function dsDayHTML(cfg, d, back) {
+  const { evs, mine } = schedEntries(cfg); const xs = evs.concat(mine).filter(x => (x.start || '').slice(0, 10) === d).sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+  const st = stopsOf(cfg).length ? stopFor(cfg, d) : null; const n = isTrip(cfg) && cfg.start && d >= cfg.start.slice(0, 10) ? daysBetween(cfg.start, d) + 1 : 0;
+  const ci = st ? stopsOf(cfg).indexOf(st) : -1; const nb = tabsFor(cfg).some(x => x[0] === 'nearby') && st && st.lat != null;
+  const stays = itinLoad(cfg).filter(x => LODGE.has(x.kind) && bkDay(x.start) && bkDay(x.start) < d && bkDay(x.end) > d); // nights in the middle of a stay
+  const row = (x) => { const cat = x._cc ? x._cc.cat : ''; const title = x.co ? t('Check out · {n}', { n: x.name || t('Hotel') }) : x.name || t(ITIN_KINDS[x.kind] || 'Booking');
+    const sub = x.ev ? x.note || '' : x.pl ? t('Saved spot') : [t(ITIN_KINDS[x.kind] || ''), x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · ');
+    return `<li><button type="button" class="ds-row" ${x.ref ? `data-ds="${esc(x.ref)}"` : 'disabled'}><time>${esc(dsTm(x.start)) || '—'}</time>${ccIcon(x.co ? 'hotels' : cat || 'pin')}<span class="ds-row-t"><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${x.ref ? '<i class="ds-chev" aria-hidden="true"></i>' : ''}</button></li>`; };
+  return `${dsHead({ back, icon: '', kicker: [n ? t('Day {n}', { n }) : '', st && stopsOf(cfg).length > 1 ? st.name : ''].filter(Boolean).join(' · '), title: fmt(d, { weekday: 'long', month: 'long', day: 'numeric' }) })}
+    <div class="ds-b">${xs.length || stays.length ? `<ol class="ds-day">${xs.map(row).join('')}${stays.map(x => row({ ...x, ref: 'bk:' + x.id, start: '', name: x.name, _cc: { cat: 'hotels' }, confNo: '' }).replace('<b>', `<b>${esc(t('Staying at'))} `)).join('')}</ol>` : `<p class="muted">${t('Nothing planned yet.')}</p>`}
+    ${nb ? `<div class="ds-acts"><button type="button" class="btn sm" data-ds-near="${ci}">${esc(t('Explore {c}', { c: st.city || st.name }))}</button></div>` : ''}</div>`;
+}
+function dsHTML(cfg, ref, back) {
+  const [k, id] = String(ref).split(/:(.+)/); if (!id) return '';
+  if (k === 'bk') { const x = itinLoad(cfg).find(y => y.id === id); return x ? dsBookingHTML(cfg, x, back) : ''; }
+  if (k === 'pl') { const x = planLoad(cfg).find(y => y.id === id); return x ? dsPlaceHTML(cfg, x, back) : ''; }
+  if (k === 'ev') return dsEventHTML(cfg, +id, back);
+  if (k === 'day') return /^\d{4}-\d\d-\d\d$/.test(id) ? dsDayHTML(cfg, id, back) : '';
+  if (k === 'hh') { const h = hotelsNow(cfg).flat().find(y => y.name === id); return dsHostHotelHTML(cfg, id, h ? h.from : '', back); }
+  return '';
+}
+// the sheet's small map: Leaflet + OpenStreetMap tiles, not draggable (Open in Google Maps is the real map)
+function dsMap(el) {
+  if (!el || !window.L || !window.L.map) return;
+  const lat = +el.dataset.lat, lon = +el.dataset.lon; if (!el.dataset.lat || !isFinite(lat) || !isFinite(lon)) return;
+  const Lf = window.L; el.innerHTML = '';
+  const m = Lf.map(el, { dragging: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false, zoomControl: false, attributionControl: true }).setView([lat, lon], 15);
+  Lf.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m);
+  Lf.marker([lat, lon], { icon: Lf.divIcon({ className: 'ccpin ds-pin', html: `<img src="${ccPinURL(el.dataset.cat || 'pin', false)}" alt="">`, iconSize: [36, 36], iconAnchor: [18, 18] }), interactive: false }).addTo(m);
+  el._m = m; setTimeout(() => { try { m.invalidateSize(); } catch {} }, 60);
+}
+// a place without a stored point (a hotel the organizer typed): find it once, keep it with the other hotel points
+async function dsLocate(cfg, el) {
+  const q = el && el.dataset.q; if (!q || el.dataset.lat) return;
+  const near = cfg.venue && cfg.venue.lat != null ? cfg.venue : null;
+  const parts = q.split(',').map(x => x.trim()).filter(Boolean); const tries = [q]; if (parts.length > 2) tries.push(parts[0] + ', ' + parts[parts.length - 1]);
+  let r; for (const qq of tries) { r = await geocode(qq).then(xs => (xs || []).find(x => x.lat != null && !(x.types || []).some(ty => ty === 'country' || ty === 'continent' || ty === 'locality') && (!near || distM(x.lat, x.lon, near.lat, near.lon) < 600000))).catch(() => undefined); if (r) break; }
+  if (!r) return; if (el.dataset.key) LS.set(hgeoKey(el.dataset.key), { lat: r.lat, lon: r.lon, addr: r.address || '', ref: r.gid || '' });
+  if (!document.body.contains(el)) return;
+  el.dataset.lat = r.lat; el.dataset.lon = r.lon; el.classList.remove('empty'); dsMap(el);
+  const a = el.closest('.ds-where'); if (a && r.address && !a.querySelector('.ds-addr')) a.querySelector('h3').insertAdjacentHTML('afterend', `<p class="ds-addr">${esc(r.address)}</p>`);
+}
+const dsParam = () => new URLSearchParams(location.search).get('d') || '';
+function dsURL(ref) { const q = new URLSearchParams(location.search); if (ref) q.set('d', ref); else q.delete('d'); const s = q.toString(); return location.pathname + (s ? '?' + s : '') + location.hash; }
+function openDetail(cfg, art, ref, how = 'push') {
+  if (!art || !ref) return null;
+  let d = art.querySelector(':scope > dialog.ds-sheet');
+  if (!d) {
+    d = document.createElement('dialog'); d.className = 'sheet ds-sheet'; d.setAttribute('aria-labelledby', 'ds-title'); art.appendChild(d);
+    d.addEventListener('click', (e) => { if (e.target === d) dsClose(art); });
+    d.addEventListener('cancel', (e) => { e.preventDefault(); dsClose(art); });
+    wireDetailSheet(cfg, art, d);
+  }
+  const back = how === 'child' ? [...(d._stack || []), d._ref].filter(Boolean) : how === 'back' ? (d._stack || []).slice(0, -1) : how === 'refresh' ? d._stack || [] : [];
+  const html = dsHTML(cfg, ref, back.length > 0); if (!html) { if (how !== 'refresh') return null; dsClose(art); return null; }
+  const sc = how === 'refresh' ? d.scrollTop : 0;
+  d._ref = ref; d._stack = back; d.dataset.ref = ref; d.innerHTML = html;
+  if (!d.open) d.showModal();
+  d.scrollTop = sc;
+  if (how === 'push' && dsParam() !== ref) { history.pushState({ epd: ref }, '', dsURL(ref)); }
+  else if (how !== 'refresh' && how !== 'push') history.replaceState({ epd: ref }, '', dsURL(ref));
+  const mp = d.querySelector('[data-ds-map]'); if (mp) { if (mp.dataset.lat) dsMap(mp); else dsLocate(cfg, mp).catch(() => {}); }
+  if (/^(bk|pl):/.test(ref)) gPhotoPull(cfg, art, ref).catch(() => {});
+  if (how !== 'refresh') { const f = d.querySelector('.ds-x'); f && f.focus({ preventScroll: true }); }
+  return d;
+}
+function dsClose(art, fromPop) {
+  const d = art && art.querySelector(':scope > dialog.ds-sheet'); if (!d || !d.open) return;
+  d.close(); d._ref = ''; d._stack = [];
+  if (!fromPop) { if (history.state && history.state.epd) history.back(); else if (dsParam()) history.replaceState(null, '', dsURL('')); }
+}
+function wireDetailSheet(cfg, art, d) {
+  d.addEventListener('click', (e) => {
+    const b = e.target.closest('button,[data-ds]'); if (!b || !d.contains(b)) return;
+    if ('dsClose' in b.dataset) return dsClose(art);
+    if ('dsBack' in b.dataset) { const s = d._stack || []; if (s.length) openDetail(cfg, art, s[s.length - 1], 'back'); return; }
+    if (b.dataset.ds) { openDetail(cfg, art, b.dataset.ds, 'child'); return; }
+    if (b.dataset.dsEdit != null) { dsClose(art); setTimeout(() => { if (art.querySelector('[data-panel="mytrip"]')) showTab(art, 'mytrip'); const s2 = art.querySelector('#sec-itinerary'); const eb = s2 && s2.querySelector(`[data-itin-edit="${b.dataset.dsEdit}"]`); if (eb) { s2.scrollIntoView({ block: 'start' }); eb.click(); } }, 30); return; }
+    if ('dsAddbk' in b.dataset) { dsClose(art); setTimeout(() => { if (art.querySelector('[data-panel="mytrip"]')) showTab(art, 'mytrip'); const a = art.querySelector('[data-itin-add]'); if (a) { a.scrollIntoView({ block: 'center' }); a.click(); } }, 30); return; }
+    if (b.dataset.dsNear != null) { dsClose(art); const r = art.querySelector(`[data-route-stop="${b.dataset.dsNear}"]`); if (r) r.click(); else showTab(art, 'nearby'); return; }
+    if (b.dataset.dsGp) { const r = b.dataset.dsGp; dsClose(art); if (art._openGPlace) setTimeout(() => art._openGPlace(r), 30); return; }
+    if (b.dataset.dsMv) { const id = d._ref.slice(3); const xs = planLoad(cfg); const i = xs.findIndex(x => x.id === id); if (i < 0) return; const same = xs.map((y, j) => [y, j]).filter(([y]) => y.day === xs[i].day).map(([, j]) => j); const k = same.indexOf(i) + +b.dataset.dsMv; if (k >= 0 && k < same.length) { const j = same[k]; [xs[i], xs[j]] = [xs[j], xs[i]]; planSave(cfg, xs); art._planChanged && art._planChanged(); toast(t('Moved')); } return; }
+    if (b.dataset.dsDel) { const xs = planLoad(cfg); const i = xs.findIndex(x => x.id === b.dataset.dsDel); if (i < 0) return; const gone = xs.splice(i, 1)[0]; planSave(cfg, xs); dsClose(art); art._planChanged && art._planChanged();
+      toastAction(t('Removed {n}', { n: gone.name || '' }), t('Undo'), () => { const ys = planLoad(cfg); ys.splice(Math.min(i, ys.length), 0, gone); planSave(cfg, ys); art._planChanged && art._planChanged(); }); return; }
+  });
+  d.addEventListener('toggle', (e) => { const m = e.target; if (m.matches && m.matches('details.ds-more')) { if (m.open) OPEN_DET.add(m.dataset.detRef); else OPEN_DET.delete(m.dataset.detRef); } }, true);
+  d.addEventListener('change', (e) => {
+    const el = e.target.closest('[data-dsp]'); if (!el) return; const id = el.closest('[data-ds-plan]').dataset.dsPlan;
+    const xs = planLoad(cfg); const x = xs.find(y => y.id === id); if (!x) return; const k = el.dataset.dsp;
+    if (k === 'day') { x.day = el.value; if (!x.day) x.time = ''; } else if (k === 'time') x.time = el.value; else if (k === 'booked') x.booked = el.checked;
+    else if (k === 'cat') { x.cat = el.value || 'other'; x.type = PL_CAT_TYPE[el.value] || 'other'; } else if (k === 'conf') x.conf = el.value.trim().slice(0, 60); else if (k === 'note') x.note = el.value.trim().slice(0, 200);
+    planSave(cfg, xs); art._planChanged && art._planChanged();
+  });
+  if (!window._dsPop) { window._dsPop = true; window.addEventListener('popstate', () => { const a = document.querySelector('.ev'); const dd = a && a.querySelector(':scope > dialog.ds-sheet'); if (!dd) return; const want = dsParam(); if (!want) dsClose(a, true); else if (want !== dd._ref && dd._cfg) openDetail(dd._cfg, a, want, 'pop'); }); }
+  d._cfg = cfg;
+}
+// re-paint an open sheet after its item changed (photos, details, plan)
+function dsRefresh(art) { const d = art && art.querySelector(':scope > dialog.ds-sheet'); if (d && d.open && d._ref && d._cfg) openDetail(d._cfg, art, d._ref, 'refresh'); }
+// Event tab, concise by default: long text (About, a custom section, a Need-to-know note) shows its first lines with
+// "Read more"; nothing is removed, a tap opens it. Measured when the tab is visible (and again on resize / tab switch).
+const RM_SEL = '[data-panel="event"] .rm-box, [data-panel="event"] li.note > span';
+function readMorePaint(art) {
+  $$(RM_SEL, art).forEach(el => {
+    if (el.classList.contains('rm-open') || !el.offsetParent) return;
+    el.classList.add('rm'); const over = el.scrollHeight > el.clientHeight + 6;
+    let b = el.nextElementSibling && el.nextElementSibling.matches('.rm-b') ? el.nextElementSibling : null;
+    if (!over) { el.classList.remove('rm'); el.classList.add('rm-fit'); if (b) b.remove(); return; }
+    el.classList.remove('rm-fit');
+    if (!b) { el.insertAdjacentHTML('afterend', `<button type="button" class="rm-b" aria-expanded="false">${esc(t('Read more'))}</button>`); }
+  });
+}
+function wireReadMore(art) {
+  art.classList.add('rm-on'); const paint = () => { if (document.body.contains(art)) readMorePaint(art); };
+  requestAnimationFrame(paint); setTimeout(paint, 400); (art._showFns = art._showFns || []).push(() => requestAnimationFrame(paint));
+  if (!window._rmResize) { window._rmResize = true; window.addEventListener('resize', debounce(() => { const a = document.querySelector('.ev.rm-on'); if (a) readMorePaint(a); }, 200)); }
+  new MutationObserver(debounce(paint, 80)).observe(art.querySelector('[data-panel="event"]') || art, { childList: true, subtree: true });
+  art.addEventListener('click', (e) => { const b = e.target.closest('.rm-b'); if (!b) return; const el = b.previousElementSibling; if (!el) return;
+    const open = !el.classList.contains('rm-open'); el.classList.toggle('rm-open', open); el.classList.toggle('rm', !open); b.textContent = t(open ? 'Show less' : 'Read more'); b.setAttribute('aria-expanded', String(open)); });
+}
+// taps anywhere on the page: [data-ds] opens its sheet (not in the builder's on-page editing)
+function wireDetailTaps(cfg, art, opts) {
+  if (opts.onpage) return;
+  art.addEventListener('click', (e) => { const b = e.target.closest('[data-ds]'); if (!b || !b.isConnected || b.closest('dialog.ds-sheet') || e.target.closest('a[href]')) return; /* a sheet re-painted under the tap already handled it */ e.preventDefault(); openDetail(cfg, art, b.dataset.ds); });
+  art.addEventListener('toggle', (e) => { const g = e.target; if (g.matches && g.matches('details.sp-g')) { if (g.open) SPOT_SHUT.delete(g.dataset.spotG); else SPOT_SHUT.add(g.dataset.spotG); } }, true);
+  art.addEventListener('keydown', (e) => { if (e.key !== 'Enter' && e.key !== ' ') return; const b = e.target.closest && e.target.closest('[data-ds]'); if (!b || b.tagName === 'BUTTON' || b.closest('dialog.ds-sheet')) return; e.preventDefault(); openDetail(cfg, art, b.dataset.ds); });
+  const want = !opts.preview && dsParam(); if (want) setTimeout(() => { if (document.body.contains(art) && !openDetail(cfg, art, want, 'pop')) history.replaceState(null, '', dsURL('')); }, 0);
 }
 
 // ================= the guest's hotel per city + saved spots (★) =================
@@ -4924,16 +5177,29 @@ function spotsByCity(cfg) {
   const ss = hotelStops(cfg); const hs = hotelsNow(cfg); const sp = planLoad(cfg).filter(x => x.lat != null && !x.hotel);
   return ss.map((s, i) => ({ city: s.city || s.name, hotels: hs[i].filter(h => h.lat != null), spots: sp.filter(x => nearestStop(cfg, x) === i) })).filter(g => g.hotels.length || g.spots.length);
 }
+// My trip → Saved spots: one group per category (Hotels, Restaurants, Cafés, Bars, Sights, Things to do, Shopping, …),
+// each with its count, folding open/closed; compact rows (photo or category icon, name, area, rating) open the place's sheet
+const SPOT_ORDER = ['hotels', 'restaurants', 'cafes', 'bars', 'sights', 'tours', 'shopping', 'transport', ''];
+const SPOT_SHUT = new Set(); // groups the guest folded (this session)
+const thumbHTML = (x, cat) => { const p = (x.photos || []).find(photoSrc); return p ? `<span class="sp-th" style="--cc:${ccColor(cat)}"><img src="${esc(photoSrc(p))}" alt="" loading="lazy" onerror="this.remove()"></span>` : `<span class="sp-ic">${ccIcon(cat)}</span>`; };
 function spotsHTML(cfg) {
   const gs0 = spotsByCity(cfg); const many = hotelStops(cfg).length > 1;
   if (!gs0.length) return `<p class="muted">${t('Tap ☆ on a place in Nearby to save it here.')}</p>`;
-  // the City × Category bar: a city's group only, hotels under Hotels, spots under their own category
+  // the City × Category bar narrows the list: a city's spots only, hotels under Hotels, spots under their own category
   const F = ccTrip(cfg); const cityI = (g) => hotelStops(cfg).findIndex(s => (s.city || s.name) === g.city);
-  const gs = gs0.map(g => { const ci = many ? cityI(g) : 0; return { ...g, hotels: g.hotels.filter(h => F.ok({ city: ci, cat: 'hotels', text: [h.name, h.addr].join(' '), saved: false, booked: true })), spots: g.spots.filter(x => F.ok({ city: ci, cat: ccCatOfPlan(x), text: [x.name, x.addr, x.note].join(' '), saved: true, booked: !!x.booked })) }; }).filter(g => g.hotels.length || g.spots.length);
-  if (!gs.length) return ccNoneHTML();
-  const row = (x, hotel) => `<li><div><b class="plan-t">${ccIcon(hotel ? 'hotels' : ccCatOfPlan(x))}<span>${hotel ? '' : '<i class="spot-star" aria-hidden="true">★</i> '}${esc(x.name)}</span></b>${hotel ? `<span>${esc([t('Your hotel'), hotelDates(x), x.addr].filter(Boolean).join(' · '))}</span>` : x.addr ? `<span>${esc(x.addr)}</span>` : ''}</div>${ext(gmapsLink(x), t('Open in Google Maps'), 'mini-b')}</li>`;
-  return `${gs.map(g => `${many ? `<h3 class="sub-h">${esc(g.city)}</h3>` : ''}<ul class="plist spots">${g.hotels.map(h => row(h, true)).join('')}${g.spots.map(x => row(x, false)).join('')}</ul>`).join('')}
-    <div class="btns"><button type="button" class="btn" data-kml>${t('Save all to Google Maps')}</button></div><p class="muted small">${t('Import into Google My Maps — shows in the Google Maps app under Saved → Maps')}</p>`;
+  const rows = [];
+  gs0.forEach(g => { const ci = many ? cityI(g) : 0;
+    g.hotels.forEach(h => { if (F.ok({ city: ci, cat: 'hotels', text: [h.name, h.addr].join(' '), saved: false, booked: true })) rows.push({ hotel: true, x: h, cat: 'hotels', city: g.city }); });
+    g.spots.forEach(x => { const cat = ccCatOfPlan(x); if (F.ok({ city: ci, cat, text: [x.name, x.addr, x.note].join(' '), saved: true, booked: !!x.booked })) rows.push({ x, cat, city: g.city }); }); });
+  if (!rows.length) return ccNoneHTML();
+  const showCity = many && F.ci < 0;
+  const row = (r) => { const x = r.x; const ref = r.hotel ? (x.id ? 'bk:' + x.id : 'hh:' + x.name) : 'pl:' + x.id;
+    const it = r.hotel ? itinLoad(cfg).find(y => y.id === x.id) || x : x;
+    const meta = r.hotel ? [t('Your hotel'), hotelDates(x), showCity ? r.city : ''] : [showCity ? r.city : '', x.day ? fmt(x.day, { weekday: 'short', month: 'short', day: 'numeric' }) : '', x.addr && !showCity ? x.addr.split(',')[0] : ''];
+    return `<li class="sp-row"><button type="button" class="sp-go" data-ds="${esc(ref)}">${thumbHTML(it, r.cat)}<span class="sp-tx"><b>${esc(x.name)}</b><small>${esc(meta.filter(Boolean).join(' · '))}</small>${!r.hotel && x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}</span></button><a class="sp-map" href="${esc(gmapsLink(x))}" target="_blank" rel="noopener noreferrer" aria-label="${esc(t('Open {n} in Google Maps', { n: x.name }))}" title="${esc(t('Open in Google Maps'))}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.1-7-11.5a7 7 0 0 1 14 0C19 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span>${t('Maps')}</span></a></li>`; };
+  const groups = SPOT_ORDER.map(k => [k, rows.filter(r => (SPOT_ORDER.includes(r.cat) ? r.cat : '') === k)]).filter(([, g]) => g.length);
+  return `<div class="sp-groups">${groups.map(([k, g]) => `<details class="sp-g" data-spot-g="${k || 'other'}"${SPOT_SHUT.has(k || 'other') && groups.length > 1 ? '' : ' open'}><summary>${ccIcon(k || 'pin')}<span class="sp-h">${esc(k ? ccLabel(k) : t('Other'))}</span><span class="sp-n">${g.length}</span><i class="sp-tog" aria-hidden="true"></i></summary><ul class="plist spots">${g.map(row).join('')}</ul></details>`).join('')}</div>
+    <div class="btns sp-kml"><button type="button" class="btn sm" data-kml>${t('Save all to Google Maps')}</button></div><p class="muted small">${t('Import into Google My Maps — shows in the Google Maps app under Saved → Maps')}</p>`;
 }
 const xmlEsc = (s) => String(s || '').replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
 function spotsKML(cfg) {
@@ -6635,5 +6901,5 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

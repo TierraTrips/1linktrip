@@ -80,27 +80,28 @@ const card = (page, re) => page.evaluateHandle((s) => [...document.querySelector
       let xs = await itin(page); const h = xs.find(x => x.kind === 'hotel');
       ok(h && h.det.room === 'Superior Double Room, Non-Smoking' && h.det.beds === '1 queen' && h.det.guests === '2' && h.det.amen.join() === 'breakfast,wifi' && h.det.cancelBy === '2027-03-29' && h.det.price === '¥64,800', `@${w} hotel details stored ${JSON.stringify(h && h.det)}`);
       ok(xs.find(x => x.kind === 'flight').det.cabin === 'economy' && xs.find(x => x.kind === 'tour').det.duration === '10 hours', `@${w} flight + tour details stored`);
-      // folded behind the card until tapped
-      const hc = await card(page, 'Gracery'); const det = await hc.$('details.det');
-      const fd = det ? await det.evaluate(d => [d.open, Math.round(d.getBoundingClientRect().height)]) : null; ok(fd && !fd[0] && fd[1] < 30, `@${w} details folded on the card ${fd}`);
-      await det.$eval('summary', s => s.click()); await page.waitForTimeout(200);
-      const lines = await det.$$eval('.det-l > span', ls => ls.map(l => l.textContent)); const tags = await det.$$eval('.det-am .tag', ls => ls.map(l => l.textContent));
-      ok(lines.includes('Check-in 3:00 PM') && lines.includes('Check-out 11:00 AM') && lines.includes('Room type: Superior Double Room, Non-Smoking') && lines.includes('Free cancellation until: Mar 29') && tags.join() === 'Breakfast,Wi-Fi', `@${w} tap → details ${JSON.stringify(lines)} ${tags}`);
+      // behind the card until tapped: the card opens the booking's sheet (room type, check-in/out, amenities)
+      const hc = await card(page, 'Gracery'); ok(!!(await hc.$('[data-ds^="bk:"]')) && !(await hc.$('details.det')), `@${w} details behind a tap on the card`);
+      await (await hc.$('[data-ds^="bk:"]')).click(); await page.waitForSelector('dialog.ds-sheet[open]');
+      const facts = await page.$$eval('dialog.ds-sheet .ds-f', fs => fs.map(f => f.querySelector('dt').textContent + ': ' + f.querySelector('dd').textContent)); const tags = await page.$$eval('dialog.ds-sheet .ds-tags .tag', ls => ls.map(l => l.textContent));
+      ok(facts.some(l => /^Check-in: .*3:00 PM$/.test(l)) && facts.some(l => /^Check-out: .*11:00 AM$/.test(l)) && facts.includes('Room type: Superior Double Room, Non-Smoking') && facts.includes('Free cancellation until: Mar 29') && tags.join() === 'Breakfast,Wi-Fi', `@${w} tap → details ${JSON.stringify(facts)} ${tags}`);
+      await page.click('dialog.ds-sheet [data-ds-close]'); await page.waitForTimeout(150);
       // edit: more details in the form
       const i = await hc.$eval('[data-itin-edit]', b => b.dataset.itinEdit); await page.click(`[data-itin-edit="${i}"]`); await page.waitForSelector('.itin-form .more-f[open]');
       await page.fill('[data-det="beds"]', '1 king'); await page.click('[data-det-amen="pool"]'); await page.click('[data-itin-save]'); await page.waitForTimeout(300);
       xs = await itin(page); ok(xs.find(x => x.kind === 'hotel').det.beds === '1 king' && xs.find(x => x.kind === 'hotel').det.amen.includes('pool'), `@${w} edit form saves beds + amenity chip`);
       // photos signed out: small copies on this device, 3 per item; remove ×
       const ref = 'bk:' + xs.find(x => x.kind === 'tour').id;
+      await page.click(`#sec-itinerary [data-ds="${ref}"]`); await page.waitForSelector('dialog.ds-sheet[open]');
       await page.setInputFiles(`[data-ph-add="${ref}"]`, [JPG(1), JPG(2)]); await page.waitForTimeout(600);
       let ps = (await itin(page)).find(x => x.kind === 'tour').photos || [];
       ok(ps.length === 2 && ps.every(p => /^data:image\/jpeg;base64,/.test(p.url) && p.local && p.url.length < 90e3), `@${w} 2 photos kept on the device (${ps.map(p => p.url.length)})`);
-      ok(await page.$$eval(`[data-gal="${ref}"] figure img`, is => is.length) === 2 && await page.$eval(`[data-det-ref="${ref}"]`, d => d.open), `@${w} gallery on the card, stays open`);
+      ok(await page.$$eval(`[data-gal="${ref}"] figure img`, is => is.length) === 2 && await page.$eval('dialog.ds-sheet', d => d.open), `@${w} gallery in the sheet, stays open`);
       await page.setInputFiles(`[data-ph-add="${ref}"]`, [JPG(3), JPG(4)]); await page.waitForTimeout(600);
       ok(((await itin(page)).find(x => x.kind === 'tour').photos || []).length === 3 && /Sign in to add more photos/.test(await page.textContent('body')), `@${w} signed out: 3 photos max, then sign in`);
       await page.click(`[data-ph-del="${ref}"][data-ph-i="0"]`); await page.waitForTimeout(300);
       ok(((await itin(page)).find(x => x.kind === 'tour').photos || []).length === 2, `@${w} × removes a photo`);
-      if (SHOTS && w === 390) await page.locator('#sec-itinerary').screenshot({ path: `${SHOTS}/booking-details-390.png` });
+      if (SHOTS && w === 390) await page.screenshot({ path: `${SHOTS}/booking-details-390.png` });
       ok((await overflow(page)) === 0, `@${w} no overflow with details open`);
       ok(page._err.length === 0, `@${w} no page errors ${page._err}`); await ctx.close();
     }
@@ -109,16 +110,17 @@ const card = (page, re) => page.evaluateHandle((s) => [...document.querySelector
     { const { ctx, page } = await setup(browser);
       await open(page, { itin: [{ id: 'h1', kind: 'hotel', name: 'Hotel Gracery Shinjuku', start: '2027-04-01T15:00', end: '2027-04-04T11:00', ref: 'h-gracery', lat: 35.6945, lon: 139.7016, pin: 1 }],
         plan: [{ id: 'pl1', src: 'g', ref: 'ChIJtour', name: 'Tsukiji Food Tour', lat: 35.665, lon: 139.77, type: 'activity', day: '2027-04-03', time: '09:00', note: '' }] });
-      await page.click('[data-det-ref="bk:h1"] summary'); await page.waitForFunction(() => document.querySelectorAll('[data-gal="bk:h1"] figure img').length === 2, null, { timeout: 5000 }).catch(() => {});
+      await page.click('#sec-itinerary [data-ds="bk:h1"]'); await page.waitForFunction(() => document.querySelectorAll('[data-gal="bk:h1"] figure img').length === 2, null, { timeout: 5000 }).catch(() => {});
       const srcs = await page.$$eval('[data-gal="bk:h1"] figure img', is => is.map(i => i.getAttribute('src')));
       ok(srcs.length === 2 && srcs.every(s => /^https:\/\/places\.googleapis\.com\/v1\/places\/h-gracery\/photos\/\w+\/media\?maxWidthPx=400&key=/.test(s)), `Google photos for the place ${srcs}`);
-      const attr = await page.textContent('[data-det-ref="bk:h1"] .g-attr').catch(() => '');
-      ok(/Aiko T\./.test(attr) && /Ben K\./.test(attr) && /Google/.test(attr) && await page.$eval('[data-det-ref="bk:h1"] .g-attr a', a => a.href) === 'https://maps.google.com/maps/contrib/1', `authors credited, linked: ${attr}`);
+      const attr = await page.textContent('dialog.ds-sheet .g-attr').catch(() => '');
+      ok(/Aiko T\./.test(attr) && /Ben K\./.test(attr) && /Google/.test(attr) && await page.$eval('dialog.ds-sheet .g-attr a', a => a.href) === 'https://maps.google.com/maps/contrib/1', `authors credited, linked: ${attr}`);
       const st = (await itin(page))[0]; ok(st.gph === 1 && st.photos.length === 2 && st.photos[0].g && !JSON.stringify(st).includes('key='), 'kept on the item (photo names, never the key)');
       const n0 = page._g.filter(u => /\/places\/h-gracery\?|\/places\/h-gracery$/.test(u)).length;
-      await page.reload(); await page.waitForSelector('#sec-itinerary'); await page.click('[data-det-ref="bk:h1"] summary'); await page.waitForTimeout(400);
+      await page.goto(page.url().replace(/\?d=[^#]*/, '')); await page.waitForSelector('#sec-itinerary'); await page.click('#sec-itinerary [data-ds="bk:h1"]'); await page.waitForTimeout(400);
       ok(page._g.filter(u => /\/places\/h-gracery\?|\/places\/h-gracery$/.test(u)).length === n0, 'not fetched again');
       // a place in the plan: tour fields right there (saved on change)
+      await page.click('dialog.ds-sheet [data-ds-close]'); await page.waitForTimeout(150); await page.click('#sec-plan [data-ds="pl:pl1"]'); await page.waitForSelector('dialog.ds-sheet[open]');
       const pd = '[data-det-ref="pl:pl1"]'; await page.click(`${pd} summary`); await page.waitForTimeout(200);
       await page.fill(`${pd} [data-pdet="meet"]`, 'Tsukiji Station exit 1'); await page.press(`${pd} [data-pdet="meet"]`, 'Tab'); await page.waitForTimeout(200);
       await page.fill(`${pd} [data-pdet="duration"]`, '3 hours'); await page.press(`${pd} [data-pdet="duration"]`, 'Tab'); await page.waitForTimeout(200);
@@ -153,7 +155,7 @@ async function liveUpload(browser, PAT) {
   try {
     const { ctx, page } = await setup(browser); await open(page, { itin: [{ id: 't1', kind: 'tour', name: 'Fuji tour', start: '2027-04-02T07:30' }] });
     ok(await page.evaluate(async ([e, p]) => { const c = await window.__ep.sb(); const r = await c.auth.signInWithPassword({ email: e, password: p }); localStorage.setItem('ep:signedIn', 'true'); return !!(r.data && r.data.session); }, [EMAIL, PASS]), 'signed in (throwaway user)');
-    await page.click('[data-det-ref="bk:t1"] summary'); await page.setInputFiles('[data-ph-add="bk:t1"]', [JPG(1)]);
+    await page.click('#sec-itinerary [data-ds="bk:t1"]'); await page.setInputFiles('[data-ph-add="bk:t1"]', [JPG(1)]);
     await page.waitForFunction((k) => ((JSON.parse(localStorage.getItem('ep:itin:' + k)) || [])[0].photos || []).length === 1, K, { timeout: 20000 }).catch(() => {});
     const p = ((await itin(page))[0].photos || [])[0] || {}; url = p.url || '';
     ok(url.startsWith(`${SBURL}/storage/v1/object/public/event-files/${UID}/trip-`) && !p.local, `uploaded to the guest's own folder ${url.replace(UID, '<uid>')}`);
