@@ -567,6 +567,7 @@ dialog.sheet { width: min(560px, 100vw); max-height: min(88vh, 900px); }
 .pub-host { margin: 12px 0 4px; padding: 12px 14px; border-radius: 12px; background: var(--fog, #EDF4F1); font-size: .92rem; }
 .pub-host p { margin: 0 0 8px; } .pub-host.ok { background: #E3F2E5; } .pub-host .signin .search input { min-width: 0; }
 .pub-host input { width: 100%; min-height: 44px; border: 1.5px solid var(--rule); border-radius: 10px; padding: .5em .7em; font-size: 16px; background: #fff; }
+.pub-host div.long-note { margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: #FFF4DC; border: 1px solid #F0D9A4; } .pub-host div.long-note p { margin: 0 0 8px; } .pub-host small.long-note { display: block; margin-top: 4px; color: #7A4F00; }
 .mono { font-family: var(--mono, monospace); }
 .chk { display: flex; gap: 10px; align-items: center; font-weight: 600; } .chk input { width: 20px; height: 20px; min-height: 0; accent-color: var(--gate); }
 .rsvp { display: grid; gap: 12px; } .rsvp .lbl-s { font: 600 .7rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted, var(--slate)); }

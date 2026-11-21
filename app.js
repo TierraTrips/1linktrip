@@ -3387,14 +3387,26 @@ function signInDlg(title, before) {
   if (!d.open) d.showModal();
 }
 const LONG_BTN = `<button type="button" class="link" data-ph="long">Share without signing in</button>`;
+// The long link has no RSVP form, guest messages or live updates (they go through the account, so only the short link
+// has them): when the page has any of them on, say so before that link is shared, with the way to the short link.
+function longGaps() {
+  const c = B.cfg; if (!SB || (B.hosted && B.hosted.pub && B.hosted.slug)) return ''; // no hosting, or a short link exists
+  const g = []; if (!c.off.rsvp) g.push('RSVP form'); if (c.guestMessages) g.push('guest messages'); if (!g.length) return '';
+  return g.join(', ') + ' or live updates';
+}
+function longNoteHTML(full) {
+  const g = longGaps(); if (!g) return '';
+  if (!full) return `<small class="long-note muted" data-long-note>That link has no ${g}, and won’t show later edits.</small>`;
+  return `<div class="long-note" data-long-note role="note"><p><b>This link has no ${g}.</b> Replies and updates go through your account, so only the short link has them.</p><button type="button" class="btn primary sm" data-ph="go">Sign in for the short link</button></div>`;
+}
 function pubHostHTML() {
   const P = B.pub || {};
   if (!SB) return '';
   if (P.state === 'busy') return `<div class="pub-host" role="status"><p><b>Getting your link…</b></p></div>`;
   if (P.state === 'done') return `<div class="pub-host ok"><p>Your edits show up on this link automatically. <a href="#mine">Replies in My pages</a></p></div>`;
-  if (P.state === 'signin') return `<div class="pub-host"><p><b>Sign in to share</b></p>${signInFormHTML(P.msg, LS.get('signinEmail') || '')}<p class="pub-alt">${LONG_BTN}<br><small class="muted">That link won’t show later edits.</small></p></div>`;
-  if (P.state === 'long') return `<div class="pub-host"><p class="muted small">This link won’t show later edits.</p></div>`;
-  return `<div class="pub-host" role="alert"><p><b>Couldn’t share.</b> ${esc(P.msg || '')}</p><button type="button" class="btn primary" data-ph="go">Try again</button><p class="pub-alt">${LONG_BTN}</p></div>`;
+  if (P.state === 'signin') return `<div class="pub-host"><p><b>Sign in to share</b></p>${signInFormHTML(P.msg, LS.get('signinEmail') || '')}<p class="pub-alt">${LONG_BTN}<br>${longNoteHTML(false) || '<small class="muted">That link won’t show later edits.</small>'}</p></div>`;
+  if (P.state === 'long') return `<div class="pub-host">${longNoteHTML(true)}<p class="muted small">This link won’t show later edits.</p></div>`;
+  return `<div class="pub-host" role="alert"><p><b>Couldn’t share.</b> ${esc(P.msg || '')}</p><button type="button" class="btn primary" data-ph="go">Try again</button><p class="pub-alt">${LONG_BTN}${longNoteHTML(false) ? '<br>' + longNoteHTML(false) : ''}</p></div>`;
 }
 function renderPubHost() { const box = $('#pub-host'); if (box) box.innerHTML = pubHostHTML(); }
 const pubWhy = (e) => navigator.onLine === false ? 'You’re offline.' : (e && (e.message || e.error_description || e.details)) || 'Try again.';
