@@ -80,13 +80,51 @@ function fmtDist(m, cc) {
 const walkMin = (m) => Math.max(1, Math.round(m * 1.25 / 80)); // straight-line x1.25 detour, 80 m/min
 const walkTxt = (m) => t('{n} min walk', { n: walkMin(m) });
 
-function nearestAirports(lat, lon) {
-  const all = (window.AIRPORTS || []).map(a => ({ iata: a[0], name: a[1], city: a[2], cc: a[3], lat: a[4], lon: a[5], large: !!a[6], d: distM(lat, lon, a[4], a[5]) }));
-  const large = all.filter(a => a.large && a.d < 220e3).sort((a, b) => a.d - b.d).slice(0, 3);
+// Fly-into default. airports.js only knows large vs regional, and in places like the Riviera Maya three "large" airports
+// sit within 80 km (CZM 36 km, TQO 52 km, CUN 76 km from Xpu-Há) — the closest is an island and the smallest. So:
+// HUBS = the big passenger airports (about 10M+ passengers a year in published airport/ACI traffic figures; hand list,
+// Nov 2026 — a size signal, not a ranking). Among the airports within 1.5x the distance of the nearest large one, a hub
+// wins, then the nearest. Airports in ISLAND_APS (islands reached only by ferry or plane) are skipped as the default
+// unless the venue is on that island (its box: south, north, west, east) — then that airport is the default; they
+// still show in the list to pick.
+const HUBS = new Set(('ATL LAX ORD DFW DEN JFK SFO SEA LAS MCO EWR CLT PHX IAH MIA BOS MSP FLL DTW PHL LGA BWI SLC SAN IAD DCA MDW TPA BNA AUS HNL DAL PDX STL RDU HOU SMF MSY SJC SNA MCI OAK SAT RSW ' +
+  'YYZ YVR YUL YYC MEX CUN GDL MTY TIJ SJU PTY BOG MDE LIM SCL GRU GIG CGH BSB VCP EZE AEP ' +
+  'LHR LGW STN LTN MAN BHX EDI DUB CDG ORY NCE AMS FRA MUC DUS HAM BER CGN MAD BCN PMI AGP ALC VLC LPA TFS LIS OPO FCO MXP BGY VCE NAP BLQ ZRH GVA VIE BRU CPH OSL ARN HEL IST SAW AYT ATH PRG WAW BUD OTP KEF SVO DME VKO LED ' +
+  'TLV DXB AUH DOH JED RUH CAI JNB CPT ADD ' +
+  'HND NRT KIX ITM FUK CTS OKA ICN GMP CJU PUS PEK PKX PVG SHA CAN SZX CTU TFU KMG XIY CKG HGH NKG WUH CSX XMN HKG TPE SIN KUL BKK DMK HKT CGK DPS SUB MNL SGN HAN DEL BOM BLR MAA HYD CCU COK AMD ' +
+  'SYD MEL BNE PER AKL').split(' '));
+const ISLAND_APS = { CZM: [20.25, 20.62, -87.04, -86.70], ACK: [41.22, 41.33, -70.26, -69.95], BWK: [43.24, 43.42, 16.38, 16.89] };
+const apTier = (a) => HUBS.has(a.iata) ? 2 : a.large ? 1 : 0;
+const offIsland = (a, lat, lon) => { const b = ISLAND_APS[a.iata]; return !!b && !(lat >= b[0] && lat <= b[1] && lon >= b[2] && lon <= b[3]); };
+function defaultAirport(cands, lat, lon) {
+  if (!cands.length) return null;
+  const home = cands.find(a => ISLAND_APS[a.iata] && !offIsland(a, lat, lon)); if (home) return home; // a venue on the island: its own airport
+  const land = cands.filter(a => !offIsland(a, lat, lon)); const pool = (land.length ? land : cands).slice().sort((a, b) => a.d - b.d);
+  const base = (pool.find(a => a.large) || pool[0]).d;
+  return pool.filter(a => a.d <= base * 1.5 + 1).sort((a, b) => apTier(b) - apTier(a) || a.d - b.d)[0];
+}
+const apRow = (a, lat, lon) => ({ iata: a[0], name: a[1], city: a[2], cc: a[3], lat: a[4], lon: a[5], large: !!a[6], d: distM(lat, lon, a[4], a[5]) });
+// the airports near a venue (up to 3, nearest first); .def = the one guests fly into by default, .auto = the automatic
+// pick. `pin` = the organizer's "Fly into" choice (cfg.flyInto): added to the list if it isn't nearby, and the default.
+function nearestAirports(lat, lon, pin) {
+  const all = (window.AIRPORTS || []).map(a => apRow(a, lat, lon));
+  const large = all.filter(a => a.large && a.d < 220e3).sort((a, b) => a.d - b.d);
   const medium = all.filter(a => !a.large && a.d < 110e3).sort((a, b) => a.d - b.d);
   // regional fields only fill in when there are fewer than three big airports, or sit far closer than the nearest big one
-  const out = large.concat(medium.filter(m => large.length < 2 || m.d < (large[0]?.d ?? Infinity) * 0.35)).sort((a, b) => a.d - b.d);
-  return out.slice(0, 3);
+  let out = large.slice(0, 3).concat(medium.filter(m => large.length < 2 || m.d < (large[0]?.d ?? Infinity) * 0.35)).sort((a, b) => a.d - b.d).slice(0, 3);
+  const auto = defaultAirport(large.concat(medium), lat, lon);
+  if (auto && !out.some(a => a.iata === auto.iata)) out = out.slice(0, out.length < 3 ? 3 : 2).concat(auto).sort((a, b) => a.d - b.d);
+  const pa = pin && (out.find(a => a.iata === pin) || (airportByCode(pin) && apRow(airportByCode(pin), lat, lon)));
+  if (pa && !out.includes(pa)) out = out.concat(pa).sort((a, b) => a.d - b.d);
+  out.auto = auto ? auto.iata : ''; out.def = pa ? pa.iata : out.auto;
+  return out;
+}
+// the organizer's choices for "Fly into" in the builder: airports within reach of the venue, the automatic pick included
+function airportChoices(lat, lon) {
+  const all = (window.AIRPORTS || []).map(a => apRow(a, lat, lon)).filter(a => a.d < (a.large ? 320e3 : 130e3)).sort((a, b) => a.d - b.d);
+  const near = nearestAirports(lat, lon); const xs = all.slice(0, 8);
+  near.forEach(a => { if (!xs.some(x => x.iata === a.iata)) xs.push(a); });
+  return { list: xs.sort((a, b) => a.d - b.d), auto: near.auto };
 }
 function searchAirports(q) {
   q = q.trim().toLowerCase(); if (!q) return [];
@@ -600,9 +638,10 @@ function flightArriveFix(x) {
 // "Arrives 10:55 PM", with (+1) / (−1) when it lands on another calendar day than it left
 const flightArrLabel = (x) => { if (!x.end || x.end.length < 16) return ''; const off = daysBetween(x.start, x.end); return `${t('Arrives')} ${fmtTime(x.end.slice(11, 16))}${off ? ` (${off > 0 ? '+' : '−'}${Math.abs(off)})` : ''}`; };
 // "Flying into": the guest's arrival airport, one of the airports near the venue. One saved value per event (ap:<key>).
-// Default: their saved pick → a flight in their bookings that lands at one of them → the closest large airport → the closest.
+// Default: their saved pick → a flight in their bookings that lands at one of them → the organizer's "Fly into" (cfg.flyInto)
+// → the automatic pick (nearestAirports: a hub near the closest large airport, not across the water) → the closest large → the closest.
 const apKey = (cfg) => 'ap:' + eventKey(cfg).slice(6);
-const airFor = (cfg) => cfg.venue ? nearestAirports(cfg.venue.lat, cfg.venue.lon) : [];
+const airFor = (cfg) => cfg.venue ? nearestAirports(cfg.venue.lat, cfg.venue.lon, cfg.flyInto) : [];
 function flightArrival(air, items) {
   const low = (x) => String(x || '').toLowerCase();
   const hit = (s) => air.find(a => new RegExp(`\\b${a.iata}\\b`).test(String(s || '')) || low(s).includes(low(a.name)) || (a.city && low(s).includes(low(a.city))));
@@ -613,7 +652,7 @@ function flightArrival(air, items) {
 }
 function pickAirport(air, saved, items) {
   if (!air || !air.length) return null;
-  return air.find(a => a.iata === saved) || flightArrival(air, items) || air.find(a => a.large) || air[0];
+  return air.find(a => a.iata === saved) || flightArrival(air, items) || (air.def && air.find(a => a.iata === air.def)) || air.find(a => a.large) || air[0];
 }
 const chosenAirport = (cfg, air = airFor(cfg)) => pickAirport(air, LS.get(apKey(cfg)), itinLoad(cfg));
 const canAddTrip = (cfg) => !!(cfg.tools && cfg.tools.mytrip && cfg.start);
@@ -642,7 +681,7 @@ function itinFormHTML(x, i, air = []) {
     <div class="trip">
       <div class="field"><label for="it-kind">${t('Type')}</label><select id="it-kind" data-it="kind"><option value="">${t('Choose')}</option>${Object.entries(ITIN_KINDS).map(([v, l]) => `<option value="${v}" ${v === k ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></div>
       ${f('flight', 'Flight number', 'text', 'UA 1234').replace('<div class="field', `<div${k === 'flight' ? '' : ' hidden'} class="field`)}
-      ${f('to', 'Arriving at', 'text', air[0] ? air[0].iata : 'CUN').replace('<div class="field', `<div${k === 'flight' ? '' : ' hidden'} class="field`).replace('<input ', '<input list="it-to-list" autocapitalize="characters" ')}<datalist id="it-to-list">${air.map(a => `<option value="${esc(a.iata)}">${esc(a.name)}</option>`).join('')}</datalist>
+      ${f('to', 'Arriving at', 'text', (pickAirport(air, null, []) || { iata: 'CUN' }).iata).replace('<div class="field', `<div${k === 'flight' ? '' : ' hidden'} class="field`).replace('<input ', '<input list="it-to-list" autocapitalize="characters" ')}<datalist id="it-to-list">${air.map(a => `<option value="${esc(a.iata)}">${esc(a.name)}</option>`).join('')}</datalist>
       ${f('name', 'Name')}
       ${f('start', k === 'flight' ? 'Departs' : 'Starts', 'datetime-local')}${f('end', k === 'flight' ? 'Arrives' : 'Ends', 'datetime-local')}
       ${f('address', 'Address', 'text', '', 'wide')}
@@ -1475,6 +1514,7 @@ function normalize(c) {
   sortStops(c); // stops are in date order everywhere (an old page could keep a stop added later at the end); ids go with them
   if (c.shifts !== undefined) { c.shifts = Array.isArray(c.shifts) ? c.shifts.filter(x => x && typeof x.id === 'string' && /^[\w-]{1,40}$/.test(x.id) && Number.isInteger(x.d) && Math.abs(x.d) <= 800 && (x.from === '' || isoDay(x.from))).map(x => ({ id: x.id, from: x.from, d: x.d })).slice(-20) : []; if (!c.shifts.length) delete c.shifts; } // Move trip dates: guests' saved places follow
   if (c.logo !== undefined && !(typeof c.logo === 'string' && /^https:\/\/\S+$/.test(c.logo) && c.logo.length < 2000)) delete c.logo; // brand logo (Design → Match your brand)
+  if (c.flyInto !== undefined) { const f = typeof c.flyInto === 'string' ? c.flyInto.trim().toUpperCase() : ''; if (/^[A-Z]{3}$/.test(f) && c.venue && (!window.AIRPORTS || airportByCode(f))) c.flyInto = f; else delete c.flyInto; } // the organizer's "Fly into" airport (builder → When and where)
   delete c.osm; // hosted pages store a nearby-places snapshot beside the config; it never travels in links or drafts
   return c;
 }
@@ -1790,7 +1830,7 @@ function renderEvent(cfg, root, opts = {}) {
   const seq = ++renderSeq;
   maps.forEach(m => { try { m.remove(); } catch {} }); maps.clear();
   loadFont(cfg.theme.font); ONP = !!opts.onpage;
-  const v = cfg.venue; const air = v ? nearestAirports(v.lat, v.lon) : [];
+  const v = cfg.venue; const air = airFor(cfg);
   const tabs = tabsFor(cfg); const cur = tabs.some(([k]) => k === opts.tab) ? opts.tab : 'event';
   const panel = (k, body, head) => `<div class="ev-panel" data-panel="${k}"${k === cur ? '' : ' hidden'}>${head || ''}<div class="ev-body">${body}</div></div>`;
   const tabHead = (k) => `<header class="tab-h"><span class="lbl">${esc(cfg.title || t('Untitled event'))}</span><h1>${t(TABS.find(x => x[0] === k)[1])}</h1></header>`;
@@ -2315,6 +2355,7 @@ function buildForm() {
   <details class="acc" data-acc="when" ${open.has('when') ? 'open' : ''}><summary><span class="st ${whenOk ? 'ok' : ''}" aria-hidden="true"></span><b>When and where</b><small>${esc([c.start ? fmt(c.start.slice(0, 10), { month: 'short', day: 'numeric', year: 'numeric' }) : '', c.venue ? c.venue.name : ''].filter(Boolean).join(' · '))}</small></summary><div class="acc-b">
     ${whenFieldsHTML(c, 'f')}
     ${venueFieldHTML(c)}
+    ${flyIntoFieldHTML(c)}
   </div></details>
   <details class="acc" data-acc="design" ${open.has('design') ? 'open' : ''}><summary><span class="st ok" aria-hidden="true" style="background:${esc(c.theme.accent)};border-color:${esc(c.theme.accent)}"></span><b>Design</b><small>${esc([FONTS[c.theme.font]?.label, c.theme.mode === 'dark' ? 'Dark' : 'Light', c.cover ? 'Cover photo' : ''].filter(Boolean).join(' · '))}</small></summary><div class="acc-b">
     ${designHTML(c)}
@@ -2331,6 +2372,14 @@ function buildForm() {
   // the AI edit box survives form rebuilds (its preview and Undo live in it)
   if (keepAI) f.insertBefore(keepAI, f.firstChild); else if (SB && LS.get('signedIn')) { f.insertAdjacentHTML('afterbegin', aiEditHTML()); wireAIEdit(); }
   placeAutocomplete($('#vq', f), { bias: () => null, onPick: (id, tok) => gpVenue(id, tok).then(r => { B.vq = ''; B.venueResults = []; pickVenue(r); }).catch(() => toast('Couldn’t load that place')) });
+}
+// "Fly into": the airport guests are pointed to (ticket, Travel → flights, rental cars). Automatic unless the organizer picks one.
+function flyIntoFieldHTML(c) {
+  const v = c.venue; if (!v || !isFinite(v.lat) || !isFinite(v.lon)) return '';
+  const { list, auto } = airportChoices(v.lat, v.lon); if (!list.length) return '';
+  const pin = c.flyInto && !list.some(a => a.iata === c.flyInto) && airportByCode(c.flyInto) ? [apRow(airportByCode(c.flyInto), v.lat, v.lon)] : [];
+  const lab = (a) => `${a.iata} · ${a.city || a.name} · ${fmtDist(a.d, v.cc)}`; const au = list.find(a => a.iata === auto);
+  return fieldWrap('Fly into', `<select id="f-fly" data-f="flyInto"><option value="">${esc(au ? `Automatic (${au.iata} · ${au.city || au.name})` : 'Automatic')}</option>${list.concat(pin).map(a => `<option value="${esc(a.iata)}"${a.iata === c.flyInto ? ' selected' : ''}>${esc(lab(a))}</option>`).join('')}</select><p class="hint">The airport guests see on the ticket, flight searches and rental cars.</p>`, 'f-fly');
 }
 function venueFieldHTML(c) {
   return c.venue ? `<div class="venue-sel"><div><b>${esc(c.venue.name)}</b><span>${esc(c.venue.address || '')}</span></div><button type="button" class="btn sm" data-b="clear-venue">Change</button></div>
@@ -2410,7 +2459,7 @@ function wireInputs(root) {
     else if (d.b === 'search') venueSearch();
     else if (d.b === 'site-fill') { if (!B.siteBusy) aboutFill(); }
     else if (d.pick != null) pickVenue(B.venueResults[+d.pick]);
-    else if (d.b === 'clear-venue') { cfg.venue = null; cfg.tz = ''; B.venueResults = []; B.vmsg = ''; changed(true); setTimeout(() => $('#vq')?.focus(), 0); }
+    else if (d.b === 'clear-venue') { cfg.venue = null; cfg.tz = ''; delete cfg.flyInto; B.venueResults = []; B.vmsg = ''; changed(true); setTimeout(() => $('#vq')?.focus(), 0); }
     else if (d.sw) { cfg.theme.accent = d.sw; changed(true); }
     else if (d.font) { cfg.theme.font = d.font; loadFont(d.font); changed(true); }
     else if (d.themeMode) { cfg.theme.mode = d.themeMode; changed(true); }
@@ -2604,7 +2653,7 @@ async function venueSearch() {
 }
 async function pickVenue(r) {
   const c = B.cfg; c.venue = { name: r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc };
-  c.tz = ''; changed(true);
+  c.tz = ''; delete c.flyInto; changed(true); // a new venue → its own automatic airport
   try { c.tz = await lookupTZ(r.lat, r.lon); changed(); } catch { /* times stay floating */ }
 }
 
@@ -2621,7 +2670,7 @@ function renderSetup() {
 const suPreview = debounce(() => { const p = $('#su-frame'); if (p && getComputedStyle(p.parentElement).display !== 'none') renderEvent(SU.cfg, p, { preview: true }); }, 250);
 function suTicket(c) {
   const g = (v, ph) => v ? esc(v) : `<span class="ghost">${ph}</span>`;
-  const air = c.venue ? pickAirport(nearestAirports(c.venue.lat, c.venue.lon), null, []) : null;
+  const air = c.venue ? pickAirport(airFor(c), null, []) : null;
   return `<div class="su-ticket" style="--acc:${c.theme.accent}"><div><span class="lbl">${esc(c.type)}${c.venue && c.venue.city ? ' · ' + esc(c.venue.city) : ''}</span><b>${g(c.title, 'Your event')}</b><span>${c.start && SU.dated ? esc(dateRange(c.start, c.end)) + (c.start.length > 10 ? ' · ' + esc(fmtTime(c.start.slice(11, 16))) : '') : '<span class="ghost">Date</span>'}</span><span>${g(c.venue && c.venue.name, 'Venue')}</span></div><div class="r"><span class="lbl">Fly into</span><b>${air ? esc(air.iata) : '<span class="ghost">···</span>'}</b></div></div>`;
 }
 function suRender() {
@@ -7103,5 +7152,5 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
