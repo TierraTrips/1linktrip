@@ -575,6 +575,16 @@ dialog.sheet { width: min(560px, 100vw); max-height: min(88vh, 900px); }
 .rsvp .seg2 button { font: inherit; font-weight: 600; color: var(--ink); background: var(--card, #fff); border-color: var(--line, var(--rule)); }
 .rsvp .seg2 button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .rsvp-msg { margin: 0; min-height: 1em; font-size: .9rem; } .rsvp-done p { margin: 0 0 10px; }
+.rsvp select { width: 100%; min-width: 0; min-height: 44px; border: 1.5px solid var(--line, var(--rule)); border-radius: 10px; padding: .5em .7em; font: inherit; font-size: 16px; background: var(--card, #fff); color: var(--ink); box-sizing: border-box; }
+.rs-x { display: grid; gap: 12px; } .rs-x[hidden] { display: none; } .rs-x .two > .field { min-width: 0; }
+.rs-plus { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; } .rs-plus + .rs-plus { margin-top: 6px; } .rs-plus:has(select) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } @media (max-width: 359px) { .rs-plus:has(select) { grid-template-columns: minmax(0, 1fr); } }
+.rs-evs { border: 0; margin: 0; padding: 0; min-width: 0; } .rs-evs legend { padding: 0; margin-bottom: 6px; }
+.rs-chips { display: flex; flex-wrap: wrap; gap: 6px; } .rs-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 6px 12px; border: 1.5px solid var(--line, var(--rule)); border-radius: 999px; background: var(--card, #fff); font-size: .9rem; cursor: pointer; }
+.rsvp .field label.rs-chip { font: inherit; font-size: .9rem; font-weight: 500; letter-spacing: normal; text-transform: none; color: var(--ink); }
+.rsvp .rs-chip input { width: 18px; height: 18px; min-height: 0; padding: 0; margin: 0; flex: none; accent-color: var(--accent); } .rs-chip span { overflow-wrap: anywhere; min-width: 0; }
+.rs-tbl [data-rq-col] { min-width: 7em; } .rs-tbl [data-rq-col="plus"], .rs-tbl [data-rq-col="events"], .rs-tbl [data-rq-col^="q"] { min-width: 10em; }
+.rs-sum2 { margin: -4px 0 8px; color: var(--slate); } .rs-sum2 b { color: var(--ink); }
+.rq-ed { display: grid; gap: 10px; margin-top: 4px; } .rq-ed[hidden], .rq-sub[hidden] { display: none; } .rq-sub { display: grid; gap: 8px; padding-left: 30px; } .rq-ed .sub-h { margin-bottom: 0; }
 .ann { border-left: 4px solid var(--accent); }
 .ann-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .ann-list time { font: 600 .7rem var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted, var(--slate)); }

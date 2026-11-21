@@ -1518,6 +1518,7 @@ function normalize(c) {
   if (c.shifts !== undefined) { c.shifts = Array.isArray(c.shifts) ? c.shifts.filter(x => x && typeof x.id === 'string' && /^[\w-]{1,40}$/.test(x.id) && Number.isInteger(x.d) && Math.abs(x.d) <= 800 && (x.from === '' || isoDay(x.from))).map(x => ({ id: x.id, from: x.from, d: x.d })).slice(-20) : []; if (!c.shifts.length) delete c.shifts; } // Move trip dates: guests' saved places follow
   if (c.logo !== undefined && !(typeof c.logo === 'string' && /^https:\/\/\S+$/.test(c.logo) && c.logo.length < 2000)) delete c.logo; // brand logo (Design → Match your brand)
   if (c.flyInto !== undefined) { const f = typeof c.flyInto === 'string' ? c.flyInto.trim().toUpperCase() : ''; if (/^[A-Z]{3}$/.test(f) && c.venue && (!window.AIRPORTS || airportByCode(f))) c.flyInto = f; else delete c.flyInto; } // the organizer's "Fly into" airport (builder → When and where)
+  if (c.rsvpq !== undefined) c.rsvpq = normRsvpq(c.rsvpq); // RSVP form questions (builder → RSVP form)
   delete c.osm; // hosted pages store a nearby-places snapshot beside the config; it never travels in links or drafts
   return c;
 }
@@ -2887,7 +2888,11 @@ function extraInput(i, cfg) {
     });
     return;
   }
-  if (i.dataset.rsvpOn != null) { cfg.off.rsvp = !i.checked; changed(); return; }
+  if (i.dataset.rsvpOn != null) { cfg.off.rsvp = !i.checked; const ed = rqNear(i, '.rq-ed'); if (ed) ed.hidden = !i.checked; changed(); return; }
+  if (i.dataset.rq) { const q = rqCfg(cfg); q[i.dataset.rq] = i.checked; const sub = rqNear(i, `[data-rq-sub="${i.dataset.rq}"]`); if (sub) sub.hidden = !i.checked; changed(); return; }
+  if (i.dataset.rqMeals != null) { rqCfg(cfg).meals = i.value.split('\n').map(x => x.trim().slice(0, 60)).filter(Boolean).slice(0, 12); changed(); return; }
+  if (i.dataset.rqEv != null) { const q = rqCfg(cfg); const off = new Set(q.evOff); if (i.checked) off.delete(i.dataset.rqEv); else off.add(i.dataset.rqEv); q.evOff = [...off]; changed(); return; }
+  if (i.dataset.rqQ != null) { const q = rqCfg(cfg); q.q[+i.dataset.rqQ] = i.value.trim().slice(0, 120); changed(); return; }
   if (i.dataset.gmsg != null) { cfg.guestMessages = i.checked; changed(); return; }
   if (i.dataset.access) { cfg.access = cfg.access || {}; cfg.access[i.dataset.access] = i.value; changed(); }
 }
@@ -2906,10 +2911,24 @@ async function loadCardGroups() {
 function extraCardBody(id, c) {
   if (id === 'msgs') return `<label class="tool"><input type="checkbox" data-gmsg ${c.guestMessages ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${t('Let guests message you')}</label>
     <h3 class="sub-h">${t('Groups')}</h3><div data-grp-slot>${B.hosted ? `<p class="muted small">${t('Loading…')}</p>` : `<p class="hint">${t('Get a short link first.')}</p>`}</div>`;
-  if (id === 'replies') return `<label class="chk"><input type="checkbox" data-rsvp-on ${c.off.rsvp ? '' : 'checked'}> RSVP form on your short link</label><p class="hint">Replies show in My pages. Short links only.</p>`;
+  if (id === 'replies') return `<label class="chk"><input type="checkbox" data-rsvp-on ${c.off.rsvp ? '' : 'checked'}> RSVP form on your short link</label><p class="hint">Replies show in My pages. Short links only.</p>${rqCardHTML(c)}`;
   if (id !== 'access') return '';
   const a = c.access || {};
   return ACCESS_FIELDS.map(([k, l]) => fieldWrap(l, `<input id="acc-${k}" data-access="${k}" value="${esc(a[k] || '')}">`, `acc-${k}`)).join('');
+}
+const rqNear = (el, sel) => { for (let a = el.parentElement; a; a = a.parentElement) { const f = a.querySelector(sel); if (f) return f; } return null; };
+// builder → RSVP form: the extra questions (all optional for guests, asked only of guests who are coming)
+function rqCardHTML(c) {
+  const q = normRsvpq(c.rsvpq); const evs = [...new Set((c.schedule || []).map(x => String(x.title || '').trim()).filter(Boolean))]; const off = new Set(q.evOff);
+  const tg = (k, l) => `<label class="chk"><input type="checkbox" data-rq="${k}"${q[k] ? ' checked' : ''}> ${l}</label>`;
+  const sub = (k, html) => `<div class="rq-sub" data-rq-sub="${k}"${q[k] ? '' : ' hidden'}>${html}</div>`;
+  return `<div class="rq-ed"${c.off.rsvp ? ' hidden' : ''}><h3 class="sub-h">Questions on the form</h3><p class="hint">All optional for guests, and only asked of guests who are coming.</p>
+    ${tg('meal', 'Meal choice')}${sub('meal', fieldWrap('Meal options, one per line', `<textarea id="rq-meals" data-rq-meals rows="3" placeholder="Chicken&#10;Fish&#10;Vegetarian">${esc(q.meals.join('\n'))}</textarea>`, 'rq-meals'))}
+    ${tg('diet', 'Dietary needs')}
+    ${tg('plus', 'Names of everyone in their party')}
+    ${tg('events', 'Which events they’ll attend')}${sub('events', evs.length ? `<p class="hint">Ask about:</p>${evs.map(x => `<label class="chk"><input type="checkbox" data-rq-ev="${esc(x)}"${off.has(x) ? '' : ' checked'}> ${esc(x)}</label>`).join('')}` : '<p class="hint">Add titled items to your Schedule first.</p>')}
+    ${tg('qs', 'Your own questions')}${sub('qs', [0, 1].map(i => fieldWrap(`Question ${i + 1}`, `<input id="rq-q${i}" data-rq-q="${i}" maxlength="120" value="${esc(q.q[i])}" placeholder="${i ? 'A song that gets you dancing?' : 'Need a ride from the hotel?'}">`, 'rq-q' + i)).join(''))}
+  </div>`;
 }
 function accessHTML(cfg, osm) {
   if (cfg.off.access) return '';
@@ -3138,7 +3157,78 @@ function hostedProblem(msg, retry) {
   $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a></header><section class="broken"><h1>${esc(msg)}</h1>${retry ? `<button class="btn primary" onclick="location.reload()">${t('Try again')}</button>` : `<a class="btn primary" href="${esc(siteBase())}">${t('Go to 1LinkTrip')}</a>`}</section></main>`;
   $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
 }
-function rsvpFormHTML(cfg, hosted) {
+// ---- RSVP questions (cfg.rsvpq, builder → RSVP form): meal, dietary needs, names of the party, which events, two own questions ----
+// All off by default, on every type. rsvps has no column for them, so the answers ride in `note` (text, ≤1000 chars by its
+// check constraint) after the guest's own note: "<note>\n\n[[1lt:{"v":1,...}]]". rqParse splits them again; replies
+// without it (older ones, or with every question off) read exactly as before.
+const RQ_MARK = '[[1lt:';
+function normRsvpq(q) {
+  q = q && typeof q === 'object' ? q : {}; const s = (v, n) => (typeof v === 'string' ? v : '').trim().slice(0, n);
+  return { meal: !!q.meal, meals: (Array.isArray(q.meals) ? q.meals : []).map(x => s(x, 60)).filter(Boolean).slice(0, 12), diet: !!q.diet, plus: !!q.plus,
+    events: !!q.events, evOff: (Array.isArray(q.evOff) ? q.evOff : []).map(x => s(x, 200)).filter(Boolean).slice(0, 60), qs: !!q.qs, q: [0, 1].map(i => s((q.q || [])[i], 120)) };
+}
+const rqCfg = (cfg) => (cfg.rsvpq = cfg.rsvpq ? normRsvpq(cfg.rsvpq) : normRsvpq({}));
+// the page's titled schedule items the organizer asks about (each title once)
+function rqEvents(cfg) {
+  const off = new Set(((cfg.rsvpq || {}).evOff) || []); const out = [];
+  (cfg.schedule || []).forEach((x, i) => { const tt = String(x.title || '').trim(); if (tt && !off.has(tt) && !out.some(o => o.t === tt)) out.push({ i, t: tt }); });
+  return out;
+}
+// what the guest form asks, from the page as written (null: nothing)
+function rqParts(cfg) {
+  const q = cfg && cfg.rsvpq; if (!q) return null;
+  const p = { meal: q.meal && q.meals.length > 0, diet: q.diet, plus: q.plus, events: q.events ? rqEvents(cfg) : [], qs: q.qs ? [0, 1].filter(i => q.q[i]) : [] };
+  return p.meal || p.diet || p.plus || p.events.length || p.qs.length ? p : null;
+}
+function rqParse(note) {
+  const s = String(note || ''); const i = s.lastIndexOf(RQ_MARK);
+  if (i >= 0 && s.endsWith(']]')) { try { const x = JSON.parse(s.slice(i + RQ_MARK.length, -2)); if (x && typeof x === 'object' && x.v === 1) return { text: s.slice(0, i).trimEnd(), x }; } catch { /* a note that only looks like it */ } }
+  return { text: s, x: null };
+}
+function rqPack(note, x) {
+  note = note || ''; if (!x) return note || null;
+  const cap = (n) => JSON.stringify(x, (k, v) => (typeof v === 'string' && k !== '' ? v.slice(0, n) : v));
+  let j = JSON.stringify(x); for (const n of [120, 60, 30, 16]) { if (j.length <= 900) break; j = cap(n); }
+  if (j.length > 900) j = JSON.stringify({ v: 1, ...(x.meal ? { meal: x.meal.slice(0, 60) } : {}), ...(x.diet ? { diet: x.diet.slice(0, 200) } : {}) });
+  const tail = RQ_MARK + j + ']]'; note = note.slice(0, Math.max(0, 1000 - tail.length - 2)).trimEnd();
+  return (note ? note + '\n\n' : '') + tail;
+}
+// guest form: `cfg` is the page in the guest's language, `src` as written (answers are stored in the organizer's words)
+function rqMealSel(cfg, src, id, cur, label, attr = '') {
+  const tm = (cfg.rsvpq && cfg.rsvpq.meals) || [];
+  return `<select id="${id}"${attr}${label ? ` aria-label="${esc(label)}"` : ''}><option value="">${t('Choose…')}</option>${src.rsvpq.meals.map((m, i) => `<option value="${i}"${cur === m ? ' selected' : ''}>${esc(tm[i] || m)}</option>`).join('')}</select>`;
+}
+function rqPlusHTML(cfg, src, n, vals) {
+  const P = rqParts(src); if (!P || !P.plus || n < 2) return '';
+  return `<div class="field"><span class="lbl-s">${t('Names of your guests')}</span>${Array.from({ length: Math.min(19, n - 1) }, (_, k) => { const v = vals[k] || {}; const lab = t('Guest {n}', { n: k + 2 });
+    return `<div class="rs-plus"><input data-rs-plus="${k}" maxlength="60" autocomplete="off" placeholder="${esc(lab)}" aria-label="${esc(lab)}" value="${esc(v.n || '')}">${P.meal ? rqMealSel(cfg, src, 'rs-pm-' + k, v.m || '', t('Meal') + ' · ' + lab, ` data-rs-pmeal="${k}"`) : ''}</div>`; }).join('')}</div>`;
+}
+function rqFormHTML(cfg, src, prev) {
+  const P = rqParts(src); if (!P) return '';
+  const x = prev.x || {}; const tq = cfg.rsvpq || src.rsvpq; const had = (prev.x && Array.isArray(x.events)) ? new Set(x.events) : null;
+  const plusVals = (x.plus || []).map((n, k) => ({ n, m: (x.pmeal || [])[k] || '' }));
+  return `<div class="rs-x" data-rsvp-x${prev.attending === false ? ' hidden' : ''}>
+    ${P.meal || P.diet ? `<div class="two">${P.meal ? `<div class="field"><label for="rs-meal">${t('Meal')}</label>${rqMealSel(cfg, src, 'rs-meal', x.meal || '')}</div>` : ''}${P.diet ? `<div class="field"><label for="rs-diet">${t('Dietary needs (optional)')}</label><input id="rs-diet" maxlength="200" placeholder="${esc(t('Allergies, vegetarian…'))}" value="${esc(x.diet || '')}"></div>` : ''}</div>` : ''}
+    ${P.plus ? `<div data-rsvp-plus>${rqPlusHTML(cfg, src, prev.attending === false ? 1 : (prev.guests || 1), plusVals)}</div>` : ''}
+    ${P.events.length ? `<fieldset class="field rs-evs"><legend class="lbl-s">${t('Which events will you attend?')}</legend><div class="rs-chips">${P.events.map(e => `<label class="rs-chip"><input type="checkbox" data-rs-ev="${e.i}"${!had || had.has(e.t) ? ' checked' : ''}><span>${esc(String((cfg.schedule[e.i] || {}).title || e.t).trim())}</span></label>`).join('')}</div></fieldset>` : ''}
+    ${P.qs.map(i => `<div class="field"><label for="rs-q${i}">${esc(tq.q[i] || src.rsvpq.q[i])}</label><input id="rs-q${i}" maxlength="200" value="${esc(x['q' + (i + 1)] || '')}"></div>`).join('')}
+  </div>`;
+}
+function rqCollect(slot, src, guests) {
+  const P = rqParts(src); if (!P) return null; const q = src.rsvpq; const x = { v: 1 };
+  const val = (sel) => ((slot.querySelector(sel) || {}).value || '').trim(); const meal = (v) => (v === '' ? '' : q.meals[+v] || '');
+  if (P.meal) { const m = meal(val('#rs-meal')); if (m) x.meal = m; }
+  if (P.diet) { const d = val('#rs-diet').slice(0, 200); if (d) x.diet = d; }
+  if (P.plus && guests > 1) {
+    const ins = [...slot.querySelectorAll('[data-rs-plus]')].slice(0, guests - 1); const names = ins.map(i => i.value.trim().slice(0, 60));
+    const pm = P.meal ? ins.map(i => meal(val(`[data-rs-pmeal="${i.dataset.rsPlus}"]`))) : [];
+    if (names.some(Boolean) || pm.some(Boolean)) { x.plus = names; if (pm.some(Boolean)) x.pmeal = pm; }
+  }
+  if (P.events.length) x.events = P.events.filter(e => (slot.querySelector(`[data-rs-ev="${e.i}"]`) || {}).checked).map(e => e.t);
+  P.qs.forEach(i => { const a = val('#rs-q' + i).slice(0, 200); if (a) x['q' + (i + 1)] = a; });
+  return Object.keys(x).length > 1 ? x : null;
+}
+function rsvpFormHTML(cfg, hosted, src = cfg) {
   const mine = LS.get('rsvp:' + hosted.id);
   if (mine && !mine.editing) return `<div class="rsvp-done"><p><b>${esc(t('Thanks, {n}.', { n: mine.name }))}</b> ${esc(mine.attending ? t('We’ve got you down as coming.') : t('We’ve let the host know you can’t make it.'))}</p>${mine.pending ? `<p class="hint" data-rsvp-pending>${esc(t('Saved on this device. It will be sent when you’re back online.'))}</p>` : ''}<button type="button" class="btn sm" data-rsvp="again">${t('Change my reply')}</button></div>`;
   const prev = mine || {};
@@ -3148,6 +3238,7 @@ function rsvpFormHTML(cfg, hosted) {
     <div class="two"><div class="field" data-rsvp-guests ${prev.attending === false ? 'hidden' : ''}><label for="rs-guests">${t('How many, including you')}</label><input id="rs-guests" type="number" min="1" max="20" inputmode="numeric" value="${esc(prev.guests || 1)}"></div>
     <div class="field"><label for="rs-email">${t('Email (optional)')}</label><input id="rs-email" type="email" maxlength="254" autocomplete="email" value="${esc(prev.email || '')}"></div></div>
     <div data-rsvp-group></div>
+    ${rqFormHTML(cfg, src, prev)}
     <div class="field"><label for="rs-note">${t('Note for the host (optional)')}</label><textarea id="rs-note" rows="2" maxlength="1000">${esc(prev.note || '')}</textarea></div>
     <p class="rsvp-msg" role="status" aria-live="polite"></p>
     <button type="button" class="btn primary" data-rsvp="send">${t('Send reply')}</button>
@@ -3155,14 +3246,15 @@ function rsvpFormHTML(cfg, hosted) {
   </form>`;
 }
 function wireHosted(cfg, art, hosted, opts = {}) {
+  const src = opts.src || cfg;
   const body = art.querySelector('.ev-panel[data-panel="event"] .ev-body'); if (!body) return;
   body.insertAdjacentHTML('afterbegin', '<div data-slot="ann"></div>');
   if (!cfg.off.rsvp) {
-    const html = sec('rsvp', t('RSVP'), `<div data-slot="rsvp">${rsvpFormHTML(cfg, hosted)}</div>`);
+    const html = sec('rsvp', t('RSVP'), `<div data-slot="rsvp">${rsvpFormHTML(cfg, hosted, src)}</div>`);
     const wrap = body.querySelector('[data-slot="rsvp-wrap"]');
     if (wrap) wrap.innerHTML = html; else body.querySelector('[data-slot="ann"]').insertAdjacentHTML('afterend', html);
   }
-  if (opts.preview) { art.querySelectorAll('.rsvp input, .rsvp textarea, .rsvp button').forEach(x => { x.disabled = true; }); return; }
+  if (opts.preview) { art.querySelectorAll('.rsvp input, .rsvp textarea, .rsvp select, .rsvp button').forEach(x => { x.disabled = true; }); return; }
   // groups guests can pick at RSVP, and messages (both hidden until schema-3 is installed)
   art._fillPick = () => { const g = art.querySelector('[data-rsvp-group]'); const P = art._gm; if (g && P && P.picks.length) g.innerHTML = groupPickHTML(P.picks, (LS.get('rsvp:' + hosted.id) || {}).group || ''); };
   wireGuestMsgs(cfg, art, hosted);
@@ -3171,14 +3263,19 @@ function wireHosted(cfg, art, hosted, opts = {}) {
     const tr = (cfg.tr && cfg.tr[LANG]) || {}; const show = (r) => { const e = tr['ann.' + r.id]; return e && e.h === hashStr(r.body) ? e.t : r.body; };
     s.innerHTML = `<section class="ev-sec ann" aria-label="${t('Updates from the host')}"><h2 class="sec-h">${t('Updates from the host')}</h2><ul class="ann-list">${rows.map(r => `<li><time>${esc(fmtStamp(r.created_at))}</time><p>${esc(show(r))}</p></li>`).join('')}</ul></section>`;
   }).catch(() => {});
+  art.addEventListener('input', (e) => {
+    if (e.target.id !== 'rs-guests') return; const slot = art.querySelector('[data-slot="rsvp"]'); const w = slot && slot.querySelector('[data-rsvp-plus]'); if (!w) return;
+    const vals = [...w.querySelectorAll('[data-rs-plus]')].map(i => ({ n: i.value, m: (src.rsvpq.meals[+((w.querySelector(`[data-rs-pmeal="${i.dataset.rsPlus}"]`) || {}).value ?? '')] || '') }));
+    const n = Math.min(20, Math.max(1, parseInt(e.target.value, 10) || 1)); w.innerHTML = rqPlusHTML(cfg, src, n, vals);
+  });
   art.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-rsvp],[data-rsvp-att]'); if (!b) return;
     const slot = art.querySelector('[data-slot="rsvp"]');
     if (b.dataset.rsvpAtt != null) {
       $$('[data-rsvp-att]', slot).forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-checked', String(on)); });
-      slot.querySelector('[data-rsvp-guests]').hidden = b.dataset.rsvpAtt === '0'; return;
+      slot.querySelector('[data-rsvp-guests]').hidden = b.dataset.rsvpAtt === '0'; const rx = slot.querySelector('[data-rsvp-x]'); if (rx) rx.hidden = b.dataset.rsvpAtt === '0'; return;
     }
-    if (b.dataset.rsvp === 'again') { const m = LS.get('rsvp:' + hosted.id) || {}; m.editing = true; LS.set('rsvp:' + hosted.id, m); slot.innerHTML = rsvpFormHTML(cfg, hosted); art._fillPick(); return; }
+    if (b.dataset.rsvp === 'again') { const m = LS.get('rsvp:' + hosted.id) || {}; m.editing = true; LS.set('rsvp:' + hosted.id, m); slot.innerHTML = rsvpFormHTML(cfg, hosted, src); art._fillPick(); return; }
     if (b.dataset.rsvp !== 'send') return;
     const v = (id) => (slot.querySelector('#' + id)?.value || '').trim();
     const msg = slot.querySelector('.rsvp-msg');
@@ -3188,14 +3285,15 @@ function wireHosted(cfg, art, hosted, opts = {}) {
     if (!name) { msg.textContent = t('Add your name first.'); slot.querySelector('#rs-name').focus(); return; }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msg.textContent = t('That email doesn’t look right.'); slot.querySelector('#rs-email').focus(); return; }
     const group = (slot.querySelector('#rs-group') || {}).value || '';
+    const x = attending ? rqCollect(slot, src, guests) : null; const row = { event_id: hosted.id, name, email: email || null, attending, guests, note: rqPack(note, x), ...(group ? { group_id: group } : {}) };
     b.disabled = true; msg.textContent = t('Sending…');
     try {
-      await sendRSVP({ event_id: hosted.id, name, email: email || null, attending, guests, note: note || null, ...(group ? { group_id: group } : {}) });
-      LS.set('rsvp:' + hosted.id, { name, email, attending, guests, note, group, at: Date.now() });
+      await sendRSVP(row);
+      LS.set('rsvp:' + hosted.id, { name, email, attending, guests, note, group, ...(x ? { x } : {}), at: Date.now() });
       if (group) { const u = art._gm && art._gm.user; if (u) setMyGroup(hosted.id, group, u).then(() => art._gmLoad && art._gmLoad()).catch(() => {}); else LS.set('grpPick:' + hosted.id, group); }
-      slot.innerHTML = rsvpFormHTML(cfg, hosted);
+      slot.innerHTML = rsvpFormHTML(cfg, hosted, src);
     } catch (err) {
-      if (isNetErr(err)) { outboxAdd({ kind: 'rsvp', row: { event_id: hosted.id, name, email: email || null, attending, guests, note: note || null, ...(group ? { group_id: group } : {}) } }); LS.set('rsvp:' + hosted.id, { name, email, attending, guests, note, group, at: Date.now(), pending: true }); slot.innerHTML = rsvpFormHTML(cfg, hosted); return; }
+      if (isNetErr(err)) { outboxAdd({ kind: 'rsvp', row }); LS.set('rsvp:' + hosted.id, { name, email, attending, guests, note, group, ...(x ? { x } : {}), at: Date.now(), pending: true }); slot.innerHTML = rsvpFormHTML(cfg, hosted, src); return; }
       b.disabled = false; msg.textContent = t('Couldn’t send your reply. Check your connection and try again.');
     }
   });
@@ -3509,6 +3607,21 @@ function notReplied(guests, rsvps) {
   const names = new Set(rsvps.map(r => normName(r.name))), emails = new Set(rsvps.map(r => (r.email || '').toLowerCase()).filter(Boolean));
   return guests.filter(g => !(g.email && emails.has(g.email)) && !(g.name && names.has(normName(g.name))));
 }
+// replies view: a column for each RSVP question some reply answered → [key, header, cell text]
+function rqReplyCols(cfg, replies) {
+  const q = cfg.rsvpq || {}; const has = (k) => replies.some(x => x.x[k] != null);
+  const party = (x) => (x.x.plus || []).map((n, k) => { const m = (x.x.pmeal || [])[k]; return n && m ? `${n} (${m})` : n || (m ? `Guest ${k + 2} (${m})` : ''); }).filter(Boolean).join(', ');
+  return [['meal', 'Meal', (x) => x.x.meal || ''], ['diet', 'Dietary needs', (x) => x.x.diet || ''], ['plus', 'Party names', party],
+    ['events', 'Events', (x) => (Array.isArray(x.x.events) ? (x.x.events.length ? x.x.events.join(', ') : 'None') : '')],
+    ['q1', (q.q || [])[0] || 'Question 1', (x) => x.x.q1 || ''], ['q2', (q.q || [])[1] || 'Question 2', (x) => x.x.q2 || '']].filter(c => has(c[0]));
+}
+// headcounts by meal (the guest's and their party's) and by event (each reply's party)
+function rqSummary(yes) {
+  const meals = new Map(), evs = new Map(); const add = (m, k, n) => m.set(k, (m.get(k) || 0) + n);
+  yes.forEach(x => { if (x.x.meal) add(meals, x.x.meal, 1); (x.x.pmeal || []).forEach(m => { if (m) add(meals, m, 1); }); (Array.isArray(x.x.events) ? x.x.events : []).forEach(e => add(evs, e, x.guests || 1)); });
+  const line = (l, m) => (m.size ? `<p class="rs-sum2 small"><b>${l}</b> ${[...m].map(([k, n]) => `${esc(k)} <b>${n}</b>`).join(' · ')}</p>` : '');
+  return line('Meals:', meals) + line('Events:', evs);
+}
 const csvCell = (v) => { const s = String(v ?? ''); return /[",\n;]/.test(s) || /^[=+\-@]/.test(s) ? '"' + (/^[=+\-@]/.test(s) ? "'" : '') + s.replace(/"/g, '""') + '"' : s; };
 async function renderMineEvent(id, shell, c, user) {
   const ev = await c.from('events').select('id,slug,config,published').eq('id', id).maybeSingle();
@@ -3523,7 +3636,8 @@ async function renderMineEvent(id, shell, c, user) {
   const seenKey = 'inboxSeen:' + id; const seen = LS.get(seenKey, {}) || {};
   // one row per guest: a later reply from the same name or email replaces the earlier one
   const latest = new Map(); (rs.data || []).forEach(x => latest.set((x.email || '').toLowerCase() || normName(x.name), x));
-  const replies = [...latest.values()].reverse(); const yes = replies.filter(x => x.attending); const no = replies.filter(x => !x.attending);
+  const replies = [...latest.values()].reverse().map(x => { const p = rqParse(x.note); return { ...x, note: p.text, x: p.x || {} }; }); const yes = replies.filter(x => x.attending); const no = replies.filter(x => !x.attending);
+  const RQ = rqReplyCols(cfg, replies); const rqSum = rqSummary(yes);
   const guests = LS.get(guestListKey(id), []) || []; const waiting = notReplied(guests, replies);
   shell(`<p><a href="#mine">← My pages</a></p><div class="mine-h"><h1>${esc(cfg.title || 'Untitled')}</h1><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a></div>
     ${msgs ? `<section class="mine-sec" id="mine-msgs"><h2>${t('Messages')}</h2><label class="tool gm-on"><input type="checkbox" data-gm-on ${cfg.guestMessages ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${t('Let guests message you')}</label>${inboxHTML(msgs, seen)}</section>` : ''}
@@ -3531,8 +3645,8 @@ async function renderMineEvent(id, shell, c, user) {
       <form class="ann-form" onsubmit="return false"><textarea id="an-body" rows="3" maxlength="2000" placeholder="Shuttle leaves the hotel at 4:30. Bring a jacket."></textarea>${msgs ? sendToHTML(groups) : ''}<div class="btns"><button type="button" class="btn primary" data-an="post">Post update</button></div><p class="hint" role="status" aria-live="polite"></p></form>
       <ul class="ann-list own">${(an.data || []).map(a => `<li><time>${esc(fmtStamp(a.created_at))}${(a.group_ids || []).length ? ' · ' + esc(t('Send to')) + ': ' + esc(a.group_ids.map(gName).filter(Boolean).join(', ')) : ''}</time><p>${esc(a.body)}</p><button type="button" class="link" data-an-del="${esc(a.id)}">Delete</button></li>`).join('')}</ul></section>
     <section class="mine-sec"><h2>Replies</h2>
-      <p class="rs-sum"><b>${yes.reduce((n, x) => n + (x.guests || 1), 0)}</b> coming <span class="muted">(${yes.length} ${yes.length === 1 ? 'reply' : 'replies'})</span> · <b>${no.length}</b> can’t make it${guests.length ? ` · <b>${waiting.length}</b> of ${guests.length} on your list haven’t replied` : ''}</p>
-      ${replies.length ? `<div class="tbl-wrap"><table class="rs-tbl"><thead><tr><th>Name</th><th>Reply</th><th>Party</th>${groups.length ? `<th>${t('Group')}</th>` : ''}<th>Email</th><th>Note</th></tr></thead><tbody>${replies.map(x => `<tr><td>${esc(x.name)}</td><td>${x.attending ? 'Coming' : 'Can’t make it'}</td><td>${x.attending ? esc(x.guests) : '–'}</td>${groups.length ? `<td>${esc(gName(x.group_id))}</td>` : ''}<td>${esc(x.email || '')}</td><td data-note-id="${esc(x.id)}">${esc(x.note || '')}</td></tr>`).join('')}</tbody></table></div><div class="btns"><button type="button" class="btn sm" data-rs="csv">Download CSV</button></div>` : '<p class="muted">No replies yet. Share your short link and they’ll show up here.</p>'}
+      <p class="rs-sum"><b>${yes.reduce((n, x) => n + (x.guests || 1), 0)}</b> coming <span class="muted">(${yes.length} ${yes.length === 1 ? 'reply' : 'replies'})</span> · <b>${no.length}</b> can’t make it${guests.length ? ` · <b>${waiting.length}</b> of ${guests.length} on your list haven’t replied` : ''}</p>${rqSum}
+      ${replies.length ? `<div class="tbl-wrap"><table class="rs-tbl"><thead><tr><th>Name</th><th>Reply</th><th>Party</th>${groups.length ? `<th>${t('Group')}</th>` : ''}${RQ.map(c => `<th data-rq-col="${c[0]}">${esc(c[1])}</th>`).join('')}<th>Email</th><th>Note</th></tr></thead><tbody>${replies.map(x => `<tr><td>${esc(x.name)}</td><td>${x.attending ? 'Coming' : 'Can’t make it'}</td><td>${x.attending ? esc(x.guests) : '–'}</td>${groups.length ? `<td>${esc(gName(x.group_id))}</td>` : ''}${RQ.map(c => `<td data-rq-col="${c[0]}">${esc(c[2](x))}</td>`).join('')}<td>${esc(x.email || '')}</td><td data-note-id="${esc(x.id)}">${esc(x.note || '')}</td></tr>`).join('')}</tbody></table></div><div class="btns"><button type="button" class="btn sm" data-rs="csv">Download CSV</button></div>` : '<p class="muted">No replies yet. Share your short link and they’ll show up here.</p>'}
       <h3 class="sub-h">Guest list</h3><p class="muted small">Import a CSV or paste names (one per line, optional email) to see who hasn’t replied. Your list stays on this device.</p>
       <div class="btns"><label class="btn sm file-btn">Import CSV<input type="file" data-gl-file accept=".csv,.txt,text/csv,text/plain"></label>${guests.length ? '<button type="button" class="btn sm ghost" data-gl="clear">Clear list</button>' : ''}</div>
       <textarea id="gl-paste" rows="3" placeholder="Ana Ruiz, ana@example.com&#10;Ben Okafor"></textarea><div class="btns"><button type="button" class="btn sm" data-gl="add">Add to list</button></div>
@@ -3580,7 +3694,7 @@ async function renderMineEvent(id, shell, c, user) {
     }
     if (d.anDel && confirm('Delete this update?')) { await c.from('announcements').delete().eq('id', d.anDel); again(); }
     if (d.rs === 'csv') {
-      const lines = [['Name', 'Reply', 'Party', 'Email', 'Note', 'Sent']].concat(replies.map(x => [x.name, x.attending ? 'Coming' : 'Can’t make it', x.attending ? x.guests : 0, x.email || '', x.note || '', x.created_at]));
+      const lines = [['Name', 'Reply', 'Party', ...RQ.map(c => c[1]), 'Email', 'Note', 'Sent']].concat(replies.map(x => [x.name, x.attending ? 'Coming' : 'Can’t make it', x.attending ? x.guests : 0, ...RQ.map(c => c[2](x)), x.email || '', x.note || '', x.created_at]));
       const blob = new Blob(['﻿' + lines.map(l => l.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (cfg.title || 'event').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() + '-replies.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     }
@@ -6643,6 +6757,7 @@ function textFields(cfg) {
   if (sp) sp.fields.filter(f => f[2] === 'text' || f[2] === 'lines').forEach(([k]) => put(`x.${cfg.type}.${k}`, td[k]));
   Object.entries(cfg.access || {}).forEach(([k, v]) => put(`access.${k}`, v));
   (cfg.files || []).forEach((x, i) => put(`files[${i}].name`, x.name));
+  if (cfg.rsvpq) { if (cfg.rsvpq.meal) (cfg.rsvpq.meals || []).forEach((x, i) => put(`rsvpq.meals[${i}]`, x)); if (cfg.rsvpq.qs) (cfg.rsvpq.q || []).forEach((x, i) => put(`rsvpq.q[${i}]`, x)); } // RSVP form questions that are on
   return out;
 }
 function staleFields(cfg, lang) {
@@ -7190,5 +7305,5 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
