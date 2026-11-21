@@ -1595,9 +1595,8 @@ function scheduleHTML(cfg) {
   if (!evs.length && !mine.length && !legs) return '';
   const F = ccItinOn(cfg) ? ccTrip(cfg) : null;
   const view = mine.length && !F ? (LS.get('schedview:' + itinKey(cfg)) || 'all') : 'all';
-  const key = (x) => x.ev && isTrip(cfg) ? (x.start || '9999').slice(0, 10) : (x.start || '9999');
   if (F && legs && F.ci >= 0) legs = legs.filter(s => cityOfStop(cfg, stopsOf(cfg).indexOf(s)) === F.ci);
-  const all = (view === 'event' ? evs : evs.concat(mine)).filter(x => !F || !F.on || F.ok(x._cc)).sort((a, b) => (a.start || '9999').slice(0, 10).localeCompare((b.start || '9999').slice(0, 10)) || key(a).localeCompare(key(b)));
+  const all = schedMerge(cfg, evs, view === 'event' ? [] : mine).filter(x => !F || !F.on || F.ok(x._cc));
   const days = {}; all.forEach(x => (days[(x.start || '').slice(0, 10)] = days[(x.start || '').slice(0, 10)] || []).push(x));
   const fold = schedFold(cfg, Object.keys(days), F);
   const tm = (s) => fmtTime((s || '').slice(11, 16));
@@ -1608,8 +1607,9 @@ function scheduleHTML(cfg) {
   const dayHTML = ([d, xs]) => { const head = isTrip(cfg) ? tripHead(d) : evHead(d);
     return `<div class="day${fold.hide.has(d) ? ' d-more' : ''}"${ONP && d ? ` data-day="${esc(d)}"` : ''}><h3 class="day-h"${isTrip(cfg) && d ? edA('day:' + d) : ''}>${!ONP && d ? `<button type="button" class="day-go" data-ds="day:${esc(d)}"><span>${head}</span><i class="tl-chev" aria-hidden="true"></i></button>` : head}</h3><ol class="tl">${xs.map(x => {
     const more = (title, body) => body ? `<details class="tl-d"><summary><b>${title}</b><i class="tl-dot" aria-hidden="true"></i><span class="sr">${t('Details')}</span></summary><span>${body}</span></details>` : `<b>${title}</b>`;
-    if (x.ev && isTrip(cfg)) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"${edA('s:' + x.si)}><time>${esc(tm(x.start))}</time><div>${ONP ? more(esc(x.name), x.note ? esc(x.note) : '') : go(x.ref, `<b>${esc(x.name)}</b>`)}</div></li>`;
-    if (x.ev) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"${edA('s:' + x.si)}><time>${esc(tm(x.start)) || (isTrip(cfg) ? '' : '—')}</time><div>${go(x.ref, `<span class="tl-tx"><b>${esc(x.name)}${x.kind && x.kind !== 'activity' ? ` <em class="kind">${esc(t(PLAN_KINDS[x.kind] || ''))}</em>` : ''}</b>${x.note || x.place ? `<span>${esc(x.place && !(x.note || '').toLowerCase().includes(x.place.toLowerCase()) ? [x.place, x.note].filter(Boolean).join(' · ') : x.note)}</span>` : ''}</span>`)}</div></li>`;
+    const evCls = [x.bk ? 'mine' : '', x.kind ? 'k-' + esc(x.kind) : ''].filter(Boolean).join(' '), mark = x.bk ? ` <em class="yours">${t('Yours')}</em>` : '';
+    if (x.ev && isTrip(cfg)) return `<li class="${evCls}"${edA('s:' + x.si)}><time>${esc(tm(x.start))}</time><div>${ONP ? more(esc(x.name) + mark, x.note ? esc(x.note) : '') : go(x.ref, `<b>${esc(x.name)}${mark}</b>`)}</div></li>`;
+    if (x.ev) return `<li class="${evCls}"${edA('s:' + x.si)}><time>${esc(tm(x.start)) || (isTrip(cfg) ? '' : '—')}</time><div>${go(x.ref, `<span class="tl-tx"><b>${esc(x.name)}${mark || (x.kind && x.kind !== 'activity' ? ` <em class="kind">${esc(t(PLAN_KINDS[x.kind] || ''))}</em>` : '')}</b>${x.note || x.place ? `<span>${esc(x.place && !(x.note || '').toLowerCase().includes(x.place.toLowerCase()) ? [x.place, x.note].filter(Boolean).join(' · ') : x.note)}</span>` : ''}</span>`)}</div></li>`;
     if (x.co) return `<li class="mine co"><time>${esc(tm(x.start)) || '—'}</time><div>${go(x.ref, `<b>${esc(t('Check out · {n}', { n: x.name || t(ITIN_KINDS[x.kind] || 'Hotel') }))}</b>`)}</div></li>`;
     const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
     const until = x.kind === 'flight' && x.start && x.start.length > 10 && flightArrLabel(x) ? flightArrLabel(x) : x.end ? (x.end.slice(0, 10) !== (x.start || '').slice(0, 10) ? t('until {d}', { d: fmt(x.end.slice(0, 10), { month: 'short', day: 'numeric' }) }) : t('until {d}', { d: tm(x.end) })) : '';
@@ -4970,7 +4970,27 @@ function schedEntries(cfg) {
   return { evs, mine };
 }
 // the guest's booking for a hotel the organizer put on the itinerary (same name), if they added one
-const bookingForHotel = (cfg, name) => name ? itinLoad(cfg).find(x => LODGE.has(x.kind) && x.name && nameLike(x.name, name)) || null : null;
+// (the one checking in that day first: the same hotel twice on one trip is two stays)
+const bookingForHotel = (cfg, name, when) => { if (!name) return null; const xs = itinLoad(cfg).filter(x => LODGE.has(x.kind) && x.name && nameLike(x.name, name)); return (when && xs.find(x => bkDay(x.start) === when)) || xs[0] || null; };
+// is the organizer's item the check-in at this booked hotel? "Check in: <hotel>" (any close name), or an item that is just
+// the hotel's name ("Ceremony at Hotel Esencia" or "Dinner at the hotel" is not a check-in)
+const isCheckinFor = (x, name) => { if (!isHostHotel(x) || !name) return false; const n = hostHotelName(x.title); if (n !== String(x.title || '').trim()) return nameLike(name, n);
+  const A = new Set(nameToks(n)), B = nameToks(name); return !!A.size && B.length === A.size && B.every(w => A.has(w)); };
+// One day order for every merged schedule (the trip Itinerary / event schedule and a day's sheet): days in date order,
+// undated last; inside a day, by time. An item without a time keeps its place in its own list: it follows the item before
+// it there (the organizer's schedule order, the guest's own list order), or opens the day when it is first. Same time →
+// the organizer's item first. And the guest's booking for the hotel the organizer checks everyone into (same hotel, same
+// day) is not a second row: it folds into the organizer's check-in row, marked as theirs; the row keeps its ev: ref, whose
+// sheet is the guest's booking (dsHostHotelHTML).
+function schedMerge(cfg, evs, mine) {
+  const day = (x) => (x.start || '').slice(0, 10), tm = (x) => (x.start || '').slice(11, 16);
+  if (mine.length) { mine = mine.slice(); evs = evs.map(e => { const ev = cfg.schedule[e.si]; if (!ev || !day(e) || !isHostHotel(ev)) return e;
+    const j = mine.findIndex(b => LODGE.has(b.kind) && !b.co && !b.pl && bkDay(b.start) === day(e) && isCheckinFor(ev, b.name)); if (j < 0) return e;
+    const b = mine.splice(j, 1)[0];
+    return { ...e, bk: b, start: tm(e) ? e.start : b.start || e.start, confNo: b.confNo || '', _cc: { ...e._cc, booked: true, text: [e._cc.text, b._cc && b._cc.text].filter(Boolean).join(' ') } }; }); }
+  const keyed = []; [evs, mine].forEach(xs => { const last = {}; xs.forEach(x => { const d = day(x), h = tm(x); const k = h || last[d] || ''; if (h) last[d] = h; keyed.push([x, d || '9999', k]); }); });
+  return keyed.sort((a, b) => a[1].localeCompare(b[1]) || a[2].localeCompare(b[2])).map(a => a[0]);
+}
 const dsFact = (k, v) => v ? `<div class="ds-f"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>` : '';
 const dsMapsURL = (name, addr, geo, pid) => `https://www.google.com/maps/search/?api=1&query=${enc(addr ? `${name}, ${addr}` : geo && geo.lat != null ? `${geo.lat},${geo.lon}` : name)}${pid ? '&query_place_id=' + enc(pid) : ''}`;
 const dsDirURL = (name, addr, geo, pid) => `https://www.google.com/maps/dir/?api=1&destination=${enc(geo && geo.lat != null && !addr ? `${geo.lat},${geo.lon}` : [name, addr].filter(Boolean).join(', '))}${pid ? '&destination_place_id=' + enc(pid) : ''}`;
@@ -5040,7 +5060,7 @@ function dsPlaceHTML(cfg, x, back) {
 }
 // a hotel the organizer listed (Check in: …) — and the guest's own booking for it when they have one
 function dsHostHotelHTML(cfg, name, when, back, ev) {
-  const bk = bookingForHotel(cfg, name); if (bk) return dsBookingHTML(cfg, bk, back);
+  const bk = bookingForHotel(cfg, name, when); if (bk) return dsBookingHTML(cfg, bk, back);
   const geo = LS.get(hgeoKey(name)); const g = geo && !geo.miss ? geo : null; const city = when && stopsOf(cfg).length > 1 && stopFor(cfg, when) ? stopFor(cfg, when).name : '';
   const leg = legOfDay(cfg, when);
   return `${dsHead({ back, icon: ccIcon('hotels'), kicker: [t('Hotel'), city].filter(Boolean).join(' · '), title: name, sub: when ? esc(dateRange(when, leg && leg.to && leg.to > when ? leg.to : when)) : '' })}
@@ -5054,6 +5074,7 @@ function dsEventHTML(cfg, si, back) {
   const x = cfg.schedule[si]; if (!x) return '';
   const d = isTrip(cfg) && x.date ? fitTripDate(cfg.start, cfg.end, x.date, false) : x.date || '';
   if (isTrip(cfg) && isHostHotel(x)) return dsHostHotelHTML(cfg, hostHotelName(x.title), d, back, x);
+  { const bk = cfg.tools.mytrip && d && isHostHotel(x) ? itinLoad(cfg).find(b => LODGE.has(b.kind) && bkDay(b.start) === d && isCheckinFor(x, b.name)) : null; if (bk) return dsBookingHTML(cfg, bk, back); } // an event's "Check in: <hotel>" the guest booked
   const v = cfg.venue; const city = d && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? stopFor(cfg, d) : null; const cat = ccCatOfEv(x); const p = x.place;
   // where: the item's own place when it has one; else a Google Maps search for the item (never the main venue's pin: a welcome party is often somewhere else)
   const find = (q) => dsWhereHTML(q, '', null, '', cat, { q }).replace(`<h3>${t('Location')}</h3>`, `<h3>${t('Find it')}</h3>`);
@@ -5067,12 +5088,12 @@ function dsEventHTML(cfg, si, back) {
 }
 // a day: every plan, booking and stay on it, each tappable
 function dsDayHTML(cfg, d, back) {
-  const { evs, mine } = schedEntries(cfg); const xs = evs.concat(mine).filter(x => (x.start || '').slice(0, 10) === d).sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+  const { evs, mine } = schedEntries(cfg); const xs = schedMerge(cfg, evs, mine).filter(x => (x.start || '').slice(0, 10) === d);
   const st = stopsOf(cfg).length ? stopFor(cfg, d) : null; const n = isTrip(cfg) && cfg.start && d >= cfg.start.slice(0, 10) ? daysBetween(cfg.start, d) + 1 : 0;
   const ci = st ? stopsOf(cfg).indexOf(st) : -1; const nb = tabsFor(cfg).some(x => x[0] === 'nearby') && st && st.lat != null;
   const stays = itinLoad(cfg).filter(x => LODGE.has(x.kind) && bkDay(x.start) && bkDay(x.start) < d && bkDay(x.end) > d); // nights in the middle of a stay
   const row = (x) => { const cat = x._cc ? x._cc.cat : ''; const title = x.co ? t('Check out · {n}', { n: x.name || t('Hotel') }) : x.name || t(ITIN_KINDS[x.kind] || 'Booking');
-    const sub = x.ev ? x.note || '' : x.pl ? t('Saved spot') : [t(ITIN_KINDS[x.kind] || ''), x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · ');
+    const sub = x.bk ? [t('Yours'), x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · ') : x.ev ? x.note || '' : x.pl ? t('Saved spot') : [t(ITIN_KINDS[x.kind] || ''), x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · ');
     return `<li><button type="button" class="ds-row" ${x.ref ? `data-ds="${esc(x.ref)}"` : 'disabled'}><time>${esc(dsTm(x.start)) || '—'}</time>${ccIcon(x.co ? 'hotels' : cat || 'pin')}<span class="ds-row-t"><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${x.ref ? '<i class="ds-chev" aria-hidden="true"></i>' : ''}</button></li>`; };
   return `${dsHead({ back, icon: '', kicker: [n ? t('Day {n}', { n }) : '', st && stopsOf(cfg).length > 1 ? st.name : ''].filter(Boolean).join(' · '), title: fmt(d, { weekday: 'long', month: 'long', day: 'numeric' }) })}
     <div class="ds-b">${xs.length || stays.length ? `<ol class="ds-day">${xs.map(row).join('')}${stays.map(x => row({ ...x, ref: 'bk:' + x.id, start: '', name: x.name, _cc: { cat: 'hotels' }, confNo: '' }).replace('<b>', `<b>${esc(t('Staying at'))} `)).join('')}</ol>` : `<p class="muted">${t('Nothing planned yet.')}</p>`}
