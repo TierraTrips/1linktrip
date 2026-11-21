@@ -505,9 +505,12 @@ function typeInfoHTML(cfg, opt = {}) {
   if (!has('rsvp') && has('rsvpBy')) { rows.push(noteRow('RSVP', t('Reply by {d}', { d: dt(d.rsvpBy) }))); tagLast('rsvpBy'); }
   if (!has('closures') && has('closuresUrl')) { rows.push(linkRow('Road closures', d.closuresUrl)); tagLast('closuresUrl'); }
   if (rows.length) out.push(`<ul class="links">${rows.join('')}</ul>`);
-  if (!opt.skipBlock && ['blockHotel', 'blockUrl', 'blockCode', 'blockBy'].some(has)) {
-    const sub = [d.blockCode ? t('Code {c}', { c: d.blockCode }) : '', d.blockBy ? t('Book by {d}', { d: dt(d.blockBy) }) : ''].filter(Boolean).join(' · ');
-    out.push(`<h3 class="sub-h">${t('Room block')}</h3><ul class="links"${edA('x:blockHotel')}>${d.blockUrl ? linkRow(d.blockHotel || t('Book the room block'), d.blockUrl, sub || hostOf(d.blockUrl)) : noteRow(d.blockHotel || t('Room block'), sub)}</ul>`);
+  if (['blockHotel', 'blockUrl', 'blockCode', 'blockBy'].some(has)) {
+    const sub = [d.blockCode ? t('Code {c}', { c: d.blockCode }) : '', blockByText(d.blockBy, dt)].filter(Boolean).join(' · ');
+    // Travel → Where to stay has the room block too: here it is one compact row (hotel, code, book-by), same plain link
+    const line = [d.blockHotel, sub].filter(Boolean).join(' · ');
+    if (opt.skipBlock) out.push(`<ul class="links block-know"${edA('x:blockHotel')}>${d.blockUrl ? linkRow('Room block', d.blockUrl, line || hostOf(d.blockUrl)) : noteRow('Room block', line)}</ul>`);
+    else out.push(`<h3 class="sub-h">${t('Room block')}</h3><ul class="links"${edA('x:blockHotel')}>${d.blockUrl ? linkRow(d.blockHotel || t('Book the room block'), d.blockUrl, sub || hostOf(d.blockUrl)) : noteRow(d.blockHotel || t('Room block'), sub)}</ul>`);
   }
   const lines = (k) => String(d[k] || '').split('\n').map(x => x.trim()).filter(Boolean);
   if (has('stops')) out.push(`<h3 class="sub-h">${esc(t(lab.stops))}</h3><ul class="links">${lines('stops').map(x => `<li><a href="${esc(L.place(x, v ? (v.country || '') : ''))}" target="_blank" rel="noopener noreferrer"><b>${esc(x)}</b><span>Google Maps</span>${arrow}</a></li>`).join('')}</ul>`);
@@ -1674,10 +1677,12 @@ function travelTabHTML(cfg, air) {
     <h3 class="sub-h">${t('Hotels near the venue')}</h3><div data-slot="hotels">${loading(t('hotels'))}</div>`));
   return out.join('');
 }
+// the room block's book-by date, saying plainly once it has passed
+const blockByText = (by, f) => !by ? '' : by.slice(0, 10) < todayYMD() ? t('The book-by date ({d}) has passed', { d: f(by) }) : t('Book by {d}', { d: f(by) });
 function roomBlockHTML(cfg) {
   if (cfg.type !== 'Wedding' || cfg.off.details) return '';
   const d = typeData(cfg); if (!(d.blockHotel || d.blockUrl || d.blockCode || d.blockBy)) return '';
-  const sub = [d.blockCode ? t('Code {c}', { c: d.blockCode }) : '', d.blockBy ? t('Book by {d}', { d: fmt(d.blockBy, { month: 'short', day: 'numeric' }) }) : ''].filter(Boolean).join(' · ');
+  const sub = [d.blockCode ? t('Code {c}', { c: d.blockCode }) : '', blockByText(d.blockBy, (x) => fmt(x, { month: 'short', day: 'numeric' }))].filter(Boolean).join(' · ');
   const inner = `<span><b>${esc(d.blockHotel || t('Room block'))}</b> <em class="badge">${t('Room block')}</em><small class="sub">${esc(sub)}</small></span>${d.blockUrl ? `<small>${t('Book')} ↗</small>` : ''}`;
   return `<div class="row-links block-row">${d.blockUrl ? `<a class="row-link hl" href="${esc(d.blockUrl)}" target="_blank" rel="noopener noreferrer">${inner}</a>` : `<div class="row-link hl">${inner}</div>`}</div>`;
 }
