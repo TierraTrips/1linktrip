@@ -399,13 +399,13 @@ function icsText(cfg, url) {
   const escI = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
   const fold = (line) => { const out = []; let cur = ''; for (const ch of line) { if (new Blob([cur + ch]).size > 74) { out.push(cur); cur = ' ' + ch; } else cur += ch; } out.push(cur); return out.join('\r\n'); };
   const now = icsStamp(new Date()); const uidBase = Math.abs([...cfg.title + cfg.start].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7));
-  const ev = (uid, title, s, e, desc) => ['BEGIN:VEVENT', `UID:${uid}-${uidBase}@eventpages`, `DTSTAMP:${now}`, ...(typeof s === 'string' ? [`DTSTART;VALUE=DATE:${s.replace(/-/g, '')}`, `DTEND;VALUE=DATE:${e.replace(/-/g, '')}`] : [`DTSTART:${icsStamp(s)}`, `DTEND:${icsStamp(e)}`]), `SUMMARY:${escI(title)}`, `LOCATION:${escI(venueLine(cfg.venue))}`, `DESCRIPTION:${escI(desc)}`, `URL:${url}`, 'END:VEVENT'];
+  const ev = (uid, title, s, e, desc, loc) => ['BEGIN:VEVENT', `UID:${uid}-${uidBase}@eventpages`, `DTSTAMP:${now}`, ...(typeof s === 'string' ? [`DTSTART;VALUE=DATE:${s.replace(/-/g, '')}`, `DTEND;VALUE=DATE:${e.replace(/-/g, '')}`] : [`DTSTART:${icsStamp(s)}`, `DTEND:${icsStamp(e)}`]), `SUMMARY:${escI(title)}`, `LOCATION:${escI(loc || venueLine(cfg.venue))}`, `DESCRIPTION:${escI(desc)}`, `URL:${url}`, 'END:VEVENT'];
   const { s, e } = eventSpan(cfg);
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//1LinkTrip//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', `X-WR-CALNAME:${escI(cfg.title)}`];
   lines.push(...ev('main', cfg.title, s, e, [cfg.tagline, url].filter(Boolean).join('\n\n')));
   cfg.schedule.filter(x => x.date && x.time && x.title).forEach((x, i) => {
     const st = wallToUTC(`${x.date}T${x.time}`, cfg.tz);
-    lines.push(...ev('s' + i, `${x.title} · ${cfg.title}`, st, new Date(st.getTime() + 3600e3), [x.note, url].filter(Boolean).join('\n\n')));
+    lines.push(...ev('s' + i, `${x.title} · ${cfg.title}`, st, new Date(st.getTime() + 3600e3), [x.note, url].filter(Boolean).join('\n\n'), x.place ? [x.place.name, x.place.address !== x.place.name ? x.place.address : ''].filter(Boolean).join(', ') : ''));
   });
   lines.push('END:VCALENDAR');
   return lines.map(fold).join('\r\n');
@@ -1425,6 +1425,16 @@ function normCustom(xs) {
   }).filter(x => x.title || x.text || x.label || x.url || x.img);
 }
 // Old links (v1) carried a `sections` list and a generic `links` list. Map them onto tools, notes and type cards so they open as before.
+// a schedule item's own place (picked with Places search in the builder): { name, address, lat, lon, gid }, or null
+function normSchedPlace(p) {
+  if (!p || typeof p !== 'object') return null;
+  const str = (v, n) => typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, n) : '';
+  const num = (v) => typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? +v : NaN;
+  const o = { name: str(p.name, 120), address: str(p.address, 200) }; if (!o.name) o.name = o.address.slice(0, 120); if (!o.name) return null;
+  const la = num(p.lat), lo = num(p.lon); if (Number.isFinite(la) && Number.isFinite(lo) && Math.abs(la) <= 90 && Math.abs(lo) <= 180) { o.lat = +la.toFixed(5); o.lon = +lo.toFixed(5); }
+  if (typeof p.gid === 'string' && /^[\w-]{1,300}$/.test(p.gid)) o.gid = p.gid;
+  return o;
+}
 function normalize(c) {
   c = c || {}; const legacy = !(c.v >= 2);
   const b = blankEvent(c.type);
@@ -1451,7 +1461,8 @@ function normalize(c) {
   c = { ...b, ...c, theme: { ...b.theme, ...(c.theme || {}) } };
   if (/^#1f3a2e$/i.test(c.theme.accent || '')) c.theme.accent = LAGOON; // pages saved with the old Forest default
   c.tools = { ...defaultTools(c.type), ...(c.tools || {}) };
-  c.off = c.off || {}; c.notes = Array.isArray(c.notes) ? c.notes : []; c.schedule = Array.isArray(c.schedule) ? c.schedule : [];
+  c.off = c.off || {}; c.notes = Array.isArray(c.notes) ? c.notes : []; c.schedule = Array.isArray(c.schedule) ? c.schedule.filter(x => x && typeof x === 'object') : [];
+  c.schedule.forEach(x => { if (x.place === undefined) return; const p = normSchedPlace(x.place); if (p) x.place = p; else delete x.place; }); // an item at its own place
   c.x = c.x && typeof c.x === 'object' ? c.x : {}; c.bring = typeof c.bring === 'string' ? c.bring : '';
   c.custom = normCustom(c.custom);
   if (c.files !== undefined) { c.files = normFiles(c.files); if (!c.files.length) delete c.files; } // attached documents (only on pages that have some)
@@ -1558,7 +1569,7 @@ function scheduleHTML(cfg) {
     return `<div class="day${fold.hide.has(d) ? ' d-more' : ''}"${ONP && d ? ` data-day="${esc(d)}"` : ''}><h3 class="day-h"${isTrip(cfg) && d ? edA('day:' + d) : ''}>${!ONP && d ? `<button type="button" class="day-go" data-ds="day:${esc(d)}"><span>${head}</span><i class="tl-chev" aria-hidden="true"></i></button>` : head}</h3><ol class="tl">${xs.map(x => {
     const more = (title, body) => body ? `<details class="tl-d"><summary><b>${title}</b><i class="tl-dot" aria-hidden="true"></i><span class="sr">${t('Details')}</span></summary><span>${body}</span></details>` : `<b>${title}</b>`;
     if (x.ev && isTrip(cfg)) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"${edA('s:' + x.si)}><time>${esc(tm(x.start))}</time><div>${ONP ? more(esc(x.name), x.note ? esc(x.note) : '') : go(x.ref, `<b>${esc(x.name)}</b>`)}</div></li>`;
-    if (x.ev) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"${edA('s:' + x.si)}><time>${esc(tm(x.start)) || (isTrip(cfg) ? '' : '—')}</time><div>${go(x.ref, `<span class="tl-tx"><b>${esc(x.name)}${x.kind && x.kind !== 'activity' ? ` <em class="kind">${esc(t(PLAN_KINDS[x.kind] || ''))}</em>` : ''}</b>${x.note ? `<span>${esc(x.note)}</span>` : ''}</span>`)}</div></li>`;
+    if (x.ev) return `<li class="${x.kind ? 'k-' + esc(x.kind) : ''}"${edA('s:' + x.si)}><time>${esc(tm(x.start)) || (isTrip(cfg) ? '' : '—')}</time><div>${go(x.ref, `<span class="tl-tx"><b>${esc(x.name)}${x.kind && x.kind !== 'activity' ? ` <em class="kind">${esc(t(PLAN_KINDS[x.kind] || ''))}</em>` : ''}</b>${x.note || x.place ? `<span>${esc(x.place && !(x.note || '').toLowerCase().includes(x.place.toLowerCase()) ? [x.place, x.note].filter(Boolean).join(' · ') : x.note)}</span>` : ''}</span>`)}</div></li>`;
     if (x.co) return `<li class="mine co"><time>${esc(tm(x.start)) || '—'}</time><div>${go(x.ref, `<b>${esc(t('Check out · {n}', { n: x.name || t(ITIN_KINDS[x.kind] || 'Hotel') }))}</b>`)}</div></li>`;
     const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
     const until = x.kind === 'flight' && x.start && x.start.length > 10 && flightArrLabel(x) ? flightArrLabel(x) : x.end ? (x.end.slice(0, 10) !== (x.start || '').slice(0, 10) ? t('until {d}', { d: fmt(x.end.slice(0, 10), { month: 'short', day: 'numeric' }) }) : t('until {d}', { d: tm(x.end) })) : '';
@@ -2327,7 +2338,7 @@ function venueFieldHTML(c) {
     : `<div class="field"><label for="vq">${isTrip(c) ? 'Destination' : 'Venue'}</label><div class="search"><input id="vq" placeholder="${isTrip(c) ? 'City or region' : 'Venue name or address'}" value="${esc(B.vq || '')}"><button type="button" class="btn" data-b="search">Search</button></div></div>
       <ul class="vres">${B.venueResults.map((r, i) => `<li><button type="button" data-pick="${i}"><b>${esc(r.name)}</b><span>${esc(r.display)}</span></button></li>`).join('')}</ul>${B.vmsg ? `<p class="hint">${esc(B.vmsg)}</p>` : ''}`;
 }
-function openCard(id) { if (B.onp) { onpCleanup(); B.focus = null; B.onpSec = null; } if (id === 'custom' && !B.cfg.custom.length) B.cfg.custom.push(blankCustom()); if (DU && DU.key !== 'main') DU = null; B.card = id; renderSheet(); const sh = $('#sheet'); if (!sh.open) sh.showModal(); }
+function openCard(id) { if (B.onp) { onpCleanup(); B.focus = null; B.onpSec = null; } if (id === 'custom' && !B.cfg.custom.length) B.cfg.custom.push(blankCustom()); if (DU && DU.key !== 'main') DU = null; B.card = id; B.spEdit = null; renderSheet(); const sh = $('#sheet'); if (!sh.open) sh.showModal(); }
 function renderSheet() {
   const c = B.cfg; const id = B.card; const form = $('#sheet .sheet-in'); if (!form || !id) return;
   const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id); const cc = allCards(c).common.find(x => x[0] === id) || COMMON_CARDS.find(x => x[0] === id);
@@ -2338,7 +2349,7 @@ function renderSheet() {
   else if (id === 'route') body = routeHTML(c, one('st') ? fi : null);
   else if (tc) { const sp = typeSpec(c); body = tc[3].map(k => xFieldHTML(c, sp.fields.find(f => f[0] === k), tc[3].length === 1)).join(''); }
   else if (id === 'schedule' && isTrip(c)) body = tripPlanHTML(c, F && F.k === 'day' ? { day: F.d } : one('s') ? { item: fi } : null);
-  else if (id === 'schedule') body = `${c.schedule.map((x, i) => !only('s', i) ? '' : `<div class="rowed"><div class="two"><input type="date" data-s="${i}" data-k="date" value="${esc(x.date)}" aria-label="Date"><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time"></div><input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="What's happening" aria-label="Title"><input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Where, or a note" aria-label="Note"><button type="button" class="ic del" data-sdel="${i}" aria-label="Remove item">Remove</button></div>`).join('')}
+  else if (id === 'schedule') body = `${c.schedule.map((x, i) => !only('s', i) ? '' : `<div class="rowed"><div class="two"><input type="date" data-s="${i}" data-k="date" value="${esc(x.date)}" aria-label="Date"><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time"></div><input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="What's happening" aria-label="Title">${schedPlaceHTML(x, i)}<input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Note (optional)" aria-label="Note"><button type="button" class="ic del" data-sdel="${i}" aria-label="Remove item">Remove</button></div>`).join('')}
     ${one('s') ? '' : `<div class="btns"><button type="button" class="btn sm" data-b="add-sched">+ Add item</button>${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`}`;
   else if (id === 'notes') body = `${c.notes.map((x, i) => !only('n', i) ? '' : `<div class="rowed"><input data-n="${i}" data-k="label" value="${esc(x.label)}" placeholder="Title" aria-label="Title"><input data-n="${i}" data-k="text" value="${esc(x.text || '')}" placeholder="Text" aria-label="Text"><input data-n="${i}" data-k="url" type="url" value="${esc(x.url || '')}" placeholder="Link (optional)" aria-label="Link">${B.onp ? `<div class="plan-ctl"><span class="mv"><button type="button" data-onp-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-onp-mv="${i}" data-dir="1" ${i === c.notes.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button></span><button type="button" class="ic del" data-ndel="${i}" aria-label="Remove">Remove</button></div>` : `<button type="button" class="ic del" data-ndel="${i}" aria-label="Remove">Remove</button>`}</div>`).join('')}
     ${one('n') ? '' : '<button type="button" class="btn sm" data-b="add-note">+ Add note</button>'}`;
@@ -2360,7 +2371,7 @@ function renderSheet() {
   const head = (op && op.title) || (F && onpTitle(c, id)) || title;
   if (id !== 'custom' && !F && docCardOk(c, id)) body += docBlockHTML(id);
   if (B.onp) body += onpFoot(c);
-  setTimeout(() => { if (id === 'route') wireRouteAC(c); if (id === 'msgs') loadCardGroups(); if (id === 'when') { const q = $('#sheet #vq-sh'); if (q) placeAutocomplete(q, { bias: () => null, onPick: (pid, tok) => gpVenue(pid, tok).then(r => { B.vq = ''; B.venueResults = []; pickVenue(r); }).catch(() => toast('Couldn’t load that place')) }); } }, 0);
+  setTimeout(() => { if (id === 'schedule') wireSchedPlaceAC(); if (id === 'route') wireRouteAC(c); if (id === 'msgs') loadCardGroups(); if (id === 'when') { const q = $('#sheet #vq-sh'); if (q) placeAutocomplete(q, { bias: () => null, onPick: (pid, tok) => gpVenue(pid, tok).then(r => { B.vq = ''; B.venueResults = []; pickVenue(r); }).catch(() => toast('Couldn’t load that place')) }); } }, 0);
   form.innerHTML = `<div class="grab" aria-hidden="true"></div><h2>${esc(head)}<button type="button" class="x" data-b="close" aria-label="Close">×</button></h2><div class="sheet-b">${body}</div><button type="button" class="btn primary big" data-b="close">Done</button>`;
 }
 // one input handler for the form and the card sheet
@@ -2377,6 +2388,7 @@ function wireInputs(root) {
     else if (d.f) { cfg[d.f] = i.value; if (d.f === 'start' && cfg.end && cfg.end < cfg.start) { cfg.end = ''; const en = root.querySelector('[data-f="end"]'); if (en) en.value = ''; } changed(d.f === 'type'); }
     else if (d.v) { cfg.venue[d.v] = i.value; changed(); }
     else if (d.t) { cfg.theme[d.t] = i.value; $$('.sw', root).forEach(s => s.classList.remove('on')); changed(); }
+    else if (d.spQ != null) return; // place search: read on pick / Find
     else if (d.s != null) { cfg.schedule[+d.s][d.k] = i.value; changed(); }
     else if (d.n != null) { cfg.notes[+d.n][d.k] = i.value; changed(); }
     else if (d.cs != null) { const x = cfg.custom[+d.cs]; if (x) { x[d.k] = i.value; changed(); } }
@@ -2404,6 +2416,9 @@ function wireInputs(root) {
     else if (d.themeMode) { cfg.theme.mode = d.themeMode; changed(true); }
     else if (d.b === 'add-sched') { const last = cfg.schedule[cfg.schedule.length - 1]; cfg.schedule.push({ date: last?.date || cfg.start.slice(0, 10), time: '', title: '', note: '' }); changed(true); }
     else if (d.sdel != null) { cfg.schedule.splice(+d.sdel, 1); changed(true); }
+    else if (d.spFind != null) schedPlaceFind(+d.spFind, (root.querySelector(`[data-sp-q="${d.spFind}"]`) || {}).value || '');
+    else if (d.spChg != null) { B.spEdit = +d.spChg; renderSheet(); setTimeout(() => { const q = $(`#sheet [data-sp-q="${d.spChg}"]`); if (q) { q.focus(); q.select(); } }, 30); }
+    else if (d.spDel != null) { const x = cfg.schedule[+d.spDel]; if (x) { delete x.place; B.spEdit = null; changed(true); } }
     else if (d.b === 'add-note') { cfg.notes.push({ label: '', text: '', url: '' }); changed(true); }
     else if (d.ndel != null) { cfg.notes.splice(+d.ndel, 1); changed(true); }
     else if (d.b === 'add-custom') { cfg.custom.push(blankCustom()); changed(true); setTimeout(() => $$('#sheet [data-cs][data-k="title"]').pop()?.focus(), 0); }
@@ -2479,7 +2494,7 @@ function onpGo(ed) {
   if (k === 'add' && a === 'n') { const x = { label: '', text: '', url: '' }; c.notes.push(x); changed(); return onpOpen('notes', { k: 'n', o: x, fresh: true }); }
 }
 const onpArr = (c, k) => ({ s: c.schedule, n: c.notes, st: c.stops || [], cs: c.custom }[k]);
-const onpEmpty = (k, x) => !x || (k === 'cs' ? ![x.title, x.text, x.label, x.url, x.img].join('').trim() : k === 'st' ? !x.name : k === 'n' ? !(x.label || x.text || x.url) : !(x.title || x.note));
+const onpEmpty = (k, x) => !x || (k === 'cs' ? ![x.title, x.text, x.label, x.url, x.img].join('').trim() : k === 'st' ? !x.name : k === 'n' ? !(x.label || x.text || x.url) : !(x.title || x.note || x.place));
 // the focused item's index now (it may have moved, or been replaced when a stop was found on the map)
 function onpIdx(c) {
   const F = B.focus; if (!F || !F.k || F.k === 'day') return -1; const arr = onpArr(c, F.k);
@@ -2493,7 +2508,7 @@ function onpCleanup() {
 function onpOpen(id, focus = null, secId = null) {
   const sh = $('#sheet'); if (!sh) return;
   if (B.onp) onpCleanup();
-  B.onp = true; B.focus = focus; B.onpSec = secId; B.card = id; if (DU && DU.key !== 'main') DU = null;
+  B.onp = true; B.focus = focus; B.onpSec = secId; B.card = id; B.spEdit = null; if (DU && DU.key !== 'main') DU = null;
   const wide = matchMedia('(min-width: 980px)').matches; const f = $('.b-form'), top = $('.b-top');
   if (wide && f && top) { sh.style.setProperty('--onp-top', top.getBoundingClientRect().bottom + 'px'); sh.style.setProperty('--onp-w', f.getBoundingClientRect().width + 'px'); }
   sh.classList.add('onp'); renderSheet();
@@ -4899,7 +4914,7 @@ const isHostHotel = (x) => !!x && HOTEL_RE.test(x.title || '') && !/check[- ]?ou
 // everything on the trip's schedule (the organizer's items + the guest's bookings and planned places), each with its sheet ref
 function schedEntries(cfg) {
   const fit = (d) => isTrip(cfg) && d ? fitTripDate(cfg.start, cfg.end, d, false) : d || '';
-  const evs = cfg.off.schedule ? [] : cfg.schedule.filter(x => x.title).map(x => { const d = fit(x.date); return { ev: true, ref: 'ev:' + cfg.schedule.indexOf(x), start: d + (d && x.time ? 'T' + x.time : ''), name: x.title, note: x.note, kind: x.kind || '', si: cfg.schedule.indexOf(x), _cc: { city: d ? stopOfDay(cfg, d) : -1, cat: ccCatOfEv(x), text: [x.title, x.note].join(' '), host: true } }; });
+  const evs = cfg.off.schedule ? [] : cfg.schedule.filter(x => x.title).map(x => { const d = fit(x.date); return { ev: true, ref: 'ev:' + cfg.schedule.indexOf(x), start: d + (d && x.time ? 'T' + x.time : ''), name: x.title, note: x.note, place: x.place ? x.place.name : '', kind: x.kind || '', si: cfg.schedule.indexOf(x), _cc: { city: d ? stopOfDay(cfg, d) : -1, cat: ccCatOfEv(x), text: [x.title, x.note].join(' '), host: true } }; });
   const mine = cfg.tools.mytrip ? itinLoad(cfg).map((x, i) => ({ ...x, i, ref: x.id ? 'bk:' + x.id : '', _cc: ccBkItem(cfg, x) }))
     .concat(itinLoad(cfg).filter(x => LODGE.has(x.kind) && bkDay(x.end) > bkDay(x.start) && bkDay(x.start)).map(x => ({ ...x, co: true, ref: x.id ? 'bk:' + x.id : '', start: x.end, _cc: ccBkItem(cfg, x) })))
     .concat(planLoad(cfg).filter(x => x.day).map(x => ({ kind: '', pl: true, ref: 'pl:' + x.id, name: x.name, start: x.day + (x.time ? 'T' + x.time : ''), confNo: x.booked ? x.conf : '', note: x.note, _cc: { city: ccCityOfPlan(cfg, x), cat: ccCatOfPlan(x), text: [x.name, x.addr, x.note].join(' '), saved: true, booked: !!x.booked } }))) : [];
@@ -4909,14 +4924,14 @@ function schedEntries(cfg) {
 const bookingForHotel = (cfg, name) => name ? itinLoad(cfg).find(x => LODGE.has(x.kind) && x.name && nameLike(x.name, name)) || null : null;
 const dsFact = (k, v) => v ? `<div class="ds-f"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>` : '';
 const dsMapsURL = (name, addr, geo, pid) => `https://www.google.com/maps/search/?api=1&query=${enc(addr ? `${name}, ${addr}` : geo && geo.lat != null ? `${geo.lat},${geo.lon}` : name)}${pid ? '&query_place_id=' + enc(pid) : ''}`;
-const dsDirURL = (name, addr, geo) => `https://www.google.com/maps/dir/?api=1&destination=${enc(geo && geo.lat != null && !addr ? `${geo.lat},${geo.lon}` : [name, addr].filter(Boolean).join(', '))}`;
+const dsDirURL = (name, addr, geo, pid) => `https://www.google.com/maps/dir/?api=1&destination=${enc(geo && geo.lat != null && !addr ? `${geo.lat},${geo.lon}` : [name, addr].filter(Boolean).join(', '))}${pid ? '&destination_place_id=' + enc(pid) : ''}`;
 // "Where": address, a small map when the place has a point, Open in Google Maps + Directions
 function dsWhereHTML(name, addr, geo, pid, cat, opts = {}) {
   if (!name && !addr) return '';
   const pt = geo && geo.lat != null;
   return `<section class="ds-sec ds-where"><h3>${t('Location')}</h3>${addr ? `<p class="ds-addr">${esc(addr)}</p>` : ''}
     <div class="ds-map${pt ? '' : ' empty'}" data-ds-map${pt ? ` data-lat="${geo.lat}" data-lon="${geo.lon}"` : ''} data-cat="${esc(cat || '')}" data-q="${esc(opts.q || '')}"${opts.key ? ` data-key="${esc(opts.key)}"` : ''} aria-hidden="true"></div>
-    <div class="ds-links"><a class="btn sm primary" href="${esc(dsMapsURL(name, addr, geo, pid))}" target="_blank" rel="noopener noreferrer">${t('Open in Google Maps')}</a><a class="btn sm" href="${esc(dsDirURL(name, addr, geo))}" target="_blank" rel="noopener noreferrer">${t('Directions')}</a></div></section>`;
+    <div class="ds-links"><a class="btn sm primary" href="${esc(dsMapsURL(name, addr, geo, pid))}" target="_blank" rel="noopener noreferrer">${t('Open in Google Maps')}</a><a class="btn sm" href="${esc(dsDirURL(name, addr, geo, pid))}" target="_blank" rel="noopener noreferrer">${t('Directions')}</a></div></section>`;
 }
 function dsPhotosHTML(x, ref) {
   return `<section class="ds-sec ds-ph" data-ph-ref="${esc(ref)}"><h3>${t('Photos')}</h3>${galleryHTML(x, ref)}<p class="muted small ds-ph-hint">${esc(t(LS.get('signedIn') ? 'Add photos from your phone or computer' : 'Add photos from your phone or computer — sign in to keep more than 3'))}</p></section>`;
@@ -4990,12 +5005,16 @@ function dsEventHTML(cfg, si, back) {
   const x = cfg.schedule[si]; if (!x) return '';
   const d = isTrip(cfg) && x.date ? fitTripDate(cfg.start, cfg.end, x.date, false) : x.date || '';
   if (isTrip(cfg) && isHostHotel(x)) return dsHostHotelHTML(cfg, hostHotelName(x.title), d, back, x);
-  const v = cfg.venue; const city = d && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? stopFor(cfg, d) : null; const cat = ccCatOfEv(x);
-  return `${dsHead({ back, icon: ccIcon(cat || 'pin'), kicker: [x.kind && x.kind !== 'activity' ? t(PLAN_KINDS[x.kind] || '') : isTrip(cfg) ? t('Plan') : t(cfg.type || 'Event'), city ? city.name : ''].filter(Boolean).join(' · '), title: x.title })}
+  const v = cfg.venue; const city = d && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? stopFor(cfg, d) : null; const cat = ccCatOfEv(x); const p = x.place;
+  // where: the item's own place when it has one; else a Google Maps search for the item (never the main venue's pin: a welcome party is often somewhere else)
+  const find = (q) => dsWhereHTML(q, '', null, '', cat, { q }).replace(`<h3>${t('Location')}</h3>`, `<h3>${t('Find it')}</h3>`);
+  const where = p ? dsWhereHTML(p.name, p.address && p.address !== p.name ? p.address : '', p.lat != null ? p : null, p.gid || '', cat, { key: [p.name, p.address].filter(Boolean).join(', ') })
+    : isTrip(cfg) ? dsWhereHTML(x.title, city ? [city.city || city.name, city.country].filter(Boolean).join(', ') : '', null, '', cat, { q: [x.title, city ? city.city || city.name : v && v.city].filter(Boolean).join(', ') }).replace(`<h3>${t('Location')}</h3>`, `<h3>${t('Find it')}</h3>`)
+    : x.title ? find([x.title, v && (v.city || v.region)].filter(Boolean).join(', ')) : '';
+  return `${dsHead({ back, icon: ccIcon(cat || 'pin'), kicker: [x.kind && x.kind !== 'activity' ? t(PLAN_KINDS[x.kind] || '') : isTrip(cfg) ? t('Plan') : t(cfg.type || 'Event'), city ? city.name : ''].filter(Boolean).join(' · '), title: x.title, sub: p ? esc(p.name) : '' })}
     <div class="ds-b">${dsFacts([dsFact(t('Date'), d ? fmt(d, { weekday: 'long', month: 'long', day: 'numeric' }) : ''), dsFact(t('Time'), x.time ? fmtTime(x.time) : '')])}
     ${x.note ? `<p class="ds-note ds-lead">${esc(x.note).replace(/\n/g, '<br>')}</p>` : ''}${PERF}
-    ${isTrip(cfg) ? dsWhereHTML(x.title, city ? [city.city || city.name, city.country].filter(Boolean).join(', ') : '', null, '', cat, { q: [x.title, city ? city.city || city.name : v && v.city].filter(Boolean).join(', ') }).replace(`<h3>${t('Location')}</h3>`, `<h3>${t('Find it')}</h3>`)
-      : v ? dsWhereHTML(v.name || '', v.address && v.address !== v.name ? v.address : '', v, '', '') : ''}</div>`;
+    ${where}</div>`;
 }
 // a day: every plan, booking and stay on it, each tappable
 function dsDayHTML(cfg, d, back) {
@@ -6691,7 +6710,7 @@ function tripPlanHTML(c, opt = null) {
     const same = c.schedule.map((x, i) => [x, i]).filter(([x]) => x.date === d).map(([, i]) => i); const items = c.schedule.map((x, i) => [x, i]).filter(([x, i]) => it ? i === opt.item : x.date === d);
     return `<div class="plan-day">${it ? fieldWrap('Day', `<input id="tp-date" type="date" data-s="${opt.item}" data-k="date" value="${esc(it.date || '')}">`, 'tp-date') : opt && opt.day ? '' : `<h3>${d >= c.start.slice(0, 10) ? `<span class="dayn">Day ${daysBetween(c.start, d) + 1}</span> ` : ''}${esc(friendlyDate(d))}</h3>`}
       ${items.map(([x, i], k) => `<div class="rowed plan-item"><div class="plan-top"><select data-s="${i}" data-k="kind" aria-label="Kind">${Object.entries(PLAN_KINDS).map(([v, l]) => `<option value="${v}" ${(x.kind || 'activity') === v ? 'selected' : ''}>${l}</option>`).join('')}</select><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time (optional)"><span class="mv"><button type="button" data-tp-mv="${i}" data-dir="-1" ${same.indexOf(i) <= 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-tp-mv="${i}" data-dir="1" ${same.indexOf(i) === same.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button></span></div>
-        <input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="${(x.kind || 'activity') === 'reservation' ? 'Dinner at…, tour, tickets' : (x.kind === 'note' ? 'Something to remember' : 'What you’re doing')}" aria-label="Title"><input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Where, confirmation, or a note" aria-label="Note"><button type="button" class="ic del" data-sdel="${i}" aria-label="Remove">Remove</button></div>`).join('')}
+        <input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="${(x.kind || 'activity') === 'reservation' ? 'Dinner at…, tour, tickets' : (x.kind === 'note' ? 'Something to remember' : 'What you’re doing')}" aria-label="Title">${(x.kind || 'activity') === 'note' ? '' : schedPlaceHTML(x, i)}<input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Confirmation or a note" aria-label="Note"><button type="button" class="ic del" data-sdel="${i}" aria-label="Remove">Remove</button></div>`).join('')}
       ${it ? '' : `<button type="button" class="btn sm" data-tp-add="${d}">+ Add to this day</button>`}</div>`;
   }).join('')}${opt ? '' : `<div class="btns">${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`}`;
 }
@@ -6704,6 +6723,24 @@ function tripClick(b, cfg) {
     return true;
   }
   return false;
+}
+
+// builder: a schedule item's own place — the chosen place (name + address, Change / Remove), or an optional Places search
+function schedPlaceHTML(x, i) {
+  const p = x.place;
+  if (p && B.spEdit !== i) return `<div class="venue-sel s-place"><div><b>${esc(p.name)}</b>${p.address && p.address !== p.name ? `<span>${esc(p.address)}</span>` : ''}</div><span class="s-place-b"><button type="button" class="btn sm" data-sp-chg="${i}">Change</button><button type="button" class="btn sm ghost" data-sp-del="${i}" aria-label="Remove place">Remove</button></span></div>`;
+  return `<div class="search s-place-q"><input id="sp-q-${i}" data-sp-q="${i}" value="${p ? esc(p.name) : ''}" placeholder="Place (optional), e.g. a restaurant or beach club" aria-label="Place (optional)" autocomplete="off"><button type="button" class="btn sm" data-sp-find="${i}">Find</button></div>`;
+}
+function setSchedPlace(i, v) { const x = B && B.cfg.schedule[i]; const p = normSchedPlace(v); if (!x || !p) return; x.place = p; B.spEdit = null; changed(true); }
+function wireSchedPlaceAC() {
+  $$('#sheet [data-sp-q]').forEach(inp => { if (inp._ac) return;
+    inp.addEventListener('keydown', (e) => { const ul = inp.parentElement.querySelector('.gp-sugg'); if (e.key === 'Enter' && (!ul || ul.hidden)) { e.preventDefault(); schedPlaceFind(+inp.dataset.spQ, inp.value); } }); // no suggestion showing: text search
+    placeAutocomplete(inp, { bias: () => B.cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(v => setSchedPlace(+inp.dataset.spQ, v)).catch(() => toast('Couldn’t load that place')) }); });
+}
+// Find / Enter without a suggestion: the best text-search match (Google, else OpenStreetMap)
+function schedPlaceFind(i, q) {
+  q = String(q || '').trim(); if (q.length < 2) return;
+  geocode(q).then(rs => { const r = (rs || []).find(x => x.lat != null && !(x.types || []).some(ty => ty === 'country' || ty === 'continent')) || (rs || [])[0]; if (!r) { toast('No match. Try adding the city.'); return; } setSchedPlace(i, r); }).catch(() => toast('Search is unavailable right now'));
 }
 
 // ================= customization: Design section, section order, type defaults =================

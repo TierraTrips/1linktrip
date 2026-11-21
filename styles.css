@@ -302,6 +302,7 @@ legend { float: left; font: 600 1.1rem var(--brand); padding: 0; margin-bottom: 
 .ic:disabled { opacity: .3; cursor: default; }
 .ic.del { font-size: .8rem; font-weight: 600; padding: 0 10px; justify-self: start; color: #A3272D; }
 .rowed { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: var(--tint); }
+.rowed .s-place { background: var(--paper); padding: 8px 10px; flex-wrap: wrap; } .s-place b { overflow-wrap: anywhere; } .s-place-b { display: flex; gap: 6px; flex: none; } .s-place-q .ac-wrap, .s-place-q input { flex: 1; min-width: 0; } .rowed .two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .rowed .two > input { min-width: 0; } /* date + time fit a 320px phone */
 .b-end { display: flex; gap: 10px; }
 .b-preview { display: none; }
 .builder[data-tab="preview"] .b-form { display: none; }
