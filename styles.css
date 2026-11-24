@@ -1467,7 +1467,7 @@ dialog.ds-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .hf { display: grid; gap: 2px; min-width: 0; }
 .hf .field { min-width: 0; }
 .hf .hf-sug { margin: 6px 0 2px; gap: 5px; } .hf .hf-sug .chip { font-size: .78rem; padding: .3em .72em; }
-.hf-cx { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 8px; } .hf-cx input { min-width: 0; width: 100%; }
+.hf-cx { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; } .hf-cx input { min-width: 0; width: 100%; }
 .hf-cx input:disabled { opacity: .45; }
 .field label.chk.hf-nr, label.chk.hf-nr { font-family: inherit; font-size: .88rem; font-weight: 600; text-transform: none; letter-spacing: normal; color: var(--ink, inherit); margin: 8px 0 0; gap: 8px; }
 .hf textarea { width: 100%; min-height: 3.2em; resize: vertical; }
