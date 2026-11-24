@@ -144,6 +144,10 @@ const ROUTE = /open-meteo|overpass|nominatim|googleapis|tile\.openstreetmap|time
     const dflt = await page.evaluate(() => [document.querySelector('#mi-a').value, document.querySelector('#mi-l').value]);
     ok(dflt[0] === '2027-06-04' && dflt[1] === '2027-06-06', `editor starts on the day before → day after (${dflt})`);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/groups-guest-make-it-mine-390.png` });
+    await open({ ...WED, off: { details: true } });
+    ok(!(await page.$('#sec-details')), 'a section switched off is gone for guests');
+    await page.click('#sec-schedule .sec-h'); await page.waitForTimeout(200);
+    ok(!(await page.$eval('#sec-schedule .sec-b', b => b.checkVisibility())) && !!(await page.$('.mi-bar')), 'the sections left still fold on a title tap; Make it mine stays');
     await open({ ...WED, off: { mine: true } });
     ok(!(await page.$('.mi-bar')), 'organizer switched it off: no bar');
     await open({ ...plain, type: 'Trip', x: {} });
