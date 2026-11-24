@@ -4910,11 +4910,10 @@ function planHTML(cfg) {
 }
 // My trip + the trip Itinerary: one City × Category selection for both (saved spots, bookings, plan, itinerary days)
 function wireTripCC(cfg, art, opts) {
-  const fit = (d) => isTrip(cfg) && d ? fitTripDate(cfg.start, cfg.end, d, false) : d || '';
-  const counts = (F) => {
-    const xs = itineraryEntries(cfg).map(ccItem).concat((cfg.off.schedule ? [] : cfg.schedule || []).filter(x => x.title).map(x => ({ city: x.date ? stopOfDay(cfg, fit(x.date)) : -1, cat: ccCatOfEv(x) })));
-    const n = {}; xs.forEach(x => { if (F.ci < 0 || x.city === F.ci) n[x.cat] = (n[x.cat] || 0) + 1; }); return n;
-  };
+  // a chip's number = the rows My trip's itinerary lists once that chip is tapped (same entries, same filter): the
+  // organizer's schedule lives on the Event tab, so its check-in / flight lines are not counted here (Dylan 11/24:
+  // "Hotels 9" over 3 listed hotels — 6 organizer "Check in:" lines were added on top of his 3 bookings)
+  const counts = (F) => { const n = {}; itineraryEntries(cfg).map(ccItem).forEach(x => { if (x.cat && F.ok({ ...x, cat: F.cat || x.cat })) n[x.cat] = (n[x.cat] || 0) + 1; }); return n; };
   const SHOW = [['', 'Everything'], ['saved', 'Saved only'], ['booked', 'Booked'], ['host', 'Event only']];
   const fill = (where, el) => {
     const F = ccTrip(cfg); const cities = ccCities(cfg); const n = counts(F);
