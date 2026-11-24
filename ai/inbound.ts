@@ -32,7 +32,7 @@ const SITE = "https://1linktrip.com/";
 // deno-lint-ignore no-explicit-any
 type Any = any;
 export type AiItem = Record<string, Any> & { type?: string; name?: string; start?: string; end?: string; confirmation?: string };
-export type Trip = { key: string; title: string; start: string; end: string; slug?: string };
+export type Trip = { key: string; title: string; start: string; end: string; slug?: string; own?: boolean };
 export type ResendEmail = { id?: string; from?: string; subject?: string; text?: string | null; html?: string | null; authentication?: { spf?: string; dkim?: string; dmarc?: string } | null };
 export type ResendAttachment = { id: string; filename?: string; size?: number; content_type?: string; content_disposition?: string; download_url?: string };
 export interface Store {
@@ -103,19 +103,22 @@ export function pageKeyOf(cfg: Any): string {
 }
 const day = (s: unknown) => { const m = String(s || "").match(/^(\d{4}-\d{2}-\d{2})/); return m ? m[1] : ""; };
 const addDays = (d: string, n: number) => new Date(Date.parse(d + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
-export function tripsFrom(events: { slug?: string; config: Any }[]): Trip[] {
+// uid: the person the email is for — their own pages are marked own (they win when several trips overlap)
+export function tripsFrom(events: { slug?: string; owner?: string; config: Any }[], uid?: string): Trip[] {
   const out = new Map<string, Trip>();
   for (const e of events || []) {
     const c = e && e.config; if (!c) continue; const key = pageKeyOf(c); if (!key || out.has(key)) continue;
-    const start = day(c.start); out.set(key, { key, title: String(c.title || "your trip").slice(0, 80), start, end: day(c.end) || start, slug: e.slug });
+    const start = day(c.start); out.set(key, { key, title: String(c.title || "your trip").slice(0, 80), start, end: day(c.end) || start, slug: e.slug, own: !!uid && e.owner === uid });
   }
   return [...out.values()];
 }
-// the one trip whose dates (a day either side for flights and early check-ins) overlap the booking; null = Inbox
+// the one trip whose dates (a day either side for flights and early check-ins) overlap the booking; when several do, the
+// one of those the person owns (Dylan 11/24); still several (or none) → null = Inbox
 export function pickTrip(item: AiItem, trips: Trip[]): Trip | null {
   const s = day(item.start); if (!s) return null; const e = day(item.end) && day(item.end) >= s ? day(item.end) : s;
   const hits = trips.filter((t) => t.start && s <= addDays(t.end || t.start, 1) && e >= addDays(t.start, -2));
-  return hits.length === 1 ? hits[0] : null;
+  if (hits.length === 1) return hits[0];
+  const own = hits.filter((t) => t.own); return own.length === 1 ? own[0] : null;
 }
 // the body as plain text for ai-import's text mode (no styles, scripts or inline images)
 export function htmlToText(html: unknown): string {
@@ -227,14 +230,14 @@ export function makeStore(db: Any): Store {
     async userByToken(t) { const { data, error } = await db.from("inbound_tokens").select("owner").eq("token", t).maybeSingle(); if (error) throw new Error(error.message); return data ? data.owner : null; },
     async userByEmail(a) { const { data, error } = await db.rpc("inbound_user_by_email", { addr: a }); if (error) throw new Error(error.message); return data || null; },
     async trips(uid) {
-      const own = await db.from("events").select("slug,config").eq("owner", uid).limit(200);
+      const own = await db.from("events").select("slug,owner,config").eq("owner", uid).limit(200);
       const ks = await db.from("trip_items").select("page_key").eq("owner", uid).neq("page_key", "inbox").limit(5000);
       if (own.error || ks.error) throw new Error((own.error || ks.error).message);
       const keys = [...new Set(((ks.data || []) as { page_key: string }[]).map((r) => r.page_key))].slice(0, 100);
-      const guest = keys.length ? await db.from("events").select("slug,config").in("config->>ek", keys.map((k) => "modes:" + k)).limit(200) : { data: [], error: null };
+      const guest = keys.length ? await db.from("events").select("slug,owner,config").in("config->>ek", keys.map((k) => "modes:" + k)).limit(200) : { data: [], error: null };
       if (guest.error) throw new Error(guest.error.message);
       const mine = new Set(keys); // a page they own counts; a page of someone else's counts once they've used its My trip
-      return tripsFrom([...(own.data || []), ...((guest.data || []) as Any[]).filter((e) => mine.has(pageKeyOf(e.config)))]);
+      return tripsFrom([...(own.data || []), ...((guest.data || []) as Any[]).filter((e) => mine.has(pageKeyOf(e.config)))], uid);
     },
     async saveRows(rows) { const { error } = await db.from("trip_items").upsert(rows, { onConflict: "owner,id", ignoreDuplicates: true }); if (error) throw new Error(error.message); },
     async userEmail(uid) { const { data } = await db.auth.admin.getUserById(uid); return (data && data.user && data.user.email) || null; },

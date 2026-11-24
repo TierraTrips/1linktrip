@@ -29,7 +29,7 @@ function fakeStore(opts: { events?: Any[]; tripItems?: Any[]; users?: Record<str
     async finish(id: string, p: Any) { ledger.set(id, { ...ledger.get(id), ...p }); },
     async userByToken(t: string) { return t === TOKEN ? U : null; },
     async userByEmail(a: string) { return Object.entries(users).find(([, e]) => e === a)?.[0] || null; },
-    async trips(uid: string) { const keys = new Set(rows.filter((r) => r.owner === uid && r.page_key !== "inbox").map((r) => r.page_key)); return tripsFrom(events.filter((e) => e.owner === uid || keys.has(pageKeyOf(e.config)))); },
+    async trips(uid: string) { const keys = new Set(rows.filter((r) => r.owner === uid && r.page_key !== "inbox").map((r) => r.page_key)); return tripsFrom(events.filter((e) => e.owner === uid || keys.has(pageKeyOf(e.config))), uid); },
     async saveRows(rs: Any[]) { for (const r of rs) if (!rows.some((x) => x.owner === r.owner && x.id === r.id)) rows.push(r); },
     async userEmail(uid: string) { return users[uid] || null; },
   };
@@ -196,4 +196,18 @@ Deno.test("end to end through ai-import's own handler (Anthropic stubbed): fixtu
     const txtMsg = sent.find((b) => typeof b.messages[0].content === "string"); assert(/Hyatt Place Kyoto/.test(txtMsg.messages[0].content));
     const row = x.d.store.rows[0]; assertEquals(row.page_key, "xfr8ua"); assertEquals(row.owner, U); assertEquals(row.item.ai.confirmation, "58213977");
   } finally { globalThis.fetch = realFetch; }
+});
+Deno.test("several trips overlap: the one they own wins; two owned (or none owned) → Inbox", () => {
+  const SPRING = { slug: "japan-in-spring-zsk99", owner: "someone", config: { title: "Japan in spring", ek: "modes:i7z7z2", start: "2027-04-26", end: "2027-06-04" } };
+  const hyatt = { start: "2027-05-10T15:00", end: "2027-05-22T11:00" };
+  assertEquals(pickTrip(hyatt, tripsFrom([JAPAN, SPRING], U))?.key, "xfr8ua", "Dylan's own Japan Trip over someone else's overlapping page");
+  assertEquals(pickTrip(hyatt, tripsFrom([JAPAN, { ...SPRING, owner: U }], U)), null, "two of his own → Inbox");
+  assertEquals(pickTrip(hyatt, tripsFrom([{ ...JAPAN, owner: "x" }, SPRING], U)), null, "none his → Inbox");
+  assertEquals(pickTrip(hyatt, tripsFrom([JAPAN, SPRING])), null, "no uid → nothing counts as owned");
+});
+Deno.test("store-level: an owned trip and a guest trip with My trip items both overlapping → the owned one", async () => {
+  const SPRING = { slug: "japan-in-spring-zsk99", owner: "someone", config: { title: "Japan in spring", ek: "modes:i7z7z2", start: "2027-04-26", end: "2027-06-04" } };
+  const store = fakeStore({ events: [JAPAN, SPRING], tripItems: [{ owner: U, id: "bk1", page_key: "i7z7z2", item: {} }] });
+  const x = deps({ store, extract: async (_u: string, b: Any) => b.mode === "file" ? [] : [FX.ai_item] });
+  assertEquals((await (await handle(await signedReq(hook({ email_id: "e-own", attachments: [] })), x.d)).json()).trips, ["xfr8ua"]);
 });
