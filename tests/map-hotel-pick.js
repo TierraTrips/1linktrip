@@ -114,6 +114,7 @@ const PARK = { id: 'pk1', kind: 'hotel', name: 'Park Hotel Tokyo', address: 'Shi
         // 4 — no resurrection on reload
         await page.reload(); await page.waitForSelector('[data-slot="hotel"]'); await page.waitForTimeout(800);
         ok((await itin(page)).length === 0 && /No hotel yet/.test(await bar(page)) && (await hotelPins(page)).length === 0, `@${w} reload: still no hotel (${await bar(page)})`);
+        ok(!!(await page.$('[data-hotel-browse]')), `@${w} reload: the bar has its Hotels button`);
         // 5 — Other hotel… is the only way to the search box; Hotels shows hotels nearby
         await page.click('[data-hotel-add]'); ok(!!(await page.$('[data-hotel-q]')), `@${w} Other hotel… opens the search`);
         await page.click('[data-hotel-cancel]'); await page.click('[data-hotel-browse]'); await page.waitForTimeout(400);

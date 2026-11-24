@@ -4694,6 +4694,7 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
   };
   (art._showFns = art._showFns || []).push((k) => { if (k === 'nearby') go(); });
   bodyEl.innerHTML = gpHTML(cfg, art, null); renderBar();
+  if (art._hotelUI) art._hotelUI(); // the hotel bar drawn before Google places were ready gets its Hotels button
   const onBar = (e) => {
     const b = e.target.closest('button'); if (!b) return; const f = art._gp; const d = b.dataset;
     if (d.gplace) { art._openGPlace(d.gplace); return; }
