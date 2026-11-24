@@ -811,6 +811,7 @@ button.leg-h { cursor: pointer; } button.leg-h:focus-visible { outline: 2px soli
 .ap-sel > span { font-size: .85rem; color: var(--muted, var(--slate)); }
 .ap-sel select { max-width: 100%; }
 .ap-mine { margin-bottom: 12px; }
+.ap-mine:empty { display: none; }
 .add-trip { display: flex; justify-content: flex-end; }
 .airports li .btns { grid-column: 1 / -1; }
 /* Add a booking sheet */

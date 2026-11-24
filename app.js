@@ -644,7 +644,10 @@ const flightArrLabel = (x) => { if (!x.end || x.end.length < 16) return ''; cons
 // Default: their saved pick → a flight in their bookings that lands at one of them → the organizer's "Fly into" (cfg.flyInto)
 // → the automatic pick (nearestAirports: a hub near the closest large airport, not across the water) → the closest large → the closest.
 const apKey = (cfg) => 'ap:' + eventKey(cfg).slice(6);
-const airFor = (cfg) => cfg.venue ? nearestAirports(cfg.venue.lat, cfg.venue.lon, cfg.flyInto) : [];
+// cfg.flyInto === 'none': the organizer turned flying off — no airports anywhere (ticket shows the date, Travel leads with
+// driving/transit/train and keeps one plain flight search to the city)
+const noFly = (cfg) => cfg.flyInto === 'none';
+const airFor = (cfg) => cfg.venue && !noFly(cfg) ? nearestAirports(cfg.venue.lat, cfg.venue.lon, cfg.flyInto) : [];
 function flightArrival(air, items) {
   const low = (x) => String(x || '').toLowerCase();
   const hit = (s) => air.find(a => new RegExp(`\\b${a.iata}\\b`).test(String(s || '')) || low(s).includes(low(a.name)) || (a.city && low(s).includes(low(a.city))));
@@ -658,6 +661,8 @@ function pickAirport(air, saved, items) {
   return air.find(a => a.iata === saved) || flightArrival(air, items) || (air.def && air.find(a => a.iata === air.def)) || air.find(a => a.large) || air[0];
 }
 const chosenAirport = (cfg, air = airFor(cfg)) => pickAirport(air, LS.get(apKey(cfg)), itinLoad(cfg));
+// My trip's "Flying into": only once the guest is flying — they picked an airport or have a flight in their bookings
+const apMineHTML = (cfg, air, items = itinLoad(cfg)) => air.length && (LS.get(apKey(cfg)) || items.some(x => x && x.kind === 'flight')) ? airportSelHTML(cfg, air, chosenAirport(cfg, air), true) : '';
 const canAddTrip = (cfg) => !!(cfg.tools && cfg.tools.mytrip && cfg.start);
 // a prefilled booking card in My trip (the guest adds the confirmation later)
 const addTripBtn = (cfg, kind, place, label) => canAddTrip(cfg) ? `<div class="add-trip"><button type="button" class="mini-b" data-addtrip="${kind}" data-at-place="${esc(place)}" data-at-label="${esc(label)}">+ ${t('Add to my trip')}</button></div>` : '';
@@ -881,9 +886,11 @@ const TRAVEL_MODES = [['fly', 'Flying'], ['train', 'Train'], ['rental', 'Rental 
 const eventKey = (cfg) => cfg._ek || cfg.ek || 'modes:' + Math.abs([...(cfg.title || '') + (cfg.start || '') + (cfg.venue ? cfg.venue.name : '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)).toString(36);
 const RAIL_CC = new Set(['jp', 'kr', 'cn', 'tw', 'in', 'ca', 'au']);
 const hasTrains = (v, cfg) => v.cc === 'us' || TRAINLINE_CC.has(v.cc) || RAIL_CC.has(v.cc) || (cfg && stopsOf(cfg).length > 1);
+const NOFLY_ORDER = ['drive', 'transit', 'train', 'rental', 'fly']; // flying turned off: ground options first, flights last
+const modeOrder = (cfg) => noFly(cfg) ? NOFLY_ORDER : TRAVEL_MODES.map(([k]) => k);
 function travelModes(cfg, air) {
-  const v = cfg.venue;
-  return TRAVEL_MODES.filter(([k]) => k === 'fly' ? air.length > 0 : k === 'train' ? hasTrains(v, cfg) : true);
+  const v = cfg.venue; const by = Object.fromEntries(TRAVEL_MODES);
+  return modeOrder(cfg).map(k => [k, by[k]]).filter(([k]) => k === 'fly' ? air.length > 0 || noFly(cfg) : k === 'train' ? hasTrains(v, cfg) : true);
 }
 function modeBarHTML(cfg, air) {
   const ms = travelModes(cfg, air); if (ms.length < 2) return '';
@@ -891,6 +898,7 @@ function modeBarHTML(cfg, air) {
 }
 function flightsHTML(cfg, air, ap = chosenAirport(cfg, air)) {
   const tr = tripDates(cfg); const o = LS.get('origin'); const v = cfg.venue;
+  if (!air.length && noFly(cfg)) { const to = v.city || placeLabel(v) || v.name; return `<h3 class="sub-h">${t('Flights')}</h3><div class="row-links">${bookExt('flights', 'gflights', { to, from: o, d1: tr.arrive, d2: tr.leave }, `${esc(t('Flights to {a}', { a: to }))} <small>Google Flights</small>`)}</div>`; }
   if (!air.length) return `<p class="muted">${t('No airports with scheduled flights within 220 km of the venue.')}</p>`;
   const multi = air.length > 1;
   return `<h3 class="sub-h">${t('Nearest airports')}</h3><ul class="airports">${air.map(a => { const on = ap && a.iata === ap.iata; return `<li class="${multi && on ? 'on' : ''}">
@@ -1517,7 +1525,7 @@ function normalize(c) {
   sortStops(c); // stops are in date order everywhere (an old page could keep a stop added later at the end); ids go with them
   if (c.shifts !== undefined) { c.shifts = Array.isArray(c.shifts) ? c.shifts.filter(x => x && typeof x.id === 'string' && /^[\w-]{1,40}$/.test(x.id) && Number.isInteger(x.d) && Math.abs(x.d) <= 800 && (x.from === '' || isoDay(x.from))).map(x => ({ id: x.id, from: x.from, d: x.d })).slice(-20) : []; if (!c.shifts.length) delete c.shifts; } // Move trip dates: guests' saved places follow
   if (c.logo !== undefined && !(typeof c.logo === 'string' && /^https:\/\/\S+$/.test(c.logo) && c.logo.length < 2000)) delete c.logo; // brand logo (Design → Match your brand)
-  if (c.flyInto !== undefined) { const f = typeof c.flyInto === 'string' ? c.flyInto.trim().toUpperCase() : ''; if (/^[A-Z]{3}$/.test(f) && c.venue && (!window.AIRPORTS || airportByCode(f))) c.flyInto = f; else delete c.flyInto; } // the organizer's "Fly into" airport (builder → When and where)
+  if (c.flyInto !== undefined) { const f = typeof c.flyInto === 'string' ? c.flyInto.trim().toUpperCase() : ''; if (f === 'NONE') c.flyInto = 'none'; else if (/^[A-Z]{3}$/.test(f) && c.venue && (!window.AIRPORTS || airportByCode(f))) c.flyInto = f; else delete c.flyInto; } // the organizer's "Fly into" airport (builder → When and where)
   if (c.rsvpq !== undefined) c.rsvpq = normRsvpq(c.rsvpq); // RSVP form questions (builder → RSVP form)
   delete c.osm; // hosted pages store a nearby-places snapshot beside the config; it never travels in links or drafts
   return c;
@@ -1668,12 +1676,10 @@ function tripBarHTML(cfg) {
 function travelTabHTML(cfg, air) {
   const v = cfg.venue; const T = cfg.tools; const out = [];
   out.push(`<div class="ev-sec trip-sec">${tripBarHTML(cfg)}${T.travel ? modeBarHTML(cfg, air) : ''}${canAddTrip(cfg) ? `<div class="btns add-bk"><button type="button" class="btn primary" data-addbooking>+ ${t('Add a booking')}</button></div>` : ''}</div>`);
-  if (T.travel) out.push(sec('travel', t('Getting there'), `
-    <div data-slot="flights" data-mode="fly"></div>
-    ${hasTrains(v, cfg) ? '<div data-slot="trains" data-mode="train"></div>' : ''}
-    <div data-slot="rental" data-mode="rental"></div>
-    <div data-mode="drive"><h3 class="sub-h">${t('Driving')}</h3><div class="row-links">${ext(L.place('parking near ' + v.name, placeLabel(v)), `${t('Parking near the venue')} <small>Google Maps</small>`, 'row-link')}</div></div>
-    <div data-mode="transit"><h3 class="sub-h">${t('Transit')}</h3><div data-slot="transit">${loading(t('nearby stations'))}</div></div>`));
+  const parts = { fly: '<div data-slot="flights" data-mode="fly"></div>', train: hasTrains(v, cfg) ? '<div data-slot="trains" data-mode="train"></div>' : '', rental: '<div data-slot="rental" data-mode="rental"></div>',
+    drive: `<div data-mode="drive"><h3 class="sub-h">${t('Driving')}</h3><div class="row-links">${ext(L.place('parking near ' + v.name, placeLabel(v)), `${t('Parking near the venue')} <small>Google Maps</small>`, 'row-link')}</div></div>`,
+    transit: `<div data-mode="transit"><h3 class="sub-h">${t('Transit')}</h3><div data-slot="transit">${loading(t('nearby stations'))}</div></div>` };
+  if (T.travel) out.push(sec('travel', t('Getting there'), modeOrder(cfg).map(k => parts[k]).join('\n')));
   if (T.stay) out.push(sec('stay', t('Where to stay'), `${roomBlockHTML(cfg)}<div class="row-links" data-slot="stay-links">${stayLinks(cfg)}</div>
     <h3 class="sub-h">${t('Hotels near the venue')}</h3><div data-slot="hotels">${loading(t('hotels'))}</div>`));
   return out.join('');
@@ -1699,7 +1705,7 @@ function bookingsHTML(cfg) {
   const items = itinLoad(cfg); const air = cfg.tools && cfg.tools.travel ? airFor(cfg) : [];
   const order = items.map((x, i) => [x, i]).sort((a, b) => (a[0].start || '9999').localeCompare(b[0].start || '9999') || a[1] - b[1]); // by departure / start; i stays the stored index (Edit)
   const F = ccTrip(cfg);
-  return `${air.length ? `<div class="ap-mine" data-slot="ap-mine">${airportSelHTML(cfg, air, chosenAirport(cfg, air), true)}</div>` : ''}${items.length ? `<ul class="plist rich bookings">${order.map(([x, i]) => {
+  return `${air.length ? `<div class="ap-mine" data-slot="ap-mine">${apMineHTML(cfg, air, items)}</div>` : ''}${items.length ? `<ul class="plist rich bookings">${order.map(([x, i]) => {
     const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
     const when = x.start ? fmt(x.start.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' }) + (x.start.length > 10 ? ' · ' + fmtTime(x.start.slice(11, 16)) : '') + (x.kind === 'flight' && x.start.length > 10 && flightArrLabel(x) ? ' · ' + flightArrLabel(x) : '') : '';
     const via = viaOf(x); const viaUrl = via && via.url;
@@ -1927,6 +1933,7 @@ function wireEvent(cfg, art, seq, air, opts) {
     if (slot('trains')) slot('trains').innerHTML = trainsHTML(cfg);
     if (slot('rental')) { slot('rental').innerHTML = rentalHTML(cfg, air, ap); loadCounters(); }
     if (slot('stay-links')) slot('stay-links').innerHTML = stayLinks(cfg, ap);
+    if (slot('ap-mine')) slot('ap-mine').innerHTML = apMineHTML(cfg, air);
     const side = art.querySelector('.stub-side'); if (side && ap) side.innerHTML = stubSideHTML(cfg, ap);
     if (ap) $$('[data-ap-sel]', art).forEach(s => { if (s.value !== ap.iata) s.value = ap.iata; });
     if (slot('tour-links')) slot('tour-links').innerHTML = tourLinks(cfg);
@@ -2385,7 +2392,7 @@ function flyIntoFieldHTML(c) {
   const { list, auto } = airportChoices(v.lat, v.lon); if (!list.length) return '';
   const pin = c.flyInto && !list.some(a => a.iata === c.flyInto) && airportByCode(c.flyInto) ? [apRow(airportByCode(c.flyInto), v.lat, v.lon)] : [];
   const lab = (a) => `${a.iata} · ${a.city || a.name} · ${fmtDist(a.d, v.cc)}`; const au = list.find(a => a.iata === auto);
-  return fieldWrap('Fly into', `<select id="f-fly" data-f="flyInto"><option value="">${esc(au ? `Automatic (${au.iata} · ${au.city || au.name})` : 'Automatic')}</option>${list.concat(pin).map(a => `<option value="${esc(a.iata)}"${a.iata === c.flyInto ? ' selected' : ''}>${esc(lab(a))}</option>`).join('')}</select><p class="hint">The airport guests see on the ticket, flight searches and rental cars.</p>`, 'f-fly');
+  return fieldWrap('Fly into', `<select id="f-fly" data-f="flyInto"><option value="">${esc(au ? `Automatic (${au.iata} · ${au.city || au.name})` : 'Automatic')}</option><option value="none"${c.flyInto === 'none' ? ' selected' : ''}>No airport (don't show flying info)</option>${list.concat(pin).map(a => `<option value="${esc(a.iata)}"${a.iata === c.flyInto ? ' selected' : ''}>${esc(lab(a))}</option>`).join('')}</select><p class="hint">The airport guests see on the ticket, flight searches and rental cars. Change it, or pick No airport if guests won't fly.</p>`, 'f-fly');
 }
 function venueFieldHTML(c) {
   return c.venue ? `<div class="venue-sel"><div><b>${esc(c.venue.name)}</b><span>${esc(c.venue.address || '')}</span></div><button type="button" class="btn sm" data-b="clear-venue">Change</button></div>
@@ -2465,7 +2472,7 @@ function wireInputs(root) {
     else if (d.b === 'search') venueSearch();
     else if (d.b === 'site-fill') { if (!B.siteBusy) aboutFill(); }
     else if (d.pick != null) pickVenue(B.venueResults[+d.pick]);
-    else if (d.b === 'clear-venue') { cfg.venue = null; cfg.tz = ''; delete cfg.flyInto; B.venueResults = []; B.vmsg = ''; changed(true); setTimeout(() => $('#vq')?.focus(), 0); }
+    else if (d.b === 'clear-venue') { cfg.venue = null; cfg.tz = ''; if (!noFly(cfg)) delete cfg.flyInto; B.venueResults = []; B.vmsg = ''; changed(true); setTimeout(() => $('#vq')?.focus(), 0); }
     else if (d.sw) { cfg.theme.accent = d.sw; changed(true); }
     else if (d.font) { cfg.theme.font = d.font; loadFont(d.font); changed(true); }
     else if (d.themeMode) { cfg.theme.mode = d.themeMode; changed(true); }
@@ -2659,7 +2666,7 @@ async function venueSearch() {
 }
 async function pickVenue(r) {
   const c = B.cfg; c.venue = { name: r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc };
-  c.tz = ''; delete c.flyInto; changed(true); // a new venue → its own automatic airport
+  c.tz = ''; if (!noFly(c)) delete c.flyInto; changed(true); // a new venue → its own automatic airport (No airport stays)
   try { c.tz = await lookupTZ(r.lat, r.lon); changed(); } catch { /* times stay floating */ }
 }
 

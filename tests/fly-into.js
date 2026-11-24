@@ -51,8 +51,9 @@ const guest = (page) => page.evaluate(() => ({
       ok(r.manhattan.pick === 'LGA' && r.tokyo.pick === 'HND' && r.osaka.pick === 'ITM', `city venues unchanged: Manhattan ${r.manhattan.pick}, Tokyo ${r.tokyo.pick}, Osaka ${r.osaka.pick}`);
       // normalize: the organizer's pick is kept, junk dropped
       const n = await page.evaluate((c) => { const N = (f, v = c.venue) => window.__ep.normalize({ ...JSON.parse(JSON.stringify(c)), venue: v, flyInto: f }).flyInto;
-        return { ok: N('CUN'), low: N(' tqo '), unknown: N('QQQ'), junk: N('<b>'), num: N(5), novenue: N('CUN', null) }; }, CFG);
+        return { ok: N('CUN'), low: N(' tqo '), unknown: N('QQQ'), junk: N('<b>'), num: N(5), novenue: N('CUN', null), none: N('none'), noneUp: N(' None '), noneNoVenue: N('none', null) }; }, CFG);
       ok(n.ok === 'CUN' && n.low === 'TQO' && n.unknown === undefined && n.junk === undefined && n.num === undefined && n.novenue === undefined, `normalize keeps a real code, drops junk ${JSON.stringify(n)}`);
+      ok(n.none === 'none' && n.noneUp === 'none' && n.noneNoVenue === 'none', `normalize keeps No airport ('none'), with or without a venue ${JSON.stringify(n)}`);
       ok(!page._err.length, `no page errors ${page._err.join(' | ')}`);
       await ctx.close();
     }
@@ -74,6 +75,7 @@ const guest = (page) => page.evaluate(() => ({
       await page.evaluate(() => { document.querySelector('[data-acc="when"]').open = true; }); await page.waitForSelector('#f-fly');
       const opts = await page.$$eval('#f-fly option', os => os.map(o => [o.value, o.textContent]));
       ok(opts[0][0] === '' && /^Automatic \(CUN · Cancún\)$/.test(opts[0][1]) && ['CUN', 'CZM', 'TQO'].every(c => opts.some(o => o[0] === c)), `@${w} builder Fly into: Automatic (CUN) + nearby airports ${JSON.stringify(opts.slice(0, 5))}`);
+      ok(opts[1][0] === 'none' && /^No airport/.test(opts[1][1]), `@${w} builder Fly into: "No airport" right under Automatic ${JSON.stringify(opts[1])}`);
       ok(await page.$eval('#f-fly', s => s.value) === '', `@${w} starts on Automatic`);
       ok((await overflow(page)).length === 0, `@${w} builder When and where: no overflow ${(await overflow(page)).join(' ')}`);
       if (SHOTS) await page.locator('[data-acc="when"]').screenshot({ path: `${SHOTS}/fly-builder-${w}.png` });
@@ -84,6 +86,14 @@ const guest = (page) => page.evaluate(() => ({
       // the draft, packed and opened again in the builder, keeps it
       await page.goto(BASE + '#edit=' + await pack(page, dr)); await page.reload(); await page.waitForSelector('[data-acc="when"]'); await page.evaluate(() => { document.querySelector('[data-acc="when"]').open = true; }); await page.waitForSelector('#f-fly');
       ok(await page.$eval('#f-fly', s => s.value) === 'TQO', `@${w} builder reopened from the packed draft keeps TQO`);
+      // No airport: stored, the preview ticket drops "Fly into" for the date, kept through a packed draft
+      await page.selectOption('#f-fly', 'none'); await page.waitForTimeout(600);
+      const drn = await page.evaluate(() => JSON.parse(localStorage.getItem('ep:draft')));
+      const pv = await page.evaluate(() => ({ lbl: (document.querySelector('.b-frame .stub-side .lbl') || {}).textContent || '', code: (document.querySelector('.b-frame .stub-side .code') || {}).textContent || '' }));
+      ok(drn.flyInto === 'none' && pv.lbl !== 'Fly into' && pv.code === 'MAR', `@${w} No airport → draft flyInto 'none', preview ticket shows the date ${JSON.stringify([drn.flyInto, pv])}`);
+      await page.goto(BASE + '#edit=' + await pack(page, drn)); await page.reload(); await page.waitForSelector('[data-acc="when"]'); await page.evaluate(() => { document.querySelector('[data-acc="when"]').open = true; }); await page.waitForSelector('#f-fly');
+      ok(await page.$eval('#f-fly', s => s.value) === 'none', `@${w} builder reopened from the packed draft keeps No airport`);
+      await page.selectOption('#f-fly', 'TQO'); await page.waitForTimeout(500);
       // back to Automatic clears it
       await page.selectOption('#f-fly', ''); await page.waitForTimeout(500);
       ok(!(await page.evaluate(() => JSON.parse(localStorage.getItem('ep:draft')).flyInto)), `@${w} Automatic clears the pick`);
@@ -97,6 +107,10 @@ const guest = (page) => page.evaluate(() => ({
       await page.click('[data-pick="0"]'); await page.waitForSelector('#f-fly'); await page.waitForTimeout(400);
       const nv = await page.evaluate(() => ({ auto: document.querySelector('#f-fly option').textContent, val: document.querySelector('#f-fly').value, d: JSON.parse(localStorage.getItem('ep:draft')) }));
       ok(/^Automatic \(TQO/.test(nv.auto) && nv.val === '' && nv.d.venue && nv.d.venue.city === 'Tulum' && !nv.d.flyInto, `@${w} new venue Tulum: Automatic (TQO), no old pick ${JSON.stringify([nv.auto, nv.val, nv.d.flyInto])}`);
+      // No airport is about the event, not the venue: it survives Change venue
+      await page.selectOption('#f-fly', 'none'); await page.waitForTimeout(400);
+      await page.click('[data-acc="when"] [data-b="clear-venue"]'); await page.waitForTimeout(400);
+      ok(await page.evaluate(() => JSON.parse(localStorage.getItem('ep:draft')).flyInto) === 'none', `@${w} Change venue keeps No airport`);
       ok(!page._err.length, `@${w} builder: no page errors ${page._err.join(' | ')}`);
       await ctx.close();
 
@@ -111,12 +125,16 @@ const guest = (page) => page.evaluate(() => ({
       ok(g.stub === 'TQO' && g.chip === 'TQO' && g.sel.every(x => x === 'TQO') && g.kayak === 'TQO' && /TQO/.test(g.rentalHead) && /TQO/.test(g.transfer), `@${w} organizer picked TQO: ticket, flights, rental, transfer follow ${JSON.stringify(g)}`);
       const gfl = await page.$$eval('[data-slot="flights"] li.on a[href*="google.com/travel/flights"]', as => as.map(a => decodeURIComponent(a.href)));
       ok(gfl.length && gfl.every(h => /Flights to TQO/.test(h)) && gfl.every(h => !/[?&](utm_|aff|ref=)/.test(h)), `@${w} the chosen airport's Google Flights search is TQO, plain link (${gfl[0]})`);
+      // My trip doesn't presume flying: no "Flying into" until the guest picks an airport (or books a flight)
       await page.click('[data-tab-go="mytrip"]'); await page.waitForTimeout(300);
-      ok(await page.$eval('[data-slot="ap-mine"] select', s => s.value).catch(() => null) === 'TQO', `@${w} My trip: Flying into TQO`);
+      ok(!(await page.$('[data-slot="ap-mine"] select')) && !(await page.isVisible('[data-slot="ap-mine"]').catch(() => false)), `@${w} My trip: no Flying into before the guest says they fly`);
       // a guest's own pick still wins on their device
       await page.click('[data-tab-go="travel"]'); await page.click('[data-ap="CZM"]'); await page.waitForTimeout(300);
       g = await guest(page);
       ok(g.kayak === 'CZM' && g.stub === 'CZM', `@${w} a guest's own pick (CZM) beats the organizer's on their device ${JSON.stringify(g)}`);
+      await page.click('[data-tab-go="mytrip"]'); await page.waitForTimeout(300);
+      ok(await page.$eval('[data-slot="ap-mine"] select', s => s.value).catch(() => null) === 'CZM', `@${w} My trip: Flying into CZM once picked`);
+      await page.click('[data-tab-go="travel"]');
       ok((await overflow(page)).length === 0, `@${w} Travel with a pick: no overflow`);
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/fly-travel-pinned-${w}.png`, fullPage: true });
 
@@ -126,6 +144,31 @@ const guest = (page) => page.evaluate(() => ({
       g = await guest(page);
       ok(g.stub === 'MID' && g.chip === 'MID' && g.kayak === 'MID' && /MID/.test(g.list), `@${w} organizer pick outside the nearest three (MID) is listed and used ${JSON.stringify(g)}`);
       ok(!page._err.length, `@${w} guest: no page errors ${page._err.join(' | ')}`);
+
+      // ---- No airport: nothing presumes flying ----
+      await page.evaluate(() => localStorage.clear());
+      await page.goto(BASE + '#e=' + await pack(page, { ...CFG, flyInto: 'none' }) + '&t=travel'); await page.waitForSelector('[data-slot="rental"] a'); await page.waitForTimeout(500);
+      const nf = await page.evaluate(() => ({
+        side: [...document.querySelectorAll('.stub-side > *')].map(e => e.textContent),
+        aps: document.querySelectorAll('[data-ap-sel], .ap-pick, .ap-code, .ap-transfer, [data-slot="ap-mine"] select').length,
+        kayakCars: document.querySelectorAll('a[href*="kayak.com/cars"]').length,
+        nearAp: [...document.querySelectorAll('[data-slot="stay-links"] a')].some(a => /Hotels near/.test(a.textContent)),
+        modes: [...document.querySelectorAll('.mode-bar [data-tmode]')].filter(b => !b.hidden).map(b => b.dataset.tmode),
+        order: [...document.querySelectorAll('#sec-travel [data-mode]')].map(e => e.dataset.mode),
+        flights: [...document.querySelectorAll('[data-slot="flights"] a')].map(a => [a.textContent, decodeURIComponent(a.href)]),
+        rental: [...document.querySelectorAll('[data-slot="rental"] a')].map(a => a.textContent),
+      }));
+      ok(nf.side[0] !== 'Fly into' && nf.side.join(' ') === 'Fri MAR 12', `@${w} No airport: ticket shows the date, not Fly into (${nf.side.join(' ')})`);
+      ok(nf.aps === 0 && nf.kayakCars === 0 && !nf.nearAp, `@${w} No airport: no airport list, picker, transfer, airport rentals or Hotels near airport ${JSON.stringify(nf)}`);
+      ok(nf.order[0] === 'drive' && nf.order[nf.order.length - 1] === 'fly' && nf.modes[0] === 'all' && nf.modes[1] === 'drive' && nf.modes[nf.modes.length - 1] === 'fly', `@${w} No airport: Getting there leads with Driving, flights last (sections ${nf.order}, pills ${nf.modes})`);
+      ok(nf.flights.length === 1 && /Flights to Xpu Há/.test(nf.flights[0][0]) && /Flights to Xpu Há/.test(nf.flights[0][1]) && !/[?&](utm_|aff|ref=)/.test(nf.flights[0][1]) && !/\b(CUN|CZM|TQO)\b/.test(nf.flights[0][1]), `@${w} No airport: one plain flight search to the town ${JSON.stringify(nf.flights)}`);
+      ok(nf.rental.some(t => /Rental desks near the venue/.test(t)), `@${w} No airport: rental desks near the venue stay ${JSON.stringify(nf.rental)}`);
+      await page.click('[data-tab-go="mytrip"]'); await page.waitForTimeout(300);
+      ok(!(await page.$('[data-slot="ap-mine"] select')), `@${w} No airport: My trip has no Flying into`);
+      await page.click('[data-tab-go="travel"]'); await page.waitForTimeout(200);
+      ok((await overflow(page)).length === 0, `@${w} No airport: no overflow ${(await overflow(page)).join(' ')}`);
+      if (SHOTS) { await page.click('[data-tab-go="event"]'); await page.waitForTimeout(200); await page.locator('.stub').screenshot({ path: `${SHOTS}/fly-none-ticket-${w}.png` }); }
+      ok(!page._err.length, `@${w} No airport: no page errors ${page._err.join(' | ')}`);
       await ctx.close();
     }
   } finally { await browser.close(); }
