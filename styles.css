@@ -1406,3 +1406,25 @@ dialog.ds-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .order.secs .tool { background: transparent; padding: 4px 0; flex: 1; min-width: 0; min-height: 36px; }
 .order.secs li { min-height: 48px; }
 .pr-row .two input { min-width: 0; }
+/* Nearby's "Your hotel" box: every hotel of the city on its own row with Remove; Hotels / Other hotel… under them */
+.hb.hb-box { display: grid; gap: 8px; align-items: stretch; }
+.hb-box > .lbl { margin: 0; }
+.hb-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.hb-r { display: flex; align-items: center; gap: 8px; padding: 4px; border-radius: 12px; }
+.hb-r.on { background: color-mix(in srgb, #F59E0B 16%, transparent); }
+.hb-go { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.hb-go .hb-ic { width: 30px; height: 34px; }
+.hb-none { margin: 0; }
+.hb-box .hb-acts { margin-left: 0; justify-content: flex-start; }
+.hb-browse { display: inline-flex; align-items: center; gap: 6px; } .hb-browse .cc-ic, .hb-browse svg { width: 20px; height: 20px; }
+/* Set as my hotel / Your hotel + Remove on place sheets, Where to stay rows and map pin popups */
+.hs-slot.mini { display: contents; }
+.hs-tag { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; font-size: .78rem; color: #8A5A00; }
+.hs-tag img { width: 16px; height: 18px; }
+.mini-b.hs-set { border-color: #F59E0B; }
+.hs-have { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .hs-have img { width: 24px; height: 27px; }
+.btn.hs-set svg, .btn.hs-rm svg { width: 1.1em; height: 1.1em; margin-right: .35em; vertical-align: -.18em; fill: none; stroke: currentColor; stroke-width: 2; }
+.btn.hs-rm { color: #A3272D; border-color: color-mix(in srgb, #A3272D 40%, var(--line, #ddd)); }
+.pop-rm { margin-top: 6px; display: inline-flex; align-items: center; padding: .3em .7em; border-radius: 999px; border: 1.3px solid color-mix(in srgb, #A3272D 40%, #ddd); background: #fff; font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer; }
+/* the place sheet is a <dialog> outside .ev: its folded "Add to day" form stays folded */
+.place-sheet [hidden], .plan-form[hidden] { display: none !important; }

@@ -144,7 +144,7 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: `$
       // Nearby bar: the selection + the pin go too
       await toNearby(page);
       ok((await hotelPins(page)).length === 1, `@${w} pin before`);
-      const brm = await page.$('[data-slot="hotel"] [data-hotel-del="gr1"]'); ok(!!brm && /Remove hotel/.test(await brm.textContent()), `@${w} Nearby bar: Remove hotel on a booked hotel (not only map picks)`);
+      const brm = await page.$('[data-slot="hotel"] [data-hotel-del="gr1"]'); ok(!!brm && /Remove/.test(await brm.textContent()), `@${w} Nearby bar: Remove on a booked hotel (not only map picks)`);
       ok((await overflow(page)) === 0, `@${w} bar fits`);
       await shot(page, `remove-bar-${w}`);
       await brm.click(); await page.waitForTimeout(500);

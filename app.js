@@ -18,8 +18,15 @@ const LS = {
   del(k) { try { localStorage.removeItem('ep:' + k); } catch {} }
 };
 
+// the toast sits in the open sheet when there is one (a modal <dialog> is the top layer: a toast behind it can't be
+// tapped — "Replaced A with B · Undo" from a place sheet was unreachable), else in the page
+function toastEl() {
+  let el = $('#toast'); if (!el) { el = document.createElement('div'); el.id = 'toast'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite'); } // a sheet re-render took it with it
+  const ds = [...document.querySelectorAll('dialog[open]')]; const top = ds[ds.length - 1];
+  const host = top && top.matches(':modal') ? top : document.body; if (el.parentElement !== host) host.appendChild(el); return el;
+}
 function toast(msg) {
-  const el = $('#toast'); el.textContent = msg; el.classList.remove('act'); el.classList.add('show');
+  const el = toastEl(); el.textContent = msg; el.classList.remove('act'); el.classList.add('show');
   clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('show'), 2200);
 }
 
@@ -1070,18 +1077,19 @@ function hotelNights(cfg, h) {
 }
 const hotelPrices = (cfg, h) => seePricesHTML({ hotel: h.name, ...hotelNights(cfg, h) });
 const brandBook = (cfg, h) => { const b = hotelBrand(h.name); if (!b && !(h.web || h.website)) return ''; const a = hotelBookAction(cfg, h); return ext(a.url, a.label, 'mini-b'); };
+const hsPlace = (h) => ({ src: h.g && h.g.gid ? 'g' : 'osm', ref: (h.g && h.g.gid) || '', name: h.name, addr: h.address || [h.street, h.city].filter(Boolean).join(', '), lat: h.lat, lon: h.lon });
 function hotelsHTML(cfg, data) {
   const v = cfg.venue; const tr = tripDates(cfg);
   if (!data.hotels.length) return `<p class="muted">${t('No hotels are mapped within 3 km of the venue. Try the searches above.')}</p>`;
   const art = data.__art; const rows0 = data.hotels.slice(0, 30).map(h => ({ ...h, rating: (h.g && h.g.rating) || h.rating || 0, count: (h.g && h.g.count) || h.count || 0, price: (h.g && h.g.price) || h.price || '' }));
   if (art) return nearListRegister(art, 'hotels', cfg, rows0, (h, fold) => `<li${fold ? ' class="more"' : ''}>
     <div><b>${esc(h.name)}</b><span>${esc([t(h.kind), h.stars ? `${h.stars}★` : '', h.rating ? `★ ${h.rating.toFixed(1)}` : '', h.price].filter(Boolean).join(' · '))}</span>
-      <div class="mini">${hotelPrices(cfg, h)}${brandBook(cfg, h)}<button type="button" class="mini-b" ${h.g && h.g.gid ? `data-gpid="${esc(h.g.gid)}"` : `data-place="${esc(placeKey(h))}"`}>${t('Details')}</button>${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
+      <div class="mini">${cfg.tools.mytrip ? hsSlotHTML(cfg, hsPlace(h), true) : ''}${hotelPrices(cfg, h)}${brandBook(cfg, h)}<button type="button" class="mini-b" ${h.g && h.g.gid ? `data-gpid="${esc(h.g.gid)}"` : `data-place="${esc(placeKey(h))}"`}>${t('Details')}</button>${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
     <span class="dist">${esc(fmtDist(h.d, v.cc))}<small>${h.d < 2000 ? walkTxt(h.d) : t('from the venue')}</small></span></li>`, { more: 3, walkLabel: t('Walking distance'), hotel: true });
   const hs = data.hotels.slice(0, 8);
   return `<ul class="plist rich">${hs.map((h, i) => `<li${i >= 3 ? ' class="more"' : ''}>
     <div><b>${esc(h.name)}</b><span>${esc([t(h.kind), h.stars ? `${h.stars}★` : ''].filter(Boolean).join(' · '))}</span>
-      <div class="mini">${hotelPrices(cfg, h)}${brandBook(cfg, h)}<button type="button" class="mini-b" ${h.g && h.g.gid ? `data-gpid="${esc(h.g.gid)}"` : `data-place="${esc(placeKey(h))}"`}>${t('Details')}</button>${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
+      <div class="mini">${cfg.tools.mytrip ? hsSlotHTML(cfg, hsPlace(h), true) : ''}${hotelPrices(cfg, h)}${brandBook(cfg, h)}<button type="button" class="mini-b" ${h.g && h.g.gid ? `data-gpid="${esc(h.g.gid)}"` : `data-place="${esc(placeKey(h))}"`}>${t('Details')}</button>${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
     <span class="dist">${esc(fmtDist(h.d, v.cc))}<small>${h.d < 2000 ? walkTxt(h.d) : t('from the venue')}</small></span></li>`).join('')}${hs.length > 3 ? `<li class="more-li"><button type="button" class="btn sm" data-more>${t('All {n} hotels', { n: hs.length })}</button></li>` : ''}</ul>`;
 }
 // Temperatures are fetched in °F (packing hints compare in °F) and shown in the guest's unit: their saved choice
@@ -1893,6 +1901,7 @@ function renderEvent(cfg, root, opts = {}) {
   // a source is credited once it actually supplies the map or places (OpenStreetMap only when Google is unavailable)
   art._useSrc = (k) => { art._srcs.add(k); const el = art.querySelector('[data-slot="attrib"]'); if (el) el.innerHTML = attribHTML(art._srcs); };
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-gpid]'); if (b && art._openGPlace) art._openGPlace(b.dataset.gpid); });
+  art._hsCfg = cfg; art.addEventListener('click', (e) => { if (!e.target.closest('dialog')) hsClick(cfg, art, e); }); // Set as my hotel / Remove on list rows and map pins
   wireEvent(cfg, art, seq, air, opts); wireMine(cfg, art, opts); wireDetailTaps(cfg, art, opts); if (!opts.onpage) wireReadMore(art); wireOffline(cfg, art, opts); if (!opts.preview) wireCollapse(cfg, art);
   if (opts.hosted && typeof wireHosted === 'function') wireHosted(cfg, art, opts.hosted, opts);
   else if (demoRsvp(cfg, opts) && typeof wireHosted === 'function') wireHosted(cfg, art, { id: 'demo-' + opts.exampleId, demo: true }, opts); // an example's RSVP form: answers stay on this device
@@ -3924,7 +3933,7 @@ function placeCardHTML(cfg, p) {
     ${p.hours ? `<div class="pc-hours"><b>${o === true ? `<span class="open">${t('Open now')}</span>` : o === false ? `<span class="closed">${t('Closed now')}</span>` : t('Hours')}</b><ul>${prettyHours(p.hours).map(h => `<li>${esc(h)}</li>`).join('')}</ul></div>` : ''}
     ${addr ? `<p class="pc-addr">${esc(addr)}</p>` : ''}
     ${facts.length ? `<p class="muted small">${esc(facts.join(' · '))}</p>` : ''}
-    ${planAddHTML(cfg, osmPlanPlace(p))}
+    ${p.cat === 'hotel' ? hsSlotHTML(cfg, { ...osmPlanPlace(p), src: 'osm' }) : planAddHTML(cfg, osmPlanPlace(p))}
     <div class="btns sec-acts">${p.cat === 'hotel' ? (() => { const a = hotelBookAction(cfg, p); return ext(a.url, a.label, 'btn book'); })() : ''}${ext(dirURL, t('Directions'), 'btn')}${p.cat === 'restaurant' ? bookExt('restaurants', 'opentable', { name: p.name, venue: v, date: cfg.start.slice(0, 10), n: tr.guests || 2 }, t('Reserve') + ' · OpenTable', 'btn') : ''}${p.phone ? `<a class="btn" href="tel:${esc(p.phone.replace(/[^\d+]/g, ''))}">${t('Call')}</a>` : ''}${p.website ? ext(p.website, t('Website'), 'btn') : ''}</div>
     <button type="button" class="link" data-pc-map>${t('Show on map')}</button>
   </div>`;
@@ -3951,7 +3960,7 @@ function wirePlaces(cfg, art, data, setMarkers, center) {
     let d = $('#placedlg'); if (!d) { d = document.createElement('dialog'); d.id = 'placedlg'; d.className = 'sheet place-sheet'; document.body.appendChild(d); d.addEventListener('click', (e) => { if (e.target === d) d.close(); }); }
     d.setAttribute('style', themeStyle(cfg.theme)); d.classList.toggle('dark', cfg.theme.mode === 'dark'); d.setAttribute('lang', LANG);
     d.innerHTML = placeCardHTML(cfg, p);
-    d.onclick = (e) => { if (planCardClick(cfg, art, d, e, osmPlanPlace(p))) return; if (e.target === d || e.target.closest('[data-pc-close]')) d.close(); if (e.target.closest('[data-pc-map]')) { d.close(); art._focusPlace && art._focusPlace(p); } };
+    d.onclick = (e) => { if (hsClick(cfg, art, e)) return; if (planCardClick(cfg, art, d, e, osmPlanPlace(p))) return; if (e.target === d || e.target.closest('[data-pc-close]')) d.close(); if (e.target.closest('[data-pc-map]')) { d.close(); art._focusPlace && art._focusPlace(p); } };
     if (!d.open) d.showModal();
     const gs = d.querySelector('[data-gslot]');
     if (gs) gDetails(p).then(g => {
@@ -4065,8 +4074,8 @@ function loadGoogleMaps() {
 }
 // map marks: the guest's hotel is a large amber pin with a navy bed (top of the stack); saved spots are gold stars
 const mapHover = () => !!(window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches);
-const hotelKey = (items) => JSON.stringify(items.map(x => [x.lat, x.lon, x.title, x.label, x.dates]));
-const hotelPop = (x) => `<b>${esc(x.name || x.title || '')}</b>${x.dates ? `<br>${esc(x.dates)}` : ''}`;
+const hotelKey = (items) => JSON.stringify(items.map(x => [x.lat, x.lon, x.title, x.label, x.dates, x.rm || '']));
+const hotelPop = (x) => `<b>${esc(x.name || x.title || '')}</b>${x.dates ? `<br>${esc(x.dates)}` : ''}${x.rm ? `<br><button type="button" class="pop-rm bk-rm" data-hs-rm="${esc(x.rm)}">${TRASH_IC}${esc(t('Remove'))}</button>` : ''}`;
 const pinText = (s) => { s = String(s || ''); return s.length > 22 ? s.slice(0, 21).trim() + '…' : s; };
 // "your hotel": a big amber teardrop (white outline, drop shadow, navy bed on a white disc) — unmistakable next to the
 // small blue Hotels circles; the map copy adds a soft amber pulse ring (off for reduced motion)
@@ -4285,7 +4294,7 @@ async function pageDelete({ pid, id }) {
 }
 // a toast with one action button (Undo); stays a little longer than a plain toast
 function toastAction(msg, label, fn) {
-  const el = $('#toast'); el.textContent = msg + ' ';
+  const el = toastEl(); el.textContent = msg + ' ';
   const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-act'; b.textContent = label;
   b.addEventListener('click', () => { el.classList.remove('show', 'act'); fn(); }, { once: true }); el.appendChild(b);
   el.classList.add('show', 'act'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('show', 'act'), 6000);
@@ -4594,7 +4603,7 @@ function gpHTML(cfg, art, rows) {
   return `${none ? `<p class="muted gp-none">${t('Pick a category or search for a place.')}</p>` : rows == null ? `<div class="skel" role="status"><span></span><span></span><em>${t('Loading places…')}</em></div>` : `
   ${f.q ? `<p class="gp-q"><span>${esc(t('Results for “{q}”', { q: f.q }))}</span> <button type="button" class="link" data-gp-q-clear>${t('Clear search')}</button></p>` : ''}
   <p class="pf-count muted small" role="status" aria-live="polite">${esc(list.length === 1 ? t('1 place') : t('{n} places', { n: list.length }))}${active ? ` · <button type="button" class="link" data-gp-clear>${t('Clear filters')}</button>` : ''}</p>
-  ${list.length ? `<ul class="plist rich places">${list.map(r => `<li class="has-star"><button type="button" class="place-row" data-gplace="${esc(r.id)}">${ccIcon(gpRowCat(f, r))}<div><b>${esc(r.name)}</b>${r.rating ? `<span class="rt">${gRatingHTML(r)}</span>` : ''}<span>${esc([r.type, priceSym(cfg, r.price)].filter(Boolean).join(' · '))}</span>${r.open != null ? `<span class="tags">${r.open ? `<em class="open">${t('Open now')}</em>` : `<em class="closed">${t('Closed now')}</em>`}</span>` : ''}</div><span class="dist">${esc(fmtDist(r.d, v.cc))}<small>${r.d < 2500 ? walkTxt(r.d) : art._fromHotel ? t('from your hotel') : t('from the venue')}</small></span></button>${starBtnHTML(cfg, r.id, r.name)}</li>`).join('')}</ul>`
+  ${list.length ? `<ul class="plist rich places">${list.map(r => `<li class="has-star"><button type="button" class="place-row" data-gplace="${esc(r.id)}">${ccIcon(gpRowCat(f, r))}<div><b>${esc(r.name)}</b>${r.rating ? `<span class="rt">${gRatingHTML(r)}</span>` : ''}<span>${esc([r.type, priceSym(cfg, r.price)].filter(Boolean).join(' · '))}</span>${gpRowCat(f, r) === 'hotels' && myHotelOf(cfg, { ref: r.id, name: r.name, lat: r.lat, lon: r.lon }) ? `<span class="tags"><em class="hs-tag"><img src="${HOTEL_PIN}" alt="">${t('Your hotel')}</em></span>` : r.open != null ? `<span class="tags">${r.open ? `<em class="open">${t('Open now')}</em>` : `<em class="closed">${t('Closed now')}</em>`}</span>` : ''}</div><span class="dist">${esc(fmtDist(r.d, v.cc))}<small>${r.d < 2500 ? walkTxt(r.d) : art._fromHotel ? t('from your hotel') : t('from the venue')}</small></span></button>${starBtnHTML(cfg, r.id, r.name)}</li>`).join('')}</ul>`
     : navigator.onLine === false ? `<p class="muted off-msg"><b>${t('Offline')}</b> · ${t('Searching places needs a connection. Your saved spots are in My trip.')}</p>` : `<p class="muted">${t('Nothing matches these filters.')} ${active ? `<button type="button" class="link" data-gp-clear>${t('Clear filters')}</button>` : ''}</p>`}
   <p class="muted small g-attr">${t('Places and ratings from Google')}</p>`}`;
 }
@@ -4612,7 +4621,7 @@ function gpCardHTML(cfg, d, art) {
     ${d.veg ? `<p class="tags"><em>${t('Vegetarian options')}</em></p>` : ''}
     ${d.hours.length ? `<div class="pc-hours"><b>${d.open === true ? `<span class="open">${t('Open now')}</span>` : d.open === false ? `<span class="closed">${t('Closed now')}</span>` : t('Hours')}</b><ul>${d.hours.map(h => `<li>${esc(h)}</li>`).join('')}</ul></div>` : ''}
     ${d.addr ? `<p class="pc-addr">${esc(d.addr)}</p>` : ''}
-    ${planAddHTML(cfg, gPlanPlace(d))}
+    ${gPlanPlace(d).type === 'stay' ? hsSlotHTML(cfg, gPlanPlace(d)) : planAddHTML(cfg, gPlanPlace(d))}
     <div class="btns sec-acts">${(d.types || []).includes('lodging') ? (() => { const a = hotelBookAction(cfg, { name: d.name, web: d.web, city: '' }); return ext(a.url, a.label, 'btn book'); })() : ''}${ext(dirURL, t('Directions'), 'btn')}${d.food ? bookExt('restaurants', 'opentable', { name: d.name, venue: v, date: cfg.start.slice(0, 10), n: tr.guests || 2 }, t('Reserve') + ' · OpenTable', 'btn') : ''}${d.phone ? `<a class="btn" href="tel:${esc(d.phone.replace(/[^\d+]/g, ''))}">${t('Call')}</a>` : ''}${d.web ? ext(d.web, t('Website'), 'btn') : ''}</div>
     <button type="button" class="link" data-pc-map>${t('Show on map')}</button>
   </div>`;
@@ -4620,7 +4629,7 @@ function gpCardHTML(cfg, d, art) {
 function openPlaceDialog(cfg, html, onMap, place, art) {
   let d = $('#placedlg'); if (!d) { d = document.createElement('dialog'); d.id = 'placedlg'; d.className = 'sheet place-sheet'; document.body.appendChild(d); d.addEventListener('click', (e) => { if (e.target === d) d.close(); }); }
   d.setAttribute('style', themeStyle(cfg.theme)); d.classList.toggle('dark', cfg.theme.mode === 'dark'); d.setAttribute('lang', LANG);
-  d.innerHTML = html; d.onclick = (e) => { if (place && planCardClick(cfg, art, d, e, place)) return; if (e.target === d || e.target.closest('[data-pc-close]')) d.close(); if (e.target.closest('[data-pc-map]')) { d.close(); onMap && onMap(); } };
+  d.innerHTML = html; d.onclick = (e) => { if (hsClick(cfg, art, e)) return; if (place && planCardClick(cfg, art, d, e, place)) return; if (e.target === d || e.target.closest('[data-pc-close]')) d.close(); if (e.target.closest('[data-pc-map]')) { d.close(); onMap && onMap(); } };
   if (!d.open) d.showModal(); return d;
 }
 // returns false when Google can't be used (no key, refused) so the caller wires the OpenStreetMap list instead
@@ -4640,7 +4649,7 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
   const box = bar.querySelector('[data-ccb="near"]');
   const bodyEl = s.querySelector('[data-gp-body]'); const qIn = box.querySelector('[data-gp-q]');
   const v0 = cfg.venue;
-  const pinsOf = () => gpFilter(rows || [], art._gp).map(r => ({ lat: r.lat, lon: r.lon, title: r.name, ic: gpRowCat(art._gp, r), onClick: () => art._openGPlace(r.id) }));
+  const pinsOf = () => gpFilter(rows || [], art._gp).filter(r => !(gpRowCat(art._gp, r) === 'hotels' && myHotelOf(cfg, { ref: r.id, name: r.name, lat: r.lat, lon: r.lon }))).map(r => ({ lat: r.lat, lon: r.lon, title: r.name, ic: gpRowCat(art._gp, r), onClick: () => art._openGPlace(r.id) }));
   const pickPlace = (id, tok) => gpDetails(id, tok).then(pl => {
     if (mapCtl && pl.lat != null) { mapCtl.setPins(pinsOf().concat([{ lat: pl.lat, lon: pl.lon, title: pl.name, z: 900, ic: ccCatOfTypes([pl.ptype, ...pl.types], pl.type), onClick: () => art._openGPlace(pl.id) }])); mapCtl.focus(pl); }
     openPlaceDialog(cfg, gpCardHTML(cfg, pl, art), () => mapCtl && mapCtl.focus(pl), gPlanPlace(pl), art);
@@ -4648,6 +4657,8 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
   const textSearch = (q) => { if (!q) return; art._gp.q = q.slice(0, 80); art._gp.cuisine = ''; qIn.blur(); load(); };
   placeAutocomplete(qIn, { bias: () => art._center || cfg.venue, onPick: pickPlace, onText: textSearch });
   const pins = () => { if (mapCtl) mapCtl.setPins(pinsOf()); };
+  art._gpPins = () => { if (rows) { bodyEl.innerHTML = gpHTML(cfg, art, rows); pins(); } };
+  art._gpCat = (k) => { const f = art._gp; if (f.cat === k && !f.q) return; f.cat = k; f.cuisine = ''; f.price = ''; f.q = ''; qIn.value = ''; if (!GP_FOOD.has(k)) f.diet = ''; started = true; load(); save(true); };
   const save = (url) => { const c = cities[art._stop]; ccSet(cfg, 'nearby', { city: c ? c.k : '', cat: art._gp.cat }, !!url); }; // the address bar follows the guest's own picks only
   const renderBar = () => {
     const f = art._gp; const n = rows && (f.cat || f.q) ? gpFilter(rows, f).length : null;
@@ -5049,7 +5060,7 @@ function bkClean(cfg) {
   if (pins.length || homed) LS.set(planKey(cfg), pl2);
   return ch || pins.length > 0 || homed;
 }
-const bkChanged = (art) => { if (art && art._bkChanged) art._bkChanged(); else if (art && art._planChanged) art._planChanged(); };
+const bkChanged = (art) => { if (art && art._bkChanged) art._bkChanged(); else if (art && art._planChanged) art._planChanged(); if (art && art._hsCfg) { hsRefresh(art._hsCfg, art); if (art._gpPins) art._gpPins(); } };
 // Replace <A> with <B>? — inline, under/over where the guest is working; resolves true = replace
 function askReplace(slot, a, b) {
   return new Promise(res => {
@@ -5063,14 +5074,20 @@ function askReplace(slot, a, b) {
 // A new hotel booking (Add a booking: PDF / screenshot / paste / by hand) for nights another hotel in that city already has
 // REPLACES it — the newest confirmation is the hotel (Dylan 11/24: a PDF for a new hotel kept the old one as his hotel,
 // because the new one waited on a Replace? question and was dropped when it went unanswered). The toast offers Keep both.
-// Only a map pick over a real booking still asks first (a tap on the map shouldn't silently drop a reservation).
+// A one-tap hotel pick (map pin, list, place sheet — Dylan 11/24: "it brings you to a search bar instead of just adding
+// it") replaces the same way: over another pick the toast offers Undo, over a real booking it offers Keep both.
 async function bkSave(cfg, art, adds, slot) {
   const r = bkUpsert(cfg, itinLoad(cfg), adds); const xs = r.xs; const replaced = [];
-  const ask = r.conflicts.filter(([old, add]) => add.guess && !old.guess);
+  const ask = [];
   r.conflicts.filter(c => !ask.includes(c)).forEach(([old, add]) => { const i = xs.findIndex(y => y.id === old.id); if (i >= 0) { xs.splice(i, 1, add); replaced.push(old); } else if (!xs.some(y => y.id === add.id)) xs.push(add); });
   itinSave(cfg, xs); if (replaced.length && art && art._pick) art._pick = {}; bkChanged(art);
   const nm = (x) => x.name || t(ITIN_KINDS[x.kind] || 'Booking');
-  if (replaced.length) toastAction(t('Replaced {a} with {b}', { a: nm(replaced[0]), b: nm(r.conflicts.find(c => c[0] === replaced[0])[1]) }), t('Keep both'), () => {
+  const pick = adds.length === 1 && adds[0].guess && adds[0].pin ? adds[0] : null; // a one-tap hotel pick
+  const undoPick = () => { const ys = itinLoad(cfg).filter(y => y.id !== pick.id); replaced.forEach(o => { if (!ys.some(y => y.id === o.id)) ys.push(o); }); goneDel(cfg, replaced.map(o => o.id)); itinSave(cfg, ys); if (art && art._pick) art._pick = {}; bkChanged(art); if (LS.get('signedIn')) syncPush(cfg); };
+  if (pick && replaced.length && replaced.every(o => o.guess)) toastAction(t('Replaced {a} with {b}', { a: nm(replaced[0]), b: nm(pick) }), t('Undo'), undoPick);
+  else if (pick && !replaced.length && !r.merged) toastAction(t('{n} is your hotel', { n: nm(pick) }), t('Undo'), undoPick);
+  else if (pick && r.merged && !replaced.length) toast(t('{n} is your hotel', { n: nm(pick) }));
+  else if (replaced.length) toastAction(t('Replaced {a} with {b}', { a: nm(replaced[0]), b: nm(r.conflicts.find(c => c[0] === replaced[0])[1]) }), t('Keep both'), () => {
     const ys = itinLoad(cfg); replaced.forEach(o => { if (!ys.some(y => y.id === o.id)) ys.push(o); }); goneDel(cfg, replaced.map(o => o.id)); itinSave(cfg, ys); bkChanged(art); });
   else if (r.merged) toast(r.merged > 1 ? t('Updated {n} bookings you already had', { n: r.merged }) : t('Updated the booking you already had'));
   else if (adds.length > 1 && !r.conflicts.length) toast(t('Added {n} bookings', { n: adds.length }));
@@ -5202,17 +5219,25 @@ const hostHotelName = (title) => String(title || '').replace(/^\s*check[- ]?in\s
 const isHostHotel = (x) => !!x && HOTEL_RE.test(x.title || '') && !/check[- ]?out/i.test(x.title || '');
 // the organizer's hotel lines: "Check in: <hotel>" (or a hotel reservation) and its "Check out: <hotel>"
 const hotelCiLine = (x) => isHostHotel(x) && !!x.date && (/\bcheck[- ]?in\b/i.test(x.title || '') || x.kind === 'reservation');
+// a free-form stay line the organizer typed (or a document brought): "Tokyo: Hotel X, 6 nights", "Arima onsen: ryokan,
+// 2 nights (not chosen yet)" — a hotel word plus a number of nights, or "<place>: <hotel word>…". It is that stop's hotel
+// line like a check-in ("Dinner at the hotel" is not: no nights, no "<place>:" lead)
+const NIGHT_N = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+const stayNights = (title) => { const m = String(title || '').match(/\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+nights?\b/i); return m ? (+m[1] || NIGHT_N[m[1].toLowerCase()] || 0) : 0; };
+const hotelFreeLine = (x) => isHostHotel(x) && !!x.date && !hotelCiLine(x) && (stayNights(x.title) > 0 || /^\s*[^:]{1,40}:\s*(the\s+)?(hotel|hostel|ryokan|resort|airbnb|guest ?house|inn|lodge)\b/i.test(x.title || ''));
+// any line that says where someone sleeps at a stop: a check-in or a free-form stay line
+const hotelStayLine = (x) => hotelCiLine(x) || hotelFreeLine(x);
 const hotelCoName = (x) => x && /^\s*check[- ]?out\b/i.test(x.title || '') ? String(x.title).replace(/^\s*check[- ]?out\s*[:\-–—·]?\s*((of|from|at)\s+)?/i, '').trim() : '';
 const hotelCoLines = (sch, x) => { const n = hostHotelName(x.title); return sch.filter(y => y !== x && y.date && y.date >= x.date && hotelCoName(y) && nameLike(hotelCoName(y), n)); };
 // a hotel line's nights: check-in day → its own check-out line, else the end of its leg, else one night
-function hostStay(cfg, sch, x) { const co = hotelCoLines(sch, x).map(y => y.date).sort()[0]; const leg = legOfDay(cfg, x.date); return [x.date, co && co > x.date ? co : leg && leg.to && leg.to > x.date ? leg.to : addDays(x.date, 1)]; }
+function hostStay(cfg, sch, x) { const co = hotelCoLines(sch, x).map(y => y.date).sort()[0]; const leg = legOfDay(cfg, x.date); const n = stayNights(x.title); return [x.date, co && co > x.date ? co : n ? addDays(x.date, n) : leg && leg.to && leg.to > x.date ? leg.to : addDays(x.date, 1)]; }
 // a hotel from a document replaces the organizer's hotel it supersedes: another hotel's check-in at the same stop with
 // overlapping nights (and its check-out) leaves the schedule. fromDoc = the schedule items the document brought (two hotels
 // in one document both stay). Returns the items taken out. (Dylan 11/24: a PDF for the new hotel kept the old one.)
 function hostHotelReplace(cfg, fromDoc) {
   const sch = cfg.schedule || []; const news = fromDoc.filter(hotelCiLine); if (!news.length) return [];
   const drop = new Set();
-  sch.forEach(x => { if (fromDoc.includes(x) || !hotelCiLine(x)) return; const n = hostHotelName(x.title); const sx = hostStay(cfg, sch, x);
+  sch.forEach(x => { if (fromDoc.includes(x) || !hotelStayLine(x)) return; const n = hostHotelName(x.title); const sx = hostStay(cfg, sch, x); // free-form "Tokyo: Hotel X, 6 nights" lines too (Dylan's page kept them)
     if (!news.some(y => !nameLike(hostHotelName(y.title), n) && stopOfDay(cfg, y.date) === stopOfDay(cfg, x.date) && spanHit(sx, hostStay(cfg, sch, y)))) return;
     drop.add(x); hotelCoLines(sch, x).forEach(z => { if (!fromDoc.includes(z) && z.date <= sx[1]) drop.add(z); }); });
   if (drop.size) cfg.schedule = sch.filter(x => !drop.has(x));
@@ -5519,8 +5544,19 @@ const spotCity = (cfg, x) => homeCity(cfg, x && x.lat != null ? x : null, { stop
 const HOTEL_RE = /\b(check[- ]?in|hotel|hostel|ryokan|resort|airbnb|guest ?house|inn|lodge)\b/i;
 const hgeoKey = (q) => 'hgeo:' + q.trim().toLowerCase().slice(0, 120);
 // every hotel the host put on the itinerary (check-ins), with the nights of the leg it is on; homed in hotelsNow
+// the hotel's name in a free-form stay line: "Tokyo: Hotel X, 6 nights" → "Hotel X"; '' for an undecided one
+// ("Arima onsen: ryokan, 2 nights (not chosen yet)" names no hotel)
+const freeHotelName = (title) => { const t0 = String(title || ''); if (/\b(not (chosen|booked|decided)|tbd|tba|to be (decided|confirmed))\b/i.test(t0)) return '';
+  const n = t0.replace(/^\s*[^:]{1,40}:\s*/, '').replace(/\([^)]*\)/g, '').replace(/[,·–—-]\s*(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+nights?\b.*$/i, '').replace(/\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+nights?\b/i, '').replace(/[\s,·–—-]+$/, '').trim();
+  return /^(the\s+)?(hotel|hostel|ryokan|resort|airbnb|guest ?house|inn|lodge)s?$/i.test(n) ? '' : n; };
 function hotelCands(cfg) {
-  const out = []; (cfg.off.schedule ? [] : cfg.schedule || []).filter(x => x.title && HOTEL_RE.test(x.title) && !/check[- ]?out/i.test(x.title)).forEach(x => { const name = x.title.replace(/^\s*check[- ]?in\s*[:\-–—]?\s*(at\s+)?/i, '').trim(); const leg = legOfDay(cfg, x.date); const ci = stopOfDay(cfg, x.date); if (name && !out.some(y => y._ci === ci && y.name.toLowerCase() === name.toLowerCase())) out.push({ src: 'host', name, q: name, addr: '', from: x.date || '', to: leg && leg.to || '', _ci: ci }); });
+  const sch = cfg.off.schedule ? [] : cfg.schedule || []; const out = [];
+  sch.filter(x => x.title && HOTEL_RE.test(x.title) && !/check[- ]?out/i.test(x.title)).forEach(x => {
+    const free = hotelFreeLine(x);
+    // a free-form stay line where the stop also has a check-in for those nights is the older note of the same stay
+    if (free && sch.some(y => y !== x && hotelCiLine(y) && stopOfDay(cfg, y.date) === stopOfDay(cfg, x.date) && spanHit(hostStay(cfg, sch, x), hostStay(cfg, sch, y)))) return;
+    const name = free ? freeHotelName(x.title) : x.title.replace(/^\s*check[- ]?in\s*[:\-–—]?\s*(at\s+)?/i, '').trim(); const leg = legOfDay(cfg, x.date); const ci = stopOfDay(cfg, x.date);
+    if (name && !out.some(y => y._ci === ci && y.name.toLowerCase() === name.toLowerCase())) out.push({ src: 'host', name, q: name, addr: '', from: x.date || '', to: free && stayNights(x.title) && x.date ? addDays(x.date, stayNights(x.title)) : leg && leg.to || '', _ci: ci }); });
   return out;
 }
 // per city: a list of { name, addr, lat, lon, src: 'set'|'booking'|'host', ref, id, from, to } by date (lat null while being found).
@@ -5537,6 +5573,9 @@ function hotelsNow(cfg) {
   const host = hotelCands(cfg).filter(c => !mine.some(x => nameLike(x.name, c.name))).map(c => { const g = geo(c.q); return g && g.miss ? null : g ? { ...c, lat: g.lat, lon: g.lon, addr: c.addr || g.addr || '', ref: g.ref || '' } : { ...c, lat: null }; }).filter(Boolean);
   const out = ss.map(() => []); out.away = [];
   mine.concat(host).forEach(h => { const i = ss.length < 2 ? 0 : homeCity(cfg, h.lat != null ? h : null, { stopId: h.stopId, day: h.from, span: span(h), hotel: true }); (i >= 0 && out[i] ? out[i] : out.away).push(h); });
+  // the organizer's hotel for nights the guest picked their own hotel is not theirs any more (it can't be removed by them,
+  // so it would sit there as an "old selection" next to the new one)
+  out.forEach((hs, i) => { const own = hs.filter(h => h.src !== 'host'); if (own.length) out[i] = hs.filter(h => h.src !== 'host' || !own.some(o => { const a = span(o), b = span(h); return !a || !b || spanHit(a, b); })); });
   out.forEach(hs => hs.sort((a, b) => (a.from || '9999').localeCompare(b.from || '9999')));
   return out;
 }
@@ -5557,8 +5596,43 @@ function setHotel(cfg, art, i, p) {
   if (!p) return Promise.resolve();
   const d = hotelGuessDates(cfg, i, itinLoad(cfg));
   const add = { id: newBkId(), kind: 'hotel', name: p.name || '', address: p.address || '', ref: p.gid || '', lat: p.lat, lon: p.lon, stopId: cityId(cfg, i), pin: 1, guess: 1, start: d[0], end: d[1] };
-  const slot = () => { const bar = art.querySelector('[data-slot="hotel"]'); if (!bar) return null; let s = art.querySelector('[data-slot="hotel-ask"]'); if (!s) { bar.insertAdjacentHTML('beforebegin', '<div data-slot="hotel-ask"></div>'); s = bar.previousElementSibling; } return s; };
-  return bkSave(cfg, art, [add], slot);
+  return bkSave(cfg, art, [add], null);
+}
+// ---- one tap on a hotel the app already knows (a Google / map place, a Where to stay row, a place sheet) ----
+// The guest's hotels live in ONE place: their hotel bookings (My trip). A map pick, a Make it mine hotel, a PDF, a
+// typed booking are all items there; nothing else (no per-stop pick key, no saved-spot flag) says "my hotel".
+// the guest's hotel booking that IS this place: same Google place, same spot, or the same name close by — else null
+function myHotelOf(cfg, p) {
+  if (!p) return null;
+  return itinLoad(cfg).find(x => { if (!LODGE.has(x.kind) || x.ph) return false; if (p.ref && x.ref && x.ref === p.ref) return true;
+    const q = bkGeo(x); if (q.lat == null || p.lat == null) return !!(x.name && p.name) && q.lat == null && nameLike(x.name, p.name) && nameToks(x.name).join(' ') === nameToks(p.name).join(' ');
+    const dm = distM(q.lat, q.lon, p.lat, p.lon); return dm < 80 || (dm < 1500 && nameLike(x.name, p.name)); }) || null;
+}
+// which city a picked place is the hotel for: the city the guest is looking at when it is in it, else the one it is in
+function hotelPick(cfg, art, place) {
+  const at = art && art._stop != null ? cityId(cfg, art._stop) : '';
+  let i = homeCity(cfg, place.lat != null ? place : null, { stopId: at }); if (i < 0) i = place.lat != null ? nearestStop(cfg, place) : 0;
+  return setHotel(cfg, art, i, { name: place.name, address: place.addr || place.address || '', gid: place.src === 'g' ? place.ref || '' : '', lat: place.lat, lon: place.lon });
+}
+// the hotel action wherever a known hotel is shown: "Set as my hotel" — or, when it already is, "Your hotel" + Remove.
+// mini = a list row's small buttons; else a place sheet's primary action. Re-rendered in place after every change.
+function hsSlotHTML(cfg, place, mini) {
+  const m = myHotelOf(cfg, place); const dt = m ? hotelDates({ from: bkDay(m.start), to: bkDay(m.end) }) : '';
+  const inner = m ? (mini ? `<span class="hs-tag"><img src="${HOTEL_PIN}" alt="">${esc(t('Your hotel'))}</span><button type="button" class="mini-b bk-rm hs-rm" data-hs-rm="${esc(m.id)}">${TRASH_IC}${t('Remove')}</button>`
+    : `<p class="plan-have hs-have"><img src="${HOTEL_PIN}" alt=""><b>${esc(t('Your hotel'))}</b>${dt ? `<span class="muted">${esc(dt)}</span>` : ''}</p><div class="btns"><button type="button" class="btn bk-rm hs-rm" data-hs-rm="${esc(m.id)}">${TRASH_IC}${t('Remove')}</button></div>`)
+    : mini ? `<button type="button" class="mini-b hs-set" data-hs-set>${t('Set as my hotel')}</button>` : `<div class="btns"><button type="button" class="btn primary hs-set" data-hs-set>${HOTEL_IC}${t('Set as my hotel')}</button></div>`;
+  const pl = { src: place.src || '', ref: place.ref || '', name: place.name || '', addr: place.addr || place.address || '', lat: place.lat, lon: place.lon };
+  return `<${mini ? 'span' : 'div'} class="hs-slot${mini ? ' mini' : ' plan-add'}" data-hs-p="${esc(JSON.stringify(pl))}">${inner}</${mini ? 'span' : 'div'}>`;
+}
+function hsRefresh(cfg, root) {
+  [root, $('#placedlg')].filter(Boolean).forEach(r => $$('.hs-slot[data-hs-p]', r).forEach(el => { try { el.outerHTML = hsSlotHTML(cfg, JSON.parse(el.dataset.hsP), el.classList.contains('mini')); } catch { /* left as is */ } }));
+}
+// Set as my hotel / Remove (a place sheet, a list row, a map pin's popup); true when the click was one of them
+function hsClick(cfg, art, e) {
+  const b = e.target.closest('[data-hs-set],[data-hs-rm]'); if (!b) return false; e.preventDefault();
+  if (b.dataset.hsRm) { bkRemove(cfg, art, b.dataset.hsRm); hsRefresh(cfg, art); return true; }
+  const box = b.closest('.hs-slot'); if (!box) return true; let pl; try { pl = JSON.parse(box.dataset.hsP); } catch { return true; }
+  b.disabled = true; Promise.resolve(hotelPick(cfg, art, pl)).finally(() => hsRefresh(cfg, art)); return true;
 }
 const isSaved = (cfg, ref) => !!ref && planLoad(cfg).some(x => x.ref === ref && !x.hotel);
 function toggleSaved(cfg, art, place) {
@@ -5605,13 +5679,13 @@ function spotsKML(cfg) {
 }
 function hotelBarHTML(cfg, art) {
   const ss = hotelStops(cfg); const i = art._stop || 0; const hs = hotelsNow(cfg)[i] || []; const city = ss.length > 1 ? cityLabel(ss[i]) : '';
-  const lbl = city ? t('Your hotel in {c}', { c: city }) : t('Your hotel'); const pick = art._pick[i] ?? 0; const h = pick >= 0 ? hs[pick] || hs[0] : null;
-  const chips = hs.length > 1 ? `<div class="chips hotel-chips" role="group" aria-label="${esc(lbl)}"><button type="button" class="chip ${pick < 0 ? 'on' : ''}" data-hotel-pick="-1" aria-pressed="${pick < 0}">${t('All')}</button>${hs.map((x, k) => `<button type="button" class="chip ${k === pick ? 'on' : ''}" data-hotel-pick="${k}" aria-pressed="${k === pick}">${esc(x.name)}${hotelDates(x) ? ` <small>${esc(hotelDates(x))}</small>` : ''}</button>`).join('')}</div>` : '';
-  const sub = (x) => x.lat == null ? t('Finding it on the map…') : [hotelDates(x), x.src === 'booking' ? t('From your bookings') : x.src === 'host' ? t('From the itinerary') : x.addr || ''].filter(Boolean).join(' · ');
-  const form = `<form class="hb-set" onsubmit="return false"><label for="hb-q">${esc(hs.length ? t('Add a hotel') : t('Set your hotel'))}${city ? ` <small class="muted">${esc(city)}</small>` : ''}</label><div class="search"><input id="hb-q" data-hotel-q placeholder="${t('Search your hotel')}" autocomplete="off"><button type="submit" class="btn sm" data-hotel-find>${t('Find')}</button></div>${hs.length ? `<button type="button" class="link" data-hotel-cancel>${t('Cancel')}</button>` : ''}<p class="hint" data-hotel-msg role="status" aria-live="polite"></p></form>`;
-  if (!hs.length || art._hotelEdit) return chips + form;
-  if (!h) return `${chips}<div class="hb"><img class="hb-ic" src="${HOTEL_PIN}" alt=""><div class="hb-t"><span class="lbl">${esc(lbl)}</span><b>${esc(t('{n} hotels', { n: hs.length }))}</b></div><button type="button" class="btn sm" data-hotel-add>${t('Add')}</button></div>`;
-  return `${chips}<div class="hb"><img class="hb-ic" src="${HOTEL_PIN}" alt=""><div class="hb-t"><span class="lbl">${esc(lbl)}</span><b>${esc(h.name)}</b><small class="muted">${esc(sub(h))}</small></div><div class="hb-acts">${h.src !== 'host' && h.id ? `<button type="button" class="btn sm bk-rm hb-rm" data-hotel-del="${esc(h.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}<button type="button" class="btn sm" data-hotel-add>${t('Add')}</button></div></div>`;
+  const lbl = city ? t('Your hotel in {c}', { c: city }) : t('Your hotel'); const pick = Math.min(Math.max(0, art._pick[i] ?? 0), Math.max(0, hs.length - 1));
+  const sub = (x) => x.lat == null ? t('Finding it on the map…') : [hotelDates(x), x.src === 'booking' ? t('From your bookings') : x.src === 'host' ? t('From the itinerary') : (x.addr || '').split(',')[0]].filter(Boolean).join(' · ');
+  const form = `<form class="hb-set" onsubmit="return false"><label for="hb-q">${esc(t('Other hotel…'))}${city ? ` <small class="muted">${esc(city)}</small>` : ''}</label><div class="search"><input id="hb-q" data-hotel-q placeholder="${t('Search your hotel')}" autocomplete="off"><button type="submit" class="btn sm" data-hotel-find>${t('Find')}</button></div><button type="button" class="link" data-hotel-cancel>${t('Cancel')}</button><p class="hint" data-hotel-msg role="status" aria-live="polite"></p></form>`;
+  if (art._hotelEdit) return form;
+  const row = (x, k) => `<li class="hb-r${hs.length > 1 && k === pick ? ' on' : ''}"><button type="button" class="hb-go" data-hotel-pick="${k}" aria-pressed="${k === pick}"><img class="hb-ic" src="${HOTEL_PIN}" alt=""><span class="hb-t"><b>${esc(x.name)}</b><small class="muted">${esc(sub(x))}</small></span></button>${x.src !== 'host' && x.id ? `<button type="button" class="btn sm bk-rm hb-rm" data-hotel-del="${esc(x.id)}" aria-label="${esc(t('Remove {n}', { n: x.name }))}">${TRASH_IC}${t('Remove')}</button>` : ''}</li>`;
+  const browse = art._gp ? `<button type="button" class="btn sm hb-browse" data-hotel-browse>${ccIcon('hotels')}${t('Hotels')}</button>` : '';
+  return `<div class="hb hb-box"><p class="lbl">${esc(lbl)}</p>${hs.length ? `<ul class="hb-list">${hs.map(row).join('')}</ul>` : `<p class="hb-none muted">${esc(t('No hotel yet'))}</p>`}<div class="hb-acts">${browse}<button type="button" class="btn sm ghost" data-hotel-add>${t('Other hotel…')}</button></div></div>`;
 }
 function wireHotel(cfg, art, mapCtl) {
   const fold = () => art._cx && art._cx();
@@ -5625,7 +5699,7 @@ function wireHotel(cfg, art, mapCtl) {
     art._hotelPt = h; art._fromHotel = !!h; art._center = h ? { lat: h.lat, lon: h.lon } : ss[art._stop]; return true; };
   const ui = (force) => {
     const all = hotelsNow(cfg); const sp = art.querySelector('#sec-spots .sec-b'); if (sp) sp.innerHTML = spotsHTML(cfg); locate(all);
-    if (mapCtl) mapCtl.setHotels([].concat(...all.map((hs, i) => hs.filter(h => h.lat != null).map((h, k) => ({ lat: h.lat, lon: h.lon, title: `${t('Your hotel')}: ${h.name}`, name: h.name, dates: hotelDates(h), label: [pinText(h.name), hotelDates(h)].filter(Boolean).join(' · '), onClick: () => { art._stop = i; art._pick[i] = all[i].indexOf(h); ui(); } })))));
+    if (mapCtl) mapCtl.setHotels([].concat(...all.map((hs, i) => hs.filter(h => h.lat != null).map((h, k) => ({ lat: h.lat, lon: h.lon, title: `${t('Your hotel')}: ${h.name}`, name: h.name, dates: hotelDates(h), rm: h.src !== 'host' && h.id ? h.id : '', label: [pinText(h.name), hotelDates(h)].filter(Boolean).join(' · '), onClick: () => { art._stop = i; art._pick[i] = all[i].indexOf(h); ui(); } })))));
     if (bar) { bar.innerHTML = hotelBarHTML(cfg, art); const q = bar.querySelector('[data-hotel-q]'); if (q) placeAutocomplete(q, { bias: () => ss[art._stop], onPick: (id, tok) => gpVenue(id, tok).then(v => { art._hotelEdit = false; setHotel(cfg, art, art._stop, v); }).catch(() => toast(t('Couldn’t load that place right now.'))) }); }
     const cur = art._hotelAt(art._stop); const saved = planLoad(cfg).some(x => x.lat != null && !x.hotel);
     if (key) key.innerHTML = cur || saved ? `${cur ? `<span class="mk"><img src="${HOTEL_PIN}" alt="">${t('Your hotel')}</span>` : ''}${saved ? `<span class="mk"><img src="${STAR_PIN}" alt="">${t('Saved')}</span>` : ''}${cur ? `<button type="button" class="mk-go" data-hotel-go>${t('Hotel')}</button>` : ''}` : '';
@@ -5645,6 +5719,7 @@ function wireHotel(cfg, art, mapCtl) {
   if (bar) bar.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
     if (d.hotelPick != null) { art._pick[art._stop] = +d.hotelPick; ui(true); return; }
     if ('hotelAdd' in d) { art._hotelEdit = true; ui(); const q = bar.querySelector('[data-hotel-q]'); if (q) q.focus(); }
+    if ('hotelBrowse' in d) { if (art._gpCat) art._gpCat('hotels'); const m = art.querySelector('[data-slot="map"]'); if (m && m.scrollIntoView) m.scrollIntoView({ block: 'center' }); }
     if ('hotelCancel' in d) { art._hotelEdit = false; ui(); }
     if (d.hotelDel) bkRemove(cfg, art, d.hotelDel);
     if ('hotelFind' in d) find((bar.querySelector('[data-hotel-q]') || {}).value.trim()); });
@@ -6209,7 +6284,8 @@ function mineSave(cfg, m, hotel) { // hotel: undefined keeps it (its dates follo
   let xs = LS.get(itinKey(cfg), null) ?? itinLoad(cfg); const old = xs.find(x => x.grp);
   if (!m || hotel !== undefined) {
     xs = xs.filter(x => !x.grp);
-    if (m && hotel && String(hotel.name || '').trim()) xs.push({ id: old && nameLike(old.name, hotel.name) ? old.id : 'bk' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), kind: 'hotel', name: hotel.name.trim().slice(0, 120), address: hotel.address || '', ...(hotel.lat != null ? { lat: hotel.lat, lon: hotel.lon } : {}), start: m.a, end: m.l, grp: 1 });
+    if (m && hotel && String(hotel.name || '').trim()) { const h = { id: old && nameLike(old.name, hotel.name) ? old.id : 'bk' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), kind: 'hotel', name: hotel.name.trim().slice(0, 120), address: hotel.address || '', ...(hotel.lat != null ? { lat: hotel.lat, lon: hotel.lon } : {}), start: m.a, end: m.l, grp: 1 };
+      xs = xs.filter(x => { const k = x.guess && LODGE.has(x.kind) ? bkMatch(cfg, x, h) : ''; if (k === 'same' && h.lat == null && x.lat != null) { h.lat = x.lat; h.lon = x.lon; if (x.ref) h.ref = x.ref; } return !k; }); xs.push(h); }
   } else if (old) { old.start = m.a; old.end = m.l; }
   itinSave(cfg, xs);
   if (LS.get('signedIn') && !cfg.demoTrip) syncPush(cfg);
@@ -6834,7 +6910,7 @@ function docReviewHTML(c, items, st = {}) {
 // the review says which of the organizer's hotels a document's hotel will replace (hostHotelReplace, on a copy)
 function docHotelSwapHTML(c, its) {
   const news = its.map(x => ({ date: isoDay(x.date), time: isoTime(x.time), title: cleanText(x.title, 120), kind: x.kind || '' })).filter(x => x.date && x.title);
-  const gone = hostHotelReplace({ ...c, schedule: (c.schedule || []).concat(news) }, news).filter(hotelCiLine).map(x => hostHotelName(x.title));
+  const gone = hostHotelReplace({ ...c, schedule: (c.schedule || []).concat(news) }, news).filter(hotelStayLine).map(x => hotelCiLine(x) ? hostHotelName(x.title) : x.title);
   return gone.length ? `<small class="muted dr-swap">Replaces ${esc([...new Set(gone)].join(', '))}</small>` : '';
 }
 // apply the reviewed items to a copy of the page (async: route stops and the venue are looked up on the map)

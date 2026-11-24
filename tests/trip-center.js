@@ -82,9 +82,9 @@ const near = (a, b, e = 2e-3) => Math.abs(a - b) < e;
     await pick(page, 'city', '1'); await page.waitForTimeout(300);
     const k = await mapC(page); ok(near(k.lat, 35.0116) && k.z === 13, `Kyoto chip → Kyoto ${JSON.stringify(k)}`);
     // a hotel set for Osaka → Osaka opens on the hotel
-    await pick(page, 'city', '2'); await page.waitForSelector('[data-hotel-q]');
+    await pick(page, 'city', '2'); await page.click('[data-slot="hotel"] [data-hotel-add]'); await page.waitForSelector('[data-hotel-q]'); // the search only behind Other hotel…
     await page.evaluate(() => { const k = Object.keys(localStorage).find(x => x.startsWith('ep:plan:')); }); 
-    await page.fill('[data-hotel-q]', 'Osaka'); await page.click('[data-hotel-find]'); await page.waitForSelector('[data-slot="hotel"] .hb');
+    await page.fill('[data-hotel-q]', 'Osaka'); await page.click('[data-hotel-find]'); await page.waitForSelector('[data-slot="hotel"] .hb-r');
     await page.waitForTimeout(200); const o = await mapC(page); ok(near(o.lat, 34.6937) && o.z === 15, `Osaka with a hotel → map on the hotel ${JSON.stringify(o)}`);
     await pick(page, 'city', '0'); await page.waitForTimeout(200); await pick(page, 'city', '2'); await page.waitForTimeout(300);
     const o2 = await mapC(page); ok(near(o2.lat, 34.6937) && o2.z === 15, 'back to Osaka → on its hotel again');

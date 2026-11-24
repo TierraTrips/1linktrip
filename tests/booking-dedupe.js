@@ -2,7 +2,7 @@
 // Add a booking (screenshot / PDF / paste — the AI reader's items), Add to my trip, the Nearby "Your hotel" pick. A
 // match (same place id, similar name, or same city with overlapping nights) is merged (confirmation / dates from the
 // booking, place id + coords from the map), never added twice; a new booking for a different hotel on the same nights
-// replaces the old one (toast: Keep both); a map pick over a booked hotel asks Replace A with B? (Replace / Keep both). The Itinerary shows a hotel once (check-in day) plus its check-out line.
+// replaces the old one (toast: Keep both); a map pick over a booked hotel replaces it the same way (toast: Keep both; Dylan 11/24 — no question in the way). The Itinerary shows a hotel once (check-in day) plus its check-out line.
 // Flights (airline + number + date) and rental cars (company + pickup date) dedupe the same way. Old duplicates
 // (and old map picks stored as plan items) merge on load; merged-away ids never come back from account sync
 // (live Supabase part: a throwaway user, deleted with its rows at the end; skipped without secrets/supabase-pat).
@@ -95,7 +95,7 @@ const hotelPins = (page) => page.evaluate(() => window.__markers.filter(m => m.o
 
     // 2 — map pick first, then the screenshot → one item with the booking's dates
     { const { ctx, page } = await setup(browser);
-      await open(page, 'nearby'); await page.waitForSelector('[data-hotel-q]');
+      await open(page, 'nearby'); await page.waitForSelector('[data-slot="hotel"] [data-hotel-add]');
       await mapPick(page, 'Hotel Beta');
       let xs = await itin(page); ok(xs.length === 1 && xs[0].kind === 'hotel' && xs[0].pin && xs[0].guess && xs[0].start === '2027-04-01' && xs[0].end === '2027-04-04', `map pick = a hotel booking for the Tokyo nights ${JSON.stringify(xs)}`);
       await importAI(page, [AI('Hotel Beta Tokyo', '2027-04-02T15:00', '2027-04-04T10:00', 'BB9')]);
@@ -105,7 +105,7 @@ const hotelPins = (page) => page.evaluate(() => window.__markers.filter(m => m.o
       ok(page._err.length === 0, `no page errors ${page._err}`); await ctx.close(); }
 
     // 3 — two different hotels for the same nights: a new booking (PDF / screenshot / paste) REPLACES the old one, with
-    // Keep both in the toast; only a map pick over a booked hotel still asks (Keep both / Replace)
+    // Keep both in the toast; a map pick over a booked hotel does the same
     { const { ctx, page } = await setup(browser, 320);
       await open(page, 'mytrip');
       await importAI(page, [AI('Hotel Alpha Tokyo', '2027-04-01T15:00', '2027-04-04T11:00', 'AB123')]);
@@ -119,9 +119,9 @@ const hotelPins = (page) => page.evaluate(() => window.__markers.filter(m => m.o
       await importAI(page, [AI('Hotel Delta', '2027-04-01T15:00', '2027-04-03T11:00', 'DD1')]);
       names = (await itin(page)).map(x => x.name); ok(names.length === 2 && names.includes('Hotel Delta') && !names.includes('Hotel Gamma'), `next booking replaces again (${names})`);
       await mapPick(page, 'Hotel Epsilon');
-      const mq = await page.textContent('[data-slot="hotel-ask"]').catch(() => '');
-      ok(/Replace .+ with Hotel Epsilon\?/.test(mq), `map pick over booked nights asks: ${mq.replace(/\s+/g, ' ')}`);
-      await page.click('[data-slot="hotel-ask"] [data-bk-ask="0"]'); await page.waitForTimeout(300);
+      const mq = await page.textContent('#toast').catch(() => '');
+      ok(/Replaced .+ with Hotel Epsilon/.test(mq) && /Keep both/.test(mq) && !(await page.$('.bk-ask')), `map pick over booked nights replaces like a document, no question (Dylan 11/24): ${mq.replace(/\s+/g, ' ')}`);
+      await page.click('#toast .toast-act'); await page.waitForTimeout(300);
       ok((await itin(page)).length === 3, 'Keep both from the map → 3 hotels');
       ok(page._err.length === 0, `no page errors ${page._err}`); await ctx.close(); }
 

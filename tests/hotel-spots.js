@@ -122,9 +122,10 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
     await page.waitForTimeout(400);
     const nb2 = [...reqs].reverse().find(x => /searchNearby/.test(x.url));
     ok(nb2 && near(nb2.b.locationRestriction.circle.center.latitude, 35.0036), `@${w} Kyoto searches start at the ryokan`);
-    // Osaka: nothing known → Set your hotel
-    await pick(page, 'city', '2'); await page.waitForSelector('[data-hotel-q]');
-    ok(/Set your hotel/.test(await page.textContent('[data-slot="hotel"]')), `@${w} Osaka: Set your hotel`);
+    // Osaka: nothing known → "No hotel yet"; the search only behind Other hotel…
+    await pick(page, 'city', '2'); await page.waitForTimeout(300);
+    ok(/No hotel yet/.test(await page.textContent('[data-slot="hotel"]')) && !(await page.$('[data-hotel-q]')), `@${w} Osaka: No hotel yet, no search box until asked`);
+    await page.click('[data-hotel-add]'); await page.waitForSelector('[data-hotel-q]');
     await page.fill('[data-hotel-q]', 'Hotel Osaka Bay'); await page.click('[data-hotel-find]');
     await page.waitForFunction(() => /Hotel Osaka Bay/i.test(document.querySelector('[data-slot="hotel"] .hb') ? document.querySelector('[data-slot="hotel"] .hb').textContent : ''));
     const plan = await page.evaluate((k) => JSON.parse(localStorage.getItem('ep:plan:' + k)), k);

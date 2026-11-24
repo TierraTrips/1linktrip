@@ -64,10 +64,11 @@ const near = (a, b, e = 1e-3) => Math.abs(a - b) < e;
       { id: 'b1', kind: 'hotel', name: 'Hotel A', address: 'Shinjuku', start: '2027-04-01T15:00', end: '2027-04-04T11:00' },
       { id: 'b2', kind: 'hotel', name: 'Hotel B', address: 'Ginza', start: '2027-04-08T15:00', end: '2027-04-10T11:00' }])); }, keyOf(CFG));
     await page.goto(BASE + '#e=' + await page.evaluate((c) => window.__ep.packEvent(c), CFG) + '&t=nearby'); await page.waitForSelector('[data-gp-body] .place-row', { timeout: 15000 });
-    await page.waitForFunction(() => document.querySelectorAll('[data-hotel-pick]').length === 3, null, { timeout: 8000 }).catch(() => {});
+    await page.waitForFunction(() => document.querySelectorAll('[data-hotel-pick]').length === 2, null, { timeout: 8000 }).catch(() => {});
     ok((await cityOpts(page)).join() === 'Tokyo,Kyoto', `@${w} one Tokyo in the City dropdown for both Tokyo legs`);
-    const chips = await page.$$eval('[data-hotel-pick]', bs => bs.map(b => b.textContent.replace(/\s+/g, ' ').trim()));
-    ok(chips.join('|') === 'All|Hotel A Apr 1–4|Hotel B Apr 8–10', `@${w} hotel chips ${chips.join('|')}`);
+    const chips = await page.$$eval('[data-hotel-pick]', bs => bs.map(b => b.querySelector('b').textContent + ' ' + b.querySelector('small').textContent.split(' · ')[0]));
+    ok(chips.join('|') === 'Hotel A Apr 1–4|Hotel B Apr 8–10', `@${w} one row per Tokyo hotel ${chips.join('|')}`);
+    ok(await page.$$eval('[data-slot="hotel"] [data-hotel-del]', bs => bs.length) === 2, `@${w} each row has its own Remove`);
     const pins = await page.evaluate(() => window.__markers.filter(m => m.on && m.o.zIndex === 5000).map(m => m.tip).sort());
     ok(pins.join('|') === 'Hotel A · Apr 1–4|Hotel B · Apr 8–10', `@${w} both hotels pinned with dates ${pins.join('|')}`);
     // no text on the map until hover (mouse) / tap (popup)
@@ -89,10 +90,7 @@ const near = (a, b, e = 1e-3) => Math.abs(a - b) < e;
     await page.waitForTimeout(300); ok(near(nb().latitude, 35.69), `@${w} search starts at Hotel A`);
     await page.click('[data-hotel-pick="1"]'); await page.waitForTimeout(400);
     ok(near(nb().latitude, 35.66) && await page.evaluate(() => Math.abs(window.__gmap.c.lat - 35.66) < 1e-3), `@${w} Hotel B chip → map + search at Hotel B`);
-    ok(/Hotel B/.test(await page.textContent('[data-slot="hotel"] .hb')), `@${w} bar shows Hotel B`);
-    await page.click('[data-hotel-pick="-1"]'); await page.waitForTimeout(400);
-    const allC = await page.evaluate(() => window.__gmap.c.lat); const pl = await page.evaluate(() => window.__markers.filter(m => m.on && m.o.zIndex === 500).map(m => m.o.position.lat)[0]);
-    ok(near(pl, 35.6764) && Math.abs(allC - 35.675) < 2e-3, `@${w} All → both in view, places from the city (${pl}, map ${allC})`);
+    ok(/Hotel B/.test(await page.textContent('[data-slot="hotel"] .hb-r.on')), `@${w} Hotel B row highlighted`);
     if (SHOTS && (w === 390 || desk)) await page.locator('#sec-map').screenshot({ path: `${SHOTS}/hotel-multi-${w}.png` });
     ok((await overflow(page)) === 0, `@${w} no overflow`);
     // the Itinerary still has both Tokyo legs; the second opens Tokyo in Nearby
