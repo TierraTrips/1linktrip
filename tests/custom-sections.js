@@ -76,6 +76,7 @@ const overflow = (page) => page.evaluate(() => {
     await page.goto(BASE + '#e=' + packed); await page.waitForSelector('.ev-body'); await page.waitForTimeout(800);
     const order = await page.$$eval('.ev-panel[data-panel="event"] .ev-body [data-sec]', es => es.map(e => e.dataset.sec));
     ok(order.indexOf(s1) >= 0 && order.indexOf(s1) < order.indexOf(s0), `@${w} both on the page, moved one first: ${order.join()}`);
+    if (await page.$eval(`#sec-${s0}`, e => e.classList.contains('cx-col'))) await page.click(`#sec-${s0} .sec-h`); // Event-tab sections start folded
     const d = await page.$eval(`#sec-${s0}`, e => ({ h: e.querySelector('h2').textContent, ps: [...e.querySelectorAll('p')].map(p => p.textContent), a: e.querySelector('a')?.href, b: e.querySelector('a b')?.textContent, img: e.querySelector('img.cs-img')?.src, imgW: e.querySelector('img.cs-img')?.getBoundingClientRect().width, secW: e.getBoundingClientRect().width }));
     ok(d.h === 'Getting to the dock' && d.ps.join('|') === 'Take the gravel road past the gate.|Boats leave at 4.' && d.a === 'https://example.com/ferry' && d.b === 'Ferry times' && d.img === img, `@${w} section content ${JSON.stringify(d)}`);
     ok(d.imgW > 0 && d.imgW <= d.secW, `@${w} photo fits the section (${d.imgW} ≤ ${d.secW})`);

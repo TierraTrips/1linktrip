@@ -32,7 +32,8 @@ const wx = (page) => page.evaluate(() => {
     label: g && g.getAttribute('aria-label'), lang: document.documentElement.lang, want: (window.EP_I18N[document.documentElement.lang] || {})['Temperature unit'] || 'Temperature unit',
     folded: s.classList.contains('cx-col'), saved: localStorage.getItem('ep:tempUnit') };
 });
-const ready = (page) => page.waitForSelector('#sec-weather .wx-units', { timeout: 20000 });
+// the Event tab's info sections start folded to one line: open Weather (once per page; the choice is kept)
+const ready = async (page) => { await page.waitForSelector('#sec-weather .wx-units', { timeout: 20000, state: 'attached' }); if (await page.$eval('#sec-weather', s => s.classList.contains('cx-col'))) await page.click('#sec-weather .sec-h'); await page.waitForSelector('#sec-weather .wx-units'); };
 const overflow = (page) => page.evaluate(() => { const cw = document.documentElement.clientWidth; return [...document.querySelectorAll('#sec-weather, #sec-weather *')].filter(e => { for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) if (getComputedStyle(a).overflowX !== 'visible') return false; const r = e.getBoundingClientRect(); return r.width && r.right > cw + 1; }).map(e => e.className).slice(0, 3); });
 
 (async () => {

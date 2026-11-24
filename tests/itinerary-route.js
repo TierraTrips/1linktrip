@@ -1,5 +1,5 @@
-// Trips: the host's Route (cities + dates) shows inside the Itinerary as legs — one block per stop with its date range
-// (tap → Nearby for that stop), that stop's days listed under it, undated items after the legs. No separate Route
+// Trips: the host's Route (cities + dates) shows inside the Itinerary as small city headings — one per stop with its date
+// range ("Apr 1–4", tap → Nearby for that stop), that stop's days listed under it, undated items after; no city tabs. No separate Route
 // section for trips (route documents move into the Itinerary). A 1-stop route renders; a route filled from a document
 // (stops without map coordinates) renders. Non-trip pages and trips without a route render exactly as before.
 // No horizontal overflow at 390 and 320.
@@ -49,7 +49,7 @@ const JAPAN = {
     return { ctx, page, errors };
   };
   const open = async (page, packed, b = BASE) => { await page.goto(b + '#e=' + packed); await page.waitForSelector('.ev-body'); await page.waitForTimeout(400); };
-  const legs = (page) => page.$$eval('#sec-schedule .leg', ls => ls.map(l => ({ name: l.querySelector('.leg-h b').textContent, range: (l.querySelector('.leg-h small') || {}).textContent || '', btn: l.querySelector('.leg-h').tagName === 'BUTTON', items: [...l.querySelectorAll('.tl li b')].map(b => b.textContent) })));
+  const legs = (page) => page.$$eval('#sec-schedule .city-g', ls => ls.map(l => ({ name: l.querySelector('.city-h b').textContent, range: (l.querySelector('.city-h small') || {}).textContent || '', btn: l.querySelector('.city-h').tagName === 'BUTTON', items: [...l.querySelectorAll('.tl li b')].map(b => b.firstChild.textContent.trim()) })));
 
   // ---------- 3-city trip with dates + schedule items, at 390 and 320 ----------
   for (const w of [390, 320]) {
@@ -61,16 +61,18 @@ const JAPAN = {
     const L = await legs(page);
     ok(L.map(l => l.name).join() === 'Tokyo,Kyoto,Osaka', `@${w} legs: ${L.map(l => l.name).join()}`);
     ok(L.every(l => l.range && l.btn), `@${w} each leg shows dates and is tappable ${JSON.stringify(L.map(l => l.range))}`);
+    ok(L[0].range === 'Apr 1–4', `@${w} city heading range without the year: ${L[0].range}`);
+    ok(!(await page.$('#sec-schedule .ccb-wrap, #sec-schedule [data-ccb]')), `@${w} no city tabs / filters in the Itinerary`);
     ok(L[0].items.join('|') === 'Land at Haneda|Shibuya and Harajuku', `@${w} Tokyo items ${L[0].items.join('|')}`);
     ok(L[1].items.join('|') === 'Shinkansen to Kyoto|Fushimi Inari at dawn', `@${w} Kyoto items (leave day → next city) ${L[1].items.join('|')}`);
     ok(L[2].items.join('|') === 'Dotonbori food crawl|Fly home from KIX', `@${w} Osaka items (last day stays) ${L[2].items.join('|')}`);
-    const after = await page.$$eval('#sec-schedule .legs ~ .day', ds => ds.map(d => d.textContent));
+    const after = await page.$$eval('#sec-schedule .city-g ~ .day', ds => ds.map(d => d.textContent));
     ok(after.length === 1 && /Unscheduled/.test(after[0]) && /Pick up JR passes/.test(after[0]), `@${w} undated items after the legs ${JSON.stringify(after)}`);
     ok(!!(await page.$('#sec-schedule .route-docs li')) && await page.$eval('#sec-schedule .route-docs b', e => e.textContent) === 'Route map.pdf', `@${w} route document inside the Itinerary`);
     ok(await page.$eval('#sec-schedule .day-h', e => !e.querySelector('.day-city')), `@${w} no repeated city tag on days inside a leg`);
     const row = await page.$$eval('#sec-schedule .tl-go', bs => bs.map(b => ({ title: b.querySelector('b').textContent, ref: b.dataset.ds, txt: b.textContent })).find(r => r.title === 'Shinkansen to Kyoto'));
     ok(row && /^ev:\d+$/.test(row.ref) && !/\S/.test(row.txt.replace(row.title, '')), `@${w} an item is one line, its note behind a tap ${JSON.stringify(row)}`);
-    await page.click(`#sec-schedule .tl-go[data-ds="${row.ref}"]`); await page.waitForSelector('dialog.ds-sheet[open]');
+    await page.click('#sec-schedule [data-day-tog="2027-04-04"]'); await page.click(`#sec-schedule .tl-go[data-ds="${row.ref}"]`); await page.waitForSelector('dialog.ds-sheet[open]');
     ok(await page.$eval('dialog.ds-sheet .ds-t', e => e.textContent) === 'Shinkansen to Kyoto' && (await page.$$('dialog.ds-sheet .ds-note')).length === 1, `@${w} tap opens its sheet with the note`);
     await page.click('dialog.ds-sheet [data-ds-close]'); await page.waitForTimeout(200);
     const of = await overflow(page); ok(of.length === 0, `@${w} no overflow ${of.join(' ')}`);
@@ -125,7 +127,7 @@ const JAPAN = {
       const packed = await page.evaluate((x) => window.__ep.packEvent(x), c);
       const body = async (b) => { await open(page, packed, b); return page.$eval('.ev-panel[data-panel="event"] .ev-body', e => e.innerHTML.replace(/<div data-slot="weather">[\s\S]*?<\/section>/, '')); };
       const now = await body(BASE);
-      ok(!/class="route legs"/.test(now), `${n}: no legs`);
+      ok(!/class="city-g"/.test(now), `${n}: no city headings`);
       if (OLD_BASE) ok(now === await body(OLD_BASE), `${n}: Event tab identical to the previous build`);
     }
     await ctx.close();

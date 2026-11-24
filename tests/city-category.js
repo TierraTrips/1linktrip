@@ -4,8 +4,8 @@
 // do, Shopping, Hotels); text search is scoped to the chosen city ("ramen" in Kyoto); sub-filters live in a bottom
 // sheet and show as removable pills. Each category has one icon + color: dropdown, list rows and map markers alike;
 // saved spots are their category's marker with a gold star; a small legend only when several categories are on the
-// map. My trip (itinerary, saved spots, bookings) and the trip Itinerary share one City × Category selection
-// ("Kyoto · Restaurants"). The selection is kept per trip, and ?city=kyoto&cat=restaurants links to it. 390 + 320, ja.
+// map. My trip (itinerary, saved spots, bookings) shares one City × Category selection ("Kyoto · Restaurants"); the
+// Event tab's Itinerary has no bar (city headings instead) and is never filtered. The selection is kept per trip, and ?city=kyoto&cat=restaurants links to it. 390 + 320, ja.
 //
 //   python3 -m http.server 18765 --bind 127.0.0.1 &  node tests/city-category.js
 //   SHOTS=/tmp/ep-shots node tests/city-category.js
@@ -196,17 +196,11 @@ const ctr = (x) => (x.b.locationRestriction || x.b.locationBias).circle.center;
     ok(cafes.join() === '% Arabica Kyoto Arashiyama' && await page.evaluate(() => document.activeElement.matches('[data-cct-q]')), `@${w} search “arab” → ${cafes} (focus kept)`);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/cc-mytrip-${w}.png` });
     ok((await overflow(page, '[data-panel="mytrip"]')).length === 0, `@${w} My trip: no overflow ${await overflow(page, '[data-panel="mytrip"]')}`);
-    // the Itinerary shares the selection
-    await page.click('.ev-tabs [data-tab-go="event"]'); await page.waitForSelector(`${ITIN} [data-dd="cat"]`);
-    ok(await label(page, 'cat', ITIN) === 'Cafés' && await page.inputValue(`${ITIN} [data-cct-q]`) === 'arab', `@${w} Itinerary shows the same selection`);
-    await page.fill(`${ITIN} [data-cct-q]`, ''); await page.waitForTimeout(250);
-    await page.click(`${ITIN} [data-cc-filters]`); await page.click(`${ITIN} [data-cct-show=""]`); await page.click(`${ITIN} .cc-sheet [data-cc-close].primary`);
-    await pick(page, 'city', '1', ITIN); await pick(page, 'cat', 'restaurants', ITIN);
-    const legs = await page.$$eval('#sec-schedule .leg-h b', bs => bs.map(b => b.textContent)); const items = await page.$$eval('#sec-schedule .tl li b', bs => bs.map(b => b.textContent.trim()));
-    ok(legs.join() === 'Kyoto' && items.length >= 1 && items.every(x => /Nishiki/.test(x)), `@${w} Itinerary Kyoto · Restaurants: ${legs} → ${items.join(' | ')}`);
-    await pick(page, 'cat', 'restaurants', ITIN); // tap again: every category
-    const kyotoAll = await page.$$eval('#sec-schedule .tl li b', bs => bs.map(b => b.textContent.trim()));
-    ok(kyotoAll.some(x => /Fushimi Inari/.test(x)) && !kyotoAll.some(x => /Tsukiji|Dotonbori/.test(x)), `@${w} Itinerary Kyoto · everything: ${kyotoAll.length} items, no Tokyo/Osaka`);
+    // the Event tab's Itinerary has no City × Category bar and is never filtered by it (Dylan 12324): every city heading
+    await page.click('.ev-tabs [data-tab-go="event"]'); await page.waitForSelector('#sec-schedule .city-g');
+    ok(!(await page.$(ITIN)), `@${w} Itinerary: no city tabs / category bar`);
+    const heads = await page.$$eval('#sec-schedule .city-h b', bs => bs.map(b => b.textContent));
+    ok(heads.join() === 'Tokyo,Kyoto,Osaka,Tokyo', `@${w} Itinerary unfiltered, city headings ${heads}`);
     if (SHOTS) await page.locator('#sec-schedule').screenshot({ path: `${SHOTS}/cc-itin-${w}.png` });
     ok((await overflow(page, '[data-panel="event"]')).length === 0, `@${w} Itinerary: no overflow`);
     ok(errors.length === 0, `@${w} no page errors ${errors.join(' ')}`);

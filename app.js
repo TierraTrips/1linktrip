@@ -1594,7 +1594,7 @@ function aboutHTML(cfg) {
   if (cfg.off.about || !(cfg.description || cfg.host)) return '';
   return `${cfg.host ? `<p class="host"><span class="lbl">${t('Hosted by')}</span> ${esc(cfg.host)}</p>` : ''}${cfg.description ? `<div class="rm-box">${cfg.description.split(/\n\s*\n/).filter(Boolean).map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}</div>` : ''}`;
 }
-const scheduleSecHTML = (cfg) => sec('schedule', t(schedTitle(cfg)), (ccItinOn(cfg) ? '<div class="ccb-wrap in-sec" data-slot="itin-cc"></div>' : '') + `<div data-slot="sched-body">${scheduleHTML(cfg)}</div>` + (cfg.off.schedule ? '' : docsHTML(cfg, ['schedule'])) + (routeInItin(cfg) && !cfg.off.route ? docsHTML(cfg, ['route']).replace(/^<ul class="docs/, '<ul class="route-docs docs') : ''), isTrip(cfg) ? 'itin' : '');
+const scheduleSecHTML = (cfg) => sec('schedule', t(schedTitle(cfg)), `<div data-slot="sched-body">${scheduleHTML(cfg)}</div>` + (cfg.off.schedule ? '' : docsHTML(cfg, ['schedule'])) + (routeInItin(cfg) && !cfg.off.route ? docsHTML(cfg, ['route']).replace(/^<ul class="docs/, '<ul class="route-docs docs') : ''), isTrip(cfg) ? 'itin' : '');
 // trips show their route (cities + dates) as the Itinerary's legs instead of a separate Route section
 const routeInItin = (cfg) => isTrip(cfg) && stopsOf(cfg).length > 0;
 // which leg a day belongs to: the stop whose stay covers it (leave day → next stop), else the nearest dated stop; -1 when no stop has dates
@@ -1604,7 +1604,7 @@ function legOf(ss, d) {
   ss.forEach((s, j) => { if (!s.from) return; const e = s.to && s.to > s.from ? s.to : s.from; const x = d < s.from ? daysBetween(d, s.from) : d > e ? daysBetween(e, d) : 0; if (x < dist || (x === dist && d >= s.from)) { best = j; dist = x; } });
   return best;
 }
-// the Itinerary for a trip: one block per route stop (tap → Nearby for that stop), its days under it; undated days last
+// the builder's Itinerary for a trip (on-page editing): one block per route stop, its days under it; undated days last
 function legsHTML(cfg, ss, days, dayHTML, dropEmpty = false, hide = null) {
   const by = ss.map(() => []), rest = []; const nb = tabsFor(cfg).some(x => x[0] === 'nearby');
   days.forEach(e => { const i = e[0] ? legOf(ss, e[0]) : -1; (i >= 0 ? by[i] : rest).push(e); });
@@ -1613,51 +1613,67 @@ function legsHTML(cfg, ss, days, dayHTML, dropEmpty = false, hide = null) {
     return s.lat != null && nb ? `<button type="button" class="leg-h" data-route-stop="${i}"${ea}>${inner}<i class="leg-go" aria-hidden="true">›</i></button>` : `<div class="leg-h"${ea}>${inner}</div>`; };
   return `<ol class="legs">${ss.map((s, i) => dropEmpty && !by[i].length ? '' : `<li class="leg${hide && by[i].length && by[i].every(e => hide.has(e[0])) ? ' l-more' : ''}">${head(s, i)}${by[i].length ? `<div class="leg-days">${by[i].map(dayHTML).join('')}</div>` : ''}</li>`).join('')}</ol>${rest.map(dayHTML).join('')}`;
 }
-// one schedule: the organizer's items, with the guest's own bookings mixed in
-// the trip Itinerary opens on a few days (today's, else the first) with "Show all n days"; a filter or the builder shows all
-const SCHED_ALL = new Set(); const SCHED_FOLD_AT = 5, SCHED_SHOW = 3;
-function schedFold(cfg, keys, F) {
-  const ds = keys.filter(Boolean).sort(); if (!isTrip(cfg) || ONP || (F && F.on) || ds.length < SCHED_FOLD_AT || SCHED_ALL.has(itinKey(cfg))) return { hide: new Set(), n: ds.length, folded: false };
-  const today = todayYMD(cfg.tz); let i = today >= ds[0] && today <= ds[ds.length - 1] ? ds.findIndex(d => d >= today) : 0; if (i < 0) i = 0;
-  const show = new Set(ds.slice(i, i + SCHED_SHOW)); return { hide: new Set(keys.filter(k => !show.has(k))), n: ds.length, folded: true };
+// The guest Event tab is an overview (Dylan 12324/12330): one row per day that has plans ("Fri, Apr 2" + a one-line
+// summary), tap to open it. Trips: a small city heading ("Kyoto · Apr 5–8", tap → Nearby) starts each city's days; no
+// city tabs, no inline hotel/transport/restaurant blocks — a booking is one line ("Check in · Park Hotel Tokyo") that
+// opens its sheet. Days start closed except one: today's (during the event), else the main day (the page's start date),
+// else the first. The builder's on-page editing keeps every day open with its editing hooks.
+const DAY_OPEN = new Map(); // itinKey → { 'YYYY-MM-DD': true | false } the guest's taps this session
+function dayOpenDefault(cfg, ds) {
+  if (ds.length < 2) return ds[0] || '';
+  const today = todayYMD(cfg.tz); if (ds.includes(today)) return today;
+  const main = (cfg.start || '').slice(0, 10); return ds.includes(main) ? main : ds[0];
 }
-// one schedule: the organizer's items, with the guest's own bookings mixed in. Every row, and every day, opens its sheet.
+const dayIsOpen = (cfg, d, def) => { const m = DAY_OPEN.get(itinKey(cfg)) || {}; return d in m ? m[d] : d === def; };
+const shortRange = (s) => s.from ? dateRange(s.from, s.to && s.to > s.from ? s.to : s.from).replace(/, \d{4}$/, '') : '';
+// one line per schedule row: the organizer's item, or the guest's own booking / saved spot
+function schedLine(cfg, x) {
+  if (x.ev) { const ev = cfg.schedule[x.si]; return ev && isHostHotel(ev) && hostHotelName(ev.title) !== String(ev.title || '').trim() ? t('Check in · {n}', { n: hostHotelName(ev.title) }) : x.name; }
+  const nm = x.name || t(ITIN_KINDS[x.kind] || 'Booking');
+  if (x.co) return t('Check out · {n}', { n: x.name || t(ITIN_KINDS[x.kind] || 'Hotel') });
+  if (LODGE.has(x.kind)) return t('Check in · {n}', { n: nm });
+  return nm;
+}
+// one schedule: the organizer's items, with the guest's own bookings mixed in. Every row opens its sheet.
 function scheduleHTML(cfg) {
   const { evs, mine } = schedEntries(cfg);
-  let legs = routeInItin(cfg) && !cfg.off.route ? stopsOf(cfg) : null;
+  const legs = routeInItin(cfg) && !cfg.off.route ? stopsOf(cfg) : null;
   if (!evs.length && !mine.length && !legs) return '';
-  const F = ccItinOn(cfg) ? ccTrip(cfg) : null;
-  const view = mine.length && !F ? (LS.get('schedview:' + itinKey(cfg)) || 'all') : 'all';
-  if (F && legs && F.ci >= 0) legs = legs.filter(s => cityOfStop(cfg, stopsOf(cfg).indexOf(s)) === F.ci);
-  const all = schedMerge(cfg, evs, view === 'event' ? [] : mine).filter(x => !F || !F.on || F.ok(x._cc));
+  const all = schedMerge(cfg, evs, mine);
   const days = {}; all.forEach(x => (days[(x.start || '').slice(0, 10)] = days[(x.start || '').slice(0, 10)] || []).push(x));
-  const fold = schedFold(cfg, Object.keys(days), F);
   const my = !ONP && mineOn(cfg) ? mineGet(cfg) : null; const away = (d) => !!my && !!d && (d < my.a || d > my.l); // Make it mine: days outside their stay
   const tm = (s) => fmtTime((s || '').slice(11, 16));
-  const tripHead = (d) => d ? `${cfg.start && d >= cfg.start.slice(0, 10) ? esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 })) + ' · ' : ''}${esc(fmt(d, { weekday: 'short', month: 'short', day: 'numeric' }))}${!legs && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? ` <span class="day-city">${esc(stopFor(cfg, d).name)}</span>` : ''}` : t('Unscheduled');
-  const evHead = (d) => d ? `${esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' }))}${!legs && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? ` <span class="day-city">${esc(stopFor(cfg, d).name)}</span>` : ''}` : t(isTrip(cfg) ? 'Unscheduled' : 'Anytime');
-  // a row: the builder keeps its inline details (on-page editing taps the row); guests get one tappable line → its sheet
-  const go = (ref, inner) => !ONP && ref ? `<button type="button" class="tl-go" data-ds="${esc(ref)}">${inner}<i class="tl-chev" aria-hidden="true"></i></button>` : inner;
-  const dayHTML = ([d, xs]) => { const head = isTrip(cfg) ? tripHead(d) : evHead(d);
-    return `<div class="day${fold.hide.has(d) ? ' d-more' : ''}${away(d) ? ' d-out' : ''}"${ONP && d ? ` data-day="${esc(d)}"` : ''}><h3 class="day-h"${isTrip(cfg) && d ? edA('day:' + d) : ''}>${!ONP && d ? `<button type="button" class="day-go" data-ds="day:${esc(d)}"><span>${head}</span><i class="tl-chev" aria-hidden="true"></i></button>` : head}</h3><ol class="tl">${xs.map(x => {
-    const more = (title, body) => body ? `<details class="tl-d"><summary><b>${title}</b><i class="tl-dot" aria-hidden="true"></i><span class="sr">${t('Details')}</span></summary><span>${body}</span></details>` : `<b>${title}</b>`;
-    const evCls = [x.bk ? 'mine' : '', x.kind ? 'k-' + esc(x.kind) : ''].filter(Boolean).join(' '), mark = x.bk ? ` <em class="yours">${t('Yours')}</em>` : '';
-    if (x.ev && isTrip(cfg)) return `<li class="${evCls}"${edA('s:' + x.si)}><time>${esc(tm(x.start))}</time><div>${ONP ? more(esc(x.name) + mark, x.note ? esc(x.note) : '') : go(x.ref, `<b>${esc(x.name)}${mark}</b>`)}</div></li>`;
-    if (x.ev) return `<li class="${evCls}"${edA('s:' + x.si)}><time>${esc(tm(x.start)) || (isTrip(cfg) ? '' : '—')}</time><div>${go(x.ref, `<span class="tl-tx"><b>${esc(x.name)}${mark || (x.kind && x.kind !== 'activity' ? ` <em class="kind">${esc(t(PLAN_KINDS[x.kind] || ''))}</em>` : '')}</b>${x.note || x.place ? `<span>${esc(x.place && !(x.note || '').toLowerCase().includes(x.place.toLowerCase()) ? [x.place, x.note].filter(Boolean).join(' · ') : x.note)}</span>` : ''}</span>`)}</div></li>`;
-    if (x.co) return `<li class="mine co"><time>${esc(tm(x.start)) || '—'}</time><div>${go(x.ref, `<b>${esc(t('Check out · {n}', { n: x.name || t(ITIN_KINDS[x.kind] || 'Hotel') }))}</b>`)}</div></li>`;
-    const fl = x.kind === 'flight' ? flightLinks(x.flight) : {};
-    const until = x.kind === 'flight' && x.start && x.start.length > 10 && flightArrLabel(x) ? flightArrLabel(x) : x.end ? (x.end.slice(0, 10) !== (x.start || '').slice(0, 10) ? t('until {d}', { d: fmt(x.end.slice(0, 10), { month: 'short', day: 'numeric' }) }) : t('until {d}', { d: tm(x.end) })) : '';
-    const yours = `${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))} <em class="yours">${t(x.pl ? 'Saved' : 'Yours')}</em>`;
-    if (isTrip(cfg)) { const det = esc([t(ITIN_KINDS[x.kind] || ''), until, x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · ')) + (fl.status ? ' ' + ext(fl.status, t('Flight status') + ' ↗', 'tl-link') : '');
-      return `<li class="mine"><time>${esc(tm(x.start)) || '—'}</time><div>${ONP || !x.ref ? more(yours, det) : go(x.ref, `<b>${yours}</b>`)}</div></li>`; }
-    const sub = esc([t(ITIN_KINDS[x.kind] || ''), until, x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '));
-    return `<li class="mine"><time>${esc(tm(x.start)) || '—'}</time><div>${!ONP && x.ref ? go(x.ref, `<span class="tl-tx"><b>${yours}</b><span>${sub}</span></span>`) : `<b>${yours}</b><span>${sub}</span>${fl.status ? ext(fl.status, t('Flight status') + ' ↗', 'tl-link') : ''}`}</div></li>`;
-  }).join('')}</ol></div>`; };
-  if (F && F.on && !all.length) return ccNoneHTML();
-  const body = legs ? legsHTML(cfg, legs, Object.entries(days), dayHTML, !!(F && F.sub), fold.hide) : Object.entries(days).map(dayHTML).join('');
-  const more = fold.folded ? `<button type="button" class="btn sm sched-all" data-sched-all="1">${esc(t('Show all {n} days', { n: fold.n }))}</button>` : !ONP && SCHED_ALL.has(itinKey(cfg)) && isTrip(cfg) && !(F && F.on) ? `<button type="button" class="btn sm sched-all" data-sched-all="0">${esc(t('Show fewer days'))}</button>` : '';
-  return `${mine.length && !F ? `<div class="seg2 sched-seg" role="group"><button type="button" data-sched="all" class="${view === 'all' ? 'on' : ''}" aria-pressed="${view === 'all'}">${t('Everything')}</button><button type="button" data-sched="event" class="${view === 'event' ? 'on' : ''}" aria-pressed="${view === 'event'}">${t('Event only')}</button></div>` : ''}
-  <div class="sched-days${fold.folded ? ' folded' : ''}">${body}</div>${more}`;
+  const trip = isTrip(cfg);
+  if (ONP) { // the builder's on-page editing: every day open, every row and day tappable to edit
+    const tripHead = (d) => d ? `${cfg.start && d >= cfg.start.slice(0, 10) ? esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 })) + ' · ' : ''}${esc(fmt(d, { weekday: 'short', month: 'short', day: 'numeric' }))}` : t('Unscheduled');
+    const evHead = (d) => d ? esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' })) : t(trip ? 'Unscheduled' : 'Anytime');
+    const dayHTML = ([d, xs]) => `<div class="day"${d ? ` data-day="${esc(d)}"` : ''}><h3 class="day-h"${trip && d ? edA('day:' + d) : ''}>${trip ? tripHead(d) : evHead(d)}</h3><ol class="tl">${xs.map(x =>
+      `<li class="${x.bk || !x.ev ? 'mine' : ''}"${x.ev ? edA('s:' + x.si) : ''}><time>${esc(tm(x.start)) || (trip ? '' : '—')}</time><div><b>${esc(schedLine(cfg, x))}</b>${x.ev && !trip && (x.note || x.place) ? `<span>${esc([x.place, x.note].filter(Boolean).join(' · '))}</span>` : ''}</div></li>`).join('')}</ol></div>`;
+    return `<div class="sched-days">${legs ? legsHTML(cfg, legs, Object.entries(days), dayHTML) : Object.entries(days).map(dayHTML).join('')}</div>`;
+  }
+  const dated = Object.keys(days).filter(Boolean).sort(); const def = dayOpenDefault(cfg, dated); const many = Object.keys(days).length > 1;
+  const row = (x) => {
+    const mark = x.bk || (!x.ev && !x.co) ? ` <em class="yours">${t(x.pl ? 'Saved' : 'Yours')}</em>` : '';
+    const sub = x.ev && !trip && (x.note || x.place) ? esc(x.place && !(x.note || '').toLowerCase().includes(x.place.toLowerCase()) ? [x.place, x.note].filter(Boolean).join(' · ') : x.note) : '';
+    const inner = `<span class="tl-tx"><b>${esc(schedLine(cfg, x))}${mark}</b>${sub ? `<span>${sub}</span>` : ''}</span>`;
+    return `<li class="${[x.ev && !x.bk ? '' : 'mine', x.co ? 'co' : '', x.kind ? 'k-' + esc(x.kind) : ''].filter(Boolean).join(' ')}"><time>${esc(tm(x.start)) || (trip ? '' : '—')}</time><div>${x.ref ? `<button type="button" class="tl-go" data-ds="${esc(x.ref)}">${inner}<i class="tl-chev" aria-hidden="true"></i></button>` : inner}</div></li>`;
+  };
+  const dayHTML = ([d, xs]) => {
+    const open = !many || dayIsOpen(cfg, d, def);
+    const title = d ? esc(fmt(d, { weekday: trip ? 'short' : 'long', month: 'short', day: 'numeric' })) : esc(t(trip ? 'Unscheduled' : 'Anytime'));
+    const sum = esc(xs.map(x => schedLine(cfg, x)).join(' · '));
+    const head = many ? `<button type="button" class="day-tog" data-day-tog="${esc(d)}" aria-expanded="${open}"><span class="day-t">${title}</span><span class="day-sum">${sum}</span><i class="cx-chev" aria-hidden="true"></i></button>` : `<span class="day-t">${title}</span>`;
+    return `<div class="day dx${open ? ' open' : ''}${away(d) ? ' d-out' : ''}" data-day="${esc(d)}"><h3 class="day-h">${head}</h3><ol class="tl"${open ? '' : ' hidden'}>${xs.map(row).join('')}</ol></div>`;
+  };
+  let body;
+  if (legs) { // a city heading where the city changes; its days under it, empty days left out
+    const nb = tabsFor(cfg).some(x => x[0] === 'nearby'); const by = legs.map(() => []), rest = [];
+    Object.entries(days).forEach(e => { const i = e[0] ? legOf(legs, e[0]) : -1; (i >= 0 ? by[i] : rest).push(e); });
+    body = legs.map((s, i) => { const inner = `<b>${esc(s.name)}</b>${shortRange(s) ? `<small>${esc(shortRange(s))}</small>` : ''}`; const si = stopsOf(cfg).indexOf(s);
+      const h = s.lat != null && nb ? `<button type="button" class="city-h" data-route-stop="${si}">${inner}<i class="tl-chev" aria-hidden="true"></i></button>` : `<div class="city-h">${inner}</div>`;
+      return `<div class="city-g">${h}${by[i].map(dayHTML).join('')}</div>`; }).join('') + rest.map(dayHTML).join('');
+  } else body = Object.entries(days).map(dayHTML).join('');
+  return `<div class="sched-days dlist">${body}</div>`;
 }
 function stubSideHTML(cfg, ap) {
   const v = cfg.venue;
@@ -1923,11 +1939,12 @@ function wireEvent(cfg, art, seq, air, opts) {
   const renderSchedule = () => { const w = slot('schedule-wrap'); if (!w) return; ONP = !!opts.onpage; try { w.innerHTML = scheduleSecHTML(cfg); } finally { ONP = false; } if (opts.onpage && typeof onpDecorate === 'function') onpDecorate(cfg, art); if (art._cx) art._cx(); };
   art._renderSchedule = () => { renderSchedule(); art._cx && art._cx(); art._ccBars && art._ccBars(); }; // a new booking can fold its Travel part
   art.addEventListener('click', (e) => {
-    const a = e.target.closest('[data-act],[data-food],[data-tmode],[data-tab-go],[data-sched],[data-sched-all],[data-more]'); if (!a) return;
-    if (a.dataset.schedAll) { const k = itinKey(cfg); if (a.dataset.schedAll === '1') SCHED_ALL.add(k); else SCHED_ALL.delete(k); renderSchedule(); if (a.dataset.schedAll === '0') art.querySelector('#sec-schedule')?.scrollIntoView({ block: 'start' }); return; }
+    const a = e.target.closest('[data-act],[data-food],[data-tmode],[data-tab-go],[data-day-tog],[data-more]'); if (!a) return;
     if (a.dataset.tabGo) showTab(art, a.dataset.tabGo, opts);
     else if (a.dataset.tmode) { const k = a.dataset.tmode; const sel = new Set(LS.get(eventKey(cfg), [])); k === 'all' ? sel.clear() : sel.has(k) ? sel.delete(k) : sel.add(k); LS.set(eventKey(cfg), [...sel]); applyModes(); }
-    else if (a.dataset.sched) { LS.set('schedview:' + itinKey(cfg), a.dataset.sched); renderSchedule(); }
+    else if (a.dataset.dayTog != null) { // a day on the Event tab: open / close in place
+      const d = a.dataset.dayTog, dv = a.closest('.day'), open = !dv.classList.contains('open'); const k = itinKey(cfg); DAY_OPEN.set(k, { ...(DAY_OPEN.get(k) || {}), [d]: open });
+      dv.classList.toggle('open', open); a.setAttribute('aria-expanded', String(open)); const l = dv.querySelector(':scope > .tl'); if (l) l.hidden = !open; }
     else if (a.dataset.more != null) { a.closest('ul').querySelectorAll('.more').forEach(x => x.classList.remove('more')); a.closest('li').remove(); }
     else if (a.dataset.act === 'ics') { a.closest('details')?.removeAttribute('open'); downloadICS(cfg); }
     else if (a.dataset.act === 'share') shareEvent(cfg, opts);
@@ -2023,7 +2040,7 @@ function wireEvent(cfg, art, seq, air, opts) {
   refreshTrip(); applyModes();
 
   if (cfg.start && (slot('weather') || art._pack)) {
-    weatherFor(cfg).then(w => { if (!alive()) return; art._wx = w; const ws = slot('weather'); if (ws) { ws._wx = w; ws._cfg = cfg; ws.innerHTML = weatherHTML(w, cfg); } art._pack && art._pack(); })
+    weatherFor(cfg).then(w => { if (!alive()) return; art._wx = w; const ws = slot('weather'); if (ws) { ws._wx = w; ws._cfg = cfg; ws.innerHTML = weatherHTML(w, cfg); } art._pack && art._pack(); art._cx && art._cx(); })
       .catch(() => { if (alive() && slot('weather')) slot('weather').innerHTML = `<p class="muted">${navigator.onLine === false ? `<b>${t('Offline')}</b> · ${t('The forecast needs a connection.')}` : t('Weather is unavailable right now. Try reloading the page.')}</p>`; });
   }
   const mapCtl = wireMap(cfg, art, opts);
@@ -2059,7 +2076,7 @@ function wireEvent(cfg, art, seq, air, opts) {
       if (slot('hotels')) slot('hotels').innerHTML = hotelsHTML(cfg, withArt(d, art));
       if (slot('sights')) slot('sights').innerHTML = sightsHTML(cfg, withArt(d, art));
       if (slot('transit')) slot('transit').innerHTML = transitHTML(cfg, d);
-      if (slot('access-wrap')) slot('access-wrap').innerHTML = accessHTML(cfg, d);
+      if (slot('access-wrap')) { slot('access-wrap').innerHTML = accessHTML(cfg, d); art._cx && art._cx(); }
       if (!Object.values(d.transit).some(xs => xs.length)) { const tb = art.querySelector('[data-tmode="transit"]'); if (tb) { tb.hidden = true; const bar = tb.parentElement; if ($$('[data-tmode]:not([hidden])', bar).length < 3) bar.hidden = true; } }
       applyModes();
       if (mapCtl) mapCtl.setData(d);
@@ -4895,10 +4912,27 @@ function cxBooked(cfg) {
     return `✓ ${[t(label), k === 'flight' ? x.flight || x.name : x.name, when].filter(Boolean).join(' · ')}${b.length > 1 ? ` · +${b.length - 1}` : ''}`; };
   return { 'm-fly': line('flight', 'Flight'), 'm-train': line('train', 'Train'), 'm-rental': line('car', 'Rental car'), stay: line('hotel', 'Hotel') || line('stay', 'Hotel') };
 }
+// a folded Event-tab section's one line: the weather's range, else its item labels ("Money · Luggage"),
+// else its first sentence
+function ovSummary(cfg, art, el) {
+  const id = el.dataset.sec; const one = (s) => { s = String(s || '').replace(/\s+/g, ' ').trim(); const m = s.match(/^.{20,}?[.!?](\s|$)/); return (m ? m[0] : s).trim(); };
+  if (id === 'weather') { const ws = el.querySelector('[data-slot="weather"]'); const w = ws && ws._wx; if (!w || !w.days || !w.days.length) return ''; const u = tempUnit();
+    const r = (k) => { const v = w.days.map(d => fmtTemp(d[k], u)).filter(x => x !== '' && x != null).map(Number); if (!v.length) return ''; const a = Math.min(...v), b = Math.max(...v); return a === b ? `${a}°` : `${a}–${b}°`; };
+    return [r('hi') && r('lo') ? `${r('hi')} / ${r('lo')}${u}` : '', el.querySelector('.wx-l') ? el.querySelector('.wx-l').textContent : ''].filter(Boolean).join(' · '); }
+  if (id === 'about' && (cfg.description || '').trim()) return one(cfg.description);
+  const b = el.querySelector(':scope > .sec-b'); if (!b) return '';
+  const labs = [...new Set([...b.querySelectorAll('li b, li strong, .note > b, h3, h4')].map(x => x.textContent.trim()).filter(x => x && x.length <= 40))];
+  if (labs.length >= 2) return labs.slice(0, 5).join(' · ');
+  const p = (b.querySelector('p, li, .rm-box') || b).cloneNode(true); p.querySelectorAll('br').forEach(x => x.replaceWith(' · '));
+  let q = p; while (q.children.length === 1) q = q.children[0]; const kids = p.matches('li') ? [...q.children] : [];
+  return one(kids.length > 1 ? kids.map(x => x.textContent.trim()).filter(Boolean).join(' · ') : p.textContent);
+}
 function wireCollapse(cfg, art) {
   const st = () => { const x = LS.get(cxKey(cfg), null) || {}; return { c: x.c || {}, h: x.h || {} }; };
   const save = (x) => { if (!Object.keys(x.h).length) delete x.h; LS.set(cxKey(cfg), x); if (LS.get('signedIn') && cfg.tools.mytrip) syncPush(cfg); };
-  const isCol = (x, booked, id) => x.c[id] === 1 || (x.c[id] !== 0 && (!!booked[id] || !!x.h[id]));
+  // the Event tab is an overview: its info sections start folded to a one-line summary (the schedule and the RSVP form stay open)
+  const ov = (u) => !!u && u.kind === 'sec' && u.id !== 'schedule' && u.id !== 'rsvp' && !!u.el.closest('.ev-panel[data-panel="event"]');
+  const isCol = (x, booked, id, u) => x.c[id] === 1 || (x.c[id] !== 0 && (!!booked[id] || !!x.h[id] || ov(u)));
   const units = () => {
     const out = [];
     $$('.ev-panel .ev-sec[data-sec]', art).forEach(s => { const h = s.querySelector(':scope > .sec-h'); if (h) out.push({ id: s.dataset.sec, el: s, h, kind: 'sec' }); });
@@ -4908,7 +4942,7 @@ function wireCollapse(cfg, art) {
   const paint = () => {
     const x = st(); const booked = cxBooked(cfg);
     units().forEach(u => {
-      const col = isCol(x, booked, u.id); let tog;
+      const col = isCol(x, booked, u.id, u); let tog;
       if (u.kind === 'sec') {
         // the whole title row is the button: <h2 class="sec-h"><button class="cx-h" aria-expanded>Title<i></i></button></h2>
         tog = u.h.querySelector(':scope > [data-cx-tog]');
@@ -4918,7 +4952,7 @@ function wireCollapse(cfg, art) {
           u.el.classList.add('cx-sec'); tog = b;
         }
         let sl = u.el.querySelector(':scope > .cx-sumline'); if (!sl) { u.h.insertAdjacentHTML('afterend', '<div class="cx-sumline"></div>'); sl = u.h.nextElementSibling; }
-        sl.textContent = col ? booked[u.id] || '' : '';
+        const sum = col ? booked[u.id] || (ov(u) ? ovSummary(cfg, art, u.el) : '') : ''; if (sl.textContent !== sum) sl.textContent = sum; sl.classList.toggle('ov', !booked[u.id]);
       } else {
         let ctl = u.el.previousElementSibling && u.el.previousElementSibling.classList.contains('cx-part') ? u.el.previousElementSibling : null;
         if (!ctl) {
@@ -4929,10 +4963,16 @@ function wireCollapse(cfg, art) {
       }
       tog.setAttribute('aria-expanded', String(!col)); u.el.classList.toggle('cx-col', col);
     });
+    // consecutive folded Event-tab sections read as one list: joined cards, a hairline between
+    const eb = art.querySelector('.ev-panel[data-panel="event"] > .ev-body'); if (eb) {
+      const items = [...eb.children].map(c => ({ c, s: c.matches('.ev-sec') ? c : c.querySelector(':scope > .ev-sec') })).filter(x => x.s || x.c.offsetHeight || x.c.textContent.trim());
+      items.forEach((x, i) => { const f = (y) => !!(y && y.s && y.s.classList.contains('cx-col')); const up = f(x) && f(items[i - 1]), dn = f(x) && f(items[i + 1]);
+        x.c.classList.toggle('ov-up', up); if (x.s) { x.s.classList.toggle('ov-t', up); x.s.classList.toggle('ov-b', dn); } });
+    }
   };
-  const toggle = (id, open) => { const x = st(); const col = isCol(x, cxBooked(cfg), id); if (open === true && !col) return; x.c[id] = col ? 0 : 1; delete x.h[id]; save(x); paint(); };
+  const toggle = (id, open) => { const x = st(); const col = isCol(x, cxBooked(cfg), id, units().find(u => u.id === id)); if (open === true && !col) return; x.c[id] = col ? 0 : 1; delete x.h[id]; save(x); paint(); };
   art._cx = paint; art._cxOpen = (id) => toggle(id, true); paint();
-  art.addEventListener('click', (e) => { const b = e.target.closest('[data-cx-tog]') || e.target.closest('.cx-sec > .sec-h')?.querySelector('[data-cx-tog]'); if (b && art.contains(b)) toggle(b.dataset.cxTog); });
+  art.addEventListener('click', (e) => { const b = e.target.closest('[data-cx-tog]') || (e.target.closest('.cx-sec > .sec-h') || e.target.closest('.cx-sec.cx-col > .cx-sumline'))?.parentElement.querySelector(':scope > .sec-h [data-cx-tog]'); if (b && art.contains(b)) toggle(b.dataset.cxTog); });
   // Travel parts are filled in later (airports, counters): keep their headers in place
   const tp = art.querySelector('[data-panel="travel"]'); if (tp) new MutationObserver(debounce(() => { if (document.body.contains(art)) paint(); }, 120)).observe(tp, { childList: true });
 }
@@ -6313,7 +6353,7 @@ function wireMine(cfg, art, opts) {
   const unpick = () => $$('[data-mine-h]', slot).forEach(b => { b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); });
   const paint = () => { slot.innerHTML = mineBarHTML(cfg, dr);
     const q = slot.querySelector('[data-mine-hq]'); if (q) placeAutocomplete(q, { bias: () => cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(r => { if (!dr) return; dr.h = { name: r.name, address: r.address || '', lat: r.lat, lon: r.lon }; dr.p = ''; q.value = r.name; unpick(); }).catch(() => {}) }); };
-  const refreshDetails = () => { const det = art.querySelector('#sec-details > .sec-b'); if (det) det.innerHTML = needToKnowHTML(cfg); };
+  const refreshDetails = () => { const det = art.querySelector('#sec-details > .sec-b'); if (det) det.innerHTML = needToKnowHTML(cfg); if (art._cx) art._cx(); };
   // a change to the guest's stay: everything that depends on it follows
   const after = () => { if (art._bkChanged) art._bkChanged(); else if (art._renderSchedule) art._renderSchedule(); refreshDetails(); if (art._refreshTrip) art._refreshTrip(); };
   const fromPreset = (p) => ({ a: p.a, l: p.l, p: p.id, h: p.h ? { ...p.h } : (dr && dr.h) || null });

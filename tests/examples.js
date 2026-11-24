@@ -21,7 +21,7 @@ const overflow = (page) => page.evaluate(() => { const cw = document.documentEle
   const mine = () => page.evaluate(() => Object.keys(localStorage).filter(k => /^ep:(itin|plan|shop|pack):/.test(k)));
   // Japan
   await page.goto(BASE + '?demo=japan'); await page.waitForSelector('#sec-schedule');
-  ok((await page.$$eval('#sec-schedule .leg-h b', bs => bs.map(b => b.textContent))).join() === 'Tokyo,Kyoto,Osaka,Tokyo', 'Japan: route returns to Tokyo');
+  ok((await page.$$eval('#sec-schedule .city-h b', bs => bs.map(b => b.textContent))).join() === 'Tokyo,Kyoto,Osaka,Tokyo', 'Japan: route returns to Tokyo');
   ok((await page.$$('#sec-schedule .tl-go[data-ds]')).length >= 10 && !!(await page.$('#sec-schedule .route-docs a')), 'Japan: notes behind a tap, the trip plan PDF in the itinerary');
   ok(!!(await page.$('#sec-c-getaround')) && !!(await page.$('#sec-c-sos')), 'Japan: custom sections');
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/ex-japan-event-390.png` });

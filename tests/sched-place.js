@@ -39,7 +39,8 @@ async function setup(browser, w) {
 }
 const pack = (page, c) => page.evaluate((c) => window.__ep.packEvent(c), c);
 const sheet = (page) => page.evaluate(() => { const d = document.querySelector('dialog.ds-sheet'); return d && d.open ? { title: d.querySelector('.ds-t').textContent, text: d.textContent.replace(/\s+/g, ' '), links: [...d.querySelectorAll('.ds-links a[href]')].map(a => ({ t: a.textContent.trim(), u: a.href })) } : null; });
-const openEv = async (page, i) => { await page.click(`#sec-schedule [data-ds="ev:${i}"]`); await page.waitForSelector('dialog.ds-sheet[open]'); await page.waitForTimeout(200); return sheet(page); };
+const openDays = (page) => page.$$eval('#sec-schedule [data-day-tog][aria-expanded="false"]', bs => bs.forEach(b => b.click())); // Event tab days start closed
+const openEv = async (page, i) => { await openDays(page); await page.click(`#sec-schedule [data-ds="ev:${i}"]`); await page.waitForSelector('dialog.ds-sheet[open]'); await page.waitForTimeout(200); return sheet(page); };
 const closeSheet = async (page) => { await page.click('dialog.ds-sheet [data-ds-close]'); await page.waitForFunction(() => !document.querySelector('dialog.ds-sheet[open]')); };
 const draft = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('ep:draft')));
 const settle = (page) => page.waitForTimeout(450);
@@ -89,7 +90,7 @@ const settle = (page) => page.waitForTimeout(450);
       await closeSheet(page);
       ok(await overflow(page) === 0, `@${w} no overflow (page)`);
       // ---- a trip: a set place wins over "Find it" ----
-      await page.goto(BASE + '#e=' + await pack(page, TRIP)); await page.waitForSelector('#sec-schedule');
+      await page.goto(BASE + '#e=' + await pack(page, TRIP)); await page.waitForSelector('#sec-schedule'); await openDays(page);
       await page.click('#sec-schedule [data-ds="ev:0"]'); await page.waitForSelector('dialog.ds-sheet[open]'); s = await sheet(page);
       const tm = s.links.find(l => l.t === 'Open in Google Maps');
       ok(/Location/.test(s.text) && !/Find it/.test(s.text) && tm && /Sushi Saito/.test(decodeURIComponent(tm.u)) && tm.u.includes('query_place_id=ChIJsaito'), `@${w} trip item with a place: Location → the place (${tm && decodeURIComponent(tm.u)})`);

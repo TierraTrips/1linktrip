@@ -1,6 +1,6 @@
-// Trip itinerary dates: Day N counts from the trip's start; every item sits on its own date. A document read in
+// Trip itinerary dates: each day row is its date ("Thu, Apr 1"); every item sits on its own date. A document read in
 // with a wrong year (2026 for a 2027 trip) or month/day swapped is moved to the reading inside the trip; an item with
-// no date, or none that fits, is "Unscheduled" (never Day 1). Outbound flight first, return flight on the last day.
+// no date, or none that fits, is "Unscheduled" (never the first day). Outbound flight first, return flight on the last day.
 // The page's own copy of a misdated item is shown on the fitting day too. 390.
 //
 //   python3 -m http.server 18765 --bind 127.0.0.1 &  node tests/trip-dates.js
@@ -34,13 +34,13 @@ const DOC = { start_date: '2027-04-01', end_date: '2027-04-15', schedule: [
   // the page's own misdated item (stored before this fix) is shown on the fitting day
   cfg.schedule.push({ date: '2026-04-03', time: '', title: 'Ghibli Museum', note: '', kind: 'activity' });
   await page.goto(BASE + '#e=' + await page.evaluate((c) => window.__ep.packEvent(c), cfg)); await page.waitForSelector('#sec-schedule');
-  const days = await page.$$eval('#sec-schedule .day', ds => ds.map(d => [d.querySelector('.day-h').textContent.trim(), [...d.querySelectorAll('.tl b')].map(b => b.textContent.trim())]));
+  const days = await page.$$eval('#sec-schedule .day', ds => ds.map(d => [d.querySelector('.day-t').textContent.trim(), [...d.querySelectorAll('.tl b')].map(b => b.textContent.trim())]));
   const flat = days.map(([h, xs]) => `${h} :: ${xs.join(' | ')}`); console.log(flat.join('\n'));
-  ok(/^Day 1 /.test(days[0][0]) && /LAX → HND/.test(days[0][1][0]), 'outbound flight first, on Day 1');
-  const dated = days.filter(([h]) => /^Day/.test(h));
-  ok(/^Day 15 /.test(dated.at(-1)[0]) && dated.at(-1)[1].some(x => /KIX → LAX/.test(x)), 'return flight on the last day (Day 15)');
-  ok(days.some(([h, xs]) => /^Day 3 /.test(h) && xs.some(x => /Ghibli/.test(x))), 'misdated page item shown on Day 3');
-  ok(days.some(([h, xs]) => /^Day 5 /.test(h) && xs.some(x => /Sumo/.test(x))), 'swapped date on Day 5');
+  ok(/^Thu, Apr 1$/.test(days[0][0]) && /LAX → HND/.test(days[0][1][0]), 'outbound flight first, on the first day');
+  const dated = days.filter(([h]) => /^\w{3}, /.test(h));
+  ok(/Apr 15$/.test(dated.at(-1)[0]) && dated.at(-1)[1].some(x => /KIX → LAX/.test(x)), 'return flight on the last day (Apr 15)');
+  ok(days.some(([h, xs]) => /Apr 3$/.test(h) && xs.some(x => /Ghibli/.test(x))), 'misdated page item shown on Apr 3');
+  ok(days.some(([h, xs]) => /Apr 5$/.test(h) && xs.some(x => /Sumo/.test(x))), 'swapped date on Apr 5');
   const un = days.find(([h]) => h === 'Unscheduled'); ok(un && un[1].join() === 'Buy a Suica card,Something far away' && days.at(-1)[0] === 'Unscheduled', 'Unscheduled at the end');
   // trip dates come from the route + flights: one misread date ("6/2" read as June 2) can't shrink the trip
   const doc2 = { start_date: '2027-06-02', end_date: '2027-06-03', stops: [{ city: 'Tokyo', country: 'Japan', arrive: '2027-04-01', leave: '2027-04-08' }, { city: 'Osaka', country: 'Japan', arrive: '2027-04-08', leave: '2027-04-15' }],
@@ -52,12 +52,12 @@ const DOC = { start_date: '2027-04-01', end_date: '2027-04-15', schedule: [
   // the review shows the trip dates first, editable
   const same = await page.evaluate((d) => window.__ep.docItems(window.__ep.unpackEvent(window.__ep.packEvent({ v: 2, type: 'Trip', title: 'Japan', start: '2027-04-01', end: '2027-04-15' })), d, 'auto').some(x => x.key === 'dates'), doc2);
   ok(same, 'trip dates are listed for review even when they already match');
-  // a page whose stored dates don't cover its own route shows the route's span (and Day N from it)
+  // a page whose stored dates don't cover its own route shows the route's span
   const bad = { ...BASECFG, start: '2027-06-02', end: '2027-06-03', schedule: [{ date: '2027-04-02', time: '', title: 'Tsukiji', note: '' }] };
   await page.goto(BASE + '#e=' + await page.evaluate((c) => window.__ep.packEvent(c), bad)); await page.waitForSelector('.stub');
   const stub = await page.textContent('.stub-cell b');
   ok(/Apr 1/.test(stub) && /15/.test(stub), `header shows the route's span: ${stub}`);
-  ok(/^Day 2 /.test(await page.$eval('#sec-schedule .day-h', h => h.textContent)), 'Day numbers follow it');
+  ok(/Apr 2$/.test(await page.$eval('#sec-schedule .day-t', h => h.textContent)) && await page.$$eval('#sec-schedule .day', ds => ds.length) === 1, 'its one day shows');
   ok(errors.length === 0, `no page errors ${errors.join(' ')}`);
   await browser.close();
   console.log(fails.length ? `\n${fails.length} failed` : '\nall passed');

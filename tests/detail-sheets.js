@@ -51,10 +51,12 @@ const sheet = (page) => page.evaluate(() => { const d = document.querySelector('
     for (const w of [390, 320, 1280]) {
       const { ctx, page } = await setup(browser, w);
       await open(page);
-      // ---- Itinerary: 3 days, then Show all ----
-      const vis = () => page.$$eval('#sec-schedule .day', ds => ds.filter(d => d.checkVisibility()).length);
-      ok(await vis() === 3 && /Show all 7 days/.test(await page.textContent('#sec-schedule .sched-all')), `@${w} Itinerary opens on 3 days + Show all 7 days (${await vis()})`);
-      await page.click('#sec-schedule .sched-all'); ok(await vis() === 7 && /Show fewer days/.test(await page.textContent('#sec-schedule .sched-all')), `@${w} Show all → every day`);
+      // ---- Itinerary: every day with plans is one row; only the first is open; tap a day to open it ----
+      const openN = () => page.$$eval('#sec-schedule .day', ds => ds.filter(d => d.querySelector('.tl').checkVisibility()).length);
+      const nDays = await page.$$eval('#sec-schedule .day', ds => ds.length);
+      ok(nDays >= 3 && await openN() === 1 && !(await page.$('#sec-schedule .sched-all')), `@${w} Itinerary: ${nDays} day rows, one open, no Show all`);
+      await page.click('#sec-schedule [data-day-tog="2027-04-02"]'); ok(await openN() === 2, `@${w} tapping a day opens it`);
+      await page.click('#sec-schedule [data-day-tog="2027-04-02"]'); ok(await openN() === 1, `@${w} tapping it again closes it`);
       // ---- tap the organizer's hotel → the guest's booking for it ----
       await page.click('#sec-schedule [data-ds="ev:0"]'); await page.waitForSelector('dialog.ds-sheet[open]');
       let s = await sheet(page);
@@ -75,7 +77,7 @@ const sheet = (page) => page.evaluate(() => { const d = document.querySelector('
       await page.goBack(); await page.waitForTimeout(200);
       ok(!(await sheet(page)) && !new URL(page.url()).searchParams.get('d'), `@${w} Back closes the sheet`);
       // ---- a day → its items → one → Back → the day ----
-      await page.click('#sec-schedule [data-ds="day:2027-04-02"]'); s = await sheet(page);
+      await open(page, 'event', '?d=day:2027-04-02'); s = await sheet(page);
       ok(s && /Day 2/.test(s.text) && /Shinjuku Gyoen/.test(s.text) && /Blue Bottle Coffee/.test(s.text) && /Staying at Hotel Gracery/.test(s.text), `@${w} day sheet lists the day's plans, saved spot and stay ${s && s.text.slice(0, 140)}`);
       await page.click('dialog.ds-sheet [data-ds="ev:1"]'); s = await sheet(page);
       ok(s && s.title === 'Shinjuku Gyoen' && /Bring a picnic/.test(s.text) && s.back && s.links.some(u => u.startsWith('https://www.google.com/maps/search/')), `@${w} item from the day: its sheet with Back + Find it on Google Maps`);
@@ -85,7 +87,9 @@ const sheet = (page) => page.evaluate(() => { const d = document.querySelector('
       await open(page, 'event', '?d=bk:h1'); await page.waitForTimeout(300); s = await sheet(page);
       ok(s && s.title === 'Hotel Gracery Shinjuku', `@${w} ?d=bk:h1 opens the hotel's sheet`);
       await page.keyboard.press('Escape'); await page.waitForTimeout(200); ok(!(await sheet(page)), `@${w} Escape closes`);
-      // ---- Read more ----
+      // ---- Read more (info sections start folded to one line on the Event tab: open them) ----
+      ok(await page.$eval('#sec-about', e => e.classList.contains('cx-col')) && (await page.textContent('#sec-about .cx-sumline')).length > 10, `@${w} About starts folded to its first sentence`);
+      await page.click('#sec-about .sec-h'); await page.click('#sec-details .sec-h'); await page.waitForTimeout(150);
       const rm = await page.$$eval('[data-panel="event"] .rm-b', bs => bs.map(b => b.closest('section').id));
       ok(rm.includes('sec-about') && rm.includes('sec-details'), `@${w} long About + note show Read more (${rm})`);
       const h0 = await page.$eval('#sec-about .rm-box', e => e.clientHeight); await page.click('#sec-about .rm-b');

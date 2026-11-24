@@ -26,7 +26,7 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
   const stub = await page.textContent('.stub-cell b'); ok(/Apr 25/.test(stub) && /Jun 2/.test(stub), `header: ${stub}`);
   const tl = await page.$$eval('#sec-schedule .tl b', bs => bs.map(b => b.textContent));
   ok(/7909/.test(tl[0]) && /7924/.test(tl[tl.length - 1]), `itinerary: outbound first, return last (${tl.join(' | ')})`);
-  ok(/^Day 1 /.test(await page.$eval('#sec-schedule .day-h', h => h.textContent)), 'Day 1 is the outbound day');
+  ok(/Apr 25$/.test(await page.$eval('#sec-schedule .day-t', h => h.textContent)), 'the first day is the outbound day');
   await page.click('[data-tab-go="mytrip"]'); await page.waitForSelector('.bookings li');
   const bk = await page.$$eval('.bookings li b', bs => bs.map(b => b.textContent));
   ok(/7909/.test(bk[0]) && /7924/.test(bk[1]), `Your bookings: outbound first (${bk.join(' | ')})`);

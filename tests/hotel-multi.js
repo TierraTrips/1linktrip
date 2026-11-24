@@ -94,8 +94,8 @@ const near = (a, b, e = 1e-3) => Math.abs(a - b) < e;
     if (SHOTS && (w === 390 || desk)) await page.locator('#sec-map').screenshot({ path: `${SHOTS}/hotel-multi-${w}.png` });
     ok((await overflow(page)) === 0, `@${w} no overflow`);
     // the Itinerary still has both Tokyo legs; the second opens Tokyo in Nearby
-    await page.click('[data-tab-go="event"]'); await page.waitForSelector('#sec-schedule .leg');
-    ok((await page.$$eval('#sec-schedule .leg-h b', bs => bs.map(b => b.textContent))).join() === 'Tokyo,Kyoto,Tokyo', `@${w} itinerary keeps both Tokyo legs`);
+    await page.click('[data-tab-go="event"]'); await page.waitForSelector('#sec-schedule .city-g');
+    ok((await page.$$eval('#sec-schedule .city-h b', bs => bs.map(b => b.textContent))).join() === 'Tokyo,Kyoto,Tokyo', `@${w} itinerary keeps both Tokyo legs`);
     // (Nearby is a hidden tab now) — go via the itinerary instead
     await page.click('#sec-schedule [data-route-stop="2"]'); await page.waitForTimeout(300);
     ok(await cityNow(page) === '0' && await selLabel(page, 'city') === 'Tokyo', `@${w} second Tokyo leg → Tokyo in Nearby`);
