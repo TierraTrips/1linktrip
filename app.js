@@ -514,7 +514,7 @@ function typeInfoHTML(cfg, opt = {}) {
   if (rows.length) out.push(`<ul class="links">${rows.join('')}</ul>`);
   if (opt.mine && ['blockHotel', 'blockUrl', 'blockCode', 'blockBy'].some(has)) out.push(`<ul class="links block-know mi-know"><li class="note"><b>${esc(t('Your hotel'))}</b><span>${esc([opt.mine.name, opt.mine.when].filter(Boolean).join(' · '))}</span></li></ul>`); // Make it mine: staying elsewhere
   else if (['blockHotel', 'blockUrl', 'blockCode', 'blockBy'].some(has)) {
-    const sub = [d.blockCode ? t('Code {c}', { c: d.blockCode }) : '', blockByText(d.blockBy, dt)].filter(Boolean).join(' · ');
+    const sub = [d.blockCode ? t('Code {c}', { c: d.blockCode }) : '', d.blockRoom || '', blockByText(d.blockBy, dt), blockCancelText(d)].filter(Boolean).join(' · ');
     // Travel → Where to stay has the room block too: here it is one compact row (hotel, code, book-by), same plain link
     const line = [d.blockHotel, sub].filter(Boolean).join(' · ');
     if (opt.skipBlock) out.push(`<ul class="links block-know"${edA('x:blockHotel')}>${d.blockUrl ? linkRow('Room block', d.blockUrl, line || hostOf(d.blockUrl)) : noteRow('Room block', line)}</ul>`);
@@ -548,6 +548,8 @@ const VENDORS = [
 ];
 const ITIN_KINDS = { flight: 'Flight', hotel: 'Hotel', stay: 'Rental home', car: 'Rental car', food: 'Restaurant', train: 'Train', tour: 'Tour or activity', other: 'Other' };
 
+// "Deluxe Room, 1 King Bed" → ['Deluxe Room', '1 King Bed']; a room without a trailing bed part stays as it is
+const roomBedSplit = (room) => { const m = String(room || '').match(/^(.+?)\s*[,·–]\s*((?:\d+\s*x?\s*)?(?:king|queen|double|twin|single|full)(?:[- ]size)?\s*(?:beds?)?)\s*$/i); return m ? [m[1].trim(), m[2].trim()] : [String(room || '').trim(), '']; };
 function parseReservation(text, refDate) {
   const raw = String(text || ''); const r = { kind: '', name: '', start: '', end: '', address: '', confNo: '', link: '', flight: '', note: '', ...(viaGuess(raw) ? { via: viaGuess(raw) } : {}) };
   if (!raw.trim()) return r;
@@ -616,6 +618,17 @@ function parseReservation(text, refDate) {
     if (ds[0]) r.start = ds[0]; if (!r.end && ds[1] && ds[1] !== ds[0]) r.end = ds[1];
   }
   if (r.end && r.start && r.end < r.start) r.end = '';
+  // a hotel's room category and free-cancellation deadline (or non-refundable), when the text says so
+  if (r.kind === 'hotel' || r.kind === 'stay') {
+    let room = lab(/^(?:room(?:\s+(?:type|category))?|accommodation(?:\s+type)?|unit(?:\s+type)?)\s*[:\-–]\s*(.+)$/i); let bed = lab(/^beds?(?:\s+type)?\s*[:\-–]\s*(.+)$/i);
+    const split = roomBedSplit(room); room = split[0]; if (!bed) bed = split[1];
+    if (room && !/^\d+$/.test(room) && room.length <= 80) detSet(r, 'room', room);
+    if (bed && bed.length <= 60) detSet(r, 'beds', bed);
+    if (/\bnon[- ]?refundable\b|\bno refunds?\b|\bcannot be cancell?ed\b/i.test(raw) && !/\bfree cancell?ation\b/i.test(raw)) detSet(r, 'nonRef', 1);
+    else { const i = lines.findIndex(l => /free cancell?ation|cancel (?:for free|free of charge|without (?:charge|penalty|a fee))|cancell?ation deadline|cancel (?:by|before|until)/i.test(l));
+      if (i >= 0) { const seg = lines[i].replace(/^.*?(cancel)/i, '$1'); const d = dateIn(seg) || (lines[i + 1] && !labelled(lines[i + 1]) ? dateIn(lines[i + 1]) : ''); const tm = dateIn(seg) ? timeIn(seg) : timeIn(lines[i + 1] || '');
+        if (d) detSet(r, 'cancelBy', d + (tm ? 'T' + tm : '')); } }
+  }
   return r;
 }
 const itinKey = (cfg) => 'itin:' + eventKey(cfg).slice(6);
@@ -690,26 +703,40 @@ const BOOK_SOURCES = [['direct', 'Airline / hotel direct'], ['expedia', 'Expedia
   ['agent', 'Travel agent', '', /travel agen/i], ['other', 'Other']];
 const viaOf = (x) => { const s0 = BOOK_SOURCES.find(b => b[0] === x.via); return s0 ? { key: s0[0], name: s0[0] === 'other' ? (x.viaOther || '').trim() : s0[0] === 'direct' ? '' : s0[1], url: s0[2] || '' } : null; };
 const viaGuess = (text) => { const s0 = BOOK_SOURCES.find(b => b[3] && b[3].test(String(text || ''))); return s0 ? s0[0] : ''; };
+// One booking's fields, every one an input (empty ones show as empty boxes): the type's own fields first, then
+// confirmation, the type's details, booked through, link, notes. Used by the Add / Edit form (idp 'it') and by each
+// card of the import review (idp 'rv<i>'), so a read screenshot can be finished on the spot.
+function bkFieldsHTML(x, idp, air = []) {
+  const k = x.kind || ''; const fl = k === 'flight'; const lodge = LODGE.has(k);
+  const f = (key, label, type = 'text', ph = '', cls = '') => `<div class="field ${cls}${type === 'datetime-local' && !isDate(x[key] || '') ? ' when-f' : ''}"><label for="${idp}-${key}">${t(label)}</label><input id="${idp}-${key}" type="${type === 'datetime-local' && isDate(x[key] || '') ? 'date' : type}" data-it="${key}" value="${esc(x[key] || '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}></div>`;
+  const kindSel = `<div class="field"><label for="${idp}-kind">${t('Type')}</label><select id="${idp}-kind" data-it="kind"><option value="">${t('Choose')}</option>${Object.entries(ITIN_KINDS).map(([v, l]) => `<option value="${v}" ${v === k ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></div>`;
+  const head = fl ? `${f('flight', 'Flight number', 'text', 'UA 1234')}${f('name', 'Name')}${f('from', 'Departing from', 'text', 'JFK').replace('<input ', '<input autocapitalize="characters" ')}${f('to', 'Arriving at', 'text', (pickAirport(air, null, []) || { iata: 'CUN' }).iata).replace('<input ', `<input list="${idp}-to-list" autocapitalize="characters" `)}<datalist id="${idp}-to-list">${air.map(a => `<option value="${esc(a.iata)}">${esc(a.name)}</option>`).join('')}</datalist>
+      ${f('start', 'Departs', 'datetime-local')}${f('end', 'Arrives', 'datetime-local')}`
+    : `${f('name', 'Name', 'text', '', 'wide').replace('<input ', '<input data-name-ac autocomplete="off" ')}${f('address', 'Address', 'text', '', 'wide')}
+      ${f('start', lodge ? 'Check-in' : k === 'car' ? 'Pick-up' : 'Starts', 'datetime-local')}${f('end', lodge ? 'Check-out' : k === 'car' ? 'Drop-off' : 'Ends', 'datetime-local')}`;
+  return `${kindSel}${head}${lodge ? `<div class="wide" data-hf-slot>${hfFormHTML(hfOfBk(x), idp + '-hf')}</div>` : ''}
+      ${f('confNo', 'Confirmation')}
+      ${DET[detGroup(x)] ? `<div class="wide" data-det-slot>${detFormHTML(x, 'data-det', idp + '-dt')}</div>` : ''}
+      <div class="field"><label for="${idp}-via">${t('Booked through')}</label><select id="${idp}-via" data-it="via"><option value="">${t('Choose')}</option>${BOOK_SOURCES.map(([v, l]) => `<option value="${v}" ${v === x.via ? 'selected' : ''}>${esc(t(l))}</option>`).join('')}</select></div>
+      ${x.via === 'other' ? f('viaOther', 'Where', 'text', t('Site or agency')) : ''}${f('link', 'Link', 'url', 'https://…')}
+      <div class="field wide"><label for="${idp}-note">${t('Notes')}</label><textarea id="${idp}-note" data-it="note" rows="2" maxlength="1000"${fl ? ` placeholder="${esc(t('Confirmation code, last name'))}"` : ''}>${esc(x.note || '')}</textarea></div>`;
+}
 function itinFormHTML(x, i, air = []) {
-  const k = x.kind || '';
-  const f = (key, label, type = 'text', ph = '', cls = '') => `<div class="field ${cls}"><label for="it-${key}">${t(label)}</label><input id="it-${key}" type="${type === 'datetime-local' && isDate(x[key] || '') ? 'date' : type}" data-it="${key}" value="${esc(x[key] || '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}></div>`;
   return `<form class="itin-form" onsubmit="return false">
-    <div class="trip">
-      <div class="field"><label for="it-kind">${t('Type')}</label><select id="it-kind" data-it="kind"><option value="">${t('Choose')}</option>${Object.entries(ITIN_KINDS).map(([v, l]) => `<option value="${v}" ${v === k ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></div>
-      ${f('flight', 'Flight number', 'text', 'UA 1234').replace('<div class="field', `<div${k === 'flight' ? '' : ' hidden'} class="field`)}
-      ${f('to', 'Arriving at', 'text', (pickAirport(air, null, []) || { iata: 'CUN' }).iata).replace('<div class="field', `<div${k === 'flight' ? '' : ' hidden'} class="field`).replace('<input ', '<input list="it-to-list" autocapitalize="characters" ')}<datalist id="it-to-list">${air.map(a => `<option value="${esc(a.iata)}">${esc(a.name)}</option>`).join('')}</datalist>
-      ${f('name', 'Name')}
-      ${f('start', k === 'flight' ? 'Departs' : 'Starts', 'datetime-local')}${f('end', k === 'flight' ? 'Arrives' : 'Ends', 'datetime-local')}
-      ${f('address', 'Address', 'text', '', 'wide')}
-      ${f('confNo', 'Confirmation')}${f('link', 'Link', 'url', 'https://…')}
-      <div class="field"><label for="it-via">${t('Booked through')}</label><select id="it-via" data-it="via"><option value="">${t('Choose')}</option>${BOOK_SOURCES.map(([v, l]) => `<option value="${v}" ${v === x.via ? 'selected' : ''}>${esc(t(l))}</option>`).join('')}</select></div>
-      ${f('viaOther', 'Where', 'text', t('Site or agency')).replace('<div class="field', `<div${x.via === 'other' ? '' : ' hidden'} class="field`)}
-      ${f('note', 'Note', 'text', k === 'flight' ? t('Confirmation code, last name') : '', 'wide')}
-    </div>
-    <details class="more-f"${x.det ? ' open' : ''}><summary>${t('More details')}</summary><div data-det-slot>${detFormHTML(x)}</div></details>
+    <div class="trip" data-bk-fields>${bkFieldsHTML(x, 'it', air)}</div>
+    <div class="bk-fill" data-bk-fill hidden><label class="btn sm file-pick">${t('Fill from a screenshot or PDF')}<input type="file" accept="image/*,application/pdf" multiple data-itin-fill hidden></label></div>
+    <p class="hint" data-ai-msg role="status" aria-live="polite"></p><div data-signin-slot></div>
     <div class="btns"><button type="button" class="btn primary" data-itin-save="${i == null ? '' : i}">${t('Save')}</button><button type="button" class="btn ghost" data-itin-cancel>${t('Cancel')}</button>${i != null ? `<button type="button" class="btn ghost" data-itin-del="${i}">${t('Remove')}</button>` : ''}</div>
   </form>`;
 }
+// marks the fields a read screenshot / document filled in (keys: only those; null: every filled field)
+function markGot(root, keys) {
+  const keyOf = (el) => el.dataset.it || el.dataset.det || (el.dataset.hk === 'cxd' || el.dataset.hk === 'cxt' ? 'cancelBy' : el.dataset.hk) || '';
+  root.querySelectorAll('[data-it],[data-det],[data-hk]').forEach(el => { const k = keyOf(el); if (!k || k === 'kind' || (el.tagName === 'SELECT' && !el.value)) return;
+    const has = el.type === 'checkbox' ? el.checked : !!String(el.value || '').trim(); if (has && (!keys || keys.has(k))) el.classList.add('got'); });
+  root.querySelectorAll('[data-det-amen].on').forEach(b => { if (!keys || keys.has('amen')) b.classList.add('got'); });
+}
+document.addEventListener('input', (e) => { const el = e.target; if (el && el.classList && el.classList.contains('got')) el.classList.remove('got'); }, true);
 function itinICS(cfg) {
   const items = itinLoad(cfg).filter(x => x.start); const now = icsStamp(new Date());
   const esc2 = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
@@ -724,6 +751,13 @@ function itinICS(cfg) {
       allDay ? `DTEND;VALUE=DATE:${end.slice(0, 10).replace(/-/g, '')}` : `DTEND:${loc(end)}`,
       `SUMMARY:${esc2(x.name || ITIN_KINDS[x.kind] || 'Reservation')}`, `LOCATION:${esc2(x.address)}`,
       `DESCRIPTION:${esc2([x.confNo ? 'Confirmation ' + x.confNo : '', x.note, fLinks.status, x.link].filter(Boolean).join('\n'))}`, 'END:VEVENT');
+    // a hotel's free-cancellation deadline: its own event (timed when the time is known, else all day) with a reminder the day before
+    const h = LODGE.has(x.kind) ? hfOfBk(x) : null; const c = h && !h.nonRef ? h.cancelBy : '';
+    if (c) lines.push('BEGIN:VEVENT', `UID:itin-${i}-cx-${c.replace(/\D/g, '')}@eventpages`, `DTSTAMP:${now}`,
+      c.length > 10 ? `DTSTART:${loc(new Date(asUTC(c).getTime() - 1800e3).toISOString().slice(0, 16))}` : `DTSTART;VALUE=DATE:${c.replace(/-/g, '')}`,
+      c.length > 10 ? `DTEND:${loc(c)}` : `DTEND;VALUE=DATE:${addDays(c, 1).replace(/-/g, '')}`,
+      `SUMMARY:${esc2(t('Free cancellation ends · {n}', { n: x.name || t('Hotel') }))}`, `DESCRIPTION:${esc2(x.confNo ? 'Confirmation ' + x.confNo : '')}`,
+      'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${esc2(t('Free cancellation ends · {n}', { n: x.name || t('Hotel') }))}`, 'TRIGGER:-P1D', 'END:VALARM', 'END:VEVENT');
   });
   lines.push('END:VCALENDAR');
   const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
@@ -1653,7 +1687,7 @@ function scheduleHTML(cfg) {
   }
   const dated = Object.keys(days).filter(Boolean).sort(); const def = dayOpenDefault(cfg, dated); const many = Object.keys(days).length > 1;
   const row = (x) => {
-    const mark = x.bk || (!x.ev && !x.co) ? ` <em class="yours">${t(x.pl ? 'Saved' : 'Yours')}</em>` : '';
+    const mark = (x.bk || (!x.ev && !x.co) ? ` <em class="yours">${t(x.pl ? 'Saved' : 'Yours')}</em>` : '') + schedHfBadge(cfg, x);
     const sub = x.ev && !trip && (x.note || x.place) ? esc(x.place && !(x.note || '').toLowerCase().includes(x.place.toLowerCase()) ? [x.place, x.note].filter(Boolean).join(' · ') : x.note) : '';
     const inner = `<span class="tl-tx"><b>${esc(schedLine(cfg, x))}${mark}</b>${sub ? `<span>${sub}</span>` : ''}</span>`;
     return `<li class="${[x.ev && !x.bk ? '' : 'mine', x.co ? 'co' : '', x.kind ? 'k-' + esc(x.kind) : ''].filter(Boolean).join(' ')}"><time>${esc(tm(x.start)) || (trip ? '' : '—')}</time><div>${x.ref ? `<button type="button" class="tl-go" data-ds="${esc(x.ref)}">${inner}<i class="tl-chev" aria-hidden="true"></i></button>` : inner}</div></li>`;
@@ -1674,6 +1708,14 @@ function scheduleHTML(cfg) {
       return `<div class="city-g">${h}${by[i].map(dayHTML).join('')}</div>`; }).join('') + rest.map(dayHTML).join('');
   } else body = Object.entries(days).map(dayHTML).join('');
   return `<div class="sched-days dlist">${body}</div>`;
+}
+// an Event-tab row's cancellation badge: the guest's own hotel booking, else the organizer's check-in row
+function schedHfBadge(cfg, x) {
+  if (x.co) return '';
+  const b = x.bk || (!x.ev && !x.pl && LODGE.has(x.kind) ? x : null);
+  if (b) { const h = hfOfBk(b); return hfBadgeHTML(h, bkDay(b.end) || bkDay(b.start)); }
+  const ev = x.ev ? cfg.schedule[x.si] : null; if (!ev || !isHostHotel(ev) || !(ev.cancelBy || ev.nonRef)) return '';
+  const d = (x.start || '').slice(0, 10); const leg = d ? legOfDay(cfg, d) : null; return hfBadgeHTML(hfOfEv(ev), leg && leg.to > d ? leg.to : d);
 }
 function stubSideHTML(cfg, ap) {
   const v = cfg.venue;
@@ -1727,11 +1769,13 @@ function travelTabHTML(cfg, air) {
 }
 // the room block's book-by date, saying plainly once it has passed
 const blockByText = (by, f) => !by ? '' : by.slice(0, 10) < todayYMD() ? t('The book-by date ({d}) has passed', { d: f(by) }) : t('Book by {d}', { d: f(by) });
+// the room block's room terms, short: "Free cancellation until Apr 10" / "Non-refundable"
+const blockCancelText = (d) => { const h = hfOfBlock(d); return h.nonRef ? t('Non-refundable') : h.cancelBy ? `${t('Free cancellation until')} ${fmt(h.cancelBy.slice(0, 10), { month: 'short', day: 'numeric' })}` : ''; };
 function roomBlockHTML(cfg) {
   if (cfg.type !== 'Wedding' || cfg.off.details) return '';
   const d = typeData(cfg); if (!(d.blockHotel || d.blockUrl || d.blockCode || d.blockBy)) return '';
-  const sub = [d.blockCode ? t('Code {c}', { c: d.blockCode }) : '', blockByText(d.blockBy, (x) => fmt(x, { month: 'short', day: 'numeric' }))].filter(Boolean).join(' · ');
-  const inner = `<span><b>${esc(d.blockHotel || t('Room block'))}</b> <em class="badge">${t('Room block')}</em><small class="sub">${esc(sub)}</small></span>${d.blockUrl ? `<small>${t('Book')} ↗</small>` : ''}`;
+  const sub = [d.blockCode ? t('Code {c}', { c: d.blockCode }) : '', d.blockRoom || '', blockByText(d.blockBy, (x) => fmt(x, { month: 'short', day: 'numeric' })), blockCancelText(d)].filter(Boolean).join(' · ');
+  const inner = `<span><b>${esc(d.blockHotel || t('Room block'))}</b> <em class="badge">${t('Room block')}</em><small class="sub">${esc(sub)}</small>${d.blockNote ? `<small class="sub hf-n">${esc(d.blockNote)}</small>` : ''}</span>${d.blockUrl ? `<small>${t('Book')} ↗</small>` : ''}`;
   return `<div class="row-links block-row">${d.blockUrl ? `<a class="row-link hl" href="${esc(d.blockUrl)}" target="_blank" rel="noopener noreferrer">${inner}</a>` : `<div class="row-link hl">${inner}</div>`}</div>`;
 }
 function nearbyTabHTML(cfg) {
@@ -1752,7 +1796,7 @@ function bookingsHTML(cfg) {
     const via = viaOf(x); const viaUrl = via && via.url;
     const links = [fl.status ? ext(fl.status, t('Flight status'), 'mini-b') : '', viaUrl ? ext(viaUrl, `${t('Manage booking')} · ${via.name}`, 'mini-b') : fl.manage ? ext(fl.manage, t('Manage booking'), 'mini-b') : '', x.link ? ext(x.link, t('Open booking'), 'mini-b') : ''].join('');
     const it = ccBkItem(cfg, x);
-    return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div>${x.id ? `<button type="button" class="pr-go bk-go" data-ds="bk:${esc(x.id)}">${thumbHTML(x, it.cat)}<span class="pr-tx">` : '<span class="pr-tx">'}<b class="plan-t"><span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${bkOffTrip(cfg, x) ? `<span class="bk-warn">${esc(t('Not on the trip dates'))}</span>` : ''}${detVal(x, 'room') ? `<span class="bk-room">${esc(detVal(x, 'room'))}</span>` : ''}${x.note ? `<span class="pr-note">${esc(x.note)}</span>` : ''}${x.id ? '</span><i class="tl-chev" aria-hidden="true"></i></button>' : '</span>'}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button>${LODGE.has(x.kind) && x.id ? `<button type="button" class="mini-b bk-rm" data-bk-rm="${esc(x.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}</div></div></li>`;
+    return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div>${x.id ? `<button type="button" class="pr-go bk-go" data-ds="bk:${esc(x.id)}">${thumbHTML(x, it.cat)}<span class="pr-tx">` : '<span class="pr-tx">'}<b class="plan-t"><span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${bkOffTrip(cfg, x) ? `<span class="bk-warn">${esc(t('Not on the trip dates'))}</span>` : ''}${detVal(x, 'room') || (LODGE.has(x.kind) && hfBadge(hfOfBk(x), bkDay(x.end) || bkDay(x.start))) ? `<span class="bk-room">${esc(detVal(x, 'room') || '')}${LODGE.has(x.kind) ? hfBadgeHTML(hfOfBk(x), bkDay(x.end) || bkDay(x.start)) : ''}</span>` : ''}${x.note && !LODGE.has(x.kind) ? `<span class="pr-note">${esc(x.note)}</span>` : ''}${x.id ? '</span><i class="tl-chev" aria-hidden="true"></i></button>' : '</span>'}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button>${LODGE.has(x.kind) && x.id ? `<button type="button" class="mini-b bk-rm" data-bk-rm="${esc(x.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}</div></div></li>`;
   }).join('')}</ul>${ccNoneHTML().replace('class="muted cc-none"', `class="muted cc-none"${order.some(([x]) => F.ok(ccBkItem(cfg, x))) ? ' hidden' : ''}`)}` : ''}
   <div class="btns itin-btns"><button type="button" class="btn primary" data-itin-add>+ ${t('Add a booking')}</button>${items.length ? `<button type="button" class="btn" data-itin-ics>${t('Add to calendar')}</button>` : ''}</div><div data-slot="itin-form"></div>`;
 }
@@ -2107,16 +2151,9 @@ const bkFileHTML = () => `<div class="itin-sheet" data-sheet="file"><label class
     <div class="btns"><button type="button" class="btn ghost" data-itin-cancel>${t('Cancel')}</button></div>
     <p class="hint" data-ai-msg role="status" aria-live="polite"></p><div data-signin-slot></div></div>`;
 const bkSignInHTML = () => `<div class="bk-signin"><p><b>${t('Sign in to read it automatically.')}</b></p>${signInFormHTML('')}</div>`;
-function bkReviewHTML(xs) {
-  const inp = (x, i, k, label, type = 'text') => `<div class="field${k === 'name' || k === 'address' ? ' wide' : ''}${type === 'when' && !isDate(x[k] || '') ? ' when-f' : ''}"><label for="rv${i}-${k}">${t(label)}</label><input id="rv${i}-${k}" type="${type === 'when' ? (isDate(x[k] || '') ? 'date' : 'datetime-local') : type}" data-rv="${i}" data-rk="${k}" value="${esc(x[k] || '')}"></div>`;
-  return `<div class="itin-sheet" data-sheet="review"><ul class="rv-list">${xs.map((x, i) => `<li class="rv-card">
-    <div class="trip">
-      <div class="field"><label for="rv${i}-kind">${t('Type')}</label><select id="rv${i}-kind" data-rv="${i}" data-rk="kind"><option value="">${t('Choose')}</option>${Object.entries(ITIN_KINDS).map(([v, l]) => `<option value="${v}" ${v === x.kind ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></div>
-      ${x.kind === 'flight' ? inp(x, i, 'flight', 'Flight number') : inp(x, i, 'confNo', 'Confirmation')}
-      ${inp(x, i, 'name', 'Name')}
-      ${inp(x, i, 'start', x.kind === 'flight' ? 'Departs' : 'Starts', 'when')}${inp(x, i, 'end', x.kind === 'flight' ? 'Arrives' : 'Ends', 'when')}
-      ${x.kind === 'flight' ? inp(x, i, 'to', 'Arriving at') + inp(x, i, 'confNo', 'Confirmation') : inp(x, i, 'address', 'Address')}
-    </div>${detLines(x).length || detAmen(x).length ? `<p class="muted small rv-det">${esc(detLines(x).concat(detAmen(x)).join(' · '))}</p>` : ''}<button type="button" class="mini-b" data-rv-del="${i}">${t('Remove')}</button></li>`).join('')}</ul>
+function bkReviewHTML(xs, air = []) {
+  return `<div class="itin-sheet" data-sheet="review"><ul class="rv-list">${xs.map((x, i) => `<li class="rv-card" data-rv-card="${i}">
+    <div class="trip">${bkFieldsHTML(x, 'rv' + i, air)}</div><button type="button" class="mini-b" data-rv-del="${i}">${t('Remove')}</button></li>`).join('')}</ul>
     <div class="btns"><button type="button" class="btn primary" data-rv-save>${esc(t('Save all ({n})', { n: xs.length }))}</button><button type="button" class="btn ghost" data-itin-cancel>${t('Cancel')}</button></div></div>`;
 }
 const blobB64 = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(new Error(t('Couldn’t read it.'))); r.readAsDataURL(b); });
@@ -2150,22 +2187,56 @@ function wireItin(cfg, art) {
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-bk-rm]'); if (!b || body.contains(b)) return; e.stopPropagation(); bkRemove(cfg, art, b.dataset.bkRm); });
   const fileOk = () => LS.get('signedIn') ? aiModes().then(m => m.includes('file')) : aiReady();
   const openChooser = () => { const slot = sheet(bkChooserHTML()); fileOk().then(ok => { const b = slot.querySelector('[data-itin-mode="file"]'); if (b && ok) b.hidden = false; }).catch(() => {}); };
-  const openReview = (xs) => { review = xs.map(x => ({ ...x })); if (!review.length) return openChooser(); sheet(bkReviewHTML(review)); };
+  // a place-type booking's Name searches Google: picking a suggestion fills the name, address and map point
+  const nameAC = (root, get, repaint) => { const n = root.querySelector('[data-name-ac]'); if (n) placeAutocomplete(n, { bias: () => cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(r => { const o = get(); if (!o) return; o.name = r.name || o.name; if (r.address) o.address = r.address; if (r.lat != null) { o.lat = r.lat; o.lon = r.lon; } if (r.gid) o.ref = r.gid; repaint(new Set(['name', 'address'])); }).catch(() => {}) });
+    const ad = root.querySelector('[data-it="address"]'); if (ad) placeAutocomplete(ad, { bias: () => cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(r => { const o = get(); if (!o) return; o.address = r.address; if (!o.name) o.name = r.name; if (r.lat != null) { o.lat = r.lat; o.lon = r.lon; } repaint(new Set(['address'])); }).catch(() => {}) }); };
+  const openReview = (xs, read) => { review = xs.map(x => ({ ...x })); if (!review.length) return openChooser(); const slot = sheet(bkReviewHTML(review, air));
+    slot.querySelectorAll('[data-rv-card]').forEach(c => { const i = +c.dataset.rvCard; nameAC(c, () => review[i], () => openReview(review)); });
+    if (read) { markGot(slot, null); resolveAddrs(review).then(n => { if (n && formSlot().querySelector('[data-sheet="review"]')) { openReview(review); markGot(formSlot(), null); } }); } };
+  // an imported place without an address: Google's best match for its name nearby (only a close name match)
+  const resolveAddrs = async (xs) => { let n = 0; if (!GKEY || gpBroken) return 0;
+    for (const x of xs.filter(y => y.kind !== 'flight' && y.name && !y.address).slice(0, 6)) {
+      const st = bkDay(x.start) && stopsOf(cfg).length ? stopFor(cfg, bkDay(x.start)) : null; const near = st ? st.city || st.name : cfg.venue ? cfg.venue.city || cfg.venue.name : '';
+      try { const r = (await gGeocode([x.name, near].filter(Boolean).join(', '))).find(y => y.address && nameLike(y.name, x.name)); if (r) { x.address = r.address; if (r.lat != null) { x.lat = r.lat; x.lon = r.lon; } if (r.gid) x.ref = r.gid; n++; } } catch { /* offline */ } }
+    return n; };
   const askSignIn = (slot) => { const el = slot.querySelector('[data-signin-slot]'); if (el) el.innerHTML = bkSignInHTML(); };
+  const paintForm = (got) => { const box = formSlot().querySelector('[data-bk-fields]'); if (!box || !draft) return; box.innerHTML = bkFieldsHTML(draft, 'it', air); nameAC(box, () => draft, paintForm); if (got) markGot(box, got);
+    fileOk().then(ok => { const f = formSlot().querySelector('[data-bk-fill]'); if (f) f.hidden = !ok; }).catch(() => {}); };
   const openForm = (x, i) => {
-    draft = { ...x }; editing = i; autoName = ''; const slot = sheet(itinFormHTML(draft, i, air));
-    slot.querySelector('#it-name').focus();
-    placeAutocomplete(slot.querySelector('#it-address'), { bias: () => cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(r => { draft.address = r.address; if (!draft.name) draft.name = r.name; fill(); }).catch(() => {}) });
+    draft = { ...x }; editing = i; autoName = ''; sheet(itinFormHTML(draft, i, air)); paintForm();
+    formSlot().querySelector('#it-name').focus();
   };
-  const fill = () => { const slot = formSlot(); slot.querySelectorAll('[data-it]').forEach(el => { if (document.activeElement !== el) el.value = draft[el.dataset.it] || ''; });
-    ['flight', 'to'].forEach(k => { slot.querySelector(`[data-it="${k}"]`).closest('.field').hidden = draft.kind !== 'flight'; });
-    slot.querySelector('[data-it="viaOther"]').closest('.field').hidden = draft.via !== 'other';
-    slot.querySelector('label[for="it-start"]').textContent = t(draft.kind === 'flight' ? 'Departs' : 'Starts'); slot.querySelector('label[for="it-end"]').textContent = t(draft.kind === 'flight' ? 'Arrives' : 'Ends');
-    slot.querySelector('#it-note').placeholder = draft.kind === 'flight' ? t('Confirmation code, last name') : '';
-    ['start', 'end'].forEach(k => { const el = slot.querySelector('#it-' + k); const ty = isDate(draft[k] || '') ? 'date' : 'datetime-local'; if (el.type !== ty) { el.type = ty; el.value = draft[k] || ''; } }); };
-  art._itinOpen = (x) => { openForm(x, null); fill(); const c = body.querySelector('#it-confNo'); if (c) c.focus({ preventScroll: true }); };
+  const fill = () => paintForm();
+  art._itinOpen = (x) => { openForm(x, null); const c = body.querySelector('#it-confNo'); if (c) c.focus({ preventScroll: true }); };
   art._itinAdd = () => openChooser();
-  art._itinReview = (xs) => openReview(xs);
+  art._itinReview = (xs, read) => openReview(xs, read);
+  // what a screenshot / PDF says, into the open form: the read booking of the form's type (else the first) fills every
+  // field it has; those fields are highlighted, everything stays editable, one Save
+  const fillForm = (items) => {
+    const it = items.find(y => y.kind === draft.kind || (LODGE.has(y.kind) && LODGE.has(draft.kind))) || items[0]; const got = new Set();
+    Object.entries(it).forEach(([k, v]) => { if (k === 'det') { Object.entries(v || {}).forEach(([dk, dv]) => { if (bkFilled(dv)) { draft.det = { ...(draft.det || {}), [dk]: dv }; got.add(dk); } }); return; }
+      if (k === 'kind' && draft.kind && LODGE.has(draft.kind) && LODGE.has(v)) return; if (bkFilled(v)) { draft[k] = v; got.add(k); } });
+    if (got.has('cancelBy') || got.has('nonRef')) got.add('cancelBy');
+    paintForm(got);
+    if (draft.kind !== 'flight' && draft.name && !draft.address) resolveAddrs([draft]).then(n => { if (n && draft) { got.add('address'); paintForm(got); } });
+    return got.size;
+  };
+  // screenshots / PDFs (picked, dropped or pasted) → ai-import "file": into the open form, else the review cards
+  const readFiles = (files, slot) => {
+    files = [...(files || [])].filter(f => /^image\//.test(f.type || '') || f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '')).slice(0, 6); if (!files.length) return false;
+    if (!slot || !slot.querySelector('[data-ai-msg]')) slot = sheet(bkFileHTML());
+    const msg = slot.querySelector('[data-ai-msg]'); const intoForm = !!(draft && slot.querySelector('.itin-form'));
+    if (!LS.get('signedIn')) { msg.textContent = ''; askSignIn(slot); return true; }
+    msg.textContent = t('Reading…'); slot.classList.add('busy');
+    Promise.all(files.map(bookingFile)).then(parts => aiImport({ mode: 'file', files: parts })).then(j => {
+      slot.classList.remove('busy'); const add = aiItemsToBookings(j.data && j.data.items);
+      if (!add.length) { msg.textContent = t('No reservations found. Enter it yourself.'); return; }
+      if (intoForm && draft && formSlot().contains(slot)) { fillForm(add); msg.textContent = ''; } else openReview(add, true);
+    }).catch(e => { slot.classList.remove('busy'); if (e.signin) { msg.textContent = ''; askSignIn(slot); } else msg.textContent = e.message || t('Couldn’t read it.'); });
+    return true;
+  };
+  art._itinFiles = (files) => readFiles(files, formSlot() && formSlot().querySelector('.itin-sheet, .itin-form') ? formSlot() : null);
+  ITIN_DROP.art = art;
   const runAI = (b, slot, req) => {
     const msg = slot.querySelector('[data-ai-msg]');
     if (!LS.get('signedIn')) { askSignIn(slot); return; }
@@ -2173,21 +2244,21 @@ function wireItin(cfg, art) {
     aiImport(req).then(j => {
       const add = aiItemsToBookings(j.data && j.data.items); b.disabled = false;
       if (!add.length) { msg.textContent = t('No reservations found. Enter it yourself.'); return; }
-      openReview(add);
+      openReview(add, true);
     }).catch(e => { b.disabled = false; if (e.signin) { msg.textContent = ''; askSignIn(slot); } else msg.textContent = e.message || t('Couldn’t read it.'); });
   };
   body.addEventListener('click', (e) => {
     const sio = e.target.closest('[data-si-oauth]'); if (sio) { oauthSignIn(sio.dataset.siOauth); return; }
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
     if (d.si === 'send') { signInSubmit(b.closest('.bk-signin')); return; }
-    if (d.detAmen && draft) { const on = new Set(detVal(draft, 'amen') || []); on.has(d.detAmen) ? on.delete(d.detAmen) : on.add(d.detAmen); detSet(draft, 'amen', [...on]); b.classList.toggle('on', on.has(d.detAmen)); b.setAttribute('aria-pressed', String(on.has(d.detAmen))); return; }
+    if (d.detAmen) { const o = target(b); if (!o) return; const on = new Set(detVal(o, 'amen') || []); on.has(d.detAmen) ? on.delete(d.detAmen) : on.add(d.detAmen); detSet(o, 'amen', [...on]); b.classList.toggle('on', on.has(d.detAmen)); b.setAttribute('aria-pressed', String(on.has(d.detAmen))); b.classList.remove('got'); return; }
     if ('itinAdd' in d) openChooser();
     else if (d.itinMode === 'paste') { const slot = sheet(bkPasteHTML()); slot.querySelector('#it-paste').focus(); aiReady().then(ok => { const a = slot.querySelector('[data-itin-ai]'); if (a && ok) a.hidden = false; }); }
     else if (d.itinMode === 'file') { const slot = sheet(bkFileHTML()); if (!LS.get('signedIn')) askSignIn(slot); }
-    else if (d.itinMode === 'manual') { openForm({}, null); fill(); }
+    else if (d.itinMode === 'manual') openForm({}, null);
     else if ('itinRead' in d) { const txt = (body.querySelector('#it-paste') || {}).value || ''; const p = parseReservation(txt, cfg.start);
       if (!txt.trim()) { body.querySelector('[data-ai-msg]').textContent = t('Paste the whole confirmation first.'); return; }
-      if (p.kind === 'flight' && !p.name) p.name = flightName(p.flight); openReview([p]); }
+      if (p.kind === 'flight' && !p.name) p.name = flightName(p.flight); openReview([p], true); }
     else if ('itinAi' in d) {
       const slot = formSlot(); const txt = (slot.querySelector('#it-paste') || {}).value || '';
       if (txt.trim().length < 20) { slot.querySelector('[data-ai-msg]').textContent = t('Paste the whole confirmation first.'); return; }
@@ -2195,11 +2266,11 @@ function wireItin(cfg, art) {
     }
     else if ('rvDel' in d) { review.splice(+d.rvDel, 1); openReview(review); }
     else if ('rvSave' in d) {
-      const add = review.filter(x => x.name || x.flight || x.start).map(x => ({ ...x, name: x.name || (x.kind === 'flight' ? flightName(x.flight) || String(x.flight || '').toUpperCase() : '') }));
+      const add = review.filter(x => x.name || x.flight || x.start).map(({ _auto, ...x }) => ({ ...x, name: x.name || (x.kind === 'flight' ? flightName(x.flight) || String(x.flight || '').toUpperCase() : '') }));
       if (!add.length) { toast(t('Add a name or a date')); return; }
       saveNew(add);
     }
-    else if ('itinEdit' in d) { openForm(itinLoad(cfg)[+d.itinEdit], +d.itinEdit); fill(); }
+    else if ('itinEdit' in d) openForm(itinLoad(cfg)[+d.itinEdit], +d.itinEdit);
     else if ('itinCancel' in d) rerender();
     else if (d.bkRm) bkRemove(cfg, art, d.bkRm);
     else if ('itinDel' in d) { const xs = itinLoad(cfg); xs.splice(+d.itinDel, 1); itinSave(cfg, xs); rerender(); }
@@ -2213,28 +2284,33 @@ function wireItin(cfg, art) {
     else if ('itinIcs' in d) itinICS(cfg);
   });
   body.addEventListener('change', (e) => {
-    const f = e.target.closest('[data-itin-file]'); if (!f || !f.files || !f.files.length) return;
-    const slot = formSlot(); const msg = slot.querySelector('[data-ai-msg]'); const label = slot.querySelector('.file-pick');
-    if (!LS.get('signedIn')) { askSignIn(slot); f.value = ''; return; }
-    msg.textContent = t('Reading…'); label.classList.add('busy');
-    Promise.all([...f.files].slice(0, 6).map(bookingFile)).then(files => runAI({ set disabled(v) { label.classList.toggle('busy', v); } }, slot, { mode: 'file', files }))
-      .catch(err => { label.classList.remove('busy'); msg.textContent = err.message || t('Couldn’t read it.'); }).finally(() => { f.value = ''; });
+    const f = e.target.closest('[data-itin-file],[data-itin-fill]'); if (!f || !f.files || !f.files.length) return;
+    const files = [...f.files]; f.value = ''; readFiles(files, formSlot());
   });
+  // the booking an input belongs to: a review card's, else the open form's
+  const target = (el) => { const c = el.closest('[data-rv-card]'); return c ? review[+c.dataset.rvCard] : draft; };
   body.addEventListener('input', (e) => {
-    const x = e.target;
-    if (x.dataset.rv != null) { const r = review[+x.dataset.rv]; if (!r) return; r[x.dataset.rk] = x.value; if (x.dataset.rk === 'kind') openReview(review); return; }
-    if (draft && x.dataset.det) { detSet(draft, x.dataset.det, x.value.trim().slice(0, 200)); return; }
-    if (!draft || !x.dataset.it) return;
-    draft[x.dataset.it] = x.value;
-    if (x.dataset.it === 'kind' || x.dataset.it === 'via') fill();
-    if (x.dataset.it === 'kind') { const ds = formSlot().querySelector('[data-det-slot]'); if (ds) ds.innerHTML = detFormHTML(draft); }
+    const x = e.target; const o = target(x); if (!o) return; const card = x.closest('[data-rv-card]');
+    if (x.dataset.hk) { const box = x.closest('[data-hfbox]'); if (box) hfToBk(o, hfRead(box)); return; }
+    if (x.dataset.det) { detSet(o, x.dataset.det, x.type === 'number' ? (x.value ? String(Math.max(1, Math.min(99, +x.value))) : '') : x.value.trim().slice(0, 200)); return; }
+    if (!x.dataset.it) return;
+    o[x.dataset.it] = x.value;
+    if (x.dataset.it === 'kind' || x.dataset.it === 'via') { if (card) { const got = [...card.querySelectorAll('.got')].length; openReview(review); if (got) markGot(formSlot(), null); } else fill(); return; }
     if (x.dataset.it === 'flight') { // airline + number: the card names itself; status and manage links appear once saved
-      const n = flightName(x.value); const ni = formSlot().querySelector('#it-name');
-      if (n && (!draft.name || draft.name === autoName)) { draft.name = autoName = n; ni.value = n; }
+      const n = flightName(x.value); const ni = (card || formSlot()).querySelector('[data-it="name"]');
+      if (n && ni && (!o.name || o.name === autoName || (card && o.name === o._auto))) { o.name = n; if (card) o._auto = n; else autoName = n; ni.value = n; }
     }
-    if (x.dataset.it === 'to' && /^[a-z]{3}$/i.test(x.value)) draft.to = x.value.toUpperCase();
+    if ((x.dataset.it === 'to' || x.dataset.it === 'from') && /^[a-z]{3}$/i.test(x.value)) o[x.dataset.it] = x.value.toUpperCase();
   });
 }
+// a screenshot or PDF dropped (anywhere on the page while My trip shows) or pasted (Cmd/Ctrl+V) → the bookings reader
+const ITIN_DROP = { art: null };
+const itinLive = () => { const a = ITIN_DROP.art; const s = a && a.isConnected && a.querySelector('#sec-itinerary'); return s && s.getClientRects().length ? s : null; };
+const fileList = (dt) => [...((dt && dt.files) || [])].filter(f => /^image\//.test(f.type || '') || f.type === 'application/pdf' || /\.pdf$/i.test(f.name || ''));
+document.addEventListener('dragover', (e) => { const s = itinLive(); if (!s || !(e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files'))) return; e.preventDefault(); s.classList.add('drop-on'); });
+document.addEventListener('dragleave', (e) => { const s = itinLive(); if (s && (!e.relatedTarget || e.relatedTarget === document.documentElement)) s.classList.remove('drop-on'); });
+document.addEventListener('drop', (e) => { const s = itinLive(); if (!s) return; s.classList.remove('drop-on'); const fs = fileList(e.dataTransfer); if (!fs.length) return; e.preventDefault(); ITIN_DROP.art._itinFiles(fs); s.scrollIntoView({ block: 'start', behavior: 'smooth' }); });
+document.addEventListener('paste', (e) => { const s = itinLive(); if (!s) return; const fs = fileList(e.clipboardData); if (!fs.length) return; e.preventDefault(); ITIN_DROP.art._itinFiles(fs); });
 
 // a page in this device's list that was shared as this long link (same link, or the same page key once shared)
 function ownLongPage(cfg, packed) {
@@ -2468,9 +2544,10 @@ function renderSheet() {
   if (op) body = op.body;
   else if (id === 'route') body = routeHTML(c, one('st') ? fi : null);
   else if (tc) { const sp = typeSpec(c); body = tc[3].map(k => xFieldHTML(c, sp.fields.find(f => f[0] === k), tc[3].length === 1)).join('');
-    const bd = typeData(c); if (id === 'block' && BLOCK_KEYS.some(k => bd[k])) body += `<div class="btns"><button type="button" class="btn sm bk-rm hb-rm" data-b="rm-block">${TRASH_IC}Remove ${esc(bd.blockHotel || 'room block')}</button></div>`; }
+    const bd = typeData(c); if (id === 'block') body += hfFormHTML(hfOfBlock(bd), 'hf-block', { en: true, note: true, attr: 'data-hf-block' });
+    if (id === 'block' && BLOCK_KEYS.some(k => bd[k])) body += `<div class="btns"><button type="button" class="btn sm bk-rm hb-rm" data-b="rm-block">${TRASH_IC}Remove ${esc(bd.blockHotel || 'room block')}</button></div>`; }
   else if (id === 'schedule' && isTrip(c)) body = tripPlanHTML(c, F && F.k === 'day' ? { day: F.d } : one('s') ? { item: fi } : null);
-  else if (id === 'schedule') body = `${c.schedule.map((x, i) => !only('s', i) ? '' : `<div class="rowed"><div class="two"><input type="date" data-s="${i}" data-k="date" value="${esc(x.date)}" aria-label="Date"><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time"></div><input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="What's happening" aria-label="Title">${schedPlaceHTML(x, i)}<input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Note (optional)" aria-label="Note">${hotelCiLine(x) ? `<button type="button" class="ic del bk-rm" data-sdel="${i}" data-sdel-hotel aria-label="Remove hotel ${esc(hostHotelName(x.title))}">${TRASH_IC}Remove hotel</button>` : `<button type="button" class="ic del" data-sdel="${i}" aria-label="Remove item">Remove</button>`}</div>`).join('')}
+  else if (id === 'schedule') body = `${c.schedule.map((x, i) => !only('s', i) ? '' : `<div class="rowed"><div class="two"><input type="date" data-s="${i}" data-k="date" value="${esc(x.date)}" aria-label="Date"><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time"></div><input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="What's happening" aria-label="Title">${schedPlaceHTML(x, i)}${hotelCiLine(x) ? schedHotelHF(x, i) : `<input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Note (optional)" aria-label="Note">`}${hotelCiLine(x) ? `<button type="button" class="ic del bk-rm" data-sdel="${i}" data-sdel-hotel aria-label="Remove hotel ${esc(hostHotelName(x.title))}">${TRASH_IC}Remove hotel</button>` : `<button type="button" class="ic del" data-sdel="${i}" aria-label="Remove item">Remove</button>`}</div>`).join('')}
     ${one('s') ? '' : `<div class="btns"><button type="button" class="btn sm" data-b="add-sched">+ Add item</button>${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`}`;
   else if (id === 'notes') body = `${c.notes.map((x, i) => !only('n', i) ? '' : `<div class="rowed"><input data-n="${i}" data-k="label" value="${esc(x.label)}" placeholder="Title" aria-label="Title"><input data-n="${i}" data-k="text" value="${esc(x.text || '')}" placeholder="Text" aria-label="Text"><input data-n="${i}" data-k="url" type="url" value="${esc(x.url || '')}" placeholder="Link (optional)" aria-label="Link">${B.onp ? `<div class="plan-ctl"><span class="mv"><button type="button" data-onp-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-onp-mv="${i}" data-dir="1" ${i === c.notes.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button></span><button type="button" class="ic del" data-ndel="${i}" aria-label="Remove">Remove</button></div>` : `<button type="button" class="ic del" data-ndel="${i}" aria-label="Remove">Remove</button>`}</div>`).join('')}
     ${one('n') ? '' : '<button type="button" class="btn sm" data-b="add-note">+ Add note</button>'}`;
@@ -2502,6 +2579,11 @@ function wireInputs(root) {
   root.oninput = (e) => {
     const i = e.target; const d = i.dataset; const cfg = c();
     const xd = () => (cfg.x[cfg.type] = cfg.x[cfg.type] || {});
+    if (d.hk) { const box = i.closest('[data-hfbox]'); if (!box) return; const h = hfRead(box); // hotel fields: a check-in row, the room block, a stay option
+      if (box.dataset.hfS != null) { const x = cfg.schedule[+box.dataset.hfS]; if (x) hfToObj(x, h); }
+      else if ('hfBlock' in box.dataset) hfToObj(xd(), h, BLOCK_HF);
+      else if (box.dataset.hfPr != null) { const p = (cfg.presets || [])[+box.dataset.hfPr]; if (p && p.h) hfToObj(p.h, h); }
+      changed(); return; }
     if (designInput(i, cfg) || routeInput(i, cfg) || langsInput(i, cfg)) return;
     if (d.when) { whenInput(cfg, d.when, i.value); changed(); }
     else if (d.x) { xd()[d.x] = i.value; changed(); }
@@ -3254,7 +3336,7 @@ function hostedProblem(msg, retry) {
 // check constraint) after the guest's own note: "<note>\n\n[[1lt:{"v":1,...}]]". rqParse splits them again; replies
 // without it (older ones, or with every question off) read exactly as before.
 const RQ_MARK = '[[1lt:';
-const BLOCK_KEYS = ['blockHotel', 'blockUrl', 'blockCode', 'blockBy'];
+const BLOCK_KEYS = ['blockHotel', 'blockUrl', 'blockCode', 'blockBy', 'blockRoom', 'blockCancel', 'blockNonRef', 'blockNote'];
 // ---- RSVP (builder → RSVP): the organizer either collects replies here (the form below, cfg.rsvpVia 'form') or points guests
 // at their own link ('link', the URL in x[type].rsvp); a reply-by date (x[type].rsvpBy) for both. off.rsvp turns RSVP off.
 // Pages from before the one RSVP card had an "RSVP" link card (weddings) and an "RSVP form" card side by side; they
@@ -4809,7 +4891,7 @@ function planHTML(cfg) {
   const row = (x) => { const bk = x.ent === 'book' ? bks[x.bi] : null; const ref = bk ? (bk.id ? 'bk:' + bk.id : '') : 'pl:' + x.id;
     const meta = x.ent === 'book' ? [x.kindLabel, view === 'type' && x.day ? dayLabel(cfg, x.day) : '', x.time ? fmtTime(x.time) : '', x.conf ? t('Conf. {n}', { n: x.conf }) : '']
       : [view === 'type' && x.day ? dayLabel(cfg, x.day) : '', x.time ? fmtTime(x.time) : '', x.addr ? x.addr.split(',').slice(0, 2).join(',') : ''];
-    const name = x.ent === 'book' ? `<b class="plan-t"><span>${esc(x.name)}</span></b>` : `<b class="plan-t"><span class="plan-name">${esc(x.name)}</span></b>`;
+    const name = x.ent === 'book' ? `<b class="plan-t"><span>${esc(x.name)}</span>${bk && LODGE.has(bk.kind) ? hfBadgeHTML(hfOfBk(bk), bkDay(bk.end) || bkDay(bk.start)) : ''}</b>` : `<b class="plan-t"><span class="plan-name">${esc(x.name)}</span></b>`;
     const rm = bk && bk.id && LODGE.has(bk.kind) ? rmBtnHTML(bk.id, 'pr-rm') : '';
     return `<li class="plan-row${x.ent === 'book' ? ' bk' : ''}${x.booked && x.ent !== 'book' ? ' booked' : ''}${rm ? ' has-rm' : ''}"${x.ent === 'book' ? '' : ` data-plan-id="${esc(x.id)}"`}><button type="button" class="pr-go"${ref ? ` data-ds="${esc(ref)}"` : ''}>${thumbHTML(bk || planLoad(cfg).find(y => y.id === x.id) || x, x.cc)}<span class="pr-tx">${name}<small>${esc(meta.filter(Boolean).join(' · '))}</small>${x.ent !== 'book' && (x.rating || x.booked || x.note) ? `<span class="pr-x">${x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}${x.booked ? `<em class="pr-bk">✓ ${t('Booked')}</em>` : ''}${x.note ? `<span class="pr-note">${esc(x.note)}</span>` : ''}</span>` : ''}</span><i class="tl-chev" aria-hidden="true"></i></button>${rm}</li>`; };
   let groups;
@@ -5152,30 +5234,115 @@ const DET = {
   lodge: [['room', 'Room type'], ['beds', 'Beds'], ['guests', 'Guests', 'number'], ['amen', 'Amenities', 'amen'], ['cancelBy', 'Free cancellation until', 'date'], ['price', 'Price paid']],
   tour: [['meet', 'Meeting point'], ['duration', 'Duration'], ['incl', 'What’s included'], ['price', 'Price']],
   food: [['party', 'Party size', 'number'], ['price', 'Price']],
-  flight: [['seat', 'Seat'], ['cabin', 'Cabin', 'cabin'], ['bags', 'Baggage']],
-  train: [['seat', 'Seat'], ['cabin', 'Class']],
+  flight: [['seat', 'Seat'], ['cabin', 'Cabin', 'cabin'], ['bags', 'Baggage'], ['price', 'Price paid']],
+  train: [['seat', 'Seat'], ['cabin', 'Class'], ['price', 'Price paid']],
   car: [['carClass', 'Car class'], ['price', 'Price paid']],
 };
 const detGroup = (x) => { const k = x.kind, ty = x.type; return LODGE.has(k) || (!k && ty === 'stay') ? 'lodge' : k === 'flight' ? 'flight' : k === 'car' ? 'car' : k === 'train' ? 'train' : k === 'food' || (!k && ty === 'food') ? 'food' : k === 'tour' || k === 'other' || (!k && (ty === 'activity' || ty === 'other')) ? 'tour' : ''; };
 const detVal = (x, key) => (x.det || {})[key];
+const HF_DET = new Set(['room', 'beds', 'cancelBy']); // a hotel's room + cancellation: the hotel fields (hfFormHTML), up front in the booking form
 function detSet(x, key, v) { const d = { ...(x.det || {}) }; if (v == null || v === '' || (Array.isArray(v) && !v.length)) delete d[key]; else d[key] = v; if (Object.keys(d).length) x.det = d; else delete x.det; return x; }
 // the read view: "Room type: King deluxe", "Check-in 3:00 PM", amenities…
-function detLines(x) {
+function detLines(x, noHf) {
   const g = detGroup(x); const out = []; const tm = (s) => s && s.length > 10 ? fmtTime(s.slice(11, 16)) : '';
   if (g === 'lodge') { if (tm(x.start)) out.push(t('Check-in {t}', { t: tm(x.start) })); if (tm(x.end)) out.push(t('Check-out {t}', { t: tm(x.end) })); }
   if (g === 'car') { if (tm(x.start)) out.push(t('Pick-up {t}', { t: tm(x.start) })); if (tm(x.end)) out.push(t('Drop-off {t}', { t: tm(x.end) })); }
   if (g === 'tour' && (tm(x.start) || x.time)) out.push(t('Starts {t}', { t: tm(x.start) || fmtTime(x.time) }));
+  if (g === 'lodge' && !noHf) out.push(...hfLines(hfOfBk(x)));
   (DET[g] || []).forEach(([k, label, ty]) => { const v = detVal(x, k); if (!bkFilled(v)) return;
-    if (ty === 'amen') return; if (ty === 'cabin') out.push(`${t(label)}: ${t((CABINS.find(c => c[0] === v) || [v, v])[1])}`);
+    if (ty === 'amen' || (g === 'lodge' && HF_DET.has(k))) return; if (ty === 'cabin') out.push(`${t(label)}: ${t((CABINS.find(c => c[0] === v) || [v, v])[1])}`);
     else if (ty === 'date') out.push(`${t(label)}: ${fmt(v, { month: 'short', day: 'numeric' })}`); else out.push(`${t(label)}: ${v}`); });
   return out;
 }
 const detAmen = (x) => (detVal(x, 'amen') || []).map(a => t((AMENITIES.find(y => y[0] === a) || [a, a])[1]));
+// ================= hotel fields: room category, free cancellation until / non-refundable, notes =================
+// One set of fields for every hotel, wherever it is entered: a guest's booking (det.room, det.cancelBy, det.nonRef + the
+// booking's own note), an organizer's check-in row (x.room, x.cancelBy, x.nonRef + x.note), the room block (blockRoom,
+// blockCancel, blockNonRef, blockNote) and a stay option's hotel (h.room, h.cancelBy, h.nonRef, h.note).
+// cancelBy = 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM' (the property's local time). Older bookings (a date only) read the same.
+const ROOM_SUGG = ['Standard', 'Deluxe', 'Superior', 'Suite', 'Executive'];
+const BED_SUGG = ['King', 'Queen', '2 Queens', 'Double', 'Twin', '2 Twins'];
+const HF_NONE = { room: '', beds: '', cancelBy: '', nonRef: false, note: '' };
+const hfCancelOk = (v) => /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(String(v || '')) ? String(v) : '';
+const hfOfBk = (x) => x ? { room: String(detVal(x, 'room') || ''), beds: String(detVal(x, 'beds') || ''), cancelBy: hfCancelOk(detVal(x, 'cancelBy')), nonRef: !!detVal(x, 'nonRef'), note: x.note || '' } : { ...HF_NONE };
+const hfOfEv = (x) => x ? { room: String(x.room || ''), beds: String(x.beds || ''), cancelBy: hfCancelOk(x.cancelBy), nonRef: !!x.nonRef, note: x.note || '' } : { ...HF_NONE };
+const hfOfBlock = (d) => d ? { room: String(d.blockRoom || ''), beds: String(d.blockBeds || ''), cancelBy: hfCancelOk(d.blockCancel), nonRef: !!d.blockNonRef, note: d.blockNote || '' } : { ...HF_NONE };
+const hfAny = (h) => !!(h && (h.room || h.beds || h.cancelBy || h.nonRef || h.note));
+// write one set of values back (empty values are dropped, so old items keep their shape)
+function hfToBk(x, h) { detSet(x, 'room', h.room); if (h.beds !== undefined) detSet(x, 'beds', h.beds); detSet(x, 'cancelBy', h.cancelBy); detSet(x, 'nonRef', h.nonRef ? 1 : ''); if (h.note !== undefined) x.note = h.note; return x; }
+function hfToObj(o, h, keys = ['room', 'cancelBy', 'nonRef', 'note', 'beds']) {
+  const v = { room: h.room, cancelBy: h.cancelBy, nonRef: h.nonRef ? true : '', note: h.note, beds: h.beds };
+  ['room', 'cancelBy', 'nonRef', 'note', 'beds'].forEach((k, i) => { if (v[k] === undefined) return; if (v[k]) o[keys[i]] = v[k]; else delete o[keys[i]]; }); return o;
+}
+const BLOCK_HF = ['blockRoom', 'blockCancel', 'blockNonRef', 'blockNote', 'blockBeds'];
+// "Fri, Apr 10" / "Fri, Apr 10 · 6:00 PM"
+const hfCancelWhen = (v) => { v = hfCancelOk(v); return v ? [fmt(v.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' }), v.length > 10 ? fmtTime(v.slice(11, 16)) : ''].filter(Boolean).join(' · ') : ''; };
+// the detail sheet's facts: "Room · Deluxe King", "Free cancellation until · Fri, Apr 10" (or "Cancellation · Non-refundable")
+const hfFacts = (h) => [h.room ? dsFact(t('Room'), h.room) : '', h.beds ? dsFact(t('Bed'), h.beds) : '', h.nonRef ? dsFact(t('Cancellation'), t('Non-refundable')) : h.cancelBy ? dsFact(t('Free cancellation until'), hfCancelWhen(h.cancelBy)) : ''];
+// short lines (a read-only card): "Room: Deluxe King", "Free cancellation until: Fri, Apr 10"
+const hfLines = (h) => [h.room ? `${t('Room')}: ${h.room}` : '', h.beds ? `${t('Bed')}: ${h.beds}` : '', h.nonRef ? t('Non-refundable') : h.cancelBy ? `${t('Free cancellation until')}: ${hfCancelWhen(h.cancelBy)}` : ''].filter(Boolean);
+// One-liners stay short: a badge only when it matters — free cancellation ends within 7 days ("Cancel by Apr 10"), or it
+// has ended / never existed ("Non-refundable"); nothing once the stay is over. now = 'YYYY-MM-DDTHH:MM' (tests).
+function hfBadge(h, endDay, now) {
+  if (!h) return null; const n = now || `${todayYMD()}T${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`; const today = n.slice(0, 10);
+  if (endDay && endDay < today) return null;
+  if (h.nonRef) return { nr: 1, text: t('Non-refundable') };
+  const c = hfCancelOk(h.cancelBy); if (!c) return null;
+  if (c.length > 10 ? c < n : c.slice(0, 10) < today) return { nr: 1, text: t('Non-refundable') };
+  return daysBetween(today, c) <= 7 ? { nr: 0, text: t('Cancel by {d}', { d: fmt(c.slice(0, 10), { month: 'short', day: 'numeric' }) }) } : null;
+}
+const hfBadgeHTML = (h, endDay) => { const b = hfBadge(h, endDay); return b ? ` <em class="hf-badge${b.nr ? ' nr' : ''}">${esc(b.text)}</em>` : ''; };
+// The inputs. opts: { note: true (a Notes box), en: true (the builder, which is in English), attr: 'data-…="…"' (who owns it) }.
+// Every input fires 'input'; the owner reads the whole box with hfRead(box).
+function hfFormHTML(h, id, opts = {}) {
+  const L = opts.en ? tEn : t; h = h || HF_NONE; const c = hfCancelOk(h.cancelBy); const words = String(h.room || '').toLowerCase().split(/[\s,/·-]+/);
+  return `<div class="hf" data-hfbox ${opts.attr || ''}>
+    <div class="field wide"><label for="${id}-room">${L('Room category')}</label><input id="${id}-room" data-hk="room" value="${esc(h.room || '')}" maxlength="80" autocomplete="off">
+      <div class="chips hf-sug">${ROOM_SUGG.map(s => { const w = L(s); const on = words.includes(w.toLowerCase()); return `<button type="button" class="chip${on ? ' on' : ''}" data-hf-sug="${esc(w)}" aria-pressed="${on}">${esc(w)}</button>`; }).join('')}</div></div>
+    <div class="field wide"><label for="${id}-beds">${L('Bed')}</label><input id="${id}-beds" data-hk="beds" value="${esc(h.beds || '')}" maxlength="60" autocomplete="off">
+      <div class="chips hf-sug">${BED_SUGG.map(s => { const w = L(s); const on = String(h.beds || '').trim().toLowerCase() === w.toLowerCase(); return `<button type="button" class="chip${on ? ' on' : ''}" data-hf-bed="${esc(w)}" aria-pressed="${on}">${esc(w)}</button>`; }).join('')}</div></div>
+    <div class="field wide"><label for="${id}-cxd">${L('Free cancellation until')}</label><div class="hf-cx"><input id="${id}-cxd" type="date" data-hk="cxd" value="${esc(c.slice(0, 10))}"${h.nonRef ? ' disabled' : ''}><input type="time" data-hk="cxt" value="${esc(c.slice(11, 16))}" aria-label="${esc(L('Time (optional)'))}"${h.nonRef || !c ? ' disabled' : ''}></div>
+      <label class="chk hf-nr"><input type="checkbox" data-hk="nonRef"${h.nonRef ? ' checked' : ''}> ${L('Non-refundable')}</label></div>
+    ${opts.note ? `<div class="field wide"><label for="${id}-note">${L('Notes')}</label><textarea id="${id}-note" data-hk="note" rows="2" maxlength="1000">${esc(h.note || '')}</textarea></div>` : ''}</div>`;
+}
+// the box's values: { room, cancelBy, nonRef[, note] }
+function hfRead(box) {
+  const el = (k) => box.querySelector(`[data-hk="${k}"]`); const nonRef = !!(el('nonRef') && el('nonRef').checked);
+  const d = isoDay((el('cxd') || {}).value || ''), tm = /^\d{2}:\d{2}$/.test((el('cxt') || {}).value || '') ? el('cxt').value : '';
+  const out = { room: cleanText((el('room') || {}).value || '', 80), beds: cleanText((el('beds') || {}).value || '', 60), cancelBy: nonRef || !d ? '' : d + (tm ? 'T' + tm : ''), nonRef };
+  if (el('note')) out.note = String(el('note').value || '').replace(/\r/g, '').slice(0, 1000).replace(/^\s+|\s+$/g, '');
+  return out;
+}
+// a fold for a compact row (builder rows, Make it mine): summary = what is set, else the label
+const tEn = (s, vars) => vars ? s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '') : s; // the builder's strings stay English
+const hfSumText = (h, L = t) => [h.room, h.beds, h.nonRef ? L('Non-refundable') : h.cancelBy ? L('Cancel by {d}', { d: fmt(h.cancelBy.slice(0, 10), { month: 'short', day: 'numeric' }) }) : ''].filter(Boolean).join(' · ');
+const hfFoldHTML = (h, id, opts = {}) => { const L = opts.en ? tEn : t; const s = hfSumText(h, L);
+  return `<details class="hf-fold"${opts.open ? ' open' : ''}><summary><span>${esc(L('Room details'))}</span>${s ? `<small>${esc(s)}</small>` : ''}</summary>${hfFormHTML(h, id, opts)}</details>`; };
+// the box's own behavior, for every owner: a suggestion chip adds / takes out its word; the time follows the date;
+// Non-refundable turns the date off
+document.addEventListener('click', (e) => {
+  const bb = e.target.closest && e.target.closest('[data-hf-bed]'); if (bb) { const box = bb.closest('[data-hfbox]'); if (!box) return; e.preventDefault();
+    const inp = box.querySelector('[data-hk="beds"]'); inp.value = inp.value.trim().toLowerCase() === bb.dataset.hfBed.toLowerCase() ? '' : bb.dataset.hfBed;
+    inp.dispatchEvent(new Event('input', { bubbles: true })); return; }
+  const b = e.target.closest && e.target.closest('[data-hf-sug]'); if (!b) return; const box = b.closest('[data-hfbox]'); if (!box) return; e.preventDefault();
+  const inp = box.querySelector('[data-hk="room"]'); const w = b.dataset.hfSug; const parts = inp.value.trim() ? inp.value.trim().split(/\s+/) : [];
+  const i = parts.findIndex(p => p.toLowerCase() === w.toLowerCase()); if (i >= 0) parts.splice(i, 1); else parts.push(w);
+  inp.value = parts.join(' '); b.classList.toggle('on', i < 0); b.setAttribute('aria-pressed', String(i < 0));
+  inp.dispatchEvent(new Event('input', { bubbles: true }));
+}, true);
+document.addEventListener('input', (e) => {
+  const el = e.target; if (!el || !el.dataset || !el.dataset.hk) return; const box = el.closest('[data-hfbox]'); if (!box) return;
+  const d = box.querySelector('[data-hk="cxd"]'), tm = box.querySelector('[data-hk="cxt"]'), nr = box.querySelector('[data-hk="nonRef"]');
+  if (d && tm && nr) { d.disabled = nr.checked; tm.disabled = nr.checked || !d.value; }
+  if (el.dataset.hk === 'beds') { const v = el.value.trim().toLowerCase(); box.querySelectorAll('[data-hf-bed]').forEach(b => { const on = b.dataset.hfBed.toLowerCase() === v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); }
+  if (el.dataset.hk === 'room') { const ws = el.value.toLowerCase().split(/[\s,/·-]+/); box.querySelectorAll('[data-hf-sug]').forEach(b => { const on = ws.includes(b.dataset.hfSug.toLowerCase()); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); }
+}, true);
 // inputs for one item; attr = 'data-det' (booking form) or 'data-pdet' (a plan row, saved on change)
 function detFormHTML(x, attr = 'data-det', idp = 'dt') {
   const g = detGroup(x); if (!DET[g]) return '';
   return `<div class="det-f">${DET[g].map(([k, label, ty]) => {
-    const id = `${idp}-${k}`; const v = detVal(x, k);
+    if (attr === 'data-det' && g === 'lodge' && HF_DET.has(k)) return '';
+    const id = `${idp}-${k}`; let v = detVal(x, k); if (k === 'cancelBy' && v) v = String(v).slice(0, 10);
     if (ty === 'amen') { const on = v || []; return `<div class="field wide"><span class="lbl-s">${t(label)}</span><div class="chips amen">${AMENITIES.map(([a, l]) => `<button type="button" class="chip ${on.includes(a) ? 'on' : ''}" ${attr}-amen="${a}" aria-pressed="${on.includes(a)}">${t(l)}</button>`).join('')}</div></div>`; }
     if (ty === 'cabin') return `<div class="field"><label for="${id}">${t(label)}</label><select id="${id}" ${attr}="${k}"><option value="">${t('Choose')}</option>${CABINS.map(([c, l]) => `<option value="${c}" ${c === v ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></div>`;
     return `<div class="field${k === 'incl' || k === 'meet' ? ' wide' : ''}"><label for="${id}">${t(label)}</label><input id="${id}" type="${ty === 'number' ? 'number' : ty === 'date' ? 'date' : 'text'}"${ty === 'number' ? ' min="1" max="99"' : ''} ${attr}="${k}" value="${esc(v == null ? '' : v)}" maxlength="200"></div>`;
@@ -5332,6 +5499,10 @@ function dsPhotosHTML(x, ref) {
 const dsHead = (o) => `<header class="ds-h">
     <div class="ds-bar">${o.back ? `<button type="button" class="ds-back" data-ds-back aria-label="${esc(t('Back'))}">‹ ${esc(t('Back'))}</button>` : '<span></span>'}<button type="button" class="ds-x" data-ds-close aria-label="${esc(t('Close'))}">×</button></div>
     <p class="ds-k">${o.icon || ''}<span>${esc(o.kicker || '')}</span></p><h2 class="ds-t" id="ds-title">${esc(o.title)}</h2>${o.sub ? `<p class="ds-sub">${o.sub}</p>` : ''}</header>`;
+// Notes: a short preview; a long note folds after a few lines with More / Less
+const dsNotesHTML = (note) => { note = String(note || '').trim(); if (!note) return ''; const long = note.length > 220 || note.split('\n').length > 4;
+  return `<section class="ds-sec ds-notes"><h3>${t('Notes')}</h3><p class="ds-note${long ? ' clamp' : ''}">${esc(note).replace(/\n/g, '<br>')}</p>${long ? `<button type="button" class="mini-b ds-nmore" data-ds-nmore aria-expanded="false">${t('More')}</button>` : ''}</section>`; };
+document.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('[data-ds-nmore]'); if (!b) return; const p = b.previousElementSibling; const open = p.classList.toggle('clamp') === false; b.textContent = t(open ? 'Less' : 'More'); b.setAttribute('aria-expanded', String(open)); });
 const dsFacts = (fs) => { const h = fs.filter(Boolean).join(''); return h ? `<dl class="ds-facts">${h}</dl>` : ''; };
 const PERF = '<div class="ds-perf" aria-hidden="true"></div>';
 // a booking: hotel (check-in/out, nights, room type, beds, guests, amenities, cancellation, price), flight, train, car, tour…
@@ -5345,7 +5516,8 @@ function dsBookingHTML(cfg, x, back) {
   } else if (g === 'car') fs.push(dsFact(t('Pick-up'), [dsDay(x.start), dsTm(x.start)].filter(Boolean).join(' · ')), dsFact(t('Drop-off'), [dsDay(x.end), dsTm(x.end)].filter(Boolean).join(' · ')));
   else if (x.kind === 'flight') fs.push(dsFact(t('Departs'), [dsDay(x.start), dsTm(x.start)].filter(Boolean).join(' · ')), dsFact(t('Lands'), x.start && x.start.length > 10 && flightArrLabel(x) ? flightArrLabel(x).replace(t('Arrives') + ' ', '') : ''), dsFact(t('Flight'), x.flight || ''));
   else fs.push(dsFact(t('When'), [dsDay(x.start), dsTm(x.start)].filter(Boolean).join(' · ')), x.end ? dsFact(t('Until'), [bkDay(x.end) !== bkDay(x.start) ? dsDay(x.end) : '', dsTm(x.end)].filter(Boolean).join(' · ')) : '');
-  (DET[g] || []).forEach(([k, label, ty]) => { const v = detVal(x, k); if (!bkFilled(v) || ty === 'amen') return;
+  if (g === 'lodge') fs.push(...hfFacts(hfOfBk(x)));
+  (DET[g] || []).forEach(([k, label, ty]) => { const v = detVal(x, k); if (!bkFilled(v) || ty === 'amen' || (g === 'lodge' && HF_DET.has(k))) return;
     fs.push(dsFact(t(label), ty === 'cabin' ? t((CABINS.find(c => c[0] === v) || [v, v])[1]) : ty === 'date' ? fmt(v, { month: 'short', day: 'numeric' }) : String(v))); });
   fs.push(dsFact(t('Confirmation'), x.confNo || ''), dsFact(t('Booked through'), via ? via.name || (via.key === 'direct' ? t('Direct') : '') : ''));
   const am = detAmen(x); const geo = bkGeo(x); const pid = placeIdOf(x);
@@ -5355,7 +5527,7 @@ function dsBookingHTML(cfg, x, back) {
       sub: g === 'lodge' && bkDay(x.start) ? esc(dateRange(bkDay(x.start), bkDay(x.end) || bkDay(x.start))) : '' })}
     <div class="ds-b">${bkOffTrip(cfg, x) ? `<p class="ds-warn" role="note">${esc(t('These dates don’t match the trip ({d}). Check this booking.', { d: routeSpan(cfg) ? dateRange(...routeSpan(cfg)) : '' }))}</p>` : ''}${dsFacts(fs)}${idx >= 0 && g === 'lodge' ? `<div class="ds-acts ds-rm"><button type="button" class="btn sm bk-rm hb-rm" data-ds-rmbk="${esc(x.id)}">${TRASH_IC}${t('Remove hotel')}</button></div>` : ''}${am.length ? `<p class="ds-tags">${am.map(a => `<span class="tag">${esc(a)}</span>`).join('')}</p>` : ''}${PERF}
     ${x.kind === 'flight' ? '' : dsWhereHTML(x.name || '', x.address || '', geo, pid, cat, { q: [x.name, x.address].filter(Boolean).join(', '), key: [x.name, x.address].filter(Boolean).join(', ') })}
-    ${x.note ? `<section class="ds-sec"><h3>${t('Notes')}</h3><p class="ds-note">${esc(x.note).replace(/\n/g, '<br>')}</p></section>` : ''}
+    ${dsNotesHTML(x.note)}
     ${x.id ? dsPhotosHTML(x, 'bk:' + x.id) : ''}
     <div class="ds-acts">${links}${idx >= 0 ? `<button type="button" class="btn sm ghost" data-ds-edit="${idx}">${t('Edit booking')}</button>` : ''}</div></div>`;
 }
@@ -5382,15 +5554,23 @@ function dsPlaceHTML(cfg, x, back) {
     </section>
     <div class="ds-acts">${x.src === 'g' && x.ref ? `<button type="button" class="btn sm" data-ds-gp="${esc(x.ref)}">${t('More about this place')}</button>` : ''}<button type="button" class="btn sm ghost danger-t" data-ds-del="${esc(x.id)}">${t('Remove from my trip')}</button></div></div>`;
 }
+// the organizer's room / cancellation / notes for a hotel they listed: its check-in row, else the room block or a stay
+// option with that hotel
+function hostHotelHF(cfg, name, when, ev) {
+  if (!ev && name) { const xs = (cfg.schedule || []).filter(x => isHostHotel(x) && nameLike(hostHotelName(x.title), name)); ev = xs.find(x => x.date === when) || xs[0] || null; }
+  const own = hfOfEv(ev); const d = typeData(cfg);
+  const other = d.blockHotel && nameLike(d.blockHotel, name) ? hfOfBlock(d) : hfOfEv(((presetsOf(cfg).find(p => p.h && nameLike(p.h.name, name)) || {}).h) || null);
+  return { room: own.room || other.room, beds: own.beds || other.beds, cancelBy: own.cancelBy || (own.nonRef ? '' : other.cancelBy), nonRef: own.nonRef || (!own.cancelBy && other.nonRef), note: own.note || other.note };
+}
 // a hotel the organizer listed (Check in: …) — and the guest's own booking for it when they have one
 function dsHostHotelHTML(cfg, name, when, back, ev) {
-  const bk = bookingForHotel(cfg, name, when); if (bk) return dsBookingHTML(cfg, bk, back);
+  const bk = bookingForHotel(cfg, name, when); if (bk) return dsBookingHTML(cfg, bk, back); const hf = hostHotelHF(cfg, name, when, ev);
   const geo = LS.get(hgeoKey(name)); const g = geo && !geo.miss ? geo : null; const city = when && stopsOf(cfg).length > 1 && stopFor(cfg, when) ? stopFor(cfg, when).name : '';
   const leg = legOfDay(cfg, when);
   return `${dsHead({ back, icon: ccIcon('hotels'), kicker: [t('Hotel'), city].filter(Boolean).join(' · '), title: name, sub: when ? esc(dateRange(when, leg && leg.to && leg.to > when ? leg.to : when)) : '' })}
-    <div class="ds-b">${dsFacts([dsFact(t('Check-in'), [dsDay(when), ev && ev.time ? fmtTime(ev.time) : ''].filter(Boolean).join(' · ')), leg && leg.to && leg.to > when ? dsFact(t('Check-out'), dsDay(leg.to)) : ''])}
-    ${ev && ev.note ? `<p class="ds-note">${esc(ev.note)}</p>` : ''}${PERF}
+    <div class="ds-b">${dsFacts([dsFact(t('Check-in'), [dsDay(when), ev && ev.time ? fmtTime(ev.time) : ''].filter(Boolean).join(' · ')), leg && leg.to && leg.to > when ? dsFact(t('Check-out'), dsDay(leg.to)) : '', ...hfFacts(hf)])}${PERF}
     ${dsWhereHTML(name, g ? g.addr || '' : '', g, g ? g.ref || '' : '', 'hotels', { q: [name, city || (cfg.venue && cfg.venue.city) || ''].filter(Boolean).join(', '), key: name })}
+    ${dsNotesHTML(hf.note)}
     ${cfg.tools.mytrip ? `<section class="ds-sec ds-cta"><p class="muted small">${t('Staying here? Add your booking to keep your room type and confirmation with the trip.')}</p><button type="button" class="btn sm" data-ds-addbk>+ ${t('Add a booking')}</button></section>` : ''}</div>`;
 }
 // one item on the organizer's schedule
@@ -6077,13 +6257,15 @@ async function suAIGo() {
   }
 }
 // "Read with AI" in the guest booking form: every reservation in a pasted confirmation becomes a booking
-// the details a confirmation states (ai-import v16 fields) → x.det, only what's there
+// the details a confirmation states (ai-import v16 fields, v18 cancellation time + non-refundable) → x.det, only what's there
 function aiDet(x) {
   const c = (v, n = 120) => cleanText(v == null ? '' : String(v), n); const d = {};
   const put = (k, v) => { if (bkFilled(v)) d[k] = v; };
-  put('room', c(x.room_type)); put('beds', c(x.beds)); put('guests', /^\d{1,2}$/.test(c(x.guests)) ? c(x.guests) : '');
+  { const [rm, bd] = roomBedSplit(c(x.room_type)); put('room', rm); put('beds', c(x.beds) || bd); } // a bed left in the room name moves to Bed
+  put('guests', /^\d{1,2}$/.test(c(x.guests)) ? c(x.guests) : '');
   put('amen', (Array.isArray(x.amenities) ? x.amenities : []).map(a => String(a).toLowerCase()).filter(a => AMENITIES.some(y => y[0] === a)).slice(0, 12));
-  put('cancelBy', /^\d{4}-\d{2}-\d{2}$/.test(c(x.cancel_by)) ? c(x.cancel_by) : ''); put('price', c(x.price, 40));
+  const nr = x.non_refundable === true || String(x.non_refundable) === 'true'; // ai-import v18: non-refundable; cancel_by may carry a time
+  put('cancelBy', nr ? '' : hfCancelOk(c(x.cancel_by))); put('nonRef', nr ? 1 : ''); put('price', c(x.price, 40));
   put('seat', c(x.seat, 20)); put('cabin', CABINS.some(y => y[0] === x.cabin) ? x.cabin : ''); put('bags', c(x.baggage)); put('carClass', c(x.car_class, 60));
   put('meet', c(x.meeting_point, 200)); put('duration', c(x.duration, 40)); put('incl', c(x.included, 200)); put('party', /^\d{1,2}$/.test(c(x.party_size)) ? c(x.party_size) : '');
   return Object.keys(d).length ? { det: d } : {};
@@ -6095,7 +6277,7 @@ function aiItemsToBookings(items) {
     const okDT = (s) => /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(s) ? s : '';
     return { kind: AI_KIND[x.type] || 'other', name: cleanText(x.name || x.provider, 120), start: okDT(st), end: okDT(en), address: cleanText(x.address, 200), confNo: cleanText(x.confirmation, 60),
       ...(() => { const bt = cleanText(x.booked_through || '', 60); const k = viaGuess(bt) || viaGuess(x.link) || (bt && /direct/i.test(bt) ? 'direct' : ''); return k ? { via: k } : bt ? { via: 'other', viaOther: bt } : {}; })(),
-      ...aiDet(x), link: httpsUrl(x.link), flight: cleanText(x.flight_number, 12), to: AI_KIND[x.type] === 'flight' ? cleanText(x.to, 60) : '', ...(AI_KIND[x.type] === 'flight' && x.from ? { from: cleanText(x.from, 60) } : {}), note: cleanText([x.from && x.to ? `${x.from} → ${x.to}` : '', x.note].filter(Boolean).join(' · '), 300) };
+      ...aiDet(x), link: httpsUrl(x.link), flight: cleanText(x.flight_number, 12), to: AI_KIND[x.type] === 'flight' ? cleanText(x.to, 60) : '', ...(AI_KIND[x.type] === 'flight' && x.from ? { from: cleanText(x.from, 60) } : {}), note: cleanText([x.from && x.to && AI_KIND[x.type] !== 'flight' ? `${x.from} → ${x.to}` : '', x.note].filter(Boolean).join(' · '), 300) }; // a flight keeps from / to in their own fields
   }).map(flightArriveFix).filter(x => x.name || x.start);
 }
 
@@ -6291,10 +6473,12 @@ function normPresets(xs) {
   const num = (v) => typeof v === 'number' && isFinite(v); const seen = new Set();
   return xs.filter(x => x && typeof x === 'object').slice(0, 8).map((x, i) => {
     let id = typeof x.id === 'string' && /^[\w-]{1,24}$/.test(x.id) ? x.id : 'p' + i + Math.random().toString(36).slice(2, 6); if (seen.has(id)) id += i; seen.add(id);
-    const h = x.h && typeof x.h === 'object' && String(x.h.name || '').trim() ? { name: String(x.h.name).trim().slice(0, 120), ...(x.h.address ? { address: String(x.h.address).slice(0, 200) } : {}), ...(num(x.h.lat) && num(x.h.lon) ? { lat: x.h.lat, lon: x.h.lon } : {}) } : null;
+    const h = x.h && typeof x.h === 'object' && String(x.h.name || '').trim() ? { name: String(x.h.name).trim().slice(0, 120), ...(x.h.address ? { address: String(x.h.address).slice(0, 200) } : {}), ...(num(x.h.lat) && num(x.h.lon) ? { lat: x.h.lat, lon: x.h.lon } : {}), ...hfPlain(hfOfEv(x.h)) } : null;
     return { id, a: isoDay(x.a), l: isoDay(x.l), ...(h ? { h } : {}) };
   });
 }
+// a hotel's fields as plain keys (only the filled ones): { room, cancelBy, nonRef, note }
+const hfPlain = (h) => hfToObj({}, { room: String(h.room || '').slice(0, 80), beds: String(h.beds || '').slice(0, 60), cancelBy: hfCancelOk(h.cancelBy), nonRef: !!h.nonRef, note: String(h.note || '').slice(0, 1000) });
 const presetsOf = (cfg) => normPresets(cfg.presets).filter(p => p.a && p.l && p.l >= p.a);
 // on unless the organizer turned it off; a personal trip (no stay options) starts without it
 const mineDefault = (cfg) => !isTrip(cfg) || presetsOf(cfg).length > 0;
@@ -6316,8 +6500,8 @@ function mineKnow(cfg) {
 }
 // the hotels a guest can pick with one tap: the organizer's options, the room block, the one they have
 function mineHotels(cfg) {
-  const out = []; const add = (h) => { if (h && String(h.name || '').trim() && !out.some(x => nameLike(x.name, h.name))) out.push({ name: h.name.trim(), address: h.address || '', ...(h.lat != null ? { lat: h.lat, lon: h.lon } : {}) }); };
-  presetsOf(cfg).forEach(p => add(p.h)); const d = typeData(cfg); if (d.blockHotel) add({ name: d.blockHotel }); add(mineHotel(cfg));
+  const out = []; const add = (h, hf) => { if (h && String(h.name || '').trim() && !out.some(x => nameLike(x.name, h.name))) out.push({ name: h.name.trim(), address: h.address || '', ...(h.lat != null ? { lat: h.lat, lon: h.lon } : {}), ...hfPlain(hf || hfOfEv(h)) }); };
+  presetsOf(cfg).forEach(p => add(p.h)); const d = typeData(cfg); if (d.blockHotel) add({ name: d.blockHotel }, hfOfBlock(d)); const mh = mineHotel(cfg); add(mh, mh && hfOfBk(mh));
   return out.slice(0, 6);
 }
 function mineSave(cfg, m, hotel) { // hotel: undefined keeps it (its dates follow), null drops the one picked here
@@ -6326,6 +6510,8 @@ function mineSave(cfg, m, hotel) { // hotel: undefined keeps it (its dates follo
   if (!m || hotel !== undefined) {
     xs = xs.filter(x => !x.grp);
     if (m && hotel && String(hotel.name || '').trim()) { const h = { id: old && nameLike(old.name, hotel.name) ? old.id : 'bk' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), kind: 'hotel', name: hotel.name.trim().slice(0, 120), address: hotel.address || '', ...(hotel.lat != null ? { lat: hotel.lat, lon: hotel.lon } : {}), start: m.a, end: m.l, grp: 1 };
+      if (old && old.id === h.id) { if (old.det) h.det = { ...old.det }; ['confNo', 'via', 'viaOther', 'link', 'photos'].forEach(k => { if (old[k] != null) h[k] = old[k]; }); } // the same hotel keeps what was added to it
+      { const hf = hfOfEv(hotel); if (hfAny(hf) || old) hfToBk(h, hf); if (!h.note) delete h.note; } // room, cancellation, notes
       xs = xs.filter(x => { const k = x.guess && LODGE.has(x.kind) ? bkMatch(cfg, x, h) : ''; if (k === 'same' && h.lat == null && x.lat != null) { h.lat = x.lat; h.lon = x.lon; if (x.ref) h.ref = x.ref; } return !k; }); xs.push(h); }
   } else if (old) { old.start = m.a; old.end = m.l; }
   itinSave(cfg, xs);
@@ -6344,6 +6530,7 @@ function mineBarHTML(cfg, dr, fresh) { // fresh: as a new guest sees it (the bui
     <div class="two"><div class="field"><label for="mi-a">${t('Arrive')}</label><input id="mi-a" type="date" data-mine-a value="${esc(dr.a)}"></div><div class="field"><label for="mi-l">${t('Leave')}</label><input id="mi-l" type="date" data-mine-l value="${esc(dr.l)}" min="${esc(dr.a || '')}"></div></div>
     <div class="field"><label for="mi-hq">${t('Hotel')}</label>${hs.length ? `<div class="chips mi-hs">${hs.map((x, i) => `<button type="button" class="chip${hotelOn(x) ? ' on' : ''}" data-mine-h="${i}" aria-pressed="${hotelOn(x)}">${esc(x.name)}</button>`).join('')}</div>` : ''}
       <input id="mi-hq" data-mine-hq value="${esc(dr.h && !hs.some(hotelOn) ? dr.h.name : '')}" placeholder="${esc(t('Other hotel'))}" autocomplete="off" maxlength="120"></div>
+    ${dr.h ? hfFoldHTML(hfOfEv(dr.h), 'mi-hf', { note: true, attr: 'data-mine-hf' }) : ''}
     <div class="btns mi-btns"><button type="button" class="btn primary" data-mine-save>${t('Save')}</button>${cfg.tools.mytrip ? `<button type="button" class="btn" data-mine-up>${HOTEL_IC}${t('Upload confirmation')}</button>` : ''}${m ? `<button type="button" class="btn ghost" data-mine-clear>${t('Clear')}</button>` : ''}</div></section>`;
 }
 function wireMine(cfg, art, opts) {
@@ -6358,7 +6545,7 @@ function wireMine(cfg, art, opts) {
   const after = () => { if (art._bkChanged) art._bkChanged(); else if (art._renderSchedule) art._renderSchedule(); refreshDetails(); if (art._refreshTrip) art._refreshTrip(); };
   const fromPreset = (p) => ({ a: p.a, l: p.l, p: p.id, h: p.h ? { ...p.h } : (dr && dr.h) || null });
   const open = () => { const m = mineGet(cfg); const h = mineHotel(cfg); const tr = tripDates(cfg);
-    dr = { a: m ? m.a : tr.arrive, l: m ? m.l : tr.leave, p: m ? m.p || '' : '', h: h ? { name: h.name, address: h.address || '', ...(h.lat != null ? { lat: h.lat, lon: h.lon } : {}) } : null }; paint(); };
+    dr = { a: m ? m.a : tr.arrive, l: m ? m.l : tr.leave, p: m ? m.p || '' : '', h: h ? { name: h.name, address: h.address || '', ...(h.lat != null ? { lat: h.lat, lon: h.lon } : {}), ...hfPlain(hfOfBk(h)) } : null }; paint(); };
   const save = (x) => { const a = isoDay(x.a), l = isoDay(x.l); if (!a || !l) { toast(t('Add both dates')); return; }
     const m = { a: a <= l ? a : l, l: a <= l ? l : a, p: x.p || '' }; const had = mineHotel(cfg);
     mineSave(cfg, m, x.h ? x.h : had && had.grp ? null : undefined); dr = null; paint(); after(); };
@@ -6369,7 +6556,7 @@ function wireMine(cfg, art, opts) {
     else if ('mineEdit' in d) open();
     else if ('mineX' in d) { dr = null; paint(); }
     else if (d.mineH != null && dr) { const x = mineHotels(cfg)[+d.mineH]; if (!x) return; dr.h = dr.h && nameLike(dr.h.name, x.name) ? null : { ...x }; dr.p = ''; paint(); }
-    else if ('mineSave' in d && dr) { const q = slot.querySelector('[data-mine-hq]'); const typed = q ? q.value.trim() : ''; if (typed && !(dr.h && dr.h.name === typed)) dr.h = { name: typed }; save(dr); }
+    else if ('mineSave' in d && dr) { const q = slot.querySelector('[data-mine-hq]'); const typed = q ? q.value.trim() : ''; if (typed && !(dr.h && dr.h.name === typed)) dr.h = { name: typed, ...(dr.h ? hfPlain(hfOfEv(dr.h)) : {}) }; save(dr); }
     else if ('mineClear' in d) { dr = null; mineSave(cfg, null); paint(); after(); }
     else if ('mineUp' in d && dr) { // their confirmation: the dates now; the hotel (and its nights) once it is read
       const a = isoDay(dr.a), l = isoDay(dr.l); if (a && l) mineSave(cfg, { a: a <= l ? a : l, l: a <= l ? l : a, p: '' });
@@ -6377,9 +6564,10 @@ function wireMine(cfg, art, opts) {
       if (art._itinAdd) { showTab(art, 'mytrip', opts); art._itinAdd(); const f = art.querySelector('#sec-itinerary [data-slot="itin-form"]'); if (f) f.scrollIntoView({ block: 'start' }); } }
   });
   slot.addEventListener('input', (e) => { const i = e.target; if (!dr) return;
+    if (i.dataset.hk) { const box = i.closest('[data-hfbox]'); if (box && dr.h) hfToObj(dr.h, hfRead(box)); return; } // the hotel's room, cancellation, notes
     if (i.matches('[data-mine-a]')) { dr.a = i.value; dr.p = ''; const l = slot.querySelector('[data-mine-l]'); if (l) { l.min = i.value; if (l.value && i.value && l.value < i.value) { l.value = i.value; dr.l = i.value; } } }
     else if (i.matches('[data-mine-l]')) { dr.l = i.value; dr.p = ''; }
-    else if (i.matches('[data-mine-hq]')) { if (i.value.trim()) { unpick(); dr.h = { name: i.value.trim() }; } dr.p = ''; }
+    else if (i.matches('[data-mine-hq]')) { if (i.value.trim()) { unpick(); dr.h = { name: i.value.trim(), ...(dr.h ? hfPlain(hfOfEv(dr.h)) : {}) }; } dr.p = ''; }
     $$('[data-mine-pick]', slot).forEach(b => { b.classList.toggle('on', b.dataset.minePick === dr.p); b.setAttribute('aria-pressed', String(b.dataset.minePick === dr.p)); });
   });
   // a hotel confirmation added after "Upload confirmation" becomes their hotel, and its nights their stay
@@ -6400,7 +6588,7 @@ COMMON_CARDS.splice(COMMON_CARDS.findIndex(x => x[0] === 'schedule') + 1, 0, ['s
 CARD_ICONS.stays = '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M9 15l2 2 4-4"/>';
 function presetHotelChoices(c) {
   const out = []; const add = (h) => { if (h && String(h.name || '').trim() && !out.some(x => nameLike(x.name, h.name))) out.push({ ...h, name: h.name.trim() }); };
-  const d = typeData(c); if (d.blockHotel) add({ name: d.blockHotel }); (c.presets || []).forEach(p => add(p.h));
+  const d = typeData(c); if (d.blockHotel) add({ name: d.blockHotel, ...hfPlain(hfOfBlock(d)) }); (c.presets || []).forEach(p => add(p.h));
   return out.slice(0, 6);
 }
 function presetsCardHTML(c) {
@@ -6409,6 +6597,7 @@ function presetsCardHTML(c) {
     <div class="two"><div class="field"><label for="pr-a-${i}">Arrive</label><input id="pr-a-${i}" type="date" data-pr="${i}" data-k="a" value="${esc(p.a || '')}"></div><div class="field"><label for="pr-l-${i}">Leave</label><input id="pr-l-${i}" type="date" data-pr="${i}" data-k="l" value="${esc(p.l || '')}" min="${esc(p.a || '')}"></div></div>
     ${hs.length ? `<div class="chips pr-hs">${hs.map((x, j) => `<button type="button" class="chip${p.h && nameLike(p.h.name, x.name) ? ' on' : ''}" data-pr-hotel="${i}" data-h="${j}">${esc(x.name)}</button>`).join('')}</div>` : ''}
     <input data-pr="${i}" data-k="h" value="${esc(p.h ? p.h.name : '')}" placeholder="Hotel (optional)" aria-label="Hotel" maxlength="120" autocomplete="off">
+    ${p.h ? hfFoldHTML(hfOfEv(p.h), 'hf-pr' + i, { en: true, note: true, attr: `data-hf-pr="${i}"` }) : ''}
     <button type="button" class="ic del" data-pr-del="${i}" aria-label="Remove">Remove</button></div>`).join('')}
     <button type="button" class="btn sm" data-b="add-preset">+ Add option</button>`;
 }
@@ -6420,10 +6609,10 @@ function presetAdd(c) {
 function presetInput(c, i, k, v) {
   const p = (c.presets || [])[i]; if (!p) return;
   if (k === 'a' || k === 'l') p[k] = isoDay(v);
-  else if (k === 'h') { const n = String(v || '').trim().slice(0, 120); if (n) p.h = { name: n }; else delete p.h; }
+  else if (k === 'h') { const n = String(v || '').trim().slice(0, 120); if (n) p.h = { name: n, ...(p.h ? hfPlain(hfOfEv(p.h)) : {}) }; else delete p.h; }
 }
 function wirePresetAC() {
-  $$('#sheet [data-pr][data-k="h"]').forEach(inp => placeAutocomplete(inp, { bias: () => B.cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(r => { const p = (B.cfg.presets || [])[+inp.dataset.pr]; if (!p) return; p.h = { name: r.name, ...(r.address ? { address: r.address } : {}), ...(r.lat != null ? { lat: r.lat, lon: r.lon } : {}) }; changed(true); }).catch(() => toast('Couldn’t load that place')) }));
+  $$('#sheet [data-pr][data-k="h"]').forEach(inp => placeAutocomplete(inp, { bias: () => B.cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(r => { const p = (B.cfg.presets || [])[+inp.dataset.pr]; if (!p) return; p.h = { name: r.name, ...(r.address ? { address: r.address } : {}), ...(r.lat != null ? { lat: r.lat, lon: r.lon } : {}), ...(p.h ? hfPlain(hfOfEv(p.h)) : {}) }; changed(true); }).catch(() => toast('Couldn’t load that place')) }));
 }
 
 // ================= personal itinerary ↔ account (trip_items; quiet no-op until schema-2 is installed) =================
@@ -7052,10 +7241,17 @@ function wirePageDrop() {
   document.addEventListener('dragleave', (e) => { if (!e.relatedTarget || e.relatedTarget === document.documentElement) document.body.classList.remove('doc-dragging'); });
   document.addEventListener('drop', (e) => {
     document.body.classList.remove('doc-dragging'); if (!dragFiles(e) || !live() || other(e)) return; e.preventDefault();
-    const f = e.dataTransfer.files[0]; if (!f) return; const sh = $('#sheet');
-    const go = () => { docDropped('main', f); const el = document.querySelector('[data-doc-key="main"]'); if (el) el.scrollIntoView({ block: 'center' }); };
-    if (sh && sh.open) { sh.addEventListener('close', () => setTimeout(go, 0), { once: true }); sh.close(); } else go();
+    const f = e.dataTransfer.files[0]; if (!f) return; pageFile(f);
   });
+  // a screenshot pasted (Cmd/Ctrl+V) goes where a dropped one would
+  document.addEventListener('paste', (e) => { if (!live()) return; const f = [...((e.clipboardData && e.clipboardData.files) || [])].find(x => /^image\//.test(x.type || '') || x.type === 'application/pdf'); if (!f) return; e.preventDefault(); pageFile(f); });
+}
+// an open card sheet with its own Upload a document takes the file (e.g. Itinerary → its hotels); else the main block
+function pageFile(f) {
+  const sh = $('#sheet'); const own = sh && sh.open ? sh.querySelector('[data-doc-key]') : null;
+  if (own) { docDropped(own.dataset.docKey, f); const el = sh.querySelector('[data-doc-key]'); if (el) el.scrollIntoView({ block: 'center' }); return; }
+  const go = () => { docDropped('main', f); const el = document.querySelector('[data-doc-key="main"]'); if (el) el.scrollIntoView({ block: 'center' }); };
+  if (sh && sh.open) { sh.addEventListener('close', () => setTimeout(go, 0), { once: true }); sh.close(); } else go();
 }
 function docPaint(key) { const el = document.querySelector(`[data-doc-key="${CSS.escape(key)}"]`); if (el) el.outerHTML = docBlockHTML(key); }
 const docSignIn = (key) => { DU = { key, phase: 'signin' }; docPaint(key); };
@@ -7317,7 +7513,7 @@ function tripPlanHTML(c, opt = null) {
     const same = c.schedule.map((x, i) => [x, i]).filter(([x]) => x.date === d).map(([, i]) => i); const items = c.schedule.map((x, i) => [x, i]).filter(([x, i]) => it ? i === opt.item : x.date === d);
     return `<div class="plan-day">${it ? fieldWrap('Day', `<input id="tp-date" type="date" data-s="${opt.item}" data-k="date" value="${esc(it.date || '')}">`, 'tp-date') : opt && opt.day ? '' : `<h3>${d >= c.start.slice(0, 10) ? `<span class="dayn">Day ${daysBetween(c.start, d) + 1}</span> ` : ''}${esc(friendlyDate(d))}</h3>`}
       ${items.map(([x, i], k) => `<div class="rowed plan-item"><div class="plan-top"><select data-s="${i}" data-k="kind" aria-label="Kind">${Object.entries(PLAN_KINDS).map(([v, l]) => `<option value="${v}" ${(x.kind || 'activity') === v ? 'selected' : ''}>${l}</option>`).join('')}</select><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time (optional)"><span class="mv"><button type="button" data-tp-mv="${i}" data-dir="-1" ${same.indexOf(i) <= 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-tp-mv="${i}" data-dir="1" ${same.indexOf(i) === same.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button></span></div>
-        <input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="${(x.kind || 'activity') === 'reservation' ? 'Dinner at…, tour, tickets' : (x.kind === 'note' ? 'Something to remember' : 'What you’re doing')}" aria-label="Title">${(x.kind || 'activity') === 'note' ? '' : schedPlaceHTML(x, i)}<input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Confirmation or a note" aria-label="Note">${hotelCiLine(x) ? `<button type="button" class="ic del bk-rm" data-sdel="${i}" data-sdel-hotel aria-label="Remove hotel ${esc(hostHotelName(x.title))}">${TRASH_IC}Remove hotel</button>` : `<button type="button" class="ic del" data-sdel="${i}" aria-label="Remove">Remove</button>`}</div>`).join('')}
+        <input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="${(x.kind || 'activity') === 'reservation' ? 'Dinner at…, tour, tickets' : (x.kind === 'note' ? 'Something to remember' : 'What you’re doing')}" aria-label="Title">${(x.kind || 'activity') === 'note' ? '' : schedPlaceHTML(x, i)}${hotelCiLine(x) ? schedHotelHF(x, i) : `<input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Confirmation or a note" aria-label="Note">`}${hotelCiLine(x) ? `<button type="button" class="ic del bk-rm" data-sdel="${i}" data-sdel-hotel aria-label="Remove hotel ${esc(hostHotelName(x.title))}">${TRASH_IC}Remove hotel</button>` : `<button type="button" class="ic del" data-sdel="${i}" aria-label="Remove">Remove</button>`}</div>`).join('')}
       ${it ? '' : `<button type="button" class="btn sm" data-tp-add="${d}">+ Add to this day</button>`}</div>`;
   }).join('')}${opt ? '' : `<div class="btns">${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`}`;
 }
@@ -7332,6 +7528,8 @@ function tripClick(b, cfg) {
   return false;
 }
 
+// builder: a hotel's check-in row — room category + free cancellation (a fold) and multi-line notes
+const schedHotelHF = (x, i) => `${hfFoldHTML(hfOfEv(x), 'hf-s' + i, { en: true, attr: `data-hf-s="${i}"` })}<textarea data-s="${i}" data-k="note" rows="2" maxlength="1000" placeholder="Notes: confirmation, late check-in, requests" aria-label="Notes">${esc(x.note || '')}</textarea>`;
 // builder: a schedule item's own place — the chosen place (name + address, Change / Remove), or an optional Places search
 function schedPlaceHTML(x, i) {
   const p = x.place;
@@ -7719,5 +7917,5 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

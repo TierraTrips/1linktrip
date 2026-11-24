@@ -72,9 +72,10 @@ const card = (page, re) => page.evaluateHandle((s) => [...document.querySelector
       await open(page);
       // AI import fills the details; the review card says what it read
       await page.click('#sec-itinerary [data-itin-add]');
-      await page.evaluate((xs) => document.querySelector('.ev')._itinReview(window.__ep.aiItemsToBookings(xs)), AI_ITEMS); await page.waitForTimeout(150);
-      const rv = await page.$$eval('.rv-card .rv-det', ps => ps.map(p => p.textContent));
-      ok(rv.length === 3 && /Room type: Superior Double Room/.test(rv[0]) && /Breakfast/.test(rv[0]) && /Seat: 34C/.test(rv[1]) && /Meeting point: Shinjuku Station/.test(rv[2]), `@${w} review cards show the details read ${JSON.stringify(rv)}`);
+      await page.evaluate((xs) => document.querySelector('.ev')._itinReview(window.__ep.aiItemsToBookings(xs), true), AI_ITEMS); await page.waitForTimeout(150);
+      // every detail is an input on its card (Dylan 11/24: boxes for each field, prefilled and highlighted)
+      const rv = await page.$$eval('.rv-card', cs => cs.map(c => { const o = {}; c.querySelectorAll('[data-it],[data-det],[data-hk]').forEach(el => { o[el.dataset.it || el.dataset.det || el.dataset.hk] = el.value; }); o.amen = [...c.querySelectorAll('[data-det-amen].on')].map(b => b.dataset.detAmen).join(); o.got = c.querySelectorAll('.got').length; return o; }));
+      ok(rv.length === 3 && rv[0].room === 'Superior Double Room, Non-Smoking' && rv[0].beds === '1 queen' && rv[0].guests === '2' && rv[0].cxd === '2027-03-29' && /breakfast/.test(rv[0].amen) && rv[1].seat === '34C' && /Shinjuku Station/.test(rv[2].meet) && rv.every(c => c.got > 2), `@${w} review cards show the details read ${JSON.stringify(rv)}`);
       ok(await page.$eval('#rv2-kind', s => s.value) === 'tour', `@${w} a tour is a Tour or activity`);
       await page.click('[data-rv-save]'); await page.waitForTimeout(300);
       let xs = await itin(page); const h = xs.find(x => x.kind === 'hotel');
@@ -84,12 +85,12 @@ const card = (page, re) => page.evaluateHandle((s) => [...document.querySelector
       const hc = await card(page, 'Gracery'); ok(!!(await hc.$('[data-ds^="bk:"]')) && !(await hc.$('details.det')), `@${w} details behind a tap on the card`);
       await (await hc.$('[data-ds^="bk:"]')).click(); await page.waitForSelector('dialog.ds-sheet[open]');
       const facts = await page.$$eval('dialog.ds-sheet .ds-f', fs => fs.map(f => f.querySelector('dt').textContent + ': ' + f.querySelector('dd').textContent)); const tags = await page.$$eval('dialog.ds-sheet .ds-tags .tag', ls => ls.map(l => l.textContent));
-      ok(facts.some(l => /^Check-in: .*3:00 PM$/.test(l)) && facts.some(l => /^Check-out: .*11:00 AM$/.test(l)) && facts.includes('Room type: Superior Double Room, Non-Smoking') && facts.includes('Free cancellation until: Mar 29') && tags.join() === 'Breakfast,Wi-Fi', `@${w} tap → details ${JSON.stringify(facts)} ${tags}`);
+      ok(facts.some(l => /^Check-in: .*3:00 PM$/.test(l)) && facts.some(l => /^Check-out: .*11:00 AM$/.test(l)) && facts.includes('Room: Superior Double Room, Non-Smoking') && facts.includes('Free cancellation until: Mon, Mar 29') && tags.join() === 'Breakfast,Wi-Fi', `@${w} tap → details ${JSON.stringify(facts)} ${tags}`);
       await page.click('dialog.ds-sheet [data-ds-close]'); await page.waitForTimeout(150);
       // edit: more details in the form
-      const i = await hc.$eval('[data-itin-edit]', b => b.dataset.itinEdit); await page.click(`[data-itin-edit="${i}"]`); await page.waitForSelector('.itin-form .more-f[open]');
-      await page.fill('[data-det="beds"]', '1 king'); await page.click('[data-det-amen="pool"]'); await page.click('[data-itin-save]'); await page.waitForTimeout(300);
-      xs = await itin(page); ok(xs.find(x => x.kind === 'hotel').det.beds === '1 king' && xs.find(x => x.kind === 'hotel').det.amen.includes('pool'), `@${w} edit form saves beds + amenity chip`);
+      const i = await hc.$eval('[data-itin-edit]', b => b.dataset.itinEdit); await page.click(`[data-itin-edit="${i}"]`); await page.waitForSelector('.itin-form [data-hk="beds"]');
+      await page.click('.itin-form [data-hf-bed="King"]'); await page.click('[data-det-amen="pool"]'); await page.click('[data-itin-save]'); await page.waitForTimeout(300);
+      xs = await itin(page); ok(xs.find(x => x.kind === 'hotel').det.beds === 'King' && xs.find(x => x.kind === 'hotel').det.amen.includes('pool'), `@${w} edit form saves the bed chip + amenity chip`);
       // photos signed out: small copies on this device, 3 per item; remove ×
       const ref = 'bk:' + xs.find(x => x.kind === 'tour').id;
       await page.click(`#sec-itinerary [data-ds="${ref}"]`); await page.waitForSelector('dialog.ds-sheet[open]');

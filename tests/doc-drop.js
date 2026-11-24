@@ -58,11 +58,14 @@ const drag = (page, sel, steps = ['dragenter', 'dragover', 'drop'], name = 'Japa
     await page.click('#sheet [data-doc-key="route"] [data-doc-go="attach"]'); await page.waitForSelector('#sheet [data-doc-key="route"] .bk-signin');
     ok(true, 'then Attach goes through the normal flow (signed out → inline sign-in)');
 
-    // anywhere else while a sheet is open → the sheet closes, the main flow takes the file
+    // anywhere else on an open sheet → that sheet's own upload block takes it (Dylan 11/24: drop anywhere on the open sheet)
     await drag(page, '#sheet h2', ['dragenter', 'dragover']);
     ok(await page.evaluate(() => document.body.classList.contains('doc-dragging')), 'page-wide dragover shows the drop overlay');
-    await drag(page, '#sheet h2', ['drop'], 'Hotel list.pdf'); await page.waitForSelector('#doc-into');
-    ok(!(await page.$('#sheet[open]')) && /Hotel list\.pdf/.test(await page.textContent('[data-doc-key="main"] .doc-name')) && !(await page.evaluate(() => document.body.classList.contains('doc-dragging'))), 'drop on the open sheet → sheet closes, main "Put it in" with the file');
+    await drag(page, '#sheet h2', ['drop'], 'Hotel list.pdf'); await page.waitForFunction(() => /Hotel list\.pdf/.test((document.querySelector('#sheet [data-doc-key="route"] .doc-name') || {}).textContent || ''));
+    ok(!!(await page.$('#sheet[open]')) && !(await page.evaluate(() => document.body.classList.contains('doc-dragging'))), 'drop on the open sheet → its own block takes the file, sheet stays open');
+    await page.evaluate(() => document.querySelector('#sheet').close()); await page.waitForTimeout(100);
+    await drag(page, '.b-form', ['drop'], 'Hotel list.pdf'); await page.waitForSelector('#doc-into');
+    ok(/Hotel list\.pdf/.test(await page.textContent('[data-doc-key="main"] .doc-name')), 'no sheet open → main "Put it in" with the file');
     await page.click('[data-doc-key="main"] [data-doc-cancel]');
     // anywhere on the builder page
     await drag(page, '.b-form', ['dragenter', 'dragover', 'drop'], 'Visa notes.pdf'); await page.waitForSelector('#doc-into');

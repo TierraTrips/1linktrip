@@ -36,7 +36,7 @@ const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m
   ok(await page.isVisible('.bk-signin') && /Sign in to read it automatically/.test(await page.textContent('.bk-signin')), 'signed out + Read with AI → inline sign-in prompt');
   if (SHOTS) await page.locator('#sec-itinerary').screenshot({ path: `${SHOTS}/paste-signin.png` });
   await page.click('[data-itin-read]'); await page.waitForTimeout(200);
-  const rv = await page.evaluate(() => [...document.querySelectorAll('[data-sheet="review"] [data-rv="0"]')].reduce((o, el) => (o[el.dataset.rk] = el.value, o), {}));
+  const rv = await page.evaluate(() => [...document.querySelectorAll('[data-sheet="review"] [data-rv-card="0"] [data-it]')].reduce((o, el) => (o[el.dataset.it] = el.value, o), {}));
   ok(rv.kind === 'flight' && /DL ?1873/.test(rv.flight) && /^2027-03-11/.test(rv.start), `quick reader → review card ${JSON.stringify(rv)}`);
   await page.fill('#rv0-to', 'CUN'); await page.click('[data-rv-save]'); await page.waitForTimeout(300);
   let saved = await page.$$eval('#sec-itinerary .bookings li', ls => ls.map(l => l.textContent));

@@ -60,7 +60,7 @@ const sheet = (page) => page.evaluate(() => { const d = document.querySelector('
       // ---- tap the organizer's hotel → the guest's booking for it ----
       await page.click('#sec-schedule [data-ds="ev:0"]'); await page.waitForSelector('dialog.ds-sheet[open]');
       let s = await sheet(page);
-      ok(s && s.title === 'Hotel Gracery Shinjuku' && /Room type\s*Superior Double Room/.test(s.text) && /Confirmation\s*GR123/.test(s.text) && /Check-in\s*Thu, Apr 1 · 3:00 PM/.test(s.text) && /Check-out\s*Mon, Apr 5 · 11:00 AM/.test(s.text) && /Nights\s*4/.test(s.text) && /Booked through\s*Booking\.com/.test(s.text) && /Kabukicho/.test(s.text) && /Breakfast/.test(s.text),
+      ok(s && s.title === 'Hotel Gracery Shinjuku' && /Room\s*Superior Double Room/.test(s.text) && /Confirmation\s*GR123/.test(s.text) && /Check-in\s*Thu, Apr 1 · 3:00 PM/.test(s.text) && /Check-out\s*Mon, Apr 5 · 11:00 AM/.test(s.text) && /Nights\s*4/.test(s.text) && /Booked through\s*Booking\.com/.test(s.text) && /Kabukicho/.test(s.text) && /Breakfast/.test(s.text),
         `@${w} hotel sheet: room type, confirmation, check-in/out, nights, address, amenities ${s && s.text.slice(0, 160)}`);
       ok(s.links.some(u => /^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=Hotel%20Gracery/.test(u)) && s.links.some(u => u.startsWith('https://www.google.com/maps/dir/')) && !s.links.some(u => /maps\.apple|apple\.com\/maps/.test(u)), `@${w} Open in Google Maps + Directions (google.com/maps)`);
       ok(await page.$eval('dialog.ds-sheet [data-ds-map]', m => !!m.dataset.lat && !m.classList.contains('empty')), `@${w} small map at the hotel's point`);
