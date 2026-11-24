@@ -2397,6 +2397,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   preview();
   if (window.__openCard) { const id = window.__openCard; window.__openCard = null; openCard(id); }
   if (acctOn()) acctPushNow(); // signed in: the page is on the account from the start (not shared until Share)
+  wireVendors(); vnSync();
 }
 async function publishTranslated() {
   const c = B.cfg; const langs = (c.langs || []).filter(l => l !== srcLang(c));
@@ -2509,6 +2510,7 @@ function buildForm() {
   <details class="acc" data-acc="sections" ${open.has('sections') ? 'open' : ''}><summary><span class="st ok" aria-hidden="true"></span><b>Sections</b><small>${esc(sectionsSum(c))}</small></summary><div class="acc-b">
     ${sectionsHTML(c)}
   </div></details>
+  ${vnAccHTML(c, open.has('vendors'))}
   ${docBlockHTML('main')}
   <h2 class="b-h">Add to your page</h2>
   ${cards.type.length ? `<p class="grp">${TYPE_GROUP[c.type]}</p><div class="cards">${cards.type.map(x => cardBtn(c, x)).join('')}</div>` : ''}
@@ -2538,7 +2540,7 @@ function openCard(id) { if (B.onp) { onpCleanup(); B.focus = null; B.onpSec = nu
 function renderSheet() {
   const c = B.cfg; const id = B.card; const form = $('#sheet .sheet-in'); if (!form || !id) return;
   const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id); const cc = allCards(c).common.find(x => x[0] === id) || COMMON_CARDS.find(x => x[0] === id);
-  const title = tc ? tc[1] : cc ? cc[1] : ''; let body = '';
+  const title = tc ? tc[1] : cc ? cc[1] : id === 'vendor' ? (vnCur() || {}).name || 'Vendor' : ''; let body = '';
   const op = B.onp ? onpSheet(c, id) : null; const F = B.onp && B.focus || null; const fi = F ? onpIdx(c) : -1;
   const only = (k, i) => !F || F.k !== k || i === fi; const one = (k) => !!F && F.k === k;
   if (op) body = op.body;
@@ -3074,6 +3076,7 @@ async function loadCardGroups() {
   paint();
 }
 function extraCardBody(id, c) {
+  if (id === 'vendor') return vnSheetHTML(c);
   if (id === 'msgs') return `<label class="tool"><input type="checkbox" data-gmsg ${c.guestMessages ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${t('Let guests message you')}</label>
     <h3 class="sub-h">${t('Groups')}</h3><div data-grp-slot>${B.hosted ? `<p class="muted small">${t('Loading…')}</p>` : `<p class="hint">${t('Get a short link first.')}</p>`}</div>`;
   if (id === 'rsvp') return rsvpCardHTML(c);
@@ -3613,7 +3616,7 @@ function acctPushNow() {
   if (!B) return Promise.resolve(); clearTimeout(B.pushT); B.pushT = null;
   const pid = B.pid, seq = B.seq || 0; LS.set('draft', B.cfg); pageSave(pid, { cfg: B.cfg });
   if (!acctOn()) { if (openPid() === pid) saveStatus('saved'); return Promise.resolve(); }
-  return acctSave(pid).then((h) => { if (openPid() === pid && (B.seq || 0) === seq && !B.pushT) { saveStatus(h ? 'saved' : 'local'); renderHostNote(); } })
+  return acctSave(pid).then((h) => { if (openPid() === pid) vnSync(); if (openPid() === pid && (B.seq || 0) === seq && !B.pushT) { saveStatus(h ? 'saved' : 'local'); renderHostNote(); } })
     .catch(() => { if (openPid() === pid && (B.seq || 0) === seq) saveStatus('local'); });
 }
 // leaving the builder or the app: don't wait out the 2 s
@@ -7600,6 +7603,7 @@ function sectionsHTML(c) {
   const row = (id, mv, i) => `<li class="${sectionShown(c, id) ? '' : 'off'}">${sw(`data-sec-on="${id}"`, sectionShown(c, id), lab[id])}${mv ? `<span class="mv"><button type="button" data-sec-mv="${id}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move ${esc(lab[id])} up">↑</button><button type="button" data-sec-mv="${id}" data-dir="1" ${i === order.length - 1 ? 'disabled' : ''} aria-label="Move ${esc(lab[id])} down">↓</button></span>` : ''}</li>`;
   return `<p class="grp">Event</p><ol class="order secs">${row('mine', false)}${order.map((id, i) => row(id, true, i)).join('')}</ol>
     <p class="grp">Tabs</p><div class="tools">${TOOLS.filter(([k]) => k !== 'weather').map(([k, l]) => sw(`data-tool="${k}"`, c.tools[k], l)).join('')}</div>
+    <p class="grp">Just for you</p><div class="tools">${sw('data-vn-on', vnOn(c), 'Vendors and payments')}</div>
     <div class="btns"><button type="button" class="btn sm ghost" data-b="type-defaults">Reset to ${esc(c.type)} defaults</button></div>`;
 }
 const sectionsSum = (c) => { const ids = ['mine', ...sectionOrder(c)]; const n = ids.filter(id => sectionShown(c, id)).length + TOOLS.filter(([k]) => k !== 'weather' && c.tools[k]).length; return `${n} of ${ids.length + TOOLS.length - 1} on`; };
@@ -7629,6 +7633,206 @@ function designInput(i, cfg) {
   if (i.dataset.hex != null) { const v = i.value.trim(); if (/^#[0-9a-f]{6}$/i.test(v)) { cfg.theme.accent = v; const cp = i.closest('.swatches')?.querySelector('[data-t="accent"]'); if (cp) cp.value = v; changed(); } return true; }
   return false;
 }
+// ================= Vendors and payments: the organizer's own tracking, never part of the page guests see =================
+// Not in the page config (anyone with the link can read that). Kept on this device per page (ep:priv:<pid>) and, signed
+// in with the page on the account, in public.event_private (supabase/schema-4.sql: only the page's owner can read or
+// write it). Tracking only: amounts and dates the organizer types in; no money moves here.
+const V_CATS = ['Venue', 'Catering', 'Photographer', 'Videographer', 'Florist', 'DJ/Band', 'Officiant', 'Hair & makeup', 'Planner', 'Cake', 'Rentals', 'Transport', 'Other'];
+const V_CURS = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'NZD', 'MXN', 'JPY', 'CHF', 'INR', 'BRL', 'ZAR', 'SGD', 'HKD', 'AED', 'THB'];
+const vnId = () => Math.random().toString(36).slice(2, 10);
+const vnStr = (v, n) => typeof v === 'string' ? v.slice(0, n) : '';
+const vnNum = (v) => { if (v == null || v === '') return null; const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isFinite(n) ? Math.round(Math.abs(n) * 100) / 100 : null; };
+const vnBlank = () => ({ id: vnId(), cat: '', name: '', contact: '', phone: '', email: '', web: '', addr: '', total: null, notes: '', sched: '', pays: [] });
+function vnNorm(p) {
+  p = p && typeof p === 'object' ? p : {};
+  const vendors = (Array.isArray(p.vendors) ? p.vendors : []).filter(v => v && typeof v === 'object').slice(0, 200).map(v => ({
+    id: vnStr(v.id, 20) || vnId(), cat: V_CATS.includes(v.cat) ? v.cat : v.cat ? 'Other' : '', name: vnStr(v.name, 120), contact: vnStr(v.contact, 120), phone: vnStr(v.phone, 40),
+    email: vnStr(v.email, 160), web: vnStr(v.web, 400), addr: vnStr(v.addr, 300), total: vnNum(v.total), notes: vnStr(v.notes, 3000), sched: vnStr(v.sched, 120),
+    pays: (Array.isArray(v.pays) ? v.pays : []).filter(x => x && typeof x === 'object').slice(0, 60).map(x => ({ id: vnStr(x.id, 20) || vnId(), amt: vnNum(x.amt),
+      due: isDate(x.due) ? x.due : '', paid: isDate(x.paid) ? x.paid : '', note: vnStr(x.note, 300) })) }));
+  const o = { cur: V_CURS.includes(p.cur) ? p.cur : 'USD', vendors, t: +p.t || 0 }; if (typeof p.on === 'boolean') o.on = p.on; return o;
+}
+function vnP() { if (!B) return vnNorm(null); if (!B.priv || B.privPid !== B.pid) { B.priv = vnNorm(LS.get('priv:' + B.pid)); B.privPid = B.pid; } return B.priv; }
+const vnHas = (P) => P.vendors.length > 0 || typeof P.on === 'boolean';
+function vnSave() { const P = vnP(); P.t = Date.now(); LS.set('priv:' + B.pid, P); vnPushSoon(); }
+const vnOn = (c) => { const P = vnP(); return typeof P.on === 'boolean' ? P.on : c.type === 'Wedding' || P.vendors.length > 0; };
+const vnSum = (xs) => Math.round(xs.reduce((a, b) => a + (b || 0), 0) * 100) / 100;
+function vnCalc(v) {
+  const paid = vnSum(v.pays.filter(x => x.paid).map(x => x.amt)); const total = v.total != null ? v.total : vnSum(v.pays.map(x => x.amt));
+  const next = v.pays.filter(x => !x.paid && x.due).sort((a, b) => a.due < b.due ? -1 : a.due > b.due ? 1 : 0)[0] || null;
+  return { paid, total, left: Math.max(0, Math.round((total - paid) * 100) / 100), next };
+}
+function vnTotals(P) {
+  let total = 0, paid = 0; const due = [];
+  P.vendors.forEach((v, vi) => { const k = vnCalc(v); total += k.total; paid += k.paid; v.pays.forEach((x, pi) => { if (!x.paid && x.due) due.push({ v, x, vi, pi }); }); });
+  due.sort((a, b) => a.x.due < b.x.due ? -1 : a.x.due > b.x.due ? 1 : 0);
+  total = Math.round(total * 100) / 100; paid = Math.round(paid * 100) / 100;
+  return { total, paid, left: Math.max(0, Math.round((total - paid) * 100) / 100), due };
+}
+const vnDueSt = (d, today = todayYMD()) => !d ? '' : d < today ? 'over' : daysBetween(today, d) <= 14 ? 'soon' : '';
+const vnMoney = (n, cur) => { n = n || 0; try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur, minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }).format(n); } catch { return `${n} ${cur}`; } };
+const vnDay = (d) => d ? fmt(d, { month: 'short', day: 'numeric', ...(d.slice(0, 4) !== todayYMD().slice(0, 4) ? { year: 'numeric' } : {}) }) : '';
+const vnCur = () => { const P = vnP(); return P.vendors[B.vnIdx] || null; };
+const vnEmpty = (v) => !(v.cat || v.name.trim() || v.contact || v.phone || v.email || v.web || v.addr || v.total != null || v.notes.trim() || v.pays.length);
+let VN_AI = null; // does the deployed importer read invoices? (null = not asked yet)
+function vnAIKnown() { if (VN_AI !== null || !SB || !LS.get('signedIn')) return; VN_AI = false; aiModes().then(m => { VN_AI = m.includes('vendor'); if (VN_AI && B && $('[data-vn-root]')) vnRepaint(); }).catch(() => {}); }
+// Builder → Vendors (an accordion like Basics/Design; Weddings have it on, any page can turn it on in Sections)
+function vnAccHTML(c, open) {
+  if (!vnOn(c)) return '';
+  const P = vnP(); if (B.card !== 'vendor' && P.vendors.some(vnEmpty)) { P.vendors = P.vendors.filter(v => !vnEmpty(v)); LS.set('priv:' + B.pid, P); }
+  const T = vnTotals(P); const n = P.vendors.length; const over = T.due.some(d => vnDueSt(d.x.due) === 'over');
+  const sum = n ? `${n} · ${vnMoney(T.paid, P.cur)} of ${vnMoney(T.total, P.cur)} paid` : '';
+  return `<details class="acc vn-acc" data-acc="vendors" ${open ? 'open' : ''}><summary><span class="st ${over ? 'due' : n ? 'ok' : ''}" aria-hidden="true"></span><b>Vendors</b><small>${esc(sum)}</small></summary><div class="acc-b" data-vn-root data-vn-zone data-doc-drop>${vnBodyHTML(c, P, T)}</div></details>`;
+}
+function vnBodyHTML(c, P, T) {
+  const cur = P.cur; vnAIKnown();
+  const tile = (l, v, cl = '') => `<div class="${cl}"><small>${l}</small><b>${esc(vnMoney(v, cur))}</b></div>`;
+  const tiles = P.vendors.length ? `<div class="vn-tot" data-vn-tot>${tile('Committed', T.total)}${tile('Paid', T.paid)}${tile('Remaining', T.left, 'left')}</div>` : '';
+  const due = T.due.slice(0, 6);
+  const dueHTML = due.length ? `<p class="grp">Next due</p><ul class="vn-due">${due.map(d => { const st = vnDueSt(d.x.due);
+    return `<li class="${st}"><button type="button" class="vn-due-b" data-vn-open="${d.vi}"><span class="vn-d">${st === 'over' ? 'Overdue · ' : ''}${esc(vnDay(d.x.due))}</span><span class="vn-n">${esc(d.v.name || d.v.cat || 'Vendor')}</span><b>${esc(vnMoney(d.x.amt, cur))}</b></button><button type="button" class="btn sm" data-vn-paid="${d.vi}:${d.pi}">Mark paid</button></li>`; }).join('')}</ul>` : '';
+  const list = P.vendors.length ? `<p class="grp">All vendors</p><ul class="vn-list">${P.vendors.map((v, i) => { const k = vnCalc(v); const pct = k.total ? Math.min(100, Math.round(k.paid / k.total * 100)) : 0;
+    const line = [k.total ? `${vnMoney(k.paid, cur)} of ${vnMoney(k.total, cur)} paid` : k.paid ? `${vnMoney(k.paid, cur)} paid` : '', k.next ? `next ${vnDay(k.next.due)}` : ''].filter(Boolean).join(' · ');
+    return `<li><button type="button" class="vn-row${k.total && !k.left ? ' done' : ''}" data-vn-open="${i}"><span class="vn-cat">${esc([v.cat, v.sched].filter(Boolean).join(' · ') || 'Vendor')}</span><b>${esc(v.name || 'Unnamed')}</b>${k.total ? `<span class="vn-bar" aria-hidden="true"><i style="width:${pct}%"></i></span>` : ''}${line ? `<small>${esc(line)}</small>` : ''}</button></li>`; }).join('')}</ul>` : '';
+  const imp = VN_AI ? `<label class="btn sm file-pick">Fill from invoice<input type="file" accept="${DOC_ACCEPT}" data-vn-file hidden></label>` : '';
+  return `${tiles}${dueHTML}${list}<div class="btns vn-acts"><button type="button" class="btn sm primary" data-vn-add>+ Add vendor</button>${imp}<select class="vn-cursel" data-vn-cursel aria-label="Currency">${V_CURS.map(x => `<option ${x === cur ? 'selected' : ''}>${x}</option>`).join('')}</select></div><p class="hint" data-vn-msg role="status" aria-live="polite"></p>`;
+}
+function vnRepaint() { const r = $('[data-vn-root]'); if (!r || !B) return; const d = r.closest('details'); const h = vnAccHTML(B.cfg, d && d.open); if (h) d.outerHTML = h; else d.remove(); }
+const vnKHTML = (v, cur) => { const k = vnCalc(v); return [`Paid ${vnMoney(k.paid, cur)}`, `Remaining ${vnMoney(k.left, cur)}`, k.next ? `Next ${vnMoney(k.next.amt, cur)} ${vnDay(k.next.due)}` : ''].filter(Boolean).join(' · '); };
+// the vendor sheet (B.card 'vendor', B.vnIdx)
+function vnSheetHTML(c) {
+  const P = vnP(); const v = vnCur(); if (!v) return ''; const cur = P.cur;
+  const inp = (k, label, type = 'text', more = '') => fieldWrap(label, `<input id="vn-${k}" type="${type}" data-vnf="${k}" value="${esc(v[k] ?? '')}"${more}>`, 'vn-' + k);
+  const scheds = [...new Set((c.schedule || []).map(x => (x.title || '').trim()).filter(Boolean))].slice(0, 40);
+  const sched = scheds.length ? fieldWrap('For', `<select id="vn-sched" data-vnf="sched"><option value="">—</option>${scheds.concat(v.sched && !scheds.includes(v.sched) ? [v.sched] : []).map(x => `<option ${x === v.sched ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>`, 'vn-sched') : '';
+  const pays = v.pays.map((x, i) => { const st = x.paid ? 'paid' : vnDueSt(x.due);
+    return `<div class="vn-pay ${st}" data-vn-pay="${i}"><div class="vn-pr"><label class="vn-dl"><small>Amount</small><input data-vnp="${i}" data-vnk="amt" inputmode="decimal" value="${x.amt ?? ''}" placeholder="0"></label>
+      <label class="vn-dl"><small>${st === 'over' ? 'Overdue' : 'Due'}</small><input type="date" data-vnp="${i}" data-vnk="due" value="${esc(x.due)}"></label></div>
+      <div class="vn-pr2">${x.paid ? `<div class="vn-dl vn-paid"><small><span>Paid</span><button type="button" class="link" data-vn-unpaid="${i}">Unpaid</button></small><input type="date" data-vnp="${i}" data-vnk="paid" value="${esc(x.paid)}" aria-label="Paid on"></div>` : `<button type="button" class="btn sm" data-vn-mark="${i}">Mark paid</button>`}
+      <input data-vnp="${i}" data-vnk="note" value="${esc(x.note)}" placeholder="Method or note" aria-label="Method or note" maxlength="300"><button type="button" class="link vn-x" data-vn-pdel="${i}" aria-label="Remove payment">×</button></div></div>`; }).join('');
+  const imp = VN_AI ? `<label class="btn sm file-pick">Fill from invoice<input type="file" accept="${DOC_ACCEPT}" data-vn-file="${B.vnIdx}" hidden></label>` : '';
+  setTimeout(vnWireAC, 0);
+  return `<div class="vn-sheet" data-vn-zone data-doc-drop>
+    <div class="chips vn-cats" role="group" aria-label="Category">${V_CATS.map(x => `<button type="button" class="chip ${v.cat === x ? 'on' : ''}" aria-pressed="${v.cat === x}" data-vn-cat="${esc(x)}">${esc(x)}</button>`).join('')}</div>
+    ${fieldWrap('Business', `<input id="vn-name" data-vnf="name" value="${esc(v.name)}" maxlength="120" placeholder="Name">`, 'vn-name')}
+    <div class="vn-2">${inp('contact', 'Contact person', 'text', ' maxlength="120"')}${inp('phone', 'Phone', 'tel', ' maxlength="40"')}</div>
+    <div class="vn-2">${inp('email', 'Email', 'email', ' maxlength="160"')}${inp('web', 'Website', 'url', ' placeholder="https://…" maxlength="400"')}</div>
+    ${inp('addr', 'Address', 'text', ' maxlength="300"')}
+    <div class="vn-2">${fieldWrap(`Contract total (${cur})`, `<input id="vn-total" data-vnf="total" inputmode="decimal" value="${v.total ?? ''}" placeholder="0">`, 'vn-total')}${sched}</div>
+    <h3 class="sub-h">Payments</h3><p class="vn-k" data-vn-k>${esc(vnKHTML(v, cur))}</p>
+    ${pays}<div class="btns"><button type="button" class="btn sm" data-vn-padd>+ Add payment</button>${imp}</div>
+    ${fieldWrap('Notes', `<textarea id="vn-notes" data-vnf="notes" rows="3" maxlength="3000">${esc(v.notes)}</textarea>`, 'vn-notes')}
+    <p class="hint" data-vn-msg role="status" aria-live="polite"></p>
+    <div class="btns"><button type="button" class="btn sm bk-rm" data-vn-del>${TRASH_IC}Delete vendor</button></div></div>`;
+}
+function vnOpen(i) { B.vnIdx = i; openCard('vendor'); }
+// business name → Google place: fills the address, phone and website
+function vnPlace(id, tok) {
+  return gFetch(`https://places.googleapis.com/v1/places/${enc(id)}${tok ? '?sessionToken=' + enc(tok) : ''}`, null, 'id,displayName,formattedAddress,nationalPhoneNumber,internationalPhoneNumber,websiteUri')
+    .then(x => ({ name: (x.displayName && x.displayName.text) || '', addr: x.formattedAddress || '', phone: x.nationalPhoneNumber || x.internationalPhoneNumber || '', web: cleanWeb(x.websiteUri || '') }));
+}
+function vnWireAC() {
+  const inp = $('#sheet #vn-name'); if (!inp) return;
+  placeAutocomplete(inp, { bias: () => B && B.cfg.venue, onPick: (id, tok) => vnPlace(id, tok).then(r => { const v = vnCur(); if (!v) return;
+    if (r.name) v.name = r.name.slice(0, 120); ['addr', 'phone', 'web'].forEach(k => { if (r[k]) v[k] = r[k].slice(0, k === 'web' ? 400 : 300); }); vnSave(); renderSheet(); }).catch(() => toast('Couldn’t load that place')) });
+}
+// invoice / contract → a vendor and its payments (ai-import mode "vendor"); only empty fields are filled
+function vnMerge(P, v, d) {
+  const a = (d && d.vendor) || {}; const s = (x, n) => typeof x === 'string' ? x.trim().slice(0, n) : '';
+  const set = (k, val) => { if (val && !(typeof v[k] === 'string' ? v[k].trim() : v[k] != null)) v[k] = val; };
+  if (!v.cat && V_CATS.includes(a.category)) v.cat = a.category;
+  set('name', s(a.name, 120)); set('contact', s(a.contact, 120)); set('phone', s(a.phone, 40)); set('email', s(a.email, 160)); set('web', s(a.website, 400).replace(/^(?!https?:\/\/)(?=[\w-]+\.)/i, 'https://')); set('addr', s(a.address, 300));
+  if (v.total == null && vnNum(a.total) != null) v.total = vnNum(a.total);
+  const notes = s(a.notes, 1000); if (notes && !v.notes.includes(notes)) v.notes = (v.notes ? v.notes + '\n' : '') + notes;
+  if (V_CURS.includes(a.currency) && a.currency !== P.cur && P.vendors.every(x => x === v || (x.total == null && !x.pays.length))) P.cur = a.currency;
+  let n = 0;
+  for (const x of (Array.isArray(d && d.payments) ? d.payments : []).slice(0, 30)) {
+    const amt = vnNum(x && x.amount); if (amt == null) continue; const due = isDate(x.due) ? x.due : ''; const paid = isDate(x.paid) ? x.paid : '';
+    const same = v.pays.find(y => y.amt === amt && (y.due === due || !due || !y.due)); if (same) { if (paid && !same.paid) same.paid = paid; if (due && !same.due) same.due = due; continue; }
+    v.pays.push({ id: vnId(), amt, due, paid, note: s(x.note, 300) }); n++;
+  }
+  v.pays.sort((x, y) => (x.due || '9') < (y.due || '9') ? -1 : (x.due || '9') > (y.due || '9') ? 1 : 0);
+  return n;
+}
+const vnMsg = (s) => $$('[data-vn-msg]').forEach(el => { el.textContent = s; });
+async function vnImport(file, vi) {
+  if (!file || !B) return;
+  if (!LS.get('signedIn')) { vnMsg('Sign in to fill from a document.'); return; }
+  vnMsg('Reading…');
+  try {
+    const part = await bookingFile(file);
+    const j = await aiImport({ mode: 'vendor', files: [part], ...(isDate((B.cfg.start || '').slice(0, 10)) ? { event_date: B.cfg.start.slice(0, 10) } : {}) });
+    const P = vnP(); const undo = clone(P);
+    let v = vi != null ? P.vendors[vi] : null; if (!v) { v = vnBlank(); P.vendors.push(v); vi = P.vendors.length - 1; }
+    const n = vnMerge(P, v, j.data); vnSave();
+    const pid = B.pid; const back = () => { if (!B || B.pid !== pid) return; B.priv = vnNorm(undo); B.privPid = pid; vnSave(); if (B.card === 'vendor') $('#sheet').close(); else vnRepaint(); };
+    if (B.card === 'vendor' && B.vnIdx === vi) renderSheet(); else vnOpen(vi);
+    undoToast(`Filled ${v.name || 'vendor'}${n ? ` · ${n} payment${n === 1 ? '' : 's'}` : ''}`, back);
+  } catch (e) { vnMsg(e.signin ? 'Sign in to fill from a document.' : e.message || 'Couldn’t read it.'); }
+}
+// account sync: pull once per page open (the newer copy wins), then push each change ~1 s later
+async function vnSync() {
+  if (!B || !acctOn() || !B.hosted || !B.hosted.id) return;
+  const pid = B.pid, eid = B.hosted.id; if (B.vnPulled === eid) return; B.vnPulled = eid;
+  try {
+    const c = await sb(); const { data, error } = await c.from('event_private').select('data,updated_at').eq('event_id', eid).maybeSingle();
+    if (!B || B.pid !== pid) return;
+    if (error) { B.vnPulled = null; return; } // not installed yet / offline: stays on this device
+    B.vnOk = eid; const P = vnP(); const R = data && data.data ? vnNorm(data.data) : null;
+    if (R && R.t > P.t) { B.priv = R; B.privPid = pid; LS.set('priv:' + pid, R); if (B.card === 'vendor') renderSheet(); buildForm(); }
+    else if (vnHas(P) && (!R || P.t > R.t)) await vnPushNow();
+  } catch { if (B && B.pid === pid) B.vnPulled = null; }
+}
+function vnPushSoon() { if (!B || !B.hosted || B.vnOk !== B.hosted.id) { if (B && acctOn() && B.hosted && B.hosted.id) vnSync(); return; } clearTimeout(B.vnT); B.vnT = setTimeout(vnPushNow, 1000); }
+async function vnPushNow() {
+  if (!B) return; clearTimeout(B.vnT); B.vnT = null; if (!acctOn() || !B.hosted || B.vnOk !== B.hosted.id) return;
+  const eid = B.hosted.id; const P = vnP();
+  try { const c = await sb(); const { error } = await c.from('event_private').upsert({ event_id: eid, data: JSON.parse(JSON.stringify(P)) }, { onConflict: 'event_id' }); if (error) vnMsg('Saved on this device'); } catch { /* offline: next change or open retries */ }
+}
+addEventListener('pagehide', () => { if (B && B.vnT) vnPushNow(); });
+// one set of listeners for the Vendors accordion, the vendor sheet and the Sections switch
+function wireVendors() {
+  if (wireVendors.on) return; wireVendors.on = true;
+  const live = () => B && $('.builder');
+  document.addEventListener('click', (e) => {
+    if (!live()) return; const b = e.target.closest('button'); if (!b || !b.closest('[data-vn-root], .vn-sheet')) return; const d = b.dataset; const P = vnP();
+    if ('vnAdd' in d) { P.vendors.push(vnBlank()); vnSave(); vnOpen(P.vendors.length - 1); setTimeout(() => $('#sheet #vn-name')?.focus(), 30); return; }
+    if (d.vnOpen != null) { vnOpen(+d.vnOpen); return; }
+    if (d.vnPaid) { const [vi, pi] = d.vnPaid.split(':').map(Number); const x = P.vendors[vi] && P.vendors[vi].pays[pi]; if (!x) return; x.paid = todayYMD(); vnSave(); vnRepaint(); const pid = B.pid;
+      undoToast(`Marked ${vnMoney(x.amt, P.cur)} paid`, () => { if (!B || B.pid !== pid) return; x.paid = ''; vnSave(); vnRepaint(); }); return; }
+    const v = vnCur(); if (!v || !b.closest('.vn-sheet')) return;
+    if (d.vnCat) { v.cat = v.cat === d.vnCat ? '' : d.vnCat; vnSave(); $$('#sheet [data-vn-cat]').forEach(x => { const on = x.dataset.vnCat === v.cat; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); }); }
+    else if (d.vnMark != null) { const x = v.pays[+d.vnMark]; if (x) { x.paid = todayYMD(); vnSave(); renderSheet(); } }
+    else if (d.vnUnpaid != null) { const x = v.pays[+d.vnUnpaid]; if (x) { x.paid = ''; vnSave(); renderSheet(); } }
+    else if ('vnPadd' in d) { const rest = v.total != null && v.pays.length ? Math.round((v.total - vnSum(v.pays.map(y => y.amt))) * 100) / 100 : 0; // the next one defaults to what's still unscheduled
+      v.pays.push({ id: vnId(), amt: rest > 0 ? rest : null, due: '', paid: '', note: '' }); vnSave(); renderSheet(); setTimeout(() => $$('#sheet [data-vnk="amt"]').pop()?.focus(), 30); }
+    else if (d.vnPdel != null) { v.pays.splice(+d.vnPdel, 1); vnSave(); renderSheet(); }
+    else if ('vnDel' in d) { const i = P.vendors.indexOf(v); if (i < 0) return; const pid = B.pid; P.vendors.splice(i, 1); vnSave(); $('#sheet').close();
+      if (!vnEmpty(v)) undoToast(`Deleted ${v.name || v.cat || 'vendor'}`, () => { if (!B || B.pid !== pid) return; const Q = vnP(); Q.vendors.splice(Math.min(i, Q.vendors.length), 0, v); vnSave(); vnRepaint(); }); }
+  });
+  document.addEventListener('input', (e) => {
+    if (!live()) return; const i = e.target; const d = i.dataset; if (d.vnf == null && d.vnp == null) return; const v = vnCur(); if (!v) return; const P = vnP();
+    if (d.vnf) v[d.vnf] = d.vnf === 'total' ? vnNum(i.value) : i.value.slice(0, 3000);
+    else { const x = v.pays[+d.vnp]; if (!x) return; x[d.vnk] = d.vnk === 'amt' ? vnNum(i.value) : (d.vnk === 'due' || d.vnk === 'paid') ? (isDate(i.value) ? i.value : '') : i.value.slice(0, 300);
+      const row = i.closest('[data-vn-pay]'); if (row) { ['over', 'soon', 'paid'].forEach(k => row.classList.remove(k)); const st = x.paid ? 'paid' : vnDueSt(x.due); if (st) row.classList.add(st); } }
+    vnSave(); const k = $('#sheet [data-vn-k]'); if (k) k.textContent = vnKHTML(v, P.cur);
+  });
+  document.addEventListener('change', (e) => {
+    if (!live()) return; const i = e.target; const d = i.dataset;
+    if (d.vnOn != null) { const P = vnP(); P.on = i.checked; vnSave(); buildForm(); return; }
+    if (d.vnCursel != null) { const P = vnP(); if (V_CURS.includes(i.value)) { P.cur = i.value; vnSave(); vnRepaint(); } return; }
+    if (d.vnFile != null && i.files && i.files[0]) { const f = i.files[0]; i.value = ''; vnImport(f, d.vnFile === '' ? null : +d.vnFile); }
+    if (d.vnk === 'paid' && !i.value) renderSheet(); // paid date cleared: back to Mark paid
+  });
+  const zone = (e) => live() && e.target.closest && e.target.closest('[data-vn-zone]');
+  document.addEventListener('drop', (e) => { const z = zone(e); if (!z || !dragFiles(e)) return; e.preventDefault(); const f = e.dataTransfer.files[0]; if (!f) return; if (VN_AI === false) return; vnImport(f, z.closest('.vn-sheet') ? B.vnIdx : null); });
+  document.addEventListener('paste', (e) => {
+    if (!live()) return; const f = [...((e.clipboardData && e.clipboardData.files) || [])].find(x => /^image\/|pdf$/.test(x.type)); if (!f) return;
+    const sh = $('#sheet'); const inSheet = sh && sh.open && B.card === 'vendor'; const inAcc = !inSheet && document.activeElement && document.activeElement.closest && document.activeElement.closest('[data-vn-root]');
+    if (!inSheet && !inAcc) return; e.preventDefault(); e.stopPropagation(); vnImport(f, inSheet ? B.vnIdx : null);
+  }, true);
+}
+window.__epv = { vnNorm, vnCalc, vnTotals, vnMerge, vnDueSt, vnP: () => vnP(), V_CATS };
 // ================= "Match your brand": a website link or an uploaded logo/screenshot → a proposed theme =================
 // Link: ai-import mode "brand" reads the site's theme-color, CSS colors and variables, fonts and logo (server side, no model).
 // Upload: the image's own colors, found here in the browser (k-means over a downscaled copy). Either way the accent is

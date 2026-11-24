@@ -1489,3 +1489,54 @@ dialog.ds-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .bk-fill { margin: 4px 0 6px; }
 .itin-form .busy, .itin-sheet.busy { opacity: .7; }
 .rv-card .trip { margin-bottom: 6px; }
+
+
+/* Builder → Vendors (organizer-only): totals, next due, vendor list; the vendor sheet's payments */
+.st.due { background: #C62828; border-color: #C62828; }
+.st.due::after { content: '!'; color: #fff; font: 700 .8rem/1 var(--sans, system-ui); }
+.vn-tot { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 4px; }
+.vn-tot > div { background: var(--tint); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+.vn-tot small { display: block; font: 600 .64rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--slate); }
+.vn-tot b { display: block; font: 650 1.05rem var(--sans, system-ui); margin-top: 2px; overflow-wrap: anywhere; }
+.vn-tot .left b { color: var(--gate); }
+.vn-due, .vn-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.vn-due li { display: flex; align-items: center; gap: 8px; background: var(--field); border: 1.5px solid var(--rule); border-radius: 12px; padding: 4px 6px 4px 0; }
+.vn-due li.soon { background: #FFF6DB; border-color: #F0C24B; }
+.vn-due li.over { background: #FDECEC; border-color: #E57373; }
+.vn-due li.over .vn-d { color: #B71C1C; font-weight: 700; }
+.vn-due-b { all: unset; box-sizing: border-box; cursor: pointer; flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr auto; gap: 0 8px; padding: 6px 4px 6px 12px; }
+.vn-due-b .vn-d { grid-column: 1 / -1; font: 600 .74rem var(--mono); color: var(--slate); }
+.vn-due-b .vn-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.vn-due-b b { font-weight: 700; }
+.vn-due .btn { flex: none; }
+.vn-row { all: unset; box-sizing: border-box; cursor: pointer; width: 100%; display: grid; gap: 3px; padding: 10px 12px; border-radius: 12px; background: var(--field); border: 1.5px solid var(--rule); }
+.vn-row:hover { border-color: var(--gate); }
+.vn-row .vn-cat { font: 600 .64rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--slate); }
+.vn-row b { font-weight: 650; overflow-wrap: anywhere; }
+.vn-row small { color: var(--slate); font-size: .82rem; }
+.vn-bar { height: 5px; border-radius: 3px; background: var(--rule); overflow: hidden; margin: 3px 0 1px; }
+.vn-bar i { display: block; height: 100%; background: var(--gate); border-radius: 3px; }
+.vn-row.done .vn-bar i { background: #2E7D32; }
+.vn-acts { align-items: center; margin-top: 12px; }
+.b-form .vn-acts select.vn-cursel, .vn-cursel { width: auto; min-height: 36px; margin-left: auto; padding: .2em .5em; font-size: .9rem; }
+.vn-sheet { display: grid; gap: 12px; }
+.vn-sheet .chips { margin: 0; }
+.vn-cats .chip { font-size: .8rem; padding: .35em .75em; }
+.vn-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+@media (max-width: 359px) { .vn-2 { grid-template-columns: 1fr; } }
+.vn-sheet .sub-h { margin: 6px 0 -4px; }
+.vn-k { margin: 0; color: var(--slate); font-size: .88rem; }
+.vn-pay { display: grid; gap: 6px; padding: 10px; border-radius: 12px; background: var(--tint); border: 1.5px solid transparent; }
+.vn-pay.soon { background: #FFF6DB; border-color: #F0C24B; }
+.vn-pay.over { background: #FDECEC; border-color: #E57373; }
+.vn-pay.paid { opacity: .85; }
+.vn-pr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 6px; }
+.vn-dl { display: grid; gap: 2px; min-width: 0; }
+.vn-dl small { font: 600 .6rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--slate); display: flex; justify-content: space-between; align-items: center; gap: 6px; min-height: 1.2em; }
+.vn-pay.over .vn-pr .vn-dl:nth-child(2) small { color: #B71C1C; }
+.vn-dl small .link { font: 600 .72rem var(--sans, system-ui); letter-spacing: 0; text-transform: none; padding: 0; color: var(--gate); }
+.sheet-in .vn-pay input { min-width: 0; padding-left: .5em; padding-right: .4em; }
+.vn-pr2 { display: flex; align-items: flex-end; gap: 6px; } .vn-pr2 > input { flex: 1; min-width: 0; }
+.vn-pr2 > .btn { min-height: 44px; flex: none; white-space: nowrap; }
+.vn-paid { flex: 0 1 9.5em; }
+.vn-x { font-size: 1.3rem; padding: 0 6px; min-height: 44px; color: #A3272D; }

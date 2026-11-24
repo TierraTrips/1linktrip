@@ -20,7 +20,7 @@ const call = (b: unknown, origin = "https://1linktrip.com") => handler(new Reque
 Deno.test("doc mode: listed with every older mode", async () => {
   Deno.env.set("ANTHROPIC_API_KEY", "sk-ant-test");
   const g = await (await handler(new Request("https://fn.example/ai-import"))).json();
-  assertEquals(g.modes, ["url", "text", "edit", "translate", "file", "doc", "brand"]);
+  assertEquals(g.modes, ["url", "text", "edit", "translate", "file", "doc", "brand", "vendor"]);
 });
 
 Deno.test("doc mode: PDF → event JSON with stops; section focus; CORS echo", async () => {

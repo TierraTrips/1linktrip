@@ -11,7 +11,8 @@ q() { PGOPTIONS="-c client_min_messages=warning" "$PG/psql" -h "$DIR" -p "$PORT"
 q -f "$HERE/supabase-shim.sql"
 q -f "$ROOT/supabase/schema.sql"; q -f "$ROOT/supabase/schema-2.sql"
 q -f "$ROOT/supabase/schema-3.sql"; q -f "$ROOT/supabase/schema-3.sql" # twice: must be safe to re-run
-OUT="$(PGOPTIONS="-c client_min_messages=notice" "$PG/psql" -h "$DIR" -p "$PORT" -U postgres -X -q -v ON_ERROR_STOP=1 -f "$HERE/messaging.sql" 2>&1 | sed -n 's/.*NOTICE:  //p')"
+q -f "$ROOT/supabase/schema-4.sql"; q -f "$ROOT/supabase/schema-4.sql"
+OUT="$(PGOPTIONS="-c client_min_messages=notice" "$PG/psql" -h "$DIR" -p "$PORT" -U postgres -X -q -v ON_ERROR_STOP=1 -f "$HERE/messaging.sql" -f "$HERE/private.sql" 2>&1 | sed -n 's/.*NOTICE:  //p')"
 echo "$OUT"
 n_ok=$(grep -c '^ok' <<<"$OUT" || true); n_fail=$(grep -c '^FAIL' <<<"$OUT" || true)
 echo "$n_ok ok, $n_fail failed"
