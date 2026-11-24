@@ -1,7 +1,8 @@
 // Guest tabs stay tidy: a Travel part the guest already booked folds to one line ("✓ Flight · NH 105 · Apr 1",
-// "✓ Hotel · Park Hyatt Tokyo · Apr 1–4"), tap to open; every section has a collapse chevron (or tap its title) and a
-// Hide that removes it for this guest, with "Hidden (n)" at the bottom of the tab to bring it back. Kept per guest per
-// trip (localStorage; synced with My trip when signed in). 40px tap targets; 390 + 320.
+// "✓ Hotel · Park Hyatt Tokyo · Apr 1–4"), tap to open. ONE way to fold (Dylan's simplify review, item 4): tap the
+// section's title row — a single button with aria-expanded and one chevron; no Hide buttons, no second arrow, also for
+// the nested Travel parts (Getting there → Flights). Kept per guest per trip (localStorage; synced with My trip when
+// signed in); a section hidden with the old Hide button comes back folded. 40px tap targets; 390 + 320.
 //
 //   python3 -m http.server 18765 --bind 127.0.0.1 &  node tests/collapse.js
 const { chromium } = require(process.env.PW || 'playwright');
@@ -16,7 +17,7 @@ const overflow = (page) => page.evaluate(() => {
     const r = e.getBoundingClientRect(); return r.width && r.right > cw + 1;
   }).slice(0, 5).map(e => e.tagName.toLowerCase() + '.' + [...e.classList].join('.'));
 });
-const CFG = { v: 2, type: 'Trip', title: 'Japan in spring', start: '2027-04-01', end: '2027-04-10', tz: 'Asia/Tokyo',
+const CFG = { v: 2, type: 'Trip', title: 'Japan in spring', description: 'Ten days, three cities.', start: '2027-04-01', end: '2027-04-10', tz: 'Asia/Tokyo',
   venue: { name: 'Park Hyatt Tokyo', address: 'Shinjuku, Tokyo', lat: 35.6856, lon: 139.6907, city: 'Tokyo', country: 'Japan', cc: 'jp' },
   schedule: [{ date: '2027-04-02', time: '', title: 'Tsukiji outer market', note: '' }],
   tools: { nearby: false, weather: false, travel: true, stay: true, tours: false, mytrip: true, packing: false, shopping: false } };
@@ -41,26 +42,40 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
     const car = await part('rental'); ok(!car.col && car.vis, `@${w} rental car (not booked) stays open`);
     const stay = await page.evaluate(() => { const s = document.querySelector('#sec-stay'); return { col: s.classList.contains('cx-col'), line: s.querySelector('.cx-sumline').textContent, body: s.querySelector('.sec-b').checkVisibility(), title: s.querySelector('.sec-h').textContent }; });
     ok(stay.col && !stay.body && stay.line === '✓ Hotel · Park Hyatt Tokyo · Apr 1–4' && stay.title === 'Where to stay', `@${w} booked hotel folds Where to stay: ${JSON.stringify(stay)}`);
-    const sizes = await page.$$eval('[data-panel="travel"] .cx-tog, [data-panel="travel"] .cx-hide', bs => bs.map(b => { const r = b.getBoundingClientRect(); return Math.min(r.width, r.height); }));
+    // one control per header: the title row button, no Hide, no second arrow
+    const ctl = await page.evaluate(() => [...document.querySelectorAll('.ev-sec[data-sec], .cx-part')].filter(x => x.checkVisibility()).map(x => {
+      const btns = [...x.querySelectorAll(':scope > .sec-h button, :scope > button, :scope > .cx > button')];
+      return { id: x.dataset.sec || x.textContent.trim().slice(0, 12), n: btns.length, exp: btns.map(b => b.getAttribute('aria-expanded')).join(), chev: x.querySelectorAll(':scope > .sec-h .cx-chev, :scope > button .cx-chev').length };
+    }));
+    ok(ctl.length >= 4 && ctl.every(c => c.n === 1 && /^(true|false)$/.test(c.exp) && c.chev === 1), `@${w} each section / part header = one button with aria-expanded and one chevron ${JSON.stringify(ctl)}`);
+    ok(!(await page.$('.cx-hide, [data-cx-hide], .cx-hidden')) && !(await page.$$eval('.ev button', bs => bs.some(b => b.checkVisibility() && /^(Hide|Ocultar)$/.test(b.textContent.trim())))), `@${w} no Hide buttons`);
+    const sizes = await page.$$eval('[data-panel="travel"] [data-cx-tog]', bs => bs.map(b => { const r = b.getBoundingClientRect(); return Math.min(r.width, r.height); }));
     ok(sizes.length && sizes.every(x => x >= 40), `@${w} 40px tap targets (${Math.min(...sizes)})`);
+    const fullRow = await page.$eval('#sec-stay .sec-h', h => { const b = h.querySelector('button').getBoundingClientRect(), r = h.getBoundingClientRect(); return b.right >= r.right - 1 && b.width > r.width * 0.8; });
+    ok(fullRow, `@${w} the button spans the title row`);
     if (SHOTS) await page.locator('[data-panel="travel"]').screenshot({ path: `${SHOTS}/collapse-travel-${w}.png` });
     // open the flight part; the choice is kept
-    await page.click('[data-cx-tog="m-fly"]'); ok((await part('fly')).vis, `@${w} tap opens the folded flight part`);
+    await page.click('[data-panel="travel"] .cx-part:has([data-cx-tog="m-fly"]) .cx-t'); ok((await part('fly')).vis, `@${w} tapping the Flights title opens the folded part`);
     await page.reload(); await page.waitForSelector('[data-panel="travel"] .cx-part'); await page.waitForTimeout(300);
     ok((await part('fly')).vis, `@${w} stays open after reload`);
-    // hide Where to stay → Hidden (1) → show again
-    await page.click('[data-cx-hide="stay"]');
-    ok(!(await page.$eval('#sec-stay', s => s.checkVisibility())) && /Hidden \(1\)/.test(await page.textContent('[data-panel="travel"] .cx-hidden summary')), `@${w} Hide removes it; Hidden (1) at the bottom`);
-    await page.click('[data-panel="travel"] .cx-hidden summary'); await page.click('[data-cx-show="stay"]');
-    ok(await page.$eval('#sec-stay', s => s.checkVisibility()) && !(await page.$('[data-panel="travel"] .cx-hidden')), `@${w} Show brings it back`);
-    // any section on the Event tab: chevron or the title collapses it
-    await page.click('[data-tab-go="event"]'); await page.waitForSelector('#sec-schedule .cx-tog');
-    await page.click('#sec-schedule .cx-tog');
-    ok(!(await page.$eval('#sec-schedule .sec-b', b => b.checkVisibility())) && await page.$eval('#sec-schedule .sec-h', h => h.textContent) === 'Itinerary', `@${w} Itinerary collapses (title unchanged)`);
-    await page.click('#sec-schedule .sec-h'); ok(await page.$eval('#sec-schedule .sec-b', b => b.checkVisibility()), `@${w} tapping the title opens it`);
+    // a section on the Event tab: tap the title to fold, again to open; keyboard works the same
+    await page.click('[data-tab-go="event"]'); await page.waitForSelector('#sec-schedule [data-cx-tog]');
+    await page.click('#sec-schedule .sec-h');
+    ok(!(await page.$eval('#sec-schedule .sec-b', b => b.checkVisibility())) && await page.$eval('#sec-schedule .sec-h', h => h.textContent) === 'Itinerary' && await page.getAttribute('#sec-schedule [data-cx-tog]', 'aria-expanded') === 'false', `@${w} tapping the Itinerary title folds it (title unchanged, aria-expanded=false)`);
+    await page.click('#sec-schedule .sec-h'); ok(await page.$eval('#sec-schedule .sec-b', b => b.checkVisibility()), `@${w} tapping the title again opens it`);
+    await page.focus('#sec-schedule [data-cx-tog]'); await page.keyboard.press('Enter');
+    ok(await page.getAttribute('#sec-schedule [data-cx-tog]', 'aria-expanded') === 'false', `@${w} Enter on the focused title folds it`);
+    await page.keyboard.press('Space'); ok(await page.getAttribute('#sec-schedule [data-cx-tog]', 'aria-expanded') === 'true', `@${w} Space opens it again`);
+    // a section hidden with the old Hide button comes back folded (not gone); opening it forgets the old hide
+    await page.evaluate((k) => { const x = JSON.parse(localStorage.getItem('ep:secui:' + k)); x.h = { about: 1 }; localStorage.setItem('ep:secui:' + k, JSON.stringify(x)); }, k);
+    await page.reload(); await page.waitForSelector('#sec-schedule [data-cx-tog]'); await page.waitForTimeout(300);
+    {
+      ok(await page.$eval('#sec-about', s => s.checkVisibility() && s.classList.contains('cx-col')), `@${w} old hidden About shows folded`);
+      await page.click('#sec-about .sec-h'); ok(await page.$eval('#sec-about .sec-b', b => b.checkVisibility()), `@${w} and opens with a tap`);
+    }
     const of = await overflow(page); ok(of.length === 0, `@${w} no overflow ${of.join(' ')}`);
     const saved = await page.evaluate((k) => JSON.parse(localStorage.getItem('ep:secui:' + k)), k);
-    ok(saved && saved.c['m-fly'] === 0 && saved.c.schedule === 0 && !saved.h.stay, `@${w} kept per trip ${JSON.stringify(saved)}`);
+    ok(saved && saved.c['m-fly'] === 0 && saved.c.schedule === 0 && !(saved.h && saved.h.about), `@${w} kept per trip ${JSON.stringify(saved)}`);
     ok(errors.length === 0, `@${w} no page errors ${errors.join(' ')}`);
     await ctx.close();
   }

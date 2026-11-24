@@ -1,4 +1,4 @@
-// RSVP questions (Dylan's approved audit, item 12): the organizer turns on, in builder → RSVP form, a meal choice (their
+// RSVP questions (Dylan's approved audit, item 12): the organizer turns on, in builder → RSVP (Collect replies here), a meal choice (their
 // own options), dietary needs, names of everyone in the party, which events (the page's titled schedule items, all by
 // default, any left out), and up to two questions of their own. Guests who are coming see only what is on — nothing new
 // is required — and the answers ride in the reply's `note` after the guest's own note as "[[1lt:{"v":1,…}]]" (rsvps has
@@ -78,8 +78,8 @@ const parse = (page, note) => page.evaluate((n) => window.__ep.rqParse(n), note)
         await page.goto(BASE); await page.waitForFunction(() => window.__ep);
         const packed = await page.evaluate((c) => window.__ep.packEvent(c), WED);
         await page.evaluate(() => localStorage.clear());
-        await page.goto(BASE + '#edit=' + packed); await page.waitForSelector('[data-card="replies"]');
-        await page.click('[data-card="replies"]'); await page.waitForSelector('#sheet .rq-ed');
+        await page.goto(BASE + '#edit=' + packed); await page.waitForSelector('[data-card="rsvp"]');
+        await page.click('[data-card="rsvp"]'); await page.waitForSelector('#sheet .rq-ed');
         const vis = (sel) => page.$eval(sel, e => !!(e.offsetWidth || e.offsetHeight)).catch(() => false);
         ok(await vis('#sheet .rq-ed') && /Questions on the form/.test(await page.textContent('#sheet .rq-ed')), `@${w} builder: RSVP form card has "Questions on the form"`);
         ok((await page.$$eval('#sheet [data-rq]', is => is.filter(i => i.checked).length)) === 0 && !(await vis('#sheet [data-rq-sub="meal"]')), `@${w} builder: all questions off by default, options hidden`);
@@ -97,14 +97,14 @@ const parse = (page, note) => page.evaluate((n) => window.__ep.rqParse(n), note)
         ok(d && d.meal && d.meals.join('|') === 'Chicken|Fish|Vegetarian' && d.diet && d.plus && d.events && d.evOff.join() === 'Farewell brunch' && d.qs && d.q[0] === 'Need a ride from the hotel?' && d.q[1] === '', `@${w} builder: saved in the page ${JSON.stringify(d)}`);
         await page.click('#sheet [data-rq="diet"]'); await page.waitForTimeout(400);
         ok((await page.evaluate(() => JSON.parse(localStorage.getItem('ep:draft')).rsvpq.diet)) === false, `@${w} builder: a question turns off again`);
-        await page.click('#sheet [data-rsvp-on]'); ok(!(await vis('#sheet .rq-ed')), `@${w} builder: RSVP form off hides its questions`);
-        await page.click('#sheet [data-rsvp-on]'); ok(await vis('#sheet .rq-ed'), `@${w} builder: and back on shows them`);
+        await page.click('#sheet [data-rsvp-via="off"]'); ok(!(await vis('#sheet .rq-ed')), `@${w} builder: No RSVP hides the form's questions`);
+        await page.click('#sheet [data-rsvp-via="form"]'); ok(await vis('#sheet .rq-ed'), `@${w} builder: Collect replies here shows them again`);
         if (SHOTS) await page.locator('#sheet .sheet-in').screenshot({ path: `${SHOTS}/rq-builder-${w}.png` });
         const ov = await overflow(page); ok(!ov.length, `@${w} builder: no overflow ${ov}`);
         // another type: the same card, all off
         const party = await page.evaluate(() => window.__ep.packEvent({ v: 2, type: 'Party', title: 'Sam turns 30', start: '2027-05-01T19:00', venue: null }));
-        await page.evaluate(() => localStorage.clear()); await page.goto(BASE + '#edit=' + party); await page.waitForSelector('[data-card="replies"]');
-        await page.click('[data-card="replies"]'); await page.waitForSelector('#sheet .rq-ed');
+        await page.evaluate(() => localStorage.clear()); await page.goto(BASE + '#edit=' + party); await page.waitForSelector('[data-card="rsvp"]');
+        await page.click('[data-card="rsvp"]'); await page.waitForSelector('#sheet .rq-ed');
         ok((await page.$$eval('#sheet [data-rq]', is => is.filter(i => i.checked).length)) === 0, `@${w} builder: a Party page has the questions too, all off`);
         ok(!errors.length, `@${w} builder: no page errors ${errors.join(' | ')}`);
         await ctx.close();

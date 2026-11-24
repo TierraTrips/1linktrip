@@ -466,7 +466,7 @@ const loading = (what) => `<div class="skel" role="status"><span></span><span></
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
 
 function typeInfoHTML(cfg, opt = {}) {
-  const sp = typeSpec(cfg), d = typeData(cfg); if (!sp) return '';
+  const sp = typeSpec(cfg) || { fields: [] }, d = typeData(cfg); const R = rsvpOf(cfg);
   const v = cfg.venue; const lab = Object.fromEntries(sp.fields.map(([k, l]) => [k, l]));
   const has = (k) => { const f = sp.fields.find(x => x[0] === k); return f && filled(f[2], d[k]); };
   const dt = (s) => s ? (s.length > 10 ? `${fmt(s.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' })}, ${fmtTime(s.slice(11, 16))}` : fmt(s, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })) : '';
@@ -485,10 +485,9 @@ function typeInfoHTML(cfg, opt = {}) {
   if (ONP) tl.forEach(x => { x[2] = ['callTime', 'doors', 'showtime', 'wave', 'openerAt', 'headlinerAt'].find(k => has(k) && d[k] === x[0]) || (x[1] === d.opener ? 'opener' : x[1] === d.headliner ? 'headliner' : 'doors'); });
   if (tl.length) out.push(`<ol class="tl">${tl.sort((a, b) => (a[0] || '99').localeCompare(b[0] || '99')).map(([tm, n, ek]) => `<li${ek ? edA('x:' + ek) : ''}><time>${esc(fmtTime(tm)) || '—'}</time><div><b>${esc(n)}</b></div></li>`).join('')}</ol>`);
   for (const [k, label, kind] of sp.fields) {
-    if (['stops', 'doors', 'opener', 'openerAt', 'headliner', 'headlinerAt', 'rsvpBy', 'blockHotel', 'blockUrl', 'blockCode', 'blockBy', 'packetWhen', 'badgeWhen', 'checkinWhen', 'callTime', 'showtime', 'wave', 'closuresUrl', 'spots', 'speakers'].includes(k) || !filled(kind, d[k])) continue;
+    if (['stops', 'doors', 'opener', 'openerAt', 'headliner', 'headlinerAt', 'rsvp', 'rsvpBy', 'blockHotel', 'blockUrl', 'blockCode', 'blockBy', 'packetWhen', 'badgeWhen', 'checkinWhen', 'callTime', 'showtime', 'wave', 'closuresUrl', 'spots', 'speakers'].includes(k) || !filled(kind, d[k])) continue;
     const val = d[k]; const r0 = rows.length, o0 = out.length;
-    if (k === 'rsvp') rows.push(linkRow('RSVP', val, d.rsvpBy ? t('Reply by {d}', { d: dt(d.rsvpBy) }) : ''));
-    else if (k === 'course' && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(val)) out.push(`<a class="course-img" href="${esc(val)}" target="_blank" rel="noopener noreferrer"><img src="${esc(val)}" alt="${t('Course map')}" loading="lazy" referrerpolicy="no-referrer"></a>`);
+    if (k === 'course' && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(val)) out.push(`<a class="course-img" href="${esc(val)}" target="_blank" rel="noopener noreferrer"><img src="${esc(val)}" alt="${t('Course map')}" loading="lazy" referrerpolicy="no-referrer"></a>`);
     else if (k === 'course') rows.push(linkRow('Course map', val, /\.gpx(\?|$)/i.test(val) ? t('GPX file') : ''));
     else if (k === 'closures') rows.push(d.closuresUrl ? linkRow('Road closures', d.closuresUrl, val) : noteRow('Road closures', val));
     else if (k === 'packet' || k === 'badge' || k === 'checkin') { const w = d[k + 'When']; rows.push(`<li><a href="${esc(L.place(val, v ? placeLabel(v) : ''))}" target="_blank" rel="noopener noreferrer"><b>${esc(t(label))}</b><span>${esc([val, dt(w)].filter(Boolean).join(' · '))}</span>${arrow}</a></li>`); }
@@ -502,7 +501,8 @@ function typeInfoHTML(cfg, opt = {}) {
   if (!has('packet') && has('packetWhen')) { rows.push(noteRow('Packet pickup', dt(d.packetWhen))); tagLast('packetWhen'); }
   if (!has('badge') && has('badgeWhen')) { rows.push(noteRow('Badge pickup', dt(d.badgeWhen))); tagLast('badgeWhen'); }
   if (!has('checkin') && has('checkinWhen')) { rows.push(noteRow('Check-in and wristband pickup', dt(d.checkinWhen))); tagLast('checkinWhen'); }
-  if (!has('rsvp') && has('rsvpBy')) { rows.push(noteRow('RSVP', t('Reply by {d}', { d: dt(d.rsvpBy) }))); tagLast('rsvpBy'); }
+  // RSVP (any type): the organizer's own link, or the reply-by date when replies come in through the form
+  if (R.on && (R.via === 'link' || R.by)) { const by = R.by ? t('Reply by {d}', { d: dt(R.by) }) : ''; rows.unshift((R.via === 'link' ? linkRow('RSVP', R.url, by) : noteRow('RSVP', by)).replace(/^<li/, '<li' + edA('sec:rsvp'))); }
   if (!has('closures') && has('closuresUrl')) { rows.push(linkRow('Road closures', d.closuresUrl)); tagLast('closuresUrl'); }
   if (rows.length) out.push(`<ul class="links">${rows.join('')}</ul>`);
   if (['blockHotel', 'blockUrl', 'blockCode', 'blockBy'].some(has)) {
@@ -1423,7 +1423,7 @@ const SETUP_TYPES = [['Wedding', 'Wedding', 'RSVP, room block, dress code', '#0B
 // "Add to your page" cards: [id, title, subtitle, field keys]
 const TYPE_CARDS = {
   Trip: [['route', 'Route', 'Cities and dates', []], ['companions', 'Travelling together', 'Who is coming', ['companions']]],
-  Wedding: [['rsvp', 'RSVP', 'Link, reply-by', ['rsvp', 'rsvpBy']], ['block', 'Room block', 'Hotel, code, deadline', ['blockHotel', 'blockUrl', 'blockCode', 'blockBy']],
+  Wedding: [['block', 'Room block', 'Hotel, code, deadline', ['blockHotel', 'blockUrl', 'blockCode', 'blockBy']],
     ['dress', 'Dress code', 'Attire', ['dress']], ['registry', 'Registry', 'Links', ['registry']]],
   Race: [['startfinish', 'Start and finish', 'Map pins', ['startAt', 'finishAt']], ['packet', 'Packet pickup', 'Where and when', ['packet', 'packetWhen']],
     ['course', 'Course map', 'Link, GPX or image', ['course']], ['spots', 'Spectator spots', 'Where to cheer', ['spots']], ['closures', 'Road closures', 'Roads, times', ['closures', 'closuresUrl']]],
@@ -1436,6 +1436,9 @@ const TYPE_CARDS = {
     ['bagdrop', 'Bag drop', 'Where, what to leave', ['bagdrop']], ['spectators', 'Spectators', 'Tickets, parking', ['spectators', 'parking']], ['results', 'Live results', 'Link', ['results']]],
   Conference: [['badge', 'Badge pickup', 'Where and when', ['badge', 'badgeWhen']], ['speakers', 'Speakers', 'One per line', ['speakers']], ['agenda', 'Full agenda', 'Link', ['agenda']]]
 };
+// the card a type field is edited on (the RSVP link and reply-by date live on the one RSVP card, for every type)
+const RSVP_CARD = ['rsvp', 'RSVP', 'Replies or your link', ['rsvp', 'rsvpBy']];
+const fieldCard = (c, k) => (TYPE_CARDS[c.type] || []).find(x => x[3].includes(k)) || (k === 'rsvp' || k === 'rsvpBy' ? RSVP_CARD : undefined);
 const TYPE_GROUP = { Trip: 'For trips', Wedding: 'For weddings', Race: 'For races', Hyrox: 'For Hyrox', Concert: 'For concerts', Performance: 'For performances', 'Sporting event': 'For game day', Conference: 'For conferences' };
 const COMMON_CARDS = [['schedule', 'Schedule', 'Times and places'], ['notes', 'Notes for guests', 'Kids, parking, FAQ'], ['about', 'About', 'Host, description'],
   ['bring', 'Must-bring items', 'Required items'], ['custom', 'Custom section', 'Your own heading and info'], ['langs', 'Guest languages', 'Translations']];
@@ -1526,7 +1529,8 @@ function normalize(c) {
   if (c.shifts !== undefined) { c.shifts = Array.isArray(c.shifts) ? c.shifts.filter(x => x && typeof x.id === 'string' && /^[\w-]{1,40}$/.test(x.id) && Number.isInteger(x.d) && Math.abs(x.d) <= 800 && (x.from === '' || isoDay(x.from))).map(x => ({ id: x.id, from: x.from, d: x.d })).slice(-20) : []; if (!c.shifts.length) delete c.shifts; } // Move trip dates: guests' saved places follow
   if (c.logo !== undefined && !(typeof c.logo === 'string' && /^https:\/\/\S+$/.test(c.logo) && c.logo.length < 2000)) delete c.logo; // brand logo (Design → Match your brand)
   if (c.flyInto !== undefined) { const f = typeof c.flyInto === 'string' ? c.flyInto.trim().toUpperCase() : ''; if (f === 'NONE') c.flyInto = 'none'; else if (/^[A-Z]{3}$/.test(f) && c.venue && (!window.AIRPORTS || airportByCode(f))) c.flyInto = f; else delete c.flyInto; } // the organizer's "Fly into" airport (builder → When and where)
-  if (c.rsvpq !== undefined) c.rsvpq = normRsvpq(c.rsvpq); // RSVP form questions (builder → RSVP form)
+  if (c.rsvpq !== undefined) c.rsvpq = normRsvpq(c.rsvpq); // RSVP form questions (builder → RSVP)
+  if (c.rsvpVia !== undefined && c.rsvpVia !== 'form' && c.rsvpVia !== 'link') delete c.rsvpVia; rsvpMigrate(c); // the one RSVP card: form or own link
   delete c.osm; // hosted pages store a nearby-places snapshot beside the config; it never travels in links or drafts
   return c;
 }
@@ -1641,9 +1645,12 @@ function stubSideHTML(cfg, ap) {
   const v = cfg.venue;
   return ap ? `<span class="lbl">${t('Fly into')}</span><b class="code">${esc(ap.iata)}</b><small>${esc(t('{d} away', { d: fmtDist(ap.d, v.cc) }))}</small>` : (cfg.start ? `<span class="lbl">${esc(fmt(cfg.start.slice(0, 10), { weekday: 'short' }))}</span><b class="code">${esc(fmt(cfg.start.slice(0, 10), { month: 'short' }).toUpperCase())}</b><small class="big-day">${esc(fmt(cfg.start.slice(0, 10), { day: 'numeric' }))}</small>` : `<span class="lbl">${t('Date')}</span><b class="code">TBA</b>`);
 }
-function ticketHTML(cfg, air) {
-  const v = cfg.venue; const d = typeData(cfg);
-  const rsvp = cfg.type === 'Wedding' && d.rsvp && !cfg.off.details;
+// RSVP at the top: the organizer's own link, or a jump to the form (on the short link; the builder preview and the examples
+// show it too). A long link has no form, so no button there.
+const rsvpTopOK = (cfg, opts) => { const r = rsvpOf(cfg); return r.on && (r.via === 'link' || !!(opts.hosted || opts.preview || demoRsvp(cfg, opts))); };
+function ticketHTML(cfg, air, opts = {}) {
+  const v = cfg.venue; const R = rsvpOf(cfg);
+  const rsvp = rsvpTopOK(cfg, opts);
   const sameDay = cfg.start && cfg.start.slice(0, 10) === (cfg.end || '').slice(0, 10);
   const dirModes = [['driving', 'Drive'], ['transit', 'Transit'], ['walking', 'Walk'], ['bicycling', 'Bike']];
   return `<section class="stub" aria-label="${t('Event summary')}">
@@ -1657,7 +1664,7 @@ function ticketHTML(cfg, air) {
         ${stubSideHTML(cfg, v ? chosenAirport(cfg, air) : null)}
       </div>
       <div class="stub-actions">
-        ${rsvp ? ext(d.rsvp, t('RSVP'), 'btn primary') : ''}
+        ${rsvp ? (R.via === 'link' ? ext(R.url, t('RSVP'), 'btn primary') : `<button type="button" class="btn primary" data-act="rsvp">${t('RSVP')}</button>`) : ''}
         ${cfg.start ? `<details class="menu"><summary class="btn ${rsvp ? '' : 'primary'}">${t('Add to calendar')}</summary><div class="menu-pop"><button type="button" data-act="ics">${t('Apple or Outlook (.ics)')}</button>${ext(L.gcal(cfg, location.href), 'Google Calendar', '')}</div></details>` : ''}
         ${v ? `<details class="menu"><summary class="btn">${t('Directions')}</summary><div class="menu-pop">${dirModes.map(([m, l]) => ext(L.dir(v, m), t(l), '')).join('')}${ext(L.uber(v, v.name), 'Uber', '')}${LYFT_CC.has(v.cc) ? ext(L.lyft(v), 'Lyft', '') : ''}</div></details>` : ''}
         <button class="btn" data-act="share">${t('Share')}</button>
@@ -1859,7 +1866,7 @@ function renderEvent(cfg, root, opts = {}) {
           ${cfg.tagline ? `<p class="ev-tagline">${esc(cfg.tagline)}</p>` : ''}
         </div>
       </header>
-      ${ticketHTML(cfg, air)}
+      ${ticketHTML(cfg, air, opts)}
       <div class="ev-body">${eventTabHTML(cfg)}</div>
     </div>
     ${tabs.some(x => x[0] === 'travel') ? panel('travel', travelTabHTML(cfg, air), tabHead('travel')) : ''}
@@ -1878,6 +1885,7 @@ function renderEvent(cfg, root, opts = {}) {
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-gpid]'); if (b && art._openGPlace) art._openGPlace(b.dataset.gpid); });
   wireEvent(cfg, art, seq, air, opts); wireDetailTaps(cfg, art, opts); if (!opts.onpage) wireReadMore(art); wireOffline(cfg, art, opts); if (!opts.preview) wireCollapse(cfg, art);
   if (opts.hosted && typeof wireHosted === 'function') wireHosted(cfg, art, opts.hosted, opts);
+  else if (demoRsvp(cfg, opts) && typeof wireHosted === 'function') wireHosted(cfg, art, { id: 'demo-' + opts.exampleId, demo: true }, opts); // an example's RSVP form: answers stay on this device
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-route-stop]'); if (!b || !art.querySelector('[data-panel="nearby"]')) return; showTab(art, 'nearby', opts); const ci = cityOfStop(cfg, +b.dataset.routeStop); if (art._nearCity) art._nearCity(ci); else if (art._osmCity) art._osmCity(ci); });
   if (opts.onpage && typeof onpDecorate === 'function') onpDecorate(cfg, art);
 }
@@ -1893,7 +1901,7 @@ function showTab(art, k, opts = {}) {
 function wireEvent(cfg, art, seq, air, opts) {
   const v = cfg.venue; const T = cfg.tools; const alive = () => seq === renderSeq && document.body.contains(art);
   const slot = (n) => art.querySelector(`[data-slot="${n}"]`);
-  const renderSchedule = () => { const w = slot('schedule-wrap'); if (!w) return; ONP = !!opts.onpage; try { w.innerHTML = scheduleSecHTML(cfg); } finally { ONP = false; } if (opts.onpage && typeof onpDecorate === 'function') onpDecorate(cfg, art); };
+  const renderSchedule = () => { const w = slot('schedule-wrap'); if (!w) return; ONP = !!opts.onpage; try { w.innerHTML = scheduleSecHTML(cfg); } finally { ONP = false; } if (opts.onpage && typeof onpDecorate === 'function') onpDecorate(cfg, art); if (art._cx) art._cx(); };
   art._renderSchedule = () => { renderSchedule(); art._cx && art._cx(); art._ccBars && art._ccBars(); }; // a new booking can fold its Travel part
   art.addEventListener('click', (e) => {
     const a = e.target.closest('[data-act],[data-food],[data-tmode],[data-tab-go],[data-sched],[data-sched-all],[data-more]'); if (!a) return;
@@ -1904,6 +1912,7 @@ function wireEvent(cfg, art, seq, air, opts) {
     else if (a.dataset.more != null) { a.closest('ul').querySelectorAll('.more').forEach(x => x.classList.remove('more')); a.closest('li').remove(); }
     else if (a.dataset.act === 'ics') { a.closest('details')?.removeAttribute('open'); downloadICS(cfg); }
     else if (a.dataset.act === 'share') shareEvent(cfg, opts);
+    else if (a.dataset.act === 'rsvp') { const s = art.querySelector('#sec-rsvp'); if (!s) return; if (s.classList.contains('cx-col') && art._cxOpen) art._cxOpen('rsvp'); s.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
     else if (a.dataset.food) { const s = slot('food'); s.innerHTML = foodHTML(cfg, art._osm, a.dataset.food); }
   });
   // one open menu at a time; tapping elsewhere closes it
@@ -2206,7 +2215,7 @@ function renderViewer(cfg, { exampleId, tab } = {}) {
   $('.vbar').insertAdjacentHTML('beforeend', langPillsHTML(cfg) + langSelectHTML(cfg));
   requestAnimationFrame(pillInView);
   $('[data-save-mine]')?.addEventListener('click', (e) => saveLongToMine(packed, e.currentTarget));
-  guestRender(cfg, $('#ev-root'), { tab });
+  guestRender(cfg, $('#ev-root'), { tab, exampleId });
   const foot = $('.ev-foot a'); if (foot && exampleId) foot.setAttribute('href', editHref);
   if (location.search) $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
   window.scrollTo(0, 0);
@@ -2349,10 +2358,15 @@ function cardDone(c, id) {
   const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id);
   if (tc) { const sp = typeSpec(c), d = typeData(c); return tc[3].some(k => { const f = sp.fields.find(x => x[0] === k); return f && filled(f[2], d[k]); }); }
   return { schedule: () => c.schedule.some(x => x.title), custom: () => c.custom.some(x => x.title.trim()), notes: () => c.notes.some(x => x.label), about: () => !!(c.description || c.host), look: () => !!c.cover, bring: () => !!c.bring.trim(),
-    access: () => !!(c.access && Object.values(c.access).some(Boolean)), replies: () => !c.off.rsvp, msgs: () => !!c.guestMessages, langs: () => (c.langs || []).length > 0 }[id]?.() || false;
+    access: () => !!(c.access && Object.values(c.access).some(Boolean)), rsvp: () => rsvpOf(c).on, msgs: () => !!c.guestMessages, langs: () => (c.langs || []).length > 0 }[id]?.() || false;
 }
 const cardBtn = (c, [id, title, sub]) => { const done = cardDone(c, id); return `<button type="button" class="acard ${done ? 'on' : ''}" data-card="${id}"><span class="aic">${cardIcon(id)}</span><b>${esc(title)}</b><span>${esc(sub)}</span><i class="plus" aria-hidden="true">${done ? '✓' : '+'}</i></button>`; };
-function allCards(c) { const cc0 = COMMON_CARDS.filter(x => (x[0] !== 'langs' || canTranslate() || (c.langs || []).length) && (x[0] !== 'msgs' || msgReadyNow())); return { type: TYPE_CARDS[c.type] || [], common: isTrip(c) ? cc0.filter(x => x[0] !== 'replies').map(x => x[0] === 'schedule' ? ['schedule', 'Day by day', 'Plans, bookings'] : x) : cc0 }; }
+function allCards(c) {
+  const cc0 = COMMON_CARDS.filter(x => (x[0] !== 'langs' || canTranslate() || (c.langs || []).length) && (x[0] !== 'msgs' || msgReadyNow()));
+  if (isTrip(c)) return { type: TYPE_CARDS[c.type] || [], common: cc0.filter(x => x[0] !== 'rsvp').map(x => x[0] === 'schedule' ? ['schedule', 'Day by day', 'Plans, bookings'] : x) };
+  if (c.type === 'Wedding') return { type: cc0.filter(x => x[0] === 'rsvp').concat(TYPE_CARDS.Wedding), common: cc0.filter(x => x[0] !== 'rsvp') }; // RSVP leads For weddings
+  return { type: TYPE_CARDS[c.type] || [], common: cc0 };
+}
 function buildForm() {
   const c = B.cfg; const f = $('.b-form'); if (!f) return; const keepNote = f.querySelector('.b-note:not(.b-host)'); const keepAI = f.querySelector('[data-ai-edit]');
   const open = new Set($$('details[data-acc][open]', f).map(d => d.dataset.acc)); B.moreOpen = open.has('design-more');
@@ -2501,7 +2515,7 @@ function wireInputs(root) {
 // The page is rendered with { onpage: true } (helpers tag items with data-ed); onpDecorate adds the pencils and + buttons.
 // A tap opens the card sheet with only that part's fields (B.onp, B.focus = one item); both paths edit the same B.cfg.
 const onpOn = () => LS.get('onpEdit', true) !== false;
-const ONP_SEC = { route: 'route', about: 'about', details: 'details', rsvp: 'replies', access: 'access', schedule: 'schedule' };
+const ONP_SEC = { route: 'route', about: 'about', details: 'details', rsvp: 'rsvp', access: 'access', schedule: 'schedule' };
 const ONP_PEN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
 function onpDecorate(cfg, art) {
   art.classList.add('onp');
@@ -2544,7 +2558,7 @@ function onpGo(ed) {
   if (k === 'day') return onpOpen('schedule', { k: 'day', d: a });
   if (k === 'st' && (c.stops || [])[+a]) return onpOpen('route', { k: 'st', o: c.stops[+a], i: +a });
   if (k === 'n' && c.notes[+a]) return onpOpen('notes', { k: 'n', o: c.notes[+a], i: +a });
-  if (k === 'x') { const tc = (TYPE_CARDS[c.type] || []).find(x => x[3].includes(a)); return onpOpen(tc ? tc[0] : 'details'); }
+  if (k === 'x') { const tc = fieldCard(c, a); return onpOpen(tc ? tc[0] : 'details'); }
   if (k === 'add' && a === 's') {
     const last = c.schedule[c.schedule.length - 1]; const x = { date: b || (last && last.date) || (c.start || '').slice(0, 10), time: '', title: '', note: '' }; if (isTrip(c)) x.kind = 'activity';
     c.schedule.push(x); changed(); return onpOpen('schedule', { k: 's', o: x, fresh: true });
@@ -2895,7 +2909,13 @@ function extraInput(i, cfg) {
     });
     return;
   }
-  if (i.dataset.rsvpOn != null) { cfg.off.rsvp = !i.checked; const ed = rqNear(i, '.rq-ed'); if (ed) ed.hidden = !i.checked; changed(); return; }
+  if (i.dataset.rsvpVia != null) {
+    if (!i.checked) return; const m = i.dataset.rsvpVia;
+    cfg.off.rsvp = m === 'off'; if (m !== 'off') cfg.rsvpVia = m;
+    const part = (k) => rqNear(i, `[data-rsvp-part="${k}"]`); const ed = rqNear(i, '.rq-ed');
+    if (part('link')) part('link').hidden = m !== 'link'; if (part('by')) part('by').hidden = m === 'off'; if (ed) ed.hidden = m !== 'form';
+    changed(); if (m === 'link') setTimeout(() => { const u = part('link') && part('link').querySelector('input'); if (u && !u.value) u.focus(); }, 0); return;
+  }
   if (i.dataset.rq) { const q = rqCfg(cfg); q[i.dataset.rq] = i.checked; const sub = rqNear(i, `[data-rq-sub="${i.dataset.rq}"]`); if (sub) sub.hidden = !i.checked; changed(); return; }
   if (i.dataset.rqMeals != null) { rqCfg(cfg).meals = i.value.split('\n').map(x => x.trim().slice(0, 60)).filter(Boolean).slice(0, 12); changed(); return; }
   if (i.dataset.rqEv != null) { const q = rqCfg(cfg); const off = new Set(q.evOff); if (i.checked) off.delete(i.dataset.rqEv); else off.add(i.dataset.rqEv); q.evOff = [...off]; changed(); return; }
@@ -2907,7 +2927,7 @@ function extraInput(i, cfg) {
 // ---- access and arrival ----
 const ACCESS_FIELDS = [['dropoff', 'Drop-off point'], ['entrance', 'Step-free entrance'], ['parking', 'Accessible parking'], ['restrooms', 'Accessible restrooms'], ['notes', 'Other access notes']];
 COMMON_CARDS.splice(3, 0, ['access', 'Access and arrival', 'Drop-off, step-free']);
-COMMON_CARDS.splice(1, 0, ['replies', 'RSVP form', 'Collect replies']);
+COMMON_CARDS.splice(1, 0, ['rsvp', 'RSVP', 'Replies or your link']); // weddings show it first under For weddings (allCards)
 COMMON_CARDS.push(['msgs', t('Messages'), t('Guest messages, groups')]); // shown once schema-3 is installed
 async function loadCardGroups() {
   const slot = $('#sheet [data-grp-slot]'); if (!slot || !B.hosted || !SB) return; const eid = B.hosted.id;
@@ -2918,18 +2938,27 @@ async function loadCardGroups() {
 function extraCardBody(id, c) {
   if (id === 'msgs') return `<label class="tool"><input type="checkbox" data-gmsg ${c.guestMessages ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${t('Let guests message you')}</label>
     <h3 class="sub-h">${t('Groups')}</h3><div data-grp-slot>${B.hosted ? `<p class="muted small">${t('Loading…')}</p>` : `<p class="hint">${t('Get a short link first.')}</p>`}</div>`;
-  if (id === 'replies') return `<label class="chk"><input type="checkbox" data-rsvp-on ${c.off.rsvp ? '' : 'checked'}> RSVP form on your short link</label><p class="hint">Replies show in My pages. Short links only.</p>${rqCardHTML(c)}`;
+  if (id === 'rsvp') return rsvpCardHTML(c);
   if (id !== 'access') return '';
   const a = c.access || {};
   return ACCESS_FIELDS.map(([k, l]) => fieldWrap(l, `<input id="acc-${k}" data-access="${k}" value="${esc(a[k] || '')}">`, `acc-${k}`)).join('');
 }
+// builder → RSVP: one card — collect replies here (the form) or use my own link, a reply-by date for both, or no RSVP
+function rsvpCardHTML(c) {
+  const r = rsvpOf(c); const d = typeData(c); const mode = c.off.rsvp ? 'off' : r.via;
+  const opt = (v, l) => `<label class="chk"><input type="radio" name="rsvp-via" data-rsvp-via="${v}"${mode === v ? ' checked' : ''}> ${l}</label>`;
+  return `<div class="rsvp-via" role="radiogroup" aria-label="RSVP">${opt('form', 'Collect replies here')}${opt('link', 'Use my own link')}${opt('off', 'No RSVP')}</div>
+    <div data-rsvp-part="link"${mode === 'link' ? '' : ' hidden'}>${fieldWrap('Link', `<input id="x-rsvp" type="url" data-x="rsvp" value="${esc(d.rsvp || '')}" placeholder="https://…">`, 'x-rsvp')}</div>
+    <div data-rsvp-part="by"${mode === 'off' ? ' hidden' : ''}>${fieldWrap('Reply by', `<input id="x-rsvpBy" type="date" data-x="rsvpBy" value="${esc(d.rsvpBy || '')}">`, 'x-rsvpBy')}</div>
+    ${rqCardHTML(c, mode !== 'form')}`;
+}
 const rqNear = (el, sel) => { for (let a = el.parentElement; a; a = a.parentElement) { const f = a.querySelector(sel); if (f) return f; } return null; };
 // builder → RSVP form: the extra questions (all optional for guests, asked only of guests who are coming)
-function rqCardHTML(c) {
+function rqCardHTML(c, hide) {
   const q = normRsvpq(c.rsvpq); const evs = [...new Set((c.schedule || []).map(x => String(x.title || '').trim()).filter(Boolean))]; const off = new Set(q.evOff);
   const tg = (k, l) => `<label class="chk"><input type="checkbox" data-rq="${k}"${q[k] ? ' checked' : ''}> ${l}</label>`;
   const sub = (k, html) => `<div class="rq-sub" data-rq-sub="${k}"${q[k] ? '' : ' hidden'}>${html}</div>`;
-  return `<div class="rq-ed"${c.off.rsvp ? ' hidden' : ''}><h3 class="sub-h">Questions on the form</h3><p class="hint">All optional for guests, and only asked of guests who are coming.</p>
+  return `<div class="rq-ed"${hide ? ' hidden' : ''}><h3 class="sub-h">Questions on the form</h3><p class="hint">All optional for guests, and only asked of guests who are coming.</p>
     ${tg('meal', 'Meal choice')}${sub('meal', fieldWrap('Meal options, one per line', `<textarea id="rq-meals" data-rq-meals rows="3" placeholder="Chicken&#10;Fish&#10;Vegetarian">${esc(q.meals.join('\n'))}</textarea>`, 'rq-meals'))}
     ${tg('diet', 'Dietary needs')}
     ${tg('plus', 'Names of everyone in their party')}
@@ -3169,6 +3198,26 @@ function hostedProblem(msg, retry) {
 // check constraint) after the guest's own note: "<note>\n\n[[1lt:{"v":1,...}]]". rqParse splits them again; replies
 // without it (older ones, or with every question off) read exactly as before.
 const RQ_MARK = '[[1lt:';
+// ---- RSVP (builder → RSVP): the organizer either collects replies here (the form below, cfg.rsvpVia 'form') or points guests
+// at their own link ('link', the URL in x[type].rsvp); a reply-by date (x[type].rsvpBy) for both. off.rsvp turns RSVP off.
+// Pages from before the one RSVP card had an "RSVP" link card (weddings) and an "RSVP form" card side by side; they
+// read as before until the organizer picks (rsvpOf): a link wins unless the form has questions on; a link with the form
+// switched off becomes 'link' on load (rsvpMigrate), since off.rsvp now turns the whole RSVP off.
+const RQ_KEYS = ['meal', 'diet', 'plus', 'events', 'qs'];
+const rqOn = (c) => !!(c.rsvpq && RQ_KEYS.some(k => c.rsvpq[k]));
+function rsvpMigrate(c) {
+  if (isTrip(c) || c.rsvpVia || !c.off.rsvp || !rsvpUrl(((c.x || {})[c.type] || {}).rsvp)) return;
+  c.rsvpVia = 'link'; c.off.rsvp = false;
+}
+const rsvpUrl = (u) => { const r = String(u || '').trim(); return r ? httpsUrl(/^[a-z][\w+.-]*:/i.test(r) ? r : 'https://' + r) : ''; };
+// { on, via: 'form' | 'link', url, by } — on: guests get an RSVP (the form, or a link that is filled in)
+// an example page (?demo=wedding) shows its RSVP form working, answers kept on this device only
+const demoRsvp = (cfg, opts) => { const r = rsvpOf(cfg); return !!(opts && opts.exampleId && !opts.hosted && !opts.preview && r.on && r.via === 'form' && (r.by || cfg.type === 'Wedding')); };
+function rsvpOf(cfg) {
+  const d = typeData(cfg); const url = rsvpUrl(d.rsvp); const via = cfg.rsvpVia || (url && !rqOn(cfg) ? 'link' : 'form');
+  const by = isoDay(d.rsvpBy) ? d.rsvpBy : '';
+  return { on: !isTrip(cfg) && !(cfg.off && cfg.off.rsvp) && (via === 'form' || !!url), via, url, by };
+}
 function normRsvpq(q) {
   q = q && typeof q === 'object' ? q : {}; const s = (v, n) => (typeof v === 'string' ? v : '').trim().slice(0, n);
   return { meal: !!q.meal, meals: (Array.isArray(q.meals) ? q.meals : []).map(x => s(x, 60)).filter(Boolean).slice(0, 12), diet: !!q.diet, plus: !!q.plus,
@@ -3256,16 +3305,18 @@ function wireHosted(cfg, art, hosted, opts = {}) {
   const src = opts.src || cfg;
   const body = art.querySelector('.ev-panel[data-panel="event"] .ev-body'); if (!body) return;
   body.insertAdjacentHTML('afterbegin', '<div data-slot="ann"></div>');
-  if (!cfg.off.rsvp) {
+  const R = rsvpOf(cfg);
+  if (R.on && R.via === 'form') {
     const html = sec('rsvp', t('RSVP'), `<div data-slot="rsvp">${rsvpFormHTML(cfg, hosted, src)}</div>`);
     const wrap = body.querySelector('[data-slot="rsvp-wrap"]');
     if (wrap) wrap.innerHTML = html; else body.querySelector('[data-slot="ann"]').insertAdjacentHTML('afterend', html);
+    if (art._cx) art._cx(); // its title folds like the others
   }
   if (opts.preview) { art.querySelectorAll('.rsvp input, .rsvp textarea, .rsvp select, .rsvp button').forEach(x => { x.disabled = true; }); return; }
   // groups guests can pick at RSVP, and messages (both hidden until schema-3 is installed)
   art._fillPick = () => { const g = art.querySelector('[data-rsvp-group]'); const P = art._gm; if (g && P && P.picks.length) g.innerHTML = groupPickHTML(P.picks, (LS.get('rsvp:' + hosted.id) || {}).group || ''); };
-  wireGuestMsgs(cfg, art, hosted);
-  fetchAnnouncements(hosted.id).then(rows => {
+  if (!hosted.demo) wireGuestMsgs(cfg, art, hosted);
+  if (!hosted.demo) fetchAnnouncements(hosted.id).then(rows => {
     const s = art.querySelector('[data-slot="ann"]'); if (!s || !rows || !rows.length) return;
     const tr = (cfg.tr && cfg.tr[LANG]) || {}; const show = (r) => { const e = tr['ann.' + r.id]; return e && e.h === hashStr(r.body) ? e.t : r.body; };
     s.innerHTML = `<section class="ev-sec ann" aria-label="${t('Updates from the host')}"><h2 class="sec-h">${t('Updates from the host')}</h2><ul class="ann-list">${rows.map(r => `<li><time>${esc(fmtStamp(r.created_at))}</time><p>${esc(show(r))}</p></li>`).join('')}</ul></section>`;
@@ -3295,7 +3346,7 @@ function wireHosted(cfg, art, hosted, opts = {}) {
     const x = attending ? rqCollect(slot, src, guests) : null; const row = { event_id: hosted.id, name, email: email || null, attending, guests, note: rqPack(note, x), ...(group ? { group_id: group } : {}) };
     b.disabled = true; msg.textContent = t('Sending…');
     try {
-      await sendRSVP(row);
+      if (!hosted.demo) await sendRSVP(row);
       LS.set('rsvp:' + hosted.id, { name, email, attending, guests, note, group, ...(x ? { x } : {}), at: Date.now() });
       if (group) { const u = art._gm && art._gm.user; if (u) setMyGroup(hosted.id, group, u).then(() => art._gmLoad && art._gmLoad()).catch(() => {}); else LS.set('grpPick:' + hosted.id, group); }
       slot.innerHTML = rsvpFormHTML(cfg, hosted, src);
@@ -3501,7 +3552,7 @@ const LONG_BTN = `<button type="button" class="link" data-ph="long">Share withou
 // has them): when the page has any of them on, say so before that link is shared, with the way to the short link.
 function longGaps() {
   const c = B.cfg; if (!SB || (B.hosted && B.hosted.pub && B.hosted.slug)) return ''; // no hosting, or a short link exists
-  const g = []; if (!c.off.rsvp) g.push('RSVP form'); if (c.guestMessages) g.push('guest messages'); if (!g.length) return '';
+  const g = []; if (rsvpOf(c).on && rsvpOf(c).via === 'form') g.push('RSVP form'); if (c.guestMessages) g.push('guest messages'); if (!g.length) return '';
   return g.join(', ') + ' or live updates';
 }
 function longNoteHTML(full) {
@@ -4786,8 +4837,10 @@ function wirePlan(cfg, art, mapCtl) {
   });
 }
 
-// ================= guest tabs: collapse any section, hide it for this guest, booked parts fold to one line =================
-// Per guest per trip: { c: { id: 1 collapsed | 0 opened }, h: { id: 1 hidden } } in localStorage, synced with My trip.
+// ================= guest tabs: tap a section's title to fold it; booked parts fold to one line =================
+// Per guest per trip: { c: { id: 1 folded | 0 opened } } in localStorage, synced with My trip. The title row is the one
+// control (a button with aria-expanded and a single chevron). Pages from when sections also had a Hide button may still
+// have { h: { id: 1 } }: those sections start folded instead of gone.
 // A Travel part the guest already booked (flight, train, rental car, hotel) starts folded to its summary line.
 const cxKey = (cfg) => 'secui:' + syncKey(cfg);
 const CX_PARTS = [['fly', 'Flights', ['flight']], ['train', 'Trains', ['train']], ['rental', 'Rental car', ['car']]];
@@ -4799,47 +4852,43 @@ function cxBooked(cfg) {
   return { 'm-fly': line('flight', 'Flight'), 'm-train': line('train', 'Train'), 'm-rental': line('car', 'Rental car'), stay: line('hotel', 'Hotel') || line('stay', 'Hotel') };
 }
 function wireCollapse(cfg, art) {
-  const st = () => LS.get(cxKey(cfg), null) || { c: {}, h: {} };
-  const save = (x) => { LS.set(cxKey(cfg), x); if (LS.get('signedIn') && cfg.tools.mytrip) syncPush(cfg); };
+  const st = () => { const x = LS.get(cxKey(cfg), null) || {}; return { c: x.c || {}, h: x.h || {} }; };
+  const save = (x) => { if (!Object.keys(x.h).length) delete x.h; LS.set(cxKey(cfg), x); if (LS.get('signedIn') && cfg.tools.mytrip) syncPush(cfg); };
+  const isCol = (x, booked, id) => x.c[id] === 1 || (x.c[id] !== 0 && (!!booked[id] || !!x.h[id]));
   const units = () => {
     const out = [];
-    $$('.ev-panel .ev-sec[data-sec]', art).forEach(s => { const h = s.querySelector(':scope > .sec-h'); if (h) out.push({ id: s.dataset.sec, el: s, title: h.textContent, kind: 'sec' }); });
+    $$('.ev-panel .ev-sec[data-sec]', art).forEach(s => { const h = s.querySelector(':scope > .sec-h'); if (h) out.push({ id: s.dataset.sec, el: s, h, kind: 'sec' }); });
     CX_PARTS.forEach(([m, label]) => { const el = art.querySelector(`[data-panel="travel"] [data-mode="${m}"]`); if (el) out.push({ id: 'm-' + m, el, title: t(label), kind: 'part' }); });
     return out;
   };
   const paint = () => {
     const x = st(); const booked = cxBooked(cfg);
     units().forEach(u => {
-      const col = x.c[u.id] === 1 || (x.c[u.id] !== 0 && !!booked[u.id]); const hid = !!x.h[u.id];
-      let ctl = u.kind === 'sec' ? u.el.querySelector(':scope > .cx') : u.el.previousElementSibling && u.el.previousElementSibling.classList.contains('cx-part') ? u.el.previousElementSibling : null;
-      if (!ctl) {
-        const html = `<div class="cx${u.kind === 'part' ? ' cx-part' : ''}">${u.kind === 'part' ? `<b class="cx-t">${esc(u.title)}</b>` : ''}<span class="cx-sum" data-cx-sum></span><button type="button" class="cx-hide" data-cx-hide="${esc(u.id)}" aria-label="${esc(t('Hide {s}', { s: u.title }))}">${t('Hide')}</button><button type="button" class="cx-tog" data-cx-tog="${esc(u.id)}" aria-label="${esc(u.title)}"><i aria-hidden="true"></i></button></div>`;
-        if (u.kind === 'sec') u.el.querySelector(':scope > .sec-h').insertAdjacentHTML('afterend', html); else u.el.insertAdjacentHTML('beforebegin', html);
-        ctl = u.kind === 'sec' ? u.el.querySelector(':scope > .cx') : u.el.previousElementSibling;
-        if (u.kind === 'sec') u.el.classList.add('cx-sec');
+      const col = isCol(x, booked, u.id); let tog;
+      if (u.kind === 'sec') {
+        // the whole title row is the button: <h2 class="sec-h"><button class="cx-h" aria-expanded>Title<i></i></button></h2>
+        tog = u.h.querySelector(':scope > [data-cx-tog]');
+        if (!tog) {
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'cx-h'; b.dataset.cxTog = u.id;
+          b.innerHTML = `<span class="cx-tt"></span><i class="cx-chev" aria-hidden="true"></i>`; b.firstChild.append(...u.h.childNodes); u.h.appendChild(b);
+          u.el.classList.add('cx-sec'); tog = b;
+        }
+        let sl = u.el.querySelector(':scope > .cx-sumline'); if (!sl) { u.h.insertAdjacentHTML('afterend', '<div class="cx-sumline"></div>'); sl = u.h.nextElementSibling; }
+        sl.textContent = col ? booked[u.id] || '' : '';
+      } else {
+        let ctl = u.el.previousElementSibling && u.el.previousElementSibling.classList.contains('cx-part') ? u.el.previousElementSibling : null;
+        if (!ctl) {
+          u.el.insertAdjacentHTML('beforebegin', `<div class="cx cx-part"><button type="button" class="cx-h" data-cx-tog="${esc(u.id)}"><b class="cx-t">${esc(u.title)}</b><i class="cx-chev" aria-hidden="true"></i></button><span class="cx-sum" data-cx-sum></span></div>`);
+          ctl = u.el.previousElementSibling;
+        }
+        tog = ctl.querySelector('[data-cx-tog]'); ctl.querySelector('[data-cx-sum]').textContent = col ? booked[u.id] || '' : '';
       }
-      const tog = ctl.querySelector('[data-cx-tog]'); tog.setAttribute('aria-expanded', String(!col));
-      ctl.querySelector('[data-cx-sum]').textContent = col ? booked[u.id] || '' : '';
-      if (u.kind === 'sec') { let sl = u.el.querySelector(':scope > .cx-sumline'); if (!sl) { ctl.insertAdjacentHTML('afterend', '<div class="cx-sumline"></div>'); sl = ctl.nextElementSibling; } sl.textContent = col ? booked[u.id] || '' : ''; }
-      u.el.classList.toggle('cx-col', col); u.el.classList.toggle('cx-hid', hid); if (u.kind === 'part') ctl.classList.toggle('cx-hid', hid);
-    });
-    // "Hidden (n)" at the bottom of each tab: tap to bring one back
-    $$('.ev-panel', art).forEach(pn => {
-      const hs = units().filter(u => x.h[u.id] && pn.contains(u.el)); let row = pn.querySelector(':scope .cx-hidden');
-      if (!hs.length) { if (row) row.remove(); return; }
-      const html = `<details class="cx-hidden"><summary>${esc(t('Hidden ({n})', { n: hs.length }))}</summary><div class="cx-list">${hs.map(u => `<button type="button" class="btn sm" data-cx-show="${esc(u.id)}">${esc(t('Show {s}', { s: u.title }))}</button>`).join('')}</div></details>`;
-      const body = pn.querySelector('.ev-body') || pn; if (row) { const open = row.open; row.outerHTML = html; if (open) body.querySelector('.cx-hidden').open = true; } else body.insertAdjacentHTML('beforeend', html);
+      tog.setAttribute('aria-expanded', String(!col)); u.el.classList.toggle('cx-col', col);
     });
   };
-  art._cx = paint; paint();
-  art.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-cx-tog],[data-cx-hide],[data-cx-show]'); const h2 = !b && e.target.closest('.cx-sec > .sec-h');
-    if (!b && !h2) return; const x = st(); const booked = cxBooked(cfg);
-    const id = b ? b.dataset.cxTog || b.dataset.cxHide || b.dataset.cxShow : h2.parentElement.dataset.sec;
-    if ((b && b.dataset.cxTog) || h2) { const col = x.c[id] === 1 || (x.c[id] !== 0 && !!booked[id]); x.c[id] = col ? 0 : 1; }
-    else if (b.dataset.cxHide) x.h[id] = 1; else delete x.h[id];
-    save(x); paint();
-  });
+  const toggle = (id, open) => { const x = st(); const col = isCol(x, cxBooked(cfg), id); if (open === true && !col) return; x.c[id] = col ? 0 : 1; delete x.h[id]; save(x); paint(); };
+  art._cx = paint; art._cxOpen = (id) => toggle(id, true); paint();
+  art.addEventListener('click', (e) => { const b = e.target.closest('[data-cx-tog]') || e.target.closest('.cx-sec > .sec-h')?.querySelector('[data-cx-tog]'); if (b && art.contains(b)) toggle(b.dataset.cxTog); });
   // Travel parts are filled in later (airports, counters): keep their headers in place
   const tp = art.querySelector('[data-panel="travel"]'); if (tp) new MutationObserver(debounce(() => { if (document.body.contains(art)) paint(); }, 120)).observe(tp, { childList: true });
 }
@@ -6315,7 +6364,7 @@ function wireAIEdit() {
 const DOC_BUCKET = 'event-files';
 const DOC_ACCEPT = 'application/pdf,.pdf,image/*';
 const DOC_CARDS = ['route', 'schedule', 'notes', 'about', 'bring', 'access'];
-const docCardOk = (c, id) => DOC_CARDS.includes(id) || /^c-/.test(id) || (TYPE_CARDS[c.type] || []).some(x => x[0] === id && id !== 'route');
+const docCardOk = (c, id) => DOC_CARDS.includes(id) || (id === 'rsvp' && c.type === 'Wedding') || /^c-/.test(id) || (TYPE_CARDS[c.type] || []).some(x => x[0] === id && id !== 'route');
 function normFiles(xs) {
   const seen = new Set();
   return (Array.isArray(xs) ? xs : []).filter(x => x && typeof x === 'object').slice(0, 40).map((x, i) => {
@@ -6331,7 +6380,7 @@ function docsHTML(cfg, secs) {
   return `<ul class="docs">${fs.map(f => `<li><a class="doc-main" href="${esc(f.url)}" target="_blank" rel="noopener noreferrer"><span class="doc-ic" aria-hidden="true">${f.type === 'pdf' ? 'PDF' : 'IMG'}</span><b>${esc(f.name)}</b></a><span class="doc-a"><a class="mini-b" href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${esc(tl('View document', 'View'))}</a><a class="mini-b" href="${esc(dl(f))}" download="${esc(f.name)}">${esc(t('Download'))}</a></span></li>`).join('')}</ul>`;
 }
 const bringInPacking = (cfg) => !!(cfg.start && cfg.tools.packing);
-const detailDocSecs = (cfg) => ['notes', ...(TYPE_CARDS[cfg.type] || []).map(x => x[0]).filter(x => x !== 'route'), ...(bringInPacking(cfg) ? [] : ['bring'])];
+const detailDocSecs = (cfg) => ['notes', ...(cfg.type === 'Wedding' ? ['rsvp'] : []), ...(TYPE_CARDS[cfg.type] || []).map(x => x[0]).filter(x => x !== 'route'), ...(bringInPacking(cfg) ? [] : ['bring'])];
 
 // uploads: PDFs up to 10 MB as they are; photos re-encoded to a ~300 KB JPEG on the phone first
 async function shrinkPhoto(f, max = 300e3, maxSide = 1600) {
@@ -6489,7 +6538,7 @@ function docSecLabel(c, sec, it) {
   if (sec === 'bring') return 'Must-bring items';
   if (sec === 'custom') { const x = it && it.target && c.custom.find(y => customSid(y) === it.target); return x ? (x.title.trim() || 'Custom section') : 'New custom section'; }
   let m;
-  if ((m = sec.match(/^field:(\w+)$/))) { const tc = (TYPE_CARDS[c.type] || []).find(x => x[3].includes(m[1])); const f = (typeSpec(c) || { fields: [] }).fields.find(x => x[0] === m[1]); const fl = f ? (EDIT_LABEL[m[1]] || f[1]) : m[1]; return tc && tc[3].length > 1 ? `${tc[1]} · ${fl}` : (tc ? tc[1] : fl); }
+  if ((m = sec.match(/^field:(\w+)$/))) { const tc = fieldCard(c, m[1]); const f = (typeSpec(c) || { fields: [] }).fields.find(x => x[0] === m[1]); const fl = f ? (EDIT_LABEL[m[1]] || f[1]) : m[1]; return tc && tc[3].length > 1 ? `${tc[1]} · ${fl}` : (tc ? tc[1] : fl); }
   if ((m = sec.match(/^access:(\w+)$/))) return 'Access · ' + ((ACCESS_FIELDS.find(x => x[0] === m[1]) || [])[1] || m[1]);
   return sec;
 }
@@ -6509,13 +6558,13 @@ const docFields = (it) => {
     default: return [['text', '', it.kind === 'links' ? 'ro' : /lines/.test(it.kind || '') || (it.text || '').length > 80 ? 'long' : 'text']];
   }
 };
-const drGroupKey = (c, it) => it.sec === 'custom' ? 'custom:' + (it.target || '') : it.sec.startsWith('field:') ? 'field:' + (((TYPE_CARDS[c.type] || []).find(x => x[3].includes(it.sec.slice(6))) || [''])[0]) : it.sec.replace(/:.*$/, '');
+const drGroupKey = (c, it) => it.sec === 'custom' ? 'custom:' + (it.target || '') : it.sec.startsWith('field:') ? 'field:' + ((fieldCard(c, it.sec.slice(6)) || [''])[0]) : it.sec.replace(/:.*$/, '');
 const drLive = (c, st) => st.items.filter(x => !x.gone && !(st.off || {})[drGroupKey(c, x)]);
 const drKeyLabel = (c, it) => it.key === 'dates' ? (isTrip(c) ? 'Trip dates' : 'Dates') : it.key === 'title' ? 'Title' : 'Venue';
 function drGroupName(c, G, items) {
   const it = items[G.idx[0]];
   if (G.sec.startsWith('access:')) return 'Access and arrival';
-  if (G.sec.startsWith('field:')) { const tc = (TYPE_CARDS[c.type] || []).find(x => x[3].includes(G.sec.slice(6))); return tc ? tc[1] : docSecLabel(c, G.sec, it); }
+  if (G.sec.startsWith('field:')) { const tc = fieldCard(c, G.sec.slice(6)); return tc ? tc[1] : docSecLabel(c, G.sec, it); }
   if (G.sec === 'custom' && !it.target && G.idx.length > 1) return 'New custom sections';
   return docSecLabel(c, G.sec, it);
 }
@@ -6960,7 +7009,7 @@ const THEME_PRESETS = [
   ['Stadium', { accent: '#C2185B', font: 'condensed', mode: 'dark' }], ['Trail', { accent: '#2E7D32', font: 'wide', mode: 'light' }],
 ];
 // guest Event tab sections the organizer can reorder and hide
-const EVENT_SECTIONS = [['route', 'Route'], ['about', 'About'], ['details', 'Need to know'], ['rsvp', 'RSVP form'], ['access', 'Access and arrival'], ['schedule', 'Schedule'], ['weather', 'Weather']];
+const EVENT_SECTIONS = [['route', 'Route'], ['about', 'About'], ['details', 'Need to know'], ['rsvp', 'RSVP'], ['access', 'Access and arrival'], ['schedule', 'Schedule'], ['weather', 'Weather']];
 const schedTitle = (cfg) => isTrip(cfg) ? 'Itinerary' : 'Schedule';
 function sectionOrder(cfg) {
   const ids = EVENT_SECTIONS.map(x => x[0]).concat((cfg.custom || []).filter(x => x && (x.title || '').trim()).map(customSid)); const o = (Array.isArray(cfg.order) ? cfg.order : (typeDefaults(cfg.type).order || [])).filter((x, i, a) => ids.includes(x) && a.indexOf(x) === i);
