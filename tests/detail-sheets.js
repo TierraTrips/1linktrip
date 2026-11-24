@@ -98,7 +98,7 @@ const sheet = (page) => page.evaluate(() => { const d = document.querySelector('
       // ---- My trip: saved spots by category ----
       await page.click('[data-tab-go="mytrip"]'); await page.waitForSelector('#sec-spots');
       const gs = await page.$$eval('#sec-spots .sp-g', ds => ds.map(d => `${d.querySelector('.sp-h').textContent}:${d.querySelector('.sp-n').textContent}`));
-      ok(gs.join() === 'Hotels:1,Restaurants:2,Cafés:1,Sights:1', `@${w} saved spots grouped by category with counts ${gs}`);
+      ok(gs.join() === 'Restaurants:2,Cafés:1,Sights:1', `@${w} saved spots grouped by category with counts (stay hotel not repeated) ${gs}`);
       await page.click('#sec-spots .sp-g[data-spot-g="restaurants"] > summary');
       ok(!(await page.$eval('#sec-spots .sp-g[data-spot-g="restaurants"]', d => d.open)) && !(await page.isVisible('#sec-spots [data-ds="pl:p1"]')), `@${w} a group folds`);
       await page.click('#sec-spots .sp-g[data-spot-g="restaurants"] > summary');

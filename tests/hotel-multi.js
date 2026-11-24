@@ -100,7 +100,7 @@ const near = (a, b, e = 1e-3) => Math.abs(a - b) < e;
     await page.click('#sec-schedule [data-route-stop="2"]'); await page.waitForTimeout(300);
     ok(await cityNow(page) === '0' && await selLabel(page, 'city') === 'Tokyo', `@${w} second Tokyo leg → Tokyo in Nearby`);
     await page.click('[data-tab-go="mytrip"]');
-    const sp = await page.textContent('#sec-spots'); ok(/Hotel A[\s\S]*Hotel B/.test(sp), `@${w} My trip lists both Tokyo hotels: ${sp.replace(/\s+/g, ' ').slice(0, 200)}`);
+    const sp = await page.textContent('#sec-plan'); ok(/Hotel A[\s\S]*Hotel B/.test(sp), `@${w} My trip lists both Tokyo hotels: ${sp.replace(/\s+/g, ' ').slice(0, 200)}`);
     ok(errors.length === 0, `@${w} no page errors ${errors.join(' ')}`);
     await ctx.close();
   }

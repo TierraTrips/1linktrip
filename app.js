@@ -5879,20 +5879,23 @@ const SPOT_SHUT = new Set(); // groups the guest folded (this session)
 const thumbHTML = (x, cat) => { const p = (x.photos || []).find(photoSrc); return p ? `<span class="sp-th" style="--cc:${ccColor(cat)}"><img src="${esc(photoSrc(p))}" alt="" loading="lazy" onerror="this.remove()"></span>` : `<span class="sp-ic">${ccIcon(cat)}</span>`; };
 function spotsHTML(cfg) {
   const gs0 = spotsByCity(cfg); const many = hotelStops(cfg).length > 1;
-  if (!gs0.length) return `<p class="muted">${t('Tap ☆ on a place in Nearby to save it here.')}</p>`;
-  // the City × Category bar narrows the list: a city's spots only, hotels under Hotels, spots under their own category
+  // only what the guest saved (☆): the stay hotels (their bookings, the organizer's check-ins) are already in Your
+  // itinerary / Your bookings, so they are not listed again here — nor is a ☆ hotel that is one of them (Dylan 11/24:
+  // a second "Hotels 6" group under "Hotels 3"). Save all to Google Maps (KML) still carries every city's hotel.
+  const stays = itinLoad(cfg).filter(x => LODGE.has(x.kind)).map(x => ({ name: x.name || '', ref: x.ref || '' })).concat(hotelCands(cfg).map(c => ({ name: c.name || '', ref: '' })));
+  const isStay = (x) => stays.some(h => (h.ref && x.ref && h.ref === x.ref) || (h.name && nameLike(h.name, x.name)));
+  // the City × Category bar narrows the list: a city's spots only, each under its own category
   const F = ccTrip(cfg); const cityI = (g) => g.i;
-  const rows = [];
+  const rows = []; let any = false;
   gs0.forEach(g => { const ci = many ? cityI(g) : 0;
-    g.hotels.forEach(h => { if (F.ok({ city: ci, cat: 'hotels', text: [h.name, h.addr].join(' '), saved: false, booked: true })) rows.push({ hotel: true, x: h, cat: 'hotels', city: g.city }); });
-    g.spots.forEach(x => { const cat = ccCatOfPlan(x); if (F.ok({ city: ci, cat, text: [x.name, x.addr, x.note].join(' '), saved: true, booked: !!x.booked })) rows.push({ x, cat, city: g.city }); }); });
+    g.spots.forEach(x => { const cat = ccCatOfPlan(x); if (cat === 'hotels' && isStay(x)) return; any = true;
+      if (F.ok({ city: ci, cat, text: [x.name, x.addr, x.note].join(' '), saved: true, booked: !!x.booked })) rows.push({ x, cat, city: g.city }); }); });
+  if (!any) return `<p class="muted">${t('Tap ☆ on a place in Nearby to save it here.')}</p>`;
   if (!rows.length) return ccNoneHTML();
   const showCity = many && F.ci < 0;
-  const row = (r) => { const x = r.x; const ref = r.hotel ? (x.id ? 'bk:' + x.id : 'hh:' + x.name) : 'pl:' + x.id;
-    const it = r.hotel ? itinLoad(cfg).find(y => y.id === x.id) || x : x;
-    const meta = r.hotel ? [t('Your hotel'), hotelDates(x), showCity ? r.city : ''] : [showCity ? r.city : '', x.day ? fmt(x.day, { weekday: 'short', month: 'short', day: 'numeric' }) : '', x.addr && !showCity ? x.addr.split(',')[0] : ''];
-    const rm = r.hotel && x.id && x.src !== 'host' ? rmBtnHTML(x.id, 'sp-rm') : '';
-    return `<li class="sp-row${rm ? ' has-rm' : ''}"><button type="button" class="sp-go" data-ds="${esc(ref)}">${thumbHTML(it, r.cat)}<span class="sp-tx"><b>${esc(x.name)}</b><small>${esc(meta.filter(Boolean).join(' · '))}</small>${!r.hotel && x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}</span></button><a class="sp-map" href="${esc(gmapsLink(x))}" target="_blank" rel="noopener noreferrer" aria-label="${esc(t('Open {n} in Google Maps', { n: x.name }))}" title="${esc(t('Open in Google Maps'))}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.1-7-11.5a7 7 0 0 1 14 0C19 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span>${t('Maps')}</span></a>${rm}</li>`; };
+  const row = (r) => { const x = r.x; const ref = 'pl:' + x.id;
+    const meta = [showCity ? r.city : '', x.day ? fmt(x.day, { weekday: 'short', month: 'short', day: 'numeric' }) : '', x.addr && !showCity ? x.addr.split(',')[0] : ''];
+    return `<li class="sp-row"><button type="button" class="sp-go" data-ds="${esc(ref)}">${thumbHTML(x, r.cat)}<span class="sp-tx"><b>${esc(x.name)}</b><small>${esc(meta.filter(Boolean).join(' · '))}</small>${x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}</span></button><a class="sp-map" href="${esc(gmapsLink(x))}" target="_blank" rel="noopener noreferrer" aria-label="${esc(t('Open {n} in Google Maps', { n: x.name }))}" title="${esc(t('Open in Google Maps'))}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.1-7-11.5a7 7 0 0 1 14 0C19 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span>${t('Maps')}</span></a></li>`; };
   const groups = SPOT_ORDER.map(k => [k, rows.filter(r => (SPOT_ORDER.includes(r.cat) ? r.cat : '') === k)]).filter(([, g]) => g.length);
   return `<div class="sp-groups">${groups.map(([k, g]) => `<details class="sp-g" data-spot-g="${k || 'other'}"${SPOT_SHUT.has(k || 'other') && groups.length > 1 ? '' : ' open'}><summary>${ccIcon(k || 'pin')}<span class="sp-h">${esc(k ? ccLabel(k) : t('Other'))}</span><span class="sp-n">${g.length}</span><i class="sp-tog" aria-hidden="true"></i></summary><ul class="plist spots">${g.map(row).join('')}</ul></details>`).join('')}</div>
     <div class="btns sp-kml"><button type="button" class="btn sm" data-kml>${t('Save all to Google Maps')}</button></div><p class="muted small">${t('Import into Google My Maps — shows in the Google Maps app under Saved → Maps')}</p>`;

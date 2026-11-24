@@ -155,20 +155,18 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: `$
       ok(page._err.length === 0, `@${w} no page errors ${page._err}`); await ctx.close();
     }
 
-    // 3b — every hotel row in My trip carries its own Remove: Your itinerary and Saved spots
+    // 3b — every hotel row in My trip carries its own Remove (Your itinerary; Saved spots lists only ☆ places, not stays)
     { const { ctx, page } = await setup(browser);
       const seed = { itin: [{ id: 'gr1', kind: 'hotel', name: 'Hotel Gracery Shinjuku', address: 'Kabukicho', lat: 35.695, lon: 139.702, start: '2027-04-01T15:00', end: '2027-04-04T11:00', confNo: 'GR-2' }] };
       await open(page, 'mytrip', seed);
       const pr = await page.$('#sec-plan [data-bk-rm="gr1"]'); ok(!!pr && /Remove/.test(await pr.textContent()) && !!(await pr.$('svg.rm-ic')), 'Your itinerary: hotel row has trash + Remove');
-      const sp = await page.$('#sec-spots [data-bk-rm="gr1"]'); ok(!!sp && /Remove/.test(await sp.textContent()), 'Saved spots: hotel row has trash + Remove');
+      ok(!(await page.$('#sec-spots [data-bk-rm="gr1"]')) && !/Gracery/.test(await page.textContent('#sec-spots')), 'Saved spots: the booked hotel is not listed again');
       ok((await overflow(page)) === 0, 'rows fit');
       if (SHOTS) await page.locator('#sec-plan').screenshot({ path: `${SHOTS}/remove-itinerary-row.png` });
-      if (SHOTS) await page.locator('#sec-spots').screenshot({ path: `${SHOTS}/remove-spots-row.png` });
       await pr.click(); await page.waitForTimeout(400);
       ok((await itin(page)).length === 0 && !(await page.$('[data-bk-rm="gr1"]')) && !(await page.$('dialog.ds-sheet[open]')), 'itinerary Remove → gone everywhere, no sheet opened');
       await page.click('#toast .toast-act'); await page.waitForTimeout(300);
-      await page.click('#sec-spots [data-bk-rm="gr1"]'); await page.waitForTimeout(400);
-      ok((await itin(page)).length === 0, 'saved spots Remove → gone');
+      ok((await itin(page)).length === 1, 'Undo → back');
       ok(page._err.length === 0, `no page errors ${page._err}`); await ctx.close(); }
 
     // 4 — organizer: a document's new hotel replaces the old one at that stop (check-in + check-out), nothing else

@@ -2,7 +2,7 @@
 // itinerary for that leg, else one the guest sets (search + Find). It is a deep-blue bed pin with no text until hovered or
 // tapped (popup with name + dates), highest on the map, with a key + a "Hotel" button that re-centers on it. Nearby searches start at the hotel and
 // distances are measured from it. ☆ on any place saves it (plan item, synced like My trip), shows as a gold star pin,
-// and is listed per city in My trip → Saved spots with Open in Google Maps, plus Save all to Google Maps (a KML file)
+// and is listed per city in My trip → Saved spots (☆ places only; the stay hotel is in Your itinerary) with Open in Google Maps, plus Save all to Google Maps (a KML file)
 // with the My Maps note. 390 + 320.
 //
 //   python3 -m http.server 18765 --bind 127.0.0.1 &  node tests/hotel-spots.js
@@ -137,10 +137,10 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
     // My trip → Saved spots
     await page.click('[data-tab-go="mytrip"]'); await page.waitForSelector('#sec-spots');
     const sp = await page.$$eval('#sec-spots .sp-h', hs => hs.map(h => h.textContent));
-    ok(sp[0] === 'Hotels' && sp.length >= 2, `@${w} saved spots grouped by category, hotels first ${sp}`);
+    ok(!sp.includes('Hotels') && sp.length >= 1, `@${w} saved spots grouped by category, no stay hotels ${sp}`);
     const rows = await page.$$eval('#sec-spots .spots li', ls => ls.map(li => ({ t: li.querySelector('b').textContent, m: li.querySelector('small').textContent, href: li.querySelector('a').href, a: li.querySelector('a').getAttribute('aria-label') })));
     const ph = rows.find(x => /Park Hotel Tokyo/.test(x.t)), ry = rows.find(x => /^Cafe 0 near/.test(x.t));
-    ok(ph && /Your hotel/.test(ph.m) && /Tokyo/.test(ph.m) && ry && rows.every(x => /^Open .+ in Google Maps$/.test(x.a) && x.href.startsWith('https://www.google.com/maps/search/?api=1&query=')) && /query_place_id=/.test(ry.href), `@${w} hotel + saved spot (city on the row) with Google Maps links ${JSON.stringify(rows.slice(0, 3))}`);
+    ok(!ph && ry && rows.every(x => /^Open .+ in Google Maps$/.test(x.a) && x.href.startsWith('https://www.google.com/maps/search/?api=1&query=')) && /query_place_id=/.test(ry.href), `@${w} saved spot (not the stay hotel) with Google Maps links ${JSON.stringify(rows.slice(0, 3))}`);
     ok(/Import into Google My Maps — shows in the Google Maps app under Saved → Maps/.test(await page.textContent('#sec-spots')), `@${w} My Maps note`);
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#sec-spots [data-kml]')]);
     const kml = fs.readFileSync(await dl.path(), 'utf8');
