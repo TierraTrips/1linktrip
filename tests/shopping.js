@@ -1,6 +1,6 @@
 // My trip → Shopping list: things to buy at the destination, next to the Packing list. Add (Enter or Add), optional
 // city (route stops) and note, check off (checked items sink to the bottom), delete; count in the collapsed header;
-// kept per trip in localStorage across reloads and offline; host toggle "Shopping list" under Automatic for guests,
+// kept per trip in localStorage across reloads and offline; host toggle "Shopping list" in Builder → Sections,
 // on by default for trips only. Spanish UI. 390 + 320.
 //
 //   python3 -m http.server 18765 --bind 127.0.0.1 &  node tests/shopping.js
@@ -67,7 +67,7 @@ const TRIP = { v: 2, type: 'Trip', title: 'Japan in spring', start: '2027-04-01'
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' }); const page = await ctx.newPage();
     await page.route(/open-meteo|overpass|nominatim|googleapis|tile\.openstreetmap|timeapi|photon|maps\.mail\.ru/, r => r.abort());
     await page.goto(BASE); await page.waitForFunction(() => window.__ep); await page.evaluate(() => localStorage.clear());
-    await page.goto(BASE + '#edit-ex=japan-trip'); await page.waitForSelector('[data-tool="shopping"]');
+    await page.goto(BASE + '#edit-ex=japan-trip'); await page.waitForSelector('[data-tool="shopping"]', { state: 'attached' }); // in Builder → Sections
     ok(await page.$eval('[data-tool="shopping"]', i => i.checked && i.closest('label').textContent.trim() === 'Shopping list'), 'builder: Shopping list toggle, on for a trip');
     const party = await page.evaluate(() => window.__ep.unpackEvent(window.__ep.packEvent({ v: 2, type: 'Party', title: 'x', start: '2027-06-12T15:00' })).tools.shopping);
     ok(party === false, 'off by default for other event types');

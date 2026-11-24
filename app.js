@@ -505,7 +505,8 @@ function typeInfoHTML(cfg, opt = {}) {
   if (R.on && (R.via === 'link' || R.by)) { const by = R.by ? t('Reply by {d}', { d: dt(R.by) }) : ''; rows.unshift((R.via === 'link' ? linkRow('RSVP', R.url, by) : noteRow('RSVP', by)).replace(/^<li/, '<li' + edA('sec:rsvp'))); }
   if (!has('closures') && has('closuresUrl')) { rows.push(linkRow('Road closures', d.closuresUrl)); tagLast('closuresUrl'); }
   if (rows.length) out.push(`<ul class="links">${rows.join('')}</ul>`);
-  if (['blockHotel', 'blockUrl', 'blockCode', 'blockBy'].some(has)) {
+  if (opt.mine && ['blockHotel', 'blockUrl', 'blockCode', 'blockBy'].some(has)) out.push(`<ul class="links block-know mi-know"><li class="note"><b>${esc(t('Your hotel'))}</b><span>${esc([opt.mine.name, opt.mine.when].filter(Boolean).join(' · '))}</span></li></ul>`); // Make it mine: staying elsewhere
+  else if (['blockHotel', 'blockUrl', 'blockCode', 'blockBy'].some(has)) {
     const sub = [d.blockCode ? t('Code {c}', { c: d.blockCode }) : '', blockByText(d.blockBy, dt)].filter(Boolean).join(' · ');
     // Travel → Where to stay has the room block too: here it is one compact row (hotel, code, book-by), same plain link
     const line = [d.blockHotel, sub].filter(Boolean).join(' · ');
@@ -876,8 +877,9 @@ function tripDates(cfg) {
   const s = cfg.start.slice(0, 10), e = (cfg.end || cfg.start).slice(0, 10);
   const st = LS.get('trip:' + s + ':' + e) || {}; const ok = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
   const today = todayYMD();
-  let arrive = ok(st.arrive) ? st.arrive : addDays(s, -1), leave = ok(st.leave) ? st.leave : addDays(e, 1);
-  if (arrive < today && s >= today) arrive = today;
+  const m = cfg.off && mineOn(cfg) ? mineGet(cfg) : null; // Make it mine: the guest's own days
+  let arrive = m ? m.a : ok(st.arrive) ? st.arrive : addDays(s, -1), leave = m ? m.l : ok(st.leave) ? st.leave : addDays(e, 1);
+  if (arrive < today && s >= today && !m) arrive = today;
   if (leave <= arrive) leave = addDays(arrive, 1);
   return { arrive, leave, guests: Math.min(16, Math.max(1, +st.guests || 2)) };
 }
@@ -1536,6 +1538,8 @@ function normalize(c) {
   if (c.flyInto !== undefined) { const f = typeof c.flyInto === 'string' ? c.flyInto.trim().toUpperCase() : ''; if (f === 'NONE') c.flyInto = 'none'; else if (/^[A-Z]{3}$/.test(f) && c.venue && (!window.AIRPORTS || airportByCode(f))) c.flyInto = f; else delete c.flyInto; } // the organizer's "Fly into" airport (builder → When and where)
   if (c.rsvpq !== undefined) c.rsvpq = normRsvpq(c.rsvpq); // RSVP form questions (builder → RSVP)
   if (c.rsvpVia !== undefined && c.rsvpVia !== 'form' && c.rsvpVia !== 'link') delete c.rsvpVia; rsvpMigrate(c); // the one RSVP card: form or own link
+  if (c.presets !== undefined) { c.presets = normPresets(c.presets); if (!c.presets.length) delete c.presets; } // stay options guests pick in Make it mine (builder → Stay options)
+  if (c.off.mine != null) c.off.mine = !!c.off.mine;
   delete c.osm; // hosted pages store a nearby-places snapshot beside the config; it never travels in links or drafts
   return c;
 }
@@ -1573,7 +1577,7 @@ function customSecHTML(cfg, sid) {
 }
 function needToKnowHTML(cfg) {
   const parts = [];
-  if (!cfg.off.details) parts.push(typeInfoHTML(cfg, { skipBlock: !!(cfg.venue && cfg.tools.stay) }));
+  if (!cfg.off.details) parts.push(typeInfoHTML(cfg, { skipBlock: !!(cfg.venue && cfg.tools.stay), mine: ONP ? null : mineKnow(cfg) }));
   if (!cfg.off.notes) parts.push(notesHTML(cfg));
   parts.push(docsHTML(cfg, detailDocSecs(cfg).filter(k => k === 'notes' ? !cfg.off.notes : !cfg.off.details)));
   return parts.filter(Boolean).join('');
@@ -1620,13 +1624,14 @@ function scheduleHTML(cfg) {
   const all = schedMerge(cfg, evs, view === 'event' ? [] : mine).filter(x => !F || !F.on || F.ok(x._cc));
   const days = {}; all.forEach(x => (days[(x.start || '').slice(0, 10)] = days[(x.start || '').slice(0, 10)] || []).push(x));
   const fold = schedFold(cfg, Object.keys(days), F);
+  const my = !ONP && mineOn(cfg) ? mineGet(cfg) : null; const away = (d) => !!my && !!d && (d < my.a || d > my.l); // Make it mine: days outside their stay
   const tm = (s) => fmtTime((s || '').slice(11, 16));
   const tripHead = (d) => d ? `${cfg.start && d >= cfg.start.slice(0, 10) ? esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 })) + ' · ' : ''}${esc(fmt(d, { weekday: 'short', month: 'short', day: 'numeric' }))}${!legs && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? ` <span class="day-city">${esc(stopFor(cfg, d).name)}</span>` : ''}` : t('Unscheduled');
   const evHead = (d) => d ? `${esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' }))}${!legs && stopsOf(cfg).length > 1 && stopFor(cfg, d) ? ` <span class="day-city">${esc(stopFor(cfg, d).name)}</span>` : ''}` : t(isTrip(cfg) ? 'Unscheduled' : 'Anytime');
   // a row: the builder keeps its inline details (on-page editing taps the row); guests get one tappable line → its sheet
   const go = (ref, inner) => !ONP && ref ? `<button type="button" class="tl-go" data-ds="${esc(ref)}">${inner}<i class="tl-chev" aria-hidden="true"></i></button>` : inner;
   const dayHTML = ([d, xs]) => { const head = isTrip(cfg) ? tripHead(d) : evHead(d);
-    return `<div class="day${fold.hide.has(d) ? ' d-more' : ''}"${ONP && d ? ` data-day="${esc(d)}"` : ''}><h3 class="day-h"${isTrip(cfg) && d ? edA('day:' + d) : ''}>${!ONP && d ? `<button type="button" class="day-go" data-ds="day:${esc(d)}"><span>${head}</span><i class="tl-chev" aria-hidden="true"></i></button>` : head}</h3><ol class="tl">${xs.map(x => {
+    return `<div class="day${fold.hide.has(d) ? ' d-more' : ''}${away(d) ? ' d-out' : ''}"${ONP && d ? ` data-day="${esc(d)}"` : ''}><h3 class="day-h"${isTrip(cfg) && d ? edA('day:' + d) : ''}>${!ONP && d ? `<button type="button" class="day-go" data-ds="day:${esc(d)}"><span>${head}</span><i class="tl-chev" aria-hidden="true"></i></button>` : head}</h3><ol class="tl">${xs.map(x => {
     const more = (title, body) => body ? `<details class="tl-d"><summary><b>${title}</b><i class="tl-dot" aria-hidden="true"></i><span class="sr">${t('Details')}</span></summary><span>${body}</span></details>` : `<b>${title}</b>`;
     const evCls = [x.bk ? 'mine' : '', x.kind ? 'k-' + esc(x.kind) : ''].filter(Boolean).join(' '), mark = x.bk ? ` <em class="yours">${t('Yours')}</em>` : '';
     if (x.ev && isTrip(cfg)) return `<li class="${evCls}"${edA('s:' + x.si)}><time>${esc(tm(x.start))}</time><div>${ONP ? more(esc(x.name) + mark, x.note ? esc(x.note) : '') : go(x.ref, `<b>${esc(x.name)}${mark}</b>`)}</div></li>`;
@@ -1872,7 +1877,7 @@ function renderEvent(cfg, root, opts = {}) {
         </div>
       </header>
       ${ticketHTML(cfg, air, opts)}
-      <div class="ev-body">${eventTabHTML(cfg)}</div>
+      <div class="ev-body">${mineOn(cfg) ? `<div class="mi-wrap" data-slot="mine">${mineBarHTML(cfg, null, !!opts.onpage)}</div>` : ''}${eventTabHTML(cfg)}</div>
     </div>
     ${tabs.some(x => x[0] === 'travel') ? panel('travel', travelTabHTML(cfg, air), tabHead('travel')) : ''}
     ${tabs.some(x => x[0] === 'nearby') ? panel('nearby', nearbyTabHTML(cfg), tabHead('nearby')) : ''}
@@ -1888,7 +1893,7 @@ function renderEvent(cfg, root, opts = {}) {
   // a source is credited once it actually supplies the map or places (OpenStreetMap only when Google is unavailable)
   art._useSrc = (k) => { art._srcs.add(k); const el = art.querySelector('[data-slot="attrib"]'); if (el) el.innerHTML = attribHTML(art._srcs); };
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-gpid]'); if (b && art._openGPlace) art._openGPlace(b.dataset.gpid); });
-  wireEvent(cfg, art, seq, air, opts); wireDetailTaps(cfg, art, opts); if (!opts.onpage) wireReadMore(art); wireOffline(cfg, art, opts); if (!opts.preview) wireCollapse(cfg, art);
+  wireEvent(cfg, art, seq, air, opts); wireMine(cfg, art, opts); wireDetailTaps(cfg, art, opts); if (!opts.onpage) wireReadMore(art); wireOffline(cfg, art, opts); if (!opts.preview) wireCollapse(cfg, art);
   if (opts.hosted && typeof wireHosted === 'function') wireHosted(cfg, art, opts.hosted, opts);
   else if (demoRsvp(cfg, opts) && typeof wireHosted === 'function') wireHosted(cfg, art, { id: 'demo-' + opts.exampleId, demo: true }, opts); // an example's RSVP form: answers stay on this device
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-route-stop]'); if (!b || !art.querySelector('[data-panel="nearby"]')) return; showTab(art, 'nearby', opts); const ci = cityOfStop(cfg, +b.dataset.routeStop); if (art._nearCity) art._nearCity(ci); else if (art._osmCity) art._osmCity(ci); });
@@ -1986,8 +1991,12 @@ function wireEvent(cfg, art, seq, air, opts) {
     const i = e.target; const k = i.dataset.k; if (!k || !i.closest('.tripbar')) return;
     const tr = tripDates(cfg); tr[k] = k === 'guests' ? Math.max(1, Math.min(16, +i.value || 2)) : i.value;
     if (tr.leave <= tr.arrive) tr.leave = addDays(tr.arrive, 1);
-    LS.set(tripKey, tr); refreshTrip();
+    LS.set(tripKey, tr);
+    const m = mineOn(cfg) && mineGet(cfg); // their dates are one set: a change here is their Make it mine stay too
+    if (m && k !== 'guests' && (m.a !== tr.arrive || m.l !== tr.leave)) { mineSave(cfg, { a: tr.arrive, l: tr.leave, p: '' }); if (art._bkChanged) art._bkChanged(); else art._renderSchedule(); }
+    refreshTrip();
   });
+  art._refreshTrip = refreshTrip;
   const oi = art.querySelector('#ep-origin');
   if (oi) {
     const list = oi.nextElementSibling;
@@ -2366,7 +2375,7 @@ function cardDone(c, id) {
   const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id);
   if (tc) { const sp = typeSpec(c), d = typeData(c); return tc[3].some(k => { const f = sp.fields.find(x => x[0] === k); return f && filled(f[2], d[k]); }); }
   return { schedule: () => c.schedule.some(x => x.title), custom: () => c.custom.some(x => x.title.trim()), notes: () => c.notes.some(x => x.label), about: () => !!(c.description || c.host), look: () => !!c.cover, bring: () => !!c.bring.trim(),
-    access: () => !!(c.access && Object.values(c.access).some(Boolean)), rsvp: () => rsvpOf(c).on, msgs: () => !!c.guestMessages, langs: () => (c.langs || []).length > 0 }[id]?.() || false;
+    access: () => !!(c.access && Object.values(c.access).some(Boolean)), stays: () => presetsOf(c).length > 0, rsvp: () => rsvpOf(c).on, msgs: () => !!c.guestMessages, langs: () => (c.langs || []).length > 0 }[id]?.() || false;
 }
 const cardBtn = (c, [id, title, sub]) => { const done = cardDone(c, id); return `<button type="button" class="acard ${done ? 'on' : ''}" data-card="${id}"><span class="aic">${cardIcon(id)}</span><b>${esc(title)}</b><span>${esc(sub)}</span><i class="plus" aria-hidden="true">${done ? '✓' : '+'}</i></button>`; };
 function allCards(c) {
@@ -2395,12 +2404,13 @@ function buildForm() {
   <details class="acc" data-acc="design" ${open.has('design') ? 'open' : ''}><summary><span class="st ok" aria-hidden="true" style="background:${esc(c.theme.accent)};border-color:${esc(c.theme.accent)}"></span><b>Design</b><small>${esc([FONTS[c.theme.font]?.label, c.theme.mode === 'dark' ? 'Dark' : 'Light', c.cover ? 'Cover photo' : ''].filter(Boolean).join(' · '))}</small></summary><div class="acc-b">
     ${designHTML(c)}
   </div></details>
+  <details class="acc" data-acc="sections" ${open.has('sections') ? 'open' : ''}><summary><span class="st ok" aria-hidden="true"></span><b>Sections</b><small>${esc(sectionsSum(c))}</small></summary><div class="acc-b">
+    ${sectionsHTML(c)}
+  </div></details>
   ${docBlockHTML('main')}
   <h2 class="b-h">Add to your page</h2>
   ${cards.type.length ? `<p class="grp">${TYPE_GROUP[c.type]}</p><div class="cards">${cards.type.map(x => cardBtn(c, x)).join('')}</div>` : ''}
   <p class="grp">For any event</p><div class="cards">${cards.common.map(x => cardBtn(c, x)).join('')}</div>
-  <p class="grp">Automatic for guests</p>
-  <div class="tools">${TOOLS.map(([k, l]) => `<label class="tool"><input type="checkbox" data-tool="${k}" ${c.tools[k] ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${esc(l)}</label>`).join('')}</div>
   <div class="b-end"><button type="button" class="btn primary" data-act="publish">Share</button><button type="button" class="btn ghost" data-b="reset">Start over</button></div>`;
   wireInputs(f);
   if (typeof renderHostNote === 'function') renderHostNote();
@@ -2452,11 +2462,12 @@ function renderSheet() {
     <div class="field"><label>Title font</label><div class="fonts">${Object.entries(FONTS).map(([k, x]) => `<button type="button" class="fontb ${k === c.theme.font ? 'on' : ''}" data-font="${k}" style="font-family:${esc(x.css)}">${x.label}</button>`).join('')}</div></div>
     <div class="field"><label>Background</label><div class="seg2"><button type="button" data-theme-mode="light" class="${c.theme.mode !== 'dark' ? 'on' : ''}">Light</button><button type="button" data-theme-mode="dark" class="${c.theme.mode === 'dark' ? 'on' : ''}">Dark</button></div></div>`;
   else if (id === 'bring') body = fieldWrap('Guests must bring', `<textarea id="f-bring" data-f="bring" rows="5" placeholder="One per line">${esc(c.bring)}</textarea>`, 'f-bring');
+  else if (id === 'stays') body = presetsCardHTML(c);
   else if (typeof extraCardBody === 'function') body = extraCardBody(id, c);
   const head = (op && op.title) || (F && onpTitle(c, id)) || title;
   if (id !== 'custom' && !F && docCardOk(c, id)) body += docBlockHTML(id);
   if (B.onp) body += onpFoot(c);
-  setTimeout(() => { if (id === 'schedule') wireSchedPlaceAC(); if (id === 'route') wireRouteAC(c); if (id === 'msgs') loadCardGroups(); if (id === 'when') { const q = $('#sheet #vq-sh'); if (q) placeAutocomplete(q, { bias: () => null, onPick: (pid, tok) => gpVenue(pid, tok).then(r => { B.vq = ''; B.venueResults = []; pickVenue(r); }).catch(() => toast('Couldn’t load that place')) }); } }, 0);
+  setTimeout(() => { if (id === 'stays') wirePresetAC(); if (id === 'schedule') wireSchedPlaceAC(); if (id === 'route') wireRouteAC(c); if (id === 'msgs') loadCardGroups(); if (id === 'when') { const q = $('#sheet #vq-sh'); if (q) placeAutocomplete(q, { bias: () => null, onPick: (pid, tok) => gpVenue(pid, tok).then(r => { B.vq = ''; B.venueResults = []; pickVenue(r); }).catch(() => toast('Couldn’t load that place')) }); } }, 0);
   form.innerHTML = `<div class="grab" aria-hidden="true"></div><h2>${esc(head)}<button type="button" class="x" data-b="close" aria-label="Close">×</button></h2><div class="sheet-b">${body}</div><button type="button" class="btn primary big" data-b="close">Done</button>`;
 }
 // one input handler for the form and the card sheet
@@ -2477,7 +2488,8 @@ function wireInputs(root) {
     else if (d.s != null) { cfg.schedule[+d.s][d.k] = i.value; changed(); }
     else if (d.n != null) { cfg.notes[+d.n][d.k] = i.value; changed(); }
     else if (d.cs != null) { const x = cfg.custom[+d.cs]; if (x) { x[d.k] = i.value; changed(); } }
-    else if (d.tool) { cfg.tools[d.tool] = i.checked; changed(); }
+    else if (d.tool) { cfg.tools[d.tool] = i.checked; changed(true); }
+    else if (d.pr != null) { presetInput(cfg, +d.pr, d.k, i.value); changed(); }
     else if (i.id === 'vq' || i.id === 'vq-sh') B.vq = i.value;
     else if (i.id === 'f-site') B.site = i.value;
     else if (typeof extraInput === 'function') extraInput(i, cfg);
@@ -2511,6 +2523,9 @@ function wireInputs(root) {
     else if (d.spChg != null) { B.spEdit = +d.spChg; renderSheet(); setTimeout(() => { const q = $(`#sheet [data-sp-q="${d.spChg}"]`); if (q) { q.focus(); q.select(); } }, 30); }
     else if (d.spDel != null) { const x = cfg.schedule[+d.spDel]; if (x) { delete x.place; B.spEdit = null; changed(true); } }
     else if (d.b === 'add-note') { cfg.notes.push({ label: '', text: '', url: '' }); changed(true); }
+    else if (d.b === 'add-preset') { presetAdd(cfg); changed(true); }
+    else if (d.prDel != null) { (cfg.presets || []).splice(+d.prDel, 1); if (!cfg.presets.length) delete cfg.presets; changed(true); }
+    else if (d.prHotel != null) { const p = (cfg.presets || [])[+d.prHotel]; const x = presetHotelChoices(cfg)[+d.h]; if (p && x) { p.h = { ...x }; changed(true); } }
     else if (d.ndel != null) { cfg.notes.splice(+d.ndel, 1); changed(true); }
     else if (d.b === 'add-custom') { cfg.custom.push(blankCustom()); changed(true); setTimeout(() => $$('#sheet [data-cs][data-k="title"]').pop()?.focus(), 0); }
     else if (d.cdel != null) {
@@ -6148,6 +6163,152 @@ function routeStaysHTML(cfg) {
     return `<div class="row-link sp-row"><span><b>${esc(t('Hotels in {c}', { c: s.name }))}</b> <small>${esc(dateRange(s.from, s.to))}</small></span>${seePricesHTML({ city: s.city || s.name, country: s.country || '', d1: s.from, d2: s.to, n }, 'btn sm')}</div>`; }).join('')}</div>`;
 }
 
+// ================= Make it mine: one guest's dates and hotel over the shared page =================
+// Everyone opens the same page; a guest's "Make it mine" (or one tap on an organizer's stay option, cfg.presets) keeps
+// their arrive/leave days per page on this device ({ a, l, p } in localStorage, synced with My trip when signed in) and
+// their hotel as an ordinary hotel booking (grp: 1) in My trip — so the Itinerary, Where to stay, the map and the
+// Travel searches all use it. Shared days outside their stay are dimmed; their hotel replaces the room block line.
+const mineKey = (cfg) => 'mine:' + syncKey(cfg);
+const mineGet = (cfg) => { const m = cfg && cfg.start ? LS.get(mineKey(cfg)) : null; return m && isoDay(m.a) && isoDay(m.l) && m.l >= m.a ? m : null; };
+function normPresets(xs) {
+  if (!Array.isArray(xs)) return [];
+  const num = (v) => typeof v === 'number' && isFinite(v); const seen = new Set();
+  return xs.filter(x => x && typeof x === 'object').slice(0, 8).map((x, i) => {
+    let id = typeof x.id === 'string' && /^[\w-]{1,24}$/.test(x.id) ? x.id : 'p' + i + Math.random().toString(36).slice(2, 6); if (seen.has(id)) id += i; seen.add(id);
+    const h = x.h && typeof x.h === 'object' && String(x.h.name || '').trim() ? { name: String(x.h.name).trim().slice(0, 120), ...(x.h.address ? { address: String(x.h.address).slice(0, 200) } : {}), ...(num(x.h.lat) && num(x.h.lon) ? { lat: x.h.lat, lon: x.h.lon } : {}) } : null;
+    return { id, a: isoDay(x.a), l: isoDay(x.l), ...(h ? { h } : {}) };
+  });
+}
+const presetsOf = (cfg) => normPresets(cfg.presets).filter(p => p.a && p.l && p.l >= p.a);
+// on unless the organizer turned it off; a personal trip (no stay options) starts without it
+const mineDefault = (cfg) => !isTrip(cfg) || presetsOf(cfg).length > 0;
+const mineShown = (cfg) => cfg.off.mine != null ? !cfg.off.mine : mineDefault(cfg);
+const mineOn = (cfg) => !!cfg.start && mineShown(cfg);
+const mineRange = (a, l) => { const o = { weekday: 'short', month: 'short', day: 'numeric' }; return a === l ? fmt(a, o) : `${fmt(a, o)} – ${fmt(l, o)}`; };
+const LODGE_KINDS = ['hotel', 'stay'];
+// the guest's hotel: the one picked here, else their first booked hotel
+function mineHotel(cfg) {
+  const xs = itinLoad(cfg).filter(x => LODGE_KINDS.includes(x.kind) && String(x.name || '').trim() && !x.ph);
+  return xs.find(x => x.grp) || xs.sort((a, b) => (a.start || '9999').localeCompare(b.start || '9999'))[0] || null;
+}
+// what Need to know shows instead of the room block when the guest stays elsewhere
+function mineKnow(cfg) {
+  if (!mineOn(cfg)) return null; const h = mineHotel(cfg); if (!h) return null;
+  const d = typeData(cfg); if (d.blockHotel && nameLike(h.name, d.blockHotel)) return null;
+  const a = bkDay(h.start), l = bkDay(h.end);
+  return { name: h.name, when: a ? mineRange(a, l && l > a ? l : a) : '' };
+}
+// the hotels a guest can pick with one tap: the organizer's options, the room block, the one they have
+function mineHotels(cfg) {
+  const out = []; const add = (h) => { if (h && String(h.name || '').trim() && !out.some(x => nameLike(x.name, h.name))) out.push({ name: h.name.trim(), address: h.address || '', ...(h.lat != null ? { lat: h.lat, lon: h.lon } : {}) }); };
+  presetsOf(cfg).forEach(p => add(p.h)); const d = typeData(cfg); if (d.blockHotel) add({ name: d.blockHotel }); add(mineHotel(cfg));
+  return out.slice(0, 6);
+}
+function mineSave(cfg, m, hotel) { // hotel: undefined keeps it (its dates follow), null drops the one picked here
+  if (m) LS.set(mineKey(cfg), m); else LS.del(mineKey(cfg));
+  let xs = LS.get(itinKey(cfg), null) ?? itinLoad(cfg); const old = xs.find(x => x.grp);
+  if (!m || hotel !== undefined) {
+    xs = xs.filter(x => !x.grp);
+    if (m && hotel && String(hotel.name || '').trim()) xs.push({ id: old && nameLike(old.name, hotel.name) ? old.id : 'bk' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), kind: 'hotel', name: hotel.name.trim().slice(0, 120), address: hotel.address || '', ...(hotel.lat != null ? { lat: hotel.lat, lon: hotel.lon } : {}), start: m.a, end: m.l, grp: 1 });
+  } else if (old) { old.start = m.a; old.end = m.l; }
+  itinSave(cfg, xs);
+  if (LS.get('signedIn') && !cfg.demoTrip) syncPush(cfg);
+}
+const MINE_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M9 15l2 2 4-4"/></svg>';
+const HOTEL_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20V8l9-4 9 4v12"/><path d="M8 20v-5h8v5M8 11h2M14 11h2"/></svg>';
+function mineBarHTML(cfg, dr, fresh) { // fresh: as a new guest sees it (the builder's on-page preview)
+  const m = fresh ? null : mineGet(cfg); const ps = presetsOf(cfg); const h = mineHotel(cfg);
+  const opt = (p, on) => `<button type="button" class="mi-opt${on ? ' on' : ''}" data-mine-pick="${esc(p.id)}" aria-pressed="${!!on}"><b>${esc(mineRange(p.a, p.l))}</b>${p.h ? `<span>${HOTEL_IC}${esc(p.h.name)}</span>` : ''}</button>`;
+  if (!dr && m) return `<section class="mi-bar is-set" aria-label="${esc(t('Make it mine'))}"><button type="button" class="mi-sum" data-mine-edit>${MINE_IC}<span class="mi-tx"><span class="lbl">${t('Your stay')}</span><b>${esc(mineRange(m.a, m.l))}</b>${h ? `<span class="mi-h">${HOTEL_IC}${esc(h.name)}</span>` : ''}</span><i>${t('Edit')}</i></button></section>`;
+  if (!dr) return `<section class="mi-bar" aria-label="${esc(t('Make it mine'))}">${ps.length ? `<p class="lbl">${t('Make it mine')}</p><div class="mi-opts">${ps.map(p => opt(p)).join('')}</div><button type="button" class="btn sm mi-go" data-mine-edit>${t('Other dates or hotel')}</button>` : `<button type="button" class="btn mi-go" data-mine-edit>${MINE_IC}${t('Make it mine')}</button>`}</section>`;
+  const hs = mineHotels(cfg); const hotelOn = (x) => !!dr.h && nameLike(dr.h.name, x.name);
+  return `<section class="mi-bar is-ed" aria-label="${esc(t('Make it mine'))}"><div class="mi-head"><b>${t('Make it mine')}</b><button type="button" class="x" data-mine-x aria-label="${esc(t('Close'))}">×</button></div>
+    ${ps.length ? `<div class="mi-opts">${ps.map(p => opt(p, dr.p === p.id)).join('')}</div>` : ''}
+    <div class="two"><div class="field"><label for="mi-a">${t('Arrive')}</label><input id="mi-a" type="date" data-mine-a value="${esc(dr.a)}"></div><div class="field"><label for="mi-l">${t('Leave')}</label><input id="mi-l" type="date" data-mine-l value="${esc(dr.l)}" min="${esc(dr.a || '')}"></div></div>
+    <div class="field"><label for="mi-hq">${t('Hotel')}</label>${hs.length ? `<div class="chips mi-hs">${hs.map((x, i) => `<button type="button" class="chip${hotelOn(x) ? ' on' : ''}" data-mine-h="${i}" aria-pressed="${hotelOn(x)}">${esc(x.name)}</button>`).join('')}</div>` : ''}
+      <input id="mi-hq" data-mine-hq value="${esc(dr.h && !hs.some(hotelOn) ? dr.h.name : '')}" placeholder="${esc(t('Other hotel'))}" autocomplete="off" maxlength="120"></div>
+    <div class="btns mi-btns"><button type="button" class="btn primary" data-mine-save>${t('Save')}</button>${cfg.tools.mytrip ? `<button type="button" class="btn" data-mine-up>${HOTEL_IC}${t('Upload confirmation')}</button>` : ''}${m ? `<button type="button" class="btn ghost" data-mine-clear>${t('Clear')}</button>` : ''}</div></section>`;
+}
+function wireMine(cfg, art, opts) {
+  const slot = art.querySelector('[data-slot="mine"]'); if (!slot) return;
+  if (opts.onpage) { slot.addEventListener('click', (e) => { if (!e.target.closest('button')) return; e.preventDefault(); e.stopPropagation(); if (typeof openCard === 'function') openCard('stays'); }, true); return; } // builder: tap → Stay options
+  let dr = null; // the open editor's draft { a, l, p, h }
+  const unpick = () => $$('[data-mine-h]', slot).forEach(b => { b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); });
+  const paint = () => { slot.innerHTML = mineBarHTML(cfg, dr);
+    const q = slot.querySelector('[data-mine-hq]'); if (q) placeAutocomplete(q, { bias: () => cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(r => { if (!dr) return; dr.h = { name: r.name, address: r.address || '', lat: r.lat, lon: r.lon }; dr.p = ''; q.value = r.name; unpick(); }).catch(() => {}) }); };
+  const refreshDetails = () => { const det = art.querySelector('#sec-details > .sec-b'); if (det) det.innerHTML = needToKnowHTML(cfg); };
+  // a change to the guest's stay: everything that depends on it follows
+  const after = () => { if (art._bkChanged) art._bkChanged(); else if (art._renderSchedule) art._renderSchedule(); refreshDetails(); if (art._refreshTrip) art._refreshTrip(); };
+  const fromPreset = (p) => ({ a: p.a, l: p.l, p: p.id, h: p.h ? { ...p.h } : (dr && dr.h) || null });
+  const open = () => { const m = mineGet(cfg); const h = mineHotel(cfg); const tr = tripDates(cfg);
+    dr = { a: m ? m.a : tr.arrive, l: m ? m.l : tr.leave, p: m ? m.p || '' : '', h: h ? { name: h.name, address: h.address || '', ...(h.lat != null ? { lat: h.lat, lon: h.lon } : {}) } : null }; paint(); };
+  const save = (x) => { const a = isoDay(x.a), l = isoDay(x.l); if (!a || !l) { toast(t('Add both dates')); return; }
+    const m = { a: a <= l ? a : l, l: a <= l ? l : a, p: x.p || '' }; const had = mineHotel(cfg);
+    mineSave(cfg, m, x.h ? x.h : had && had.grp ? null : undefined); dr = null; paint(); after(); };
+  art._minePaint = () => { if (!dr) paint(); };
+  slot.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
+    if (d.minePick) { const p = presetsOf(cfg).find(x => x.id === d.minePick); if (!p) return; if (dr) { dr = { ...dr, ...fromPreset(p) }; paint(); } else save(fromPreset(p)); }
+    else if ('mineEdit' in d) open();
+    else if ('mineX' in d) { dr = null; paint(); }
+    else if (d.mineH != null && dr) { const x = mineHotels(cfg)[+d.mineH]; if (!x) return; dr.h = dr.h && nameLike(dr.h.name, x.name) ? null : { ...x }; dr.p = ''; paint(); }
+    else if ('mineSave' in d && dr) { const q = slot.querySelector('[data-mine-hq]'); const typed = q ? q.value.trim() : ''; if (typed && !(dr.h && dr.h.name === typed)) dr.h = { name: typed }; save(dr); }
+    else if ('mineClear' in d) { dr = null; mineSave(cfg, null); paint(); after(); }
+    else if ('mineUp' in d && dr) { // their confirmation: the dates now; the hotel (and its nights) once it is read
+      const a = isoDay(dr.a), l = isoDay(dr.l); if (a && l) mineSave(cfg, { a: a <= l ? a : l, l: a <= l ? l : a, p: '' });
+      art._mineUp = new Set(itinLoad(cfg).map(x => x.id)); dr = null; paint(); after();
+      if (art._itinAdd) { showTab(art, 'mytrip', opts); art._itinAdd(); const f = art.querySelector('#sec-itinerary [data-slot="itin-form"]'); if (f) f.scrollIntoView({ block: 'start' }); } }
+  });
+  slot.addEventListener('input', (e) => { const i = e.target; if (!dr) return;
+    if (i.matches('[data-mine-a]')) { dr.a = i.value; dr.p = ''; const l = slot.querySelector('[data-mine-l]'); if (l) { l.min = i.value; if (l.value && i.value && l.value < i.value) { l.value = i.value; dr.l = i.value; } } }
+    else if (i.matches('[data-mine-l]')) { dr.l = i.value; dr.p = ''; }
+    else if (i.matches('[data-mine-hq]')) { if (i.value.trim()) { unpick(); dr.h = { name: i.value.trim() }; } dr.p = ''; }
+    $$('[data-mine-pick]', slot).forEach(b => { b.classList.toggle('on', b.dataset.minePick === dr.p); b.setAttribute('aria-pressed', String(b.dataset.minePick === dr.p)); });
+  });
+  // a hotel confirmation added after "Upload confirmation" becomes their hotel, and its nights their stay
+  const prev = art._renderSchedule;
+  art._renderSchedule = () => { if (prev) prev();
+    if (art._mineUp) { const nu = itinLoad(cfg).filter(x => LODGE_KINDS.includes(x.kind) && !x.grp && !x.ph && !art._mineUp.has(x.id));
+      if (nu.length) { const h = nu[0]; art._mineUp = null; const a = bkDay(h.start), l = bkDay(h.end); const m = mineGet(cfg);
+        const xs = LS.get(itinKey(cfg), null); if (xs && xs.some(x => x.grp)) itinSave(cfg, xs.filter(x => !x.grp));
+        if (a) LS.set(mineKey(cfg), { a, l: l && l >= a ? l : m && m.l >= a ? m.l : a, p: '' });
+        if (LS.get('signedIn') && !cfg.demoTrip) syncPush(cfg);
+        const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2 && !s2.querySelector('.itin-sheet')) s2.innerHTML = bookingsHTML(cfg);
+        if (prev) prev(); refreshDetails(); if (art._refreshTrip) art._refreshTrip(); } }
+    if (art._minePaint) art._minePaint(); };
+  paint();
+}
+// Builder → Stay options: the arrive/leave days and hotel a guest can take with one tap ("Thu, Jun 4 – Sun, Jun 7 · Hotel A")
+COMMON_CARDS.splice(COMMON_CARDS.findIndex(x => x[0] === 'schedule') + 1, 0, ['stays', 'Stay options', 'Dates and hotels to pick']);
+CARD_ICONS.stays = '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M9 15l2 2 4-4"/>';
+function presetHotelChoices(c) {
+  const out = []; const add = (h) => { if (h && String(h.name || '').trim() && !out.some(x => nameLike(x.name, h.name))) out.push({ ...h, name: h.name.trim() }); };
+  const d = typeData(c); if (d.blockHotel) add({ name: d.blockHotel }); (c.presets || []).forEach(p => add(p.h));
+  return out.slice(0, 6);
+}
+function presetsCardHTML(c) {
+  const ps = c.presets || []; const hs = presetHotelChoices(c);
+  return `${ps.map((p, i) => `<div class="rowed pr-row">
+    <div class="two"><div class="field"><label for="pr-a-${i}">Arrive</label><input id="pr-a-${i}" type="date" data-pr="${i}" data-k="a" value="${esc(p.a || '')}"></div><div class="field"><label for="pr-l-${i}">Leave</label><input id="pr-l-${i}" type="date" data-pr="${i}" data-k="l" value="${esc(p.l || '')}" min="${esc(p.a || '')}"></div></div>
+    ${hs.length ? `<div class="chips pr-hs">${hs.map((x, j) => `<button type="button" class="chip${p.h && nameLike(p.h.name, x.name) ? ' on' : ''}" data-pr-hotel="${i}" data-h="${j}">${esc(x.name)}</button>`).join('')}</div>` : ''}
+    <input data-pr="${i}" data-k="h" value="${esc(p.h ? p.h.name : '')}" placeholder="Hotel (optional)" aria-label="Hotel" maxlength="120" autocomplete="off">
+    <button type="button" class="ic del" data-pr-del="${i}" aria-label="Remove">Remove</button></div>`).join('')}
+    <button type="button" class="btn sm" data-b="add-preset">+ Add option</button>`;
+}
+function presetAdd(c) {
+  const ps = (c.presets = Array.isArray(c.presets) ? c.presets : []); if (ps.length >= 8) return;
+  const s = (c.start || '').slice(0, 10), e = (c.end || c.start || '').slice(0, 10); const last = ps[ps.length - 1]; const d = typeData(c);
+  ps.push({ id: 'p' + Date.now().toString(36).slice(-5), a: s ? addDays(s, -1) : '', l: e ? addDays(e, 1) : '', ...(last && last.h ? { h: { ...last.h } } : d.blockHotel ? { h: { name: d.blockHotel } } : {}) });
+}
+function presetInput(c, i, k, v) {
+  const p = (c.presets || [])[i]; if (!p) return;
+  if (k === 'a' || k === 'l') p[k] = isoDay(v);
+  else if (k === 'h') { const n = String(v || '').trim().slice(0, 120); if (n) p.h = { name: n }; else delete p.h; }
+}
+function wirePresetAC() {
+  $$('#sheet [data-pr][data-k="h"]').forEach(inp => placeAutocomplete(inp, { bias: () => B.cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(r => { const p = (B.cfg.presets || [])[+inp.dataset.pr]; if (!p) return; p.h = { name: r.name, ...(r.address ? { address: r.address } : {}), ...(r.lat != null ? { lat: r.lat, lon: r.lon } : {}) }; changed(true); }).catch(() => toast('Couldn’t load that place')) }));
+}
+
 // ================= personal itinerary ↔ account (trip_items; quiet no-op until schema-2 is installed) =================
 const syncKey = (cfg) => eventKey(cfg).slice(6);
 const syncOff = () => { const o = LS.get('syncOff'); return o && Date.now() - o < 3600e3; };
@@ -6162,7 +6323,8 @@ const syncPush = debounce(async (cfg) => {
   const rows = withIds(cfg).map(x => ({ id: x.id, page_key: key, kind: 'booking', item: x, updated_at: new Date().toISOString() }))
     .concat(planLoad(cfg).map(x => ({ id: x.id, page_key: key, kind: 'place', item: x, updated_at: new Date().toISOString() })))
     .concat(shopLoad(cfg).map(x => ({ id: x.id, page_key: key, kind: 'place', item: { ...x, shop: true }, updated_at: new Date().toISOString() })))
-    .concat(LS.get(cxKey(cfg)) ? [{ id: 'ui-' + key, page_key: key, kind: 'place', item: { secui: true, ...LS.get(cxKey(cfg)) }, updated_at: new Date().toISOString() }] : []);
+    .concat(LS.get(cxKey(cfg)) ? [{ id: 'ui-' + key, page_key: key, kind: 'place', item: { secui: true, ...LS.get(cxKey(cfg)) }, updated_at: new Date().toISOString() }] : [])
+    .concat(mineGet(cfg) ? [{ id: 'mine-' + key, page_key: key, kind: 'place', item: { mine: true, ...mineGet(cfg) }, updated_at: new Date().toISOString() }] : []); // Make it mine: their days
   if (rows.length) { const { error } = await c.from('trip_items').upsert(rows, { onConflict: 'owner,id' }); if (tableMissing(error)) { LS.set('syncOff', Date.now()); return; } }
   let q = c.from('trip_items').delete().eq('page_key', key); if (rows.length) q = q.not('id', 'in', `(${rows.map(r => '"' + r.id.replace(/"/g, '') + '"').join(',')})`);
   await q;
@@ -6174,7 +6336,8 @@ async function syncPull(cfg, art) {
   if (error) { if (tableMissing(error)) LS.set('syncOff', Date.now()); return; }
   const mine = (data || []).filter(r => r.page_key === key); const inbox = (data || []).filter(r => r.page_key === 'inbox');
   const bk = withIds(cfg), pl = planLoad(cfg), sh = shopLoad(cfg); const have = new Set(bk.map(x => x.id).concat(pl.map(x => x.id), sh.map(x => x.id), LS.get(goneKey(cfg)) || [])); let added = 0; // merged-away / deleted ids stay gone
-  mine.forEach(r => { if (r.item && r.item.secui) { if (!LS.get(cxKey(cfg))) { const { secui, ...ui } = r.item; LS.set(cxKey(cfg), ui); art._cx && art._cx(); } return; } if (have.has(r.id) || !r.item) return; if (r.kind === 'place' && r.item.shop) { const { shop, ...x } = r.item; sh.push({ ...x, id: r.id }); } else if (r.kind === 'place') pl.push({ ...r.item, id: r.id }); else bk.push({ ...r.item, id: r.id }); added++; });
+  mine.forEach(r => { if (r.item && r.item.mine === true) { if (!LS.get(mineKey(cfg))) { const { mine: _, ...m } = r.item; LS.set(mineKey(cfg), m); added++; } return; }
+    if (r.item && r.item.secui) { if (!LS.get(cxKey(cfg))) { const { secui, ...ui } = r.item; LS.set(cxKey(cfg), ui); art._cx && art._cx(); } return; } if (have.has(r.id) || !r.item) return; if (r.kind === 'place' && r.item.shop) { const { shop, ...x } = r.item; sh.push({ ...x, id: r.id }); } else if (r.kind === 'place') pl.push({ ...r.item, id: r.id }); else bk.push({ ...r.item, id: r.id }); added++; });
   if (added) { LS.set(shopKey(cfg), sh); art._shop && art._shop(); LS.set(itinKey(cfg), bk); LS.set(planKey(cfg), pl); bkClean(cfg); art._planChanged && art._planChanged(); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); }
   const gone = new Set(LS.get(goneKey(cfg)) || []);
   if (added || !mine.length || mine.some(r => gone.has(r.id))) syncPush(cfg); // first sync uploads what this device already had; rows merged away here are deleted there
@@ -7085,7 +7248,7 @@ function sectionOrder(cfg) {
   ids.forEach((x, i) => { if (!o.includes(x)) o.splice(Math.min(i, o.length), 0, x); });
   return o;
 }
-const sectionShown = (cfg, id) => id === 'weather' ? !!cfg.tools.weather : !cfg.off[id];
+const sectionShown = (cfg, id) => id === 'weather' ? !!cfg.tools.weather : id === 'mine' ? mineShown(cfg) : !cfg.off[id];
 function setSectionShown(cfg, id, on) { if (id === 'weather') cfg.tools.weather = on; else cfg.off[id] = !on; }
 const sameTheme = (a, b) => a.accent.toLowerCase() === b.accent.toLowerCase() && a.font === b.font && (a.mode || 'light') === (b.mode || 'light');
 // Design: one dropdown per setting, each with a small preview; display names only (stored values unchanged)
@@ -7111,11 +7274,20 @@ function designHTML(c) {
   ${custom ? `<div class="field"><div class="swatches custom-row"><label class="custom-c"><input type="color" data-t="accent" value="${esc(th.accent)}" aria-label="Pick any color"><span>Pick</span></label><input id="f-accent-hex" class="hex" data-hex value="${esc(th.accent)}" maxlength="7" spellcheck="false" aria-label="Color code"></div></div>` : ''}
     ${coverFieldHTML(c)}
     ${httpsUrl(c.logo) ? `<div class="field"><label>Logo</label><div class="logo-row"><img src="${esc(c.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()"><button type="button" class="link" data-b="logo-clear">Remove logo</button></div></div>` : ''}
-    <details class="tr-review" data-acc="design-more" ${B && B.moreOpen ? 'open' : ''}><summary><b>More options</b> <small class="muted">Sections</small></summary><div class="acc-b" style="padding:12px 0 0">
-    <div class="field"><label>Sections</label>
-      <ol class="order">${order.map((id, i) => `<li class="${sectionShown(c, id) ? '' : 'off'}"><label class="chk"><input type="checkbox" data-sec-on="${id}" ${sectionShown(c, id) ? 'checked' : ''}> ${esc(lab[id])}</label><span class="mv"><button type="button" data-sec-mv="${id}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move ${esc(lab[id])} up">↑</button><button type="button" data-sec-mv="${id}" data-dir="1" ${i === order.length - 1 ? 'disabled' : ''} aria-label="Move ${esc(lab[id])} down">↓</button></span></li>`).join('')}</ol></div>
-    <div class="btns"><button type="button" class="btn sm ghost" data-b="type-defaults">Reset to ${esc(c.type)} defaults</button></div></div></details>`;
+`;
 }
+// Builder → Sections: every part of the guest page with one on/off switch (Event sections also move up/down)
+const SEC_LABEL = { mine: 'Make it mine' };
+function sectionsHTML(c) {
+  const order = sectionOrder(c); const lab = { ...Object.fromEntries(EVENT_SECTIONS), ...SEC_LABEL };
+  lab.schedule = schedTitle(c); if (isTrip(c)) lab.route = 'Route (shown in Itinerary)'; (c.custom || []).forEach(x => { lab[customSid(x)] = x.title; });
+  const sw = (attr, on, label) => `<label class="tool"><input type="checkbox" ${attr} ${on ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${esc(label)}</label>`;
+  const row = (id, mv, i) => `<li class="${sectionShown(c, id) ? '' : 'off'}">${sw(`data-sec-on="${id}"`, sectionShown(c, id), lab[id])}${mv ? `<span class="mv"><button type="button" data-sec-mv="${id}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move ${esc(lab[id])} up">↑</button><button type="button" data-sec-mv="${id}" data-dir="1" ${i === order.length - 1 ? 'disabled' : ''} aria-label="Move ${esc(lab[id])} down">↓</button></span>` : ''}</li>`;
+  return `<p class="grp">Event</p><ol class="order secs">${row('mine', false)}${order.map((id, i) => row(id, true, i)).join('')}</ol>
+    <p class="grp">Tabs</p><div class="tools">${TOOLS.filter(([k]) => k !== 'weather').map(([k, l]) => sw(`data-tool="${k}"`, c.tools[k], l)).join('')}</div>
+    <div class="btns"><button type="button" class="btn sm ghost" data-b="type-defaults">Reset to ${esc(c.type)} defaults</button></div>`;
+}
+const sectionsSum = (c) => { const ids = ['mine', ...sectionOrder(c)]; const n = ids.filter(id => sectionShown(c, id)).length + TOOLS.filter(([k]) => k !== 'weather' && c.tools[k]).length; return `${n} of ${ids.length + TOOLS.length - 1} on`; };
 // returns true when it handled the click
 function designClick(b, cfg) {
   const d = b.dataset;
@@ -7124,7 +7296,7 @@ function designClick(b, cfg) {
   if (d.b === 'cover-clear') { cfg.cover = ''; changed(true); return true; }
   if (d.b === 'logo-clear') { delete cfg.logo; changed(true); return true; }
   if (d.brand) return brandClick(b);
-  if (d.b === 'type-defaults') { const td = typeDefaults(cfg.type); cfg.theme = { ...td.theme }; cfg.tools = defaultTools(cfg.type); delete cfg.order; ['about', 'details', 'access', 'rsvp', 'schedule'].forEach(k => { cfg.off[k] = false; }); if (rsvpDefaultOff(cfg.type)) cfg.off.rsvp = true; loadFont(cfg.theme.font); changed(true); toast(`${cfg.type} defaults applied`); return true; }
+  if (d.b === 'type-defaults') { const td = typeDefaults(cfg.type); cfg.theme = { ...td.theme }; cfg.tools = defaultTools(cfg.type); delete cfg.order; ['about', 'details', 'access', 'rsvp', 'schedule'].forEach(k => { cfg.off[k] = false; }); if (rsvpDefaultOff(cfg.type)) cfg.off.rsvp = true; delete cfg.off.mine; loadFont(cfg.theme.font); changed(true); toast(`${cfg.type} defaults applied`); return true; }
   return false;
 }
 function designInput(i, cfg) {

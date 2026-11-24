@@ -1380,3 +1380,29 @@ dialog.ds-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .st-foot .st-nights { margin-right: auto; }
 .rt-acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .rsvp-via { display: grid; gap: 4px; margin: 0 0 12px; } .rsvp-via .chk { min-height: 36px; }
+/* Make it mine: a guest's own dates and hotel, under the ticket */
+.mi-bar { background: var(--card); border-radius: 16px; padding: 14px; display: grid; gap: 10px; }
+.mi-bar > .lbl { margin: 0; }
+.mi-bar svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.mi-go { justify-self: start; } .mi-bar > .mi-go:only-child { justify-self: stretch; min-height: 48px; }
+.mi-opts { display: grid; gap: 8px; }
+.mi-opt { display: grid; gap: 2px; text-align: left; min-height: 52px; padding: 10px 14px; border-radius: 12px; border: 1.5px solid var(--line, #D9DCE3); background: var(--chip); color: inherit; font: inherit; cursor: pointer; }
+.mi-opt b { font-weight: 650; font-size: .95rem; }
+.mi-opt span { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: .86rem; min-width: 0; overflow-wrap: anywhere; }
+.mi-opt svg { width: 15px; height: 15px; }
+.mi-opt.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--card)); }
+.mi-sum { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.mi-sum > svg { width: 22px; height: 22px; color: var(--accent); }
+.mi-tx { display: grid; gap: 2px; flex: 1; min-width: 0; } .mi-tx b { font-weight: 650; }
+.mi-h { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: .88rem; min-width: 0; overflow-wrap: anywhere; } .mi-h svg { width: 15px; height: 15px; }
+.mi-sum > i { font-style: normal; font-weight: 600; font-size: .88rem; color: var(--accent); flex: none; }
+.mi-bar.is-set { border: 1.5px solid color-mix(in srgb, var(--accent) 45%, transparent); padding: 10px 14px; }
+.mi-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; } .mi-head b { font-size: 1rem; }
+.mi-head .x { width: 40px; height: 40px; border: 0; border-radius: 10px; background: var(--chip); color: inherit; font-size: 1.3rem; cursor: pointer; }
+.mi-bar .field input { width: 100%; min-width: 0; }
+.mi-hs { margin-bottom: 4px; } .mi-hs .chip, .pr-hs .chip { min-height: 36px; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+.mi-btns .btn svg { width: 16px; height: 16px; }
+.day.d-out { opacity: .42; }
+.order.secs .tool { background: transparent; padding: 4px 0; flex: 1; min-width: 0; min-height: 36px; }
+.order.secs li { min-height: 48px; }
+.pr-row .two input { min-width: 0; }
