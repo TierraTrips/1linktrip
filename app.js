@@ -1798,7 +1798,7 @@ function bookingsHTML(cfg) {
     const it = ccBkItem(cfg, x);
     return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div>${x.id ? `<button type="button" class="pr-go bk-go" data-ds="bk:${esc(x.id)}">${thumbHTML(x, it.cat)}<span class="pr-tx">` : '<span class="pr-tx">'}<b class="plan-t"><span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${bkOffTrip(cfg, x) ? `<span class="bk-warn">${esc(t('Not on the trip dates'))}</span>` : ''}${detVal(x, 'room') || (LODGE.has(x.kind) && hfBadge(hfOfBk(x), bkDay(x.end) || bkDay(x.start))) ? `<span class="bk-room">${esc(detVal(x, 'room') || '')}${LODGE.has(x.kind) ? hfBadgeHTML(hfOfBk(x), bkDay(x.end) || bkDay(x.start)) : ''}</span>` : ''}${x.note && !LODGE.has(x.kind) ? `<span class="pr-note">${esc(x.note)}</span>` : ''}${x.id ? '</span><i class="tl-chev" aria-hidden="true"></i></button>' : '</span>'}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button>${LODGE.has(x.kind) && x.id ? `<button type="button" class="mini-b bk-rm" data-bk-rm="${esc(x.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}</div></div></li>`;
   }).join('')}</ul>${ccNoneHTML().replace('class="muted cc-none"', `class="muted cc-none"${order.some(([x]) => F.ok(ccBkItem(cfg, x))) ? ' hidden' : ''}`)}` : ''}
-  <div class="btns itin-btns"><button type="button" class="btn primary" data-itin-add>+ ${t('Add a booking')}</button>${items.length ? `<button type="button" class="btn" data-itin-ics>${t('Add to calendar')}</button>` : ''}</div><div data-slot="itin-form"></div>`;
+  <div class="btns itin-btns"><button type="button" class="btn primary" data-itin-add>+ ${t('Add a booking')}</button>${items.length ? `<button type="button" class="btn" data-itin-ics>${t('Add to calendar')}</button>` : ''}</div><div data-slot="itin-form"></div>${cfg.demoTrip ? '' : fwdSlot()}`;
 }
 function myTripTabHTML(cfg) {
   const T = cfg.tools; const out = [];
@@ -3769,7 +3769,9 @@ async function renderMine(id, notice) {
   const { data, error } = await c.from('events').select('id,slug,config,published,updated_at').eq('owner', user.id).order('updated_at', { ascending: false });
   if (error) return shell(`<h1>My pages</h1><p>Couldn’t load your pages. ${esc(error.message)}</p>`);
   shell(`<div class="mine-h"><h1>My pages</h1><span class="muted small">${esc(user.email || '')} · <button type="button" class="link" data-mine="signout">Sign out</button></span></div>
+    ${fwdSlot()}<section data-slot="mine-inbox"></section>
     ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · not shared'}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a>` : ''}</div><div class="btns"><a class="btn sm" href="${esc(shortURL(r.slug))}">View</a><button type="button" class="btn sm primary" data-mine-edit="${esc(r.id)}">Edit</button><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button>` : ''}<button type="button" class="btn sm ghost" data-mine-del="${esc(r.id)}" aria-label="Delete ${esc(cfg.title || 'Untitled')}">Delete</button></div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Share, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
+  fwdFill(); mineInbox(c, data).catch(() => {});
   if (data.length) msgReady().then(async ok => { // "2 new" next to pages with unanswered guest messages
     if (!ok) return; const { data: ms } = await c.from('event_messages').select('event_id,guest,from_host,created_at').in('event_id', data.map(x => x.id)).order('created_at', { ascending: true }).limit(5000);
     data.forEach(ev => { const seen = LS.get('inboxSeen:' + ev.id, {}) || {}; const last = new Map(); (ms || []).filter(x => x.event_id === ev.id).forEach(x => last.set(x.guest, x));
@@ -4962,7 +4964,7 @@ function wirePlan(cfg, art, mapCtl) {
   const openPlan = (x) => { if (x.src === 'g' && art._openGPlace) art._openGPlace(x.ref); else if (art._openPlace) art._openPlace(x.ref); };
   const render = () => { if (body) body.innerHTML = planHTML(cfg); art._renderSchedule && art._renderSchedule(); pins(); const sp = art.querySelector('#sec-spots .sec-b'); if (sp) sp.innerHTML = spotsHTML(cfg); art._hotelUI && art._hotelUI(); dsRefresh(art); };
   art._planChanged = render; pins();
-  if (LS.get('signedIn') && cfg.tools.mytrip) syncPull(cfg, art).catch(() => {});
+  if (LS.get('signedIn') && cfg.tools.mytrip) { syncPull(cfg, art).catch(() => {}); if (!cfg.demoTrip) fwdFill(art); }
   if (!body) return;
   body.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return; const li = b.closest('[data-plan-id]'); const xs = planLoad(cfg); const i = li ? xs.findIndex(x => x.id === li.dataset.planId) : -1;
@@ -6645,20 +6647,79 @@ async function syncPull(cfg, art) {
   if (error) { if (tableMissing(error)) LS.set('syncOff', Date.now()); return; }
   const mine = (data || []).filter(r => r.page_key === key); const inbox = (data || []).filter(r => r.page_key === 'inbox');
   const bk = withIds(cfg), pl = planLoad(cfg), sh = shopLoad(cfg); const have = new Set(bk.map(x => x.id).concat(pl.map(x => x.id), sh.map(x => x.id), LS.get(goneKey(cfg)) || [])); let added = 0; // merged-away / deleted ids stay gone
+  const fw = []; // bookings forwarded by email (the inbound function), still as ai-import read them
   mine.forEach(r => { if (r.item && r.item.mine === true) { if (!LS.get(mineKey(cfg))) { const { mine: _, ...m } = r.item; LS.set(mineKey(cfg), m); added++; } return; }
-    if (r.item && r.item.secui) { if (!LS.get(cxKey(cfg))) { const { secui, ...ui } = r.item; LS.set(cxKey(cfg), ui); art._cx && art._cx(); } return; } if (have.has(r.id) || !r.item) return; if (r.kind === 'place' && r.item.shop) { const { shop, ...x } = r.item; sh.push({ ...x, id: r.id }); } else if (r.kind === 'place') pl.push({ ...r.item, id: r.id }); else bk.push({ ...r.item, id: r.id }); added++; });
+    if (r.item && r.item.secui) { if (!LS.get(cxKey(cfg))) { const { secui, ...ui } = r.item; LS.set(cxKey(cfg), ui); art._cx && art._cx(); } return; } if (have.has(r.id) || !r.item) return; if (r.item.inbound) { const x = inbItem(r); if (x) fw.push(x); return; } if (r.kind === 'place' && r.item.shop) { const { shop, ...x } = r.item; sh.push({ ...x, id: r.id }); } else if (r.kind === 'place') pl.push({ ...r.item, id: r.id }); else bk.push({ ...r.item, id: r.id }); added++; });
   if (added) { LS.set(shopKey(cfg), sh); art._shop && art._shop(); LS.set(itinKey(cfg), bk); LS.set(planKey(cfg), pl); bkClean(cfg); art._planChanged && art._planChanged(); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); }
+  if (fw.length) { await bkSave(cfg, art, fw, null); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); }
   const gone = new Set(LS.get(goneKey(cfg)) || []);
-  if (added || !mine.length || mine.some(r => gone.has(r.id))) syncPush(cfg); // first sync uploads what this device already had; rows merged away here are deleted there
+  if (added || fw.length || !mine.length || mine.some(r => gone.has(r.id))) syncPush(cfg); // first sync uploads what this device already had; rows merged away here are deleted there
   const slot = art.querySelector('#sec-plan .sec-b');
-  if (inbox.length && slot) {
-    slot.insertAdjacentHTML('afterbegin', `<div class="inbox-note"><b>${esc(t('{n} forwarded bookings', { n: inbox.length }))}</b> <button type="button" class="btn sm" data-inbox-add>${t('Add to this trip')}</button></div>`);
-    slot.querySelector('[data-inbox-add]').onclick = async (e) => {
-      e.target.disabled = true; const xs = bkUpsert(cfg, withIds(cfg), inbox.map(r => ({ ...r.item, id: r.id })), true).xs;
-      itinSave(cfg, xs); syncPush(cfg); await c.from('trip_items').update({ page_key: key }).in('id', inbox.map(r => r.id));
-      art._planChanged && art._planChanged(); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); toast(t('Added {n} bookings', { n: inbox.length }));
+  const adds = inbox.map(inbItem).filter(Boolean);
+  if (adds.length && slot) { // Inbox: forwarded bookings no trip's dates matched — one tap puts them in this one
+    slot.insertAdjacentHTML('afterbegin', `<div class="inbox-note"><b>${esc(adds.length === 1 ? t('1 forwarded booking') : t('{n} forwarded bookings', { n: adds.length }))}</b><ul class="inbox-l">${adds.slice(0, 6).map(x => `<li>${esc([x.name || t(ITIN_KINDS[x.kind] || 'Booking'), inbWhen(x)].filter(Boolean).join(' · '))}</li>`).join('')}</ul><button type="button" class="btn sm" data-inbox-add>${t('Add to this trip')}</button></div>`);
+    const note = slot.querySelector('.inbox-note');
+    note.querySelector('[data-inbox-add]').onclick = async (e) => {
+      e.target.disabled = true;
+      await c.from('trip_items').delete().in('id', inbox.map(r => r.id)); // re-saved under this trip by the push below (merged-away ones stay gone)
+      note.remove(); await bkSave(cfg, art, adds, null); syncPush(cfg);
+      art._planChanged && art._planChanged(); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule();
     };
   }
+}
+
+// ================= "Forward bookings": email a confirmation to your personal address (inbound function + Resend) =================
+// Hidden until the inbound function says it's set up (GET → { enabled, domain }), and only when signed in.
+// add-<token>@<domain> (inbound_tokens, made on first view), or any address there from the email you sign in with.
+var FWD = null, fwdP = null; // var: bookingsHTML may render before this line runs
+function fwdStatus() {
+  if (!SB) return Promise.resolve(null);
+  const c = LS.get('fwdCfg'); if (c && Date.now() - c.t < (c.on ? 3600e3 : 600e3)) return Promise.resolve(c.on ? c : null);
+  return fetchTimeout(`${SB.url}/functions/v1/inbound`, {}, 8000).then(r => r.ok ? r.json() : null).catch(() => null).then(j => {
+    const on = !!(j && j.enabled && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(j.domain || '')); const v = { t: Date.now(), on, domain: on ? String(j.domain).toLowerCase() : '' };
+    LS.set('fwdCfg', v); return on ? v : null; });
+}
+function fwdLoad() {
+  if (!LS.get('signedIn')) return Promise.resolve(null);
+  return fwdP || (fwdP = (async () => {
+    const st = await fwdStatus(); if (!st) return null;
+    const u = await sbUser(); if (!u) return null; const c = await sb();
+    let { data } = await c.from('inbound_tokens').select('token').eq('owner', u.id).maybeSingle();
+    if (!data) ({ data } = await c.from('inbound_tokens').insert({ owner: u.id }).select('token').single());
+    if (!data || !/^[a-f0-9]{18}$/.test(data.token || '')) return null;
+    return (FWD = { addr: `add-${data.token}@${st.domain}`, any: `trips@${st.domain}`, email: u.email || '' });
+  })().catch(() => null).then(v => { if (!v) fwdP = null; return v; }));
+}
+function fwdHTML() { return FWD && LS.get('signedIn') ? `<div class="fwd-row"><div class="fwd-tx"><b>${t('Forward bookings')}</b><code class="fwd-addr">${esc(FWD.addr)}</code>${FWD.email ? `<span class="muted small">${esc(t('or forward from {email} to {any}', { email: FWD.email, any: FWD.any }))}</span>` : ''}</div><button type="button" class="btn sm" data-fwd-copy>${t('Copy')}</button></div>` : ''; }
+function fwdSlot() { return `<div data-slot="fwd">${fwdHTML()}</div>`; }
+function fwdFill(root) { return fwdLoad().then(v => { if (v) $$('[data-slot="fwd"]', root || document).forEach(el => { if (!el.firstElementChild) el.innerHTML = fwdHTML(); }); }); }
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-fwd-copy]'); if (!b || !FWD) return;
+  try { await navigator.clipboard.writeText(FWD.addr); } catch { const ta = document.createElement('textarea'); ta.value = FWD.addr; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch { /* shown anyway */ } ta.remove(); }
+  b.textContent = t('Copied'); setTimeout(() => { b.textContent = t('Copy'); }, 1500); toast(t('Address copied'));
+});
+// a forwarded row → the booking the app would have made from the same ai-import result (Add a booking → Read with AI)
+function inbItem(r) {
+  if (!r || !r.item) return null; if (!r.item.inbound) return { ...r.item, id: r.id };
+  const x = aiItemsToBookings([r.item.ai || {}])[0]; return x ? { ...x, id: r.id } : null;
+}
+function inbWhen(x) { return isoDay(String(x.start || '').slice(0, 10)) ? dateRange(x.start.slice(0, 10), isoDay(String(x.end || '').slice(0, 10)) || '') : ''; }
+// My pages: the Inbox — forwarded bookings no trip's dates matched; pick the trip (one tap) and it's added when that trip opens
+async function mineInbox(c, evs) {
+  const el = $('[data-slot="mine-inbox"]'); if (!el) return;
+  const { data, error } = await c.from('trip_items').select('id,item').eq('page_key', 'inbox').limit(100); if (error || !data || !data.length) return;
+  const rows = data.map(r => [r, inbItem(r)]).filter(([, x]) => x); if (!rows.length) return;
+  const trips = new Map(); const addT = (cfg) => { if (!cfg || cfg.demoTrip) return; const k = syncKey(cfg); if (k && !trips.has(k)) trips.set(k, cfg.title || 'Untitled'); };
+  evs.forEach(r => addT(normalize(clone(r.config)))); pagesAll().forEach(p => addT(p.cfg));
+  const opts = [...trips].map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join('');
+  el.innerHTML = `<h2>${esc(rows.length === 1 ? t('1 forwarded booking') : t('{n} forwarded bookings', { n: rows.length }))}</h2><ul class="mine-list inbox-mine">${rows.map(([r, x]) => `<li><div><b>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</b><span>${esc(inbWhen(x))}</span></div>${opts ? `<select data-inbox-to="${esc(r.id)}" aria-label="${esc(t('Add to a trip'))}"><option value="">${t('Add to…')}</option>${opts}</select>` : `<span class="muted small">${t('Open a trip to add it')}</span>`}</li>`).join('')}</ul>`;
+  el.addEventListener('change', async (e) => {
+    const s = e.target.closest('[data-inbox-to]'); if (!s || !s.value) return; s.disabled = true;
+    const { error: er } = await c.from('trip_items').update({ page_key: s.value }).eq('id', s.dataset.inboxTo);
+    if (er) { s.disabled = false; toast(t('Couldn’t move it. Try again.')); return; }
+    const name = trips.get(s.value) || ''; s.closest('li').remove(); toast(t('Added to {t}', { t: name }));
+    if (!el.querySelector('li')) el.innerHTML = '';
+  });
 }
 
 // ================= book with the company itself: hotel chains, airlines, rental-car brands =================

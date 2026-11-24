@@ -766,6 +766,13 @@ button.leg-h { cursor: pointer; } button.leg-h:focus-visible { outline: 2px soli
 .route-ed { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 10px; }
 .stop-chips { margin-bottom: 8px; } .day-city { font: 600 .72rem var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted, var(--slate)); margin-left: 6px; }
 .inbox-note { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 10%, transparent); margin-bottom: 10px; }
+.inbox-l { flex-basis: 100%; margin: 0; padding-left: 18px; font-size: .9rem; }
+/* Forward bookings: the personal address + Copy (My trip, My pages); empty slot until the inbound function is set up */
+.fwd-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 8%, transparent); margin: 10px 0; }
+.fwd-tx { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.fwd-addr { font: .85rem ui-monospace, Menlo, monospace; overflow-wrap: anywhere; background: none; padding: 0; }
+.inbox-mine select { font: inherit; padding: 6px 8px; border-radius: 10px; max-width: 100%; }
+.mine .fwd-row { background: var(--paper, #fff); border-radius: 14px; padding: 14px 16px; } .mine [data-slot="mine-inbox"]:not(:empty) { margin-bottom: 22px; } .mine [data-slot="mine-inbox"] h2 { font-size: 1.1rem; margin: 18px 0 10px; }
 .bk-ask { padding: 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 12%, transparent); margin: 8px 0; }
 .bk-ask p { margin: 0 0 4px; } .bk-ask p:first-child { font-weight: 600; } .bk-ask .btns { margin-top: 8px; }
 .tl li.co b { font-weight: 500; opacity: .8; }

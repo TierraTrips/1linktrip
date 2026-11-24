@@ -711,5 +711,6 @@ async function route(req: Request): Promise<Response> {
   }
 }
 
-// Supabase runs this file as the function; tests import it with AI_IMPORT_TEST=1 and call the helpers directly.
-if (!Deno.env.get("AI_IMPORT_TEST")) Deno.serve(handler);
+// Supabase runs this file as the function; tests import it with AI_IMPORT_TEST=1 and call the helpers directly, and the
+// inbound function bundles it and calls handler() in process (ai/inbound-env.ts sets __AI_IMPORT_EMBEDDED first).
+if (!Deno.env.get("AI_IMPORT_TEST") && !(globalThis as Record<string, unknown>).__AI_IMPORT_EMBEDDED) Deno.serve(handler);
