@@ -1718,7 +1718,7 @@ function bookingsHTML(cfg) {
     const via = viaOf(x); const viaUrl = via && via.url;
     const links = [fl.status ? ext(fl.status, t('Flight status'), 'mini-b') : '', viaUrl ? ext(viaUrl, `${t('Manage booking')} · ${via.name}`, 'mini-b') : fl.manage ? ext(fl.manage, t('Manage booking'), 'mini-b') : '', x.link ? ext(x.link, t('Open booking'), 'mini-b') : ''].join('');
     const it = ccBkItem(cfg, x);
-    return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div>${x.id ? `<button type="button" class="pr-go bk-go" data-ds="bk:${esc(x.id)}">${thumbHTML(x, it.cat)}<span class="pr-tx">` : '<span class="pr-tx">'}<b class="plan-t"><span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${bkOffTrip(cfg, x) ? `<span class="bk-warn">${esc(t('Not on the trip dates'))}</span>` : ''}${detVal(x, 'room') ? `<span class="bk-room">${esc(detVal(x, 'room'))}</span>` : ''}${x.note ? `<span class="pr-note">${esc(x.note)}</span>` : ''}${x.id ? '</span><i class="tl-chev" aria-hidden="true"></i></button>' : '</span>'}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button></div></div></li>`;
+    return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div>${x.id ? `<button type="button" class="pr-go bk-go" data-ds="bk:${esc(x.id)}">${thumbHTML(x, it.cat)}<span class="pr-tx">` : '<span class="pr-tx">'}<b class="plan-t"><span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${bkOffTrip(cfg, x) ? `<span class="bk-warn">${esc(t('Not on the trip dates'))}</span>` : ''}${detVal(x, 'room') ? `<span class="bk-room">${esc(detVal(x, 'room'))}</span>` : ''}${x.note ? `<span class="pr-note">${esc(x.note)}</span>` : ''}${x.id ? '</span><i class="tl-chev" aria-hidden="true"></i></button>' : '</span>'}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button>${LODGE.has(x.kind) && x.id ? `<button type="button" class="mini-b bk-rm" data-bk-rm="${esc(x.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}</div></div></li>`;
   }).join('')}</ul>${ccNoneHTML().replace('class="muted cc-none"', `class="muted cc-none"${order.some(([x]) => F.ok(ccBkItem(cfg, x))) ? ' hidden' : ''}`)}` : ''}
   <div class="btns itin-btns"><button type="button" class="btn primary" data-itin-add>+ ${t('Add a booking')}</button>${items.length ? `<button type="button" class="btn" data-itin-ics>${t('Add to calendar')}</button>` : ''}</div><div data-slot="itin-form"></div>`;
 }
@@ -2159,6 +2159,7 @@ function wireItin(cfg, art) {
     }
     else if ('itinEdit' in d) { openForm(itinLoad(cfg)[+d.itinEdit], +d.itinEdit); fill(); }
     else if ('itinCancel' in d) rerender();
+    else if (d.bkRm) bkRemove(cfg, art, d.bkRm);
     else if ('itinDel' in d) { const xs = itinLoad(cfg); xs.splice(+d.itinDel, 1); itinSave(cfg, xs); rerender(); }
     else if ('itinSave' in d) {
       if (!draft.name && !draft.flight && !draft.start) { toast(t('Add a name or a date')); return; }
@@ -2425,7 +2426,7 @@ function renderSheet() {
   else if (id === 'route') body = routeHTML(c, one('st') ? fi : null);
   else if (tc) { const sp = typeSpec(c); body = tc[3].map(k => xFieldHTML(c, sp.fields.find(f => f[0] === k), tc[3].length === 1)).join(''); }
   else if (id === 'schedule' && isTrip(c)) body = tripPlanHTML(c, F && F.k === 'day' ? { day: F.d } : one('s') ? { item: fi } : null);
-  else if (id === 'schedule') body = `${c.schedule.map((x, i) => !only('s', i) ? '' : `<div class="rowed"><div class="two"><input type="date" data-s="${i}" data-k="date" value="${esc(x.date)}" aria-label="Date"><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time"></div><input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="What's happening" aria-label="Title">${schedPlaceHTML(x, i)}<input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Note (optional)" aria-label="Note"><button type="button" class="ic del" data-sdel="${i}" aria-label="Remove item">Remove</button></div>`).join('')}
+  else if (id === 'schedule') body = `${c.schedule.map((x, i) => !only('s', i) ? '' : `<div class="rowed"><div class="two"><input type="date" data-s="${i}" data-k="date" value="${esc(x.date)}" aria-label="Date"><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time"></div><input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="What's happening" aria-label="Title">${schedPlaceHTML(x, i)}<input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Note (optional)" aria-label="Note">${hotelCiLine(x) ? `<button type="button" class="ic del bk-rm" data-sdel="${i}" data-sdel-hotel aria-label="Remove hotel ${esc(hostHotelName(x.title))}">${TRASH_IC}Remove hotel</button>` : `<button type="button" class="ic del" data-sdel="${i}" aria-label="Remove item">Remove</button>`}</div>`).join('')}
     ${one('s') ? '' : `<div class="btns"><button type="button" class="btn sm" data-b="add-sched">+ Add item</button>${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`}`;
   else if (id === 'notes') body = `${c.notes.map((x, i) => !only('n', i) ? '' : `<div class="rowed"><input data-n="${i}" data-k="label" value="${esc(x.label)}" placeholder="Title" aria-label="Title"><input data-n="${i}" data-k="text" value="${esc(x.text || '')}" placeholder="Text" aria-label="Text"><input data-n="${i}" data-k="url" type="url" value="${esc(x.url || '')}" placeholder="Link (optional)" aria-label="Link">${B.onp ? `<div class="plan-ctl"><span class="mv"><button type="button" data-onp-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-onp-mv="${i}" data-dir="1" ${i === c.notes.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button></span><button type="button" class="ic del" data-ndel="${i}" aria-label="Remove">Remove</button></div>` : `<button type="button" class="ic del" data-ndel="${i}" aria-label="Remove">Remove</button>`}</div>`).join('')}
     ${one('n') ? '' : '<button type="button" class="btn sm" data-b="add-note">+ Add note</button>'}`;
@@ -2491,6 +2492,9 @@ function wireInputs(root) {
     else if (d.font) { cfg.theme.font = d.font; loadFont(d.font); changed(true); }
     else if (d.themeMode) { cfg.theme.mode = d.themeMode; changed(true); }
     else if (d.b === 'add-sched') { const last = cfg.schedule[cfg.schedule.length - 1]; cfg.schedule.push({ date: last?.date || cfg.start.slice(0, 10), time: '', title: '', note: '' }); changed(true); }
+    else if (d.sdel != null && 'sdelHotel' in d) { // a hotel: its check-in and its check-out go together; Undo puts both back
+      const x = cfg.schedule[+d.sdel]; if (!x) return; const was = cfg.schedule.slice(); const gone = [x, ...hotelCoLines(cfg.schedule, x)];
+      cfg.schedule = cfg.schedule.filter(y => !gone.includes(y)); changed(true); undoToast(`Removed ${hostHotelName(x.title) || 'the hotel'}`, () => { if (c() !== cfg) return; cfg.schedule = was; changed(true); }); }
     else if (d.sdel != null) { cfg.schedule.splice(+d.sdel, 1); changed(true); }
     else if (d.spFind != null) schedPlaceFind(+d.spFind, (root.querySelector(`[data-sp-q="${d.spFind}"]`) || {}).value || '');
     else if (d.spChg != null) { B.spEdit = +d.spChg; renderSheet(); setTimeout(() => { const q = $(`#sheet [data-sp-q="${d.spChg}"]`); if (q) { q.focus(); q.select(); } }, 30); }
@@ -4971,6 +4975,16 @@ function bkDedupe(cfg, xs) {
 }
 const goneKey = (cfg) => 'gone:' + eventKey(cfg).slice(6);
 const goneAdd = (cfg, ids) => { if (ids.length) LS.set(goneKey(cfg), [...new Set((LS.get(goneKey(cfg)) || []).concat(ids))].slice(-300)); };
+const goneDel = (cfg, ids) => { const g = LS.get(goneKey(cfg)); if (g && ids.length) LS.set(goneKey(cfg), g.filter(id => !ids.includes(id))); }; // Undo / Keep both: that id is wanted again
+// one-tap Remove (a hotel from My trip, its sheet or Nearby's "Your hotel" bar): out of the bookings, the map and the hotel
+// selection, and — signed in — the account copy (its id goes on gone:<key>, so a pull can't bring it back). Undo puts it back.
+function bkRemove(cfg, art, id) {
+  const xs = itinLoad(cfg); const i = xs.findIndex(x => x.id === id); if (i < 0) return;
+  const gone = xs.splice(i, 1)[0]; itinSave(cfg, xs); if (art && art._pick) art._pick = {}; bkChanged(art); if (LS.get('signedIn')) syncPush(cfg); dsRefresh(art);
+  toastAction(t('Removed {n}', { n: gone.name || t(ITIN_KINDS[gone.kind] || 'Booking') }), t('Undo'), () => {
+    const ys = itinLoad(cfg).filter(y => y.id !== gone.id); ys.splice(Math.min(i, ys.length), 0, gone); goneDel(cfg, [gone.id]); itinSave(cfg, ys); bkChanged(art); if (LS.get('signedIn')) syncPush(cfg); });
+}
+const TRASH_IC = '<svg class="rm-ic" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
 // saves the bookings; ids that left are remembered so a pull from the account can't bring them back
 function itinSave(cfg, xs) { const now = new Set(xs.map(x => x.id)); goneAdd(cfg, (LS.get(itinKey(cfg), null) || []).map(x => x.id).filter(id => id && !now.has(id))); LS.set(itinKey(cfg), xs); }
 // a map pick's nights: the city's first leg without a hotel yet (else its first leg), else the trip
@@ -5015,13 +5029,22 @@ function askReplace(slot, a, b) {
     box.addEventListener('click', (e) => { const bt = e.target.closest('[data-bk-ask]'); if (!bt) return; box.remove(); res(bt.dataset.bkAsk === '1'); });
   });
 }
-// the one way bookings are added: upsert, save, then settle any Replace? questions one by one
+// the one way bookings are added: upsert, save, then settle any Replace? questions one by one.
+// A new hotel booking (Add a booking: PDF / screenshot / paste / by hand) for nights another hotel in that city already has
+// REPLACES it — the newest confirmation is the hotel (Dylan 11/24: a PDF for a new hotel kept the old one as his hotel,
+// because the new one waited on a Replace? question and was dropped when it went unanswered). The toast offers Keep both.
+// Only a map pick over a real booking still asks first (a tap on the map shouldn't silently drop a reservation).
 async function bkSave(cfg, art, adds, slot) {
-  const r = bkUpsert(cfg, itinLoad(cfg), adds);
-  itinSave(cfg, r.xs); bkChanged(art);
-  if (r.merged) toast(r.merged > 1 ? t('Updated {n} bookings you already had', { n: r.merged }) : t('Updated the booking you already had'));
+  const r = bkUpsert(cfg, itinLoad(cfg), adds); const xs = r.xs; const replaced = [];
+  const ask = r.conflicts.filter(([old, add]) => add.guess && !old.guess);
+  r.conflicts.filter(c => !ask.includes(c)).forEach(([old, add]) => { const i = xs.findIndex(y => y.id === old.id); if (i >= 0) { xs.splice(i, 1, add); replaced.push(old); } else if (!xs.some(y => y.id === add.id)) xs.push(add); });
+  itinSave(cfg, xs); if (replaced.length && art && art._pick) art._pick = {}; bkChanged(art);
+  const nm = (x) => x.name || t(ITIN_KINDS[x.kind] || 'Booking');
+  if (replaced.length) toastAction(t('Replaced {a} with {b}', { a: nm(replaced[0]), b: nm(r.conflicts.find(c => c[0] === replaced[0])[1]) }), t('Keep both'), () => {
+    const ys = itinLoad(cfg); replaced.forEach(o => { if (!ys.some(y => y.id === o.id)) ys.push(o); }); goneDel(cfg, replaced.map(o => o.id)); itinSave(cfg, ys); bkChanged(art); });
+  else if (r.merged) toast(r.merged > 1 ? t('Updated {n} bookings you already had', { n: r.merged }) : t('Updated the booking you already had'));
   else if (adds.length > 1 && !r.conflicts.length) toast(t('Added {n} bookings', { n: adds.length }));
-  for (const [old, add] of r.conflicts) {
+  for (const [old, add] of ask) {
     const rep = await askReplace(slot, old, add); const xs = itinLoad(cfg);
     itinSave(cfg, rep ? xs.filter(y => y.id !== old.id).concat(add) : xs.concat(add)); bkChanged(art);
   }
@@ -5147,6 +5170,24 @@ const dsDay = (s) => s ? fmt(s.slice(0, 10), { weekday: 'short', month: 'short',
 const dsTm = (s) => s && s.length > 10 ? fmtTime(s.slice(11, 16)) : '';
 const hostHotelName = (title) => String(title || '').replace(/^\s*check[- ]?in\s*[:\-–—·]?\s*(at\s+)?/i, '').trim();
 const isHostHotel = (x) => !!x && HOTEL_RE.test(x.title || '') && !/check[- ]?out/i.test(x.title || '');
+// the organizer's hotel lines: "Check in: <hotel>" (or a hotel reservation) and its "Check out: <hotel>"
+const hotelCiLine = (x) => isHostHotel(x) && !!x.date && (/\bcheck[- ]?in\b/i.test(x.title || '') || x.kind === 'reservation');
+const hotelCoName = (x) => x && /^\s*check[- ]?out\b/i.test(x.title || '') ? String(x.title).replace(/^\s*check[- ]?out\s*[:\-–—·]?\s*((of|from|at)\s+)?/i, '').trim() : '';
+const hotelCoLines = (sch, x) => { const n = hostHotelName(x.title); return sch.filter(y => y !== x && y.date && y.date >= x.date && hotelCoName(y) && nameLike(hotelCoName(y), n)); };
+// a hotel line's nights: check-in day → its own check-out line, else the end of its leg, else one night
+function hostStay(cfg, sch, x) { const co = hotelCoLines(sch, x).map(y => y.date).sort()[0]; const leg = legOfDay(cfg, x.date); return [x.date, co && co > x.date ? co : leg && leg.to && leg.to > x.date ? leg.to : addDays(x.date, 1)]; }
+// a hotel from a document replaces the organizer's hotel it supersedes: another hotel's check-in at the same stop with
+// overlapping nights (and its check-out) leaves the schedule. fromDoc = the schedule items the document brought (two hotels
+// in one document both stay). Returns the items taken out. (Dylan 11/24: a PDF for the new hotel kept the old one.)
+function hostHotelReplace(cfg, fromDoc) {
+  const sch = cfg.schedule || []; const news = fromDoc.filter(hotelCiLine); if (!news.length) return [];
+  const drop = new Set();
+  sch.forEach(x => { if (fromDoc.includes(x) || !hotelCiLine(x)) return; const n = hostHotelName(x.title); const sx = hostStay(cfg, sch, x);
+    if (!news.some(y => !nameLike(hostHotelName(y.title), n) && stopOfDay(cfg, y.date) === stopOfDay(cfg, x.date) && spanHit(sx, hostStay(cfg, sch, y)))) return;
+    drop.add(x); hotelCoLines(sch, x).forEach(z => { if (!fromDoc.includes(z) && z.date <= sx[1]) drop.add(z); }); });
+  if (drop.size) cfg.schedule = sch.filter(x => !drop.has(x));
+  return [...drop];
+}
 // everything on the trip's schedule (the organizer's items + the guest's bookings and planned places), each with its sheet ref
 function schedEntries(cfg) {
   const fit = (d) => isTrip(cfg) && d ? fitTripDate(cfg.start, cfg.end, d, false) : d || '';
@@ -5220,7 +5261,7 @@ function dsBookingHTML(cfg, x, back) {
     ${x.kind === 'flight' ? '' : dsWhereHTML(x.name || '', x.address || '', geo, pid, cat, { q: [x.name, x.address].filter(Boolean).join(', '), key: [x.name, x.address].filter(Boolean).join(', ') })}
     ${x.note ? `<section class="ds-sec"><h3>${t('Notes')}</h3><p class="ds-note">${esc(x.note).replace(/\n/g, '<br>')}</p></section>` : ''}
     ${x.id ? dsPhotosHTML(x, 'bk:' + x.id) : ''}
-    <div class="ds-acts">${links}${idx >= 0 ? `<button type="button" class="btn sm ghost" data-ds-edit="${idx}">${t('Edit booking')}</button>` : ''}</div></div>`;
+    <div class="ds-acts">${links}${idx >= 0 ? `<button type="button" class="btn sm ghost" data-ds-edit="${idx}">${t('Edit booking')}</button>` : ''}${idx >= 0 && g === 'lodge' ? `<button type="button" class="btn sm ghost danger-t bk-rm" data-ds-rmbk="${esc(x.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}</div></div>`;
 }
 // a saved / planned place: what and where, the guest's plan for it (day, category, booked), details, photos
 function dsPlaceHTML(cfg, x, back) {
@@ -5356,6 +5397,7 @@ function wireDetailSheet(cfg, art, d) {
     if (b.dataset.dsNear != null) { dsClose(art); const r = art.querySelector(`[data-route-stop="${b.dataset.dsNear}"]`); if (r) r.click(); else showTab(art, 'nearby'); return; }
     if (b.dataset.dsGp) { const r = b.dataset.dsGp; dsClose(art); if (art._openGPlace) setTimeout(() => art._openGPlace(r), 30); return; }
     if (b.dataset.dsMv) { const id = d._ref.slice(3); const xs = planLoad(cfg); const i = xs.findIndex(x => x.id === id); if (i < 0) return; const same = xs.map((y, j) => [y, j]).filter(([y]) => y.day === xs[i].day).map(([, j]) => j); const k = same.indexOf(i) + +b.dataset.dsMv; if (k >= 0 && k < same.length) { const j = same[k]; [xs[i], xs[j]] = [xs[j], xs[i]]; planSave(cfg, xs); art._planChanged && art._planChanged(); toast(t('Moved')); } return; }
+    if (b.dataset.dsRmbk) { dsClose(art); bkRemove(cfg, art, b.dataset.dsRmbk); return; }
     if (b.dataset.dsDel) { const xs = planLoad(cfg); const i = xs.findIndex(x => x.id === b.dataset.dsDel); if (i < 0) return; const gone = xs.splice(i, 1)[0]; planSave(cfg, xs); dsClose(art); art._planChanged && art._planChanged();
       toastAction(t('Removed {n}', { n: gone.name || '' }), t('Undo'), () => { const ys = planLoad(cfg); ys.splice(Math.min(i, ys.length), 0, gone); planSave(cfg, ys); art._planChanged && art._planChanged(); }); return; }
   });
@@ -5488,7 +5530,6 @@ function setHotel(cfg, art, i, p) {
   const slot = () => { const bar = art.querySelector('[data-slot="hotel"]'); if (!bar) return null; let s = art.querySelector('[data-slot="hotel-ask"]'); if (!s) { bar.insertAdjacentHTML('beforebegin', '<div data-slot="hotel-ask"></div>'); s = bar.previousElementSibling; } return s; };
   return bkSave(cfg, art, [add], slot);
 }
-function removeHotel(cfg, art, id) { itinSave(cfg, itinLoad(cfg).filter(x => x.id !== id)); bkChanged(art); }
 const isSaved = (cfg, ref) => !!ref && planLoad(cfg).some(x => x.ref === ref && !x.hotel);
 function toggleSaved(cfg, art, place) {
   const xs = planLoad(cfg); const i = xs.findIndex(x => x.ref === place.ref && !x.hotel);
@@ -5539,7 +5580,7 @@ function hotelBarHTML(cfg, art) {
   const form = `<form class="hb-set" onsubmit="return false"><label for="hb-q">${esc(hs.length ? t('Add a hotel') : t('Set your hotel'))}${city ? ` <small class="muted">${esc(city)}</small>` : ''}</label><div class="search"><input id="hb-q" data-hotel-q placeholder="${t('Search your hotel')}" autocomplete="off"><button type="submit" class="btn sm" data-hotel-find>${t('Find')}</button></div>${hs.length ? `<button type="button" class="link" data-hotel-cancel>${t('Cancel')}</button>` : ''}<p class="hint" data-hotel-msg role="status" aria-live="polite"></p></form>`;
   if (!hs.length || art._hotelEdit) return chips + form;
   if (!h) return `${chips}<div class="hb"><img class="hb-ic" src="${HOTEL_PIN}" alt=""><div class="hb-t"><span class="lbl">${esc(lbl)}</span><b>${esc(t('{n} hotels', { n: hs.length }))}</b></div><button type="button" class="btn sm" data-hotel-add>${t('Add')}</button></div>`;
-  return `${chips}<div class="hb"><img class="hb-ic" src="${HOTEL_PIN}" alt=""><div class="hb-t"><span class="lbl">${esc(lbl)}</span><b>${esc(h.name)}</b><small class="muted">${esc(sub(h))}</small></div>${h.src === 'set' ? `<button type="button" class="link" data-hotel-del="${esc(h.id)}">${t('Remove')}</button>` : ''}<button type="button" class="btn sm" data-hotel-add>${t('Add')}</button></div>`;
+  return `${chips}<div class="hb"><img class="hb-ic" src="${HOTEL_PIN}" alt=""><div class="hb-t"><span class="lbl">${esc(lbl)}</span><b>${esc(h.name)}</b><small class="muted">${esc(sub(h))}</small></div>${h.src !== 'host' && h.id ? `<button type="button" class="link bk-rm" data-hotel-del="${esc(h.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}<button type="button" class="btn sm" data-hotel-add>${t('Add')}</button></div>`;
 }
 function wireHotel(cfg, art, mapCtl) {
   const fold = () => art._cx && art._cx();
@@ -5552,7 +5593,7 @@ function wireHotel(cfg, art, mapCtl) {
     if (h ? prev && prev.lat === h.lat && prev.lon === h.lon : !prev) return false;
     art._hotelPt = h; art._fromHotel = !!h; art._center = h ? { lat: h.lat, lon: h.lon } : ss[art._stop]; return true; };
   const ui = (force) => {
-    const all = hotelsNow(cfg); const sp = art.querySelector('#sec-spots .sec-b'); if (sp) sp.innerHTML = spotsHTML(cfg);
+    const all = hotelsNow(cfg); const sp = art.querySelector('#sec-spots .sec-b'); if (sp) sp.innerHTML = spotsHTML(cfg); locate(all);
     if (mapCtl) mapCtl.setHotels([].concat(...all.map((hs, i) => hs.filter(h => h.lat != null).map((h, k) => ({ lat: h.lat, lon: h.lon, title: `${t('Your hotel')}: ${h.name}`, name: h.name, dates: hotelDates(h), label: [pinText(h.name), hotelDates(h)].filter(Boolean).join(' · '), onClick: () => { art._stop = i; art._pick[i] = all[i].indexOf(h); ui(); } })))));
     if (bar) { bar.innerHTML = hotelBarHTML(cfg, art); const q = bar.querySelector('[data-hotel-q]'); if (q) placeAutocomplete(q, { bias: () => ss[art._stop], onPick: (id, tok) => gpVenue(id, tok).then(v => { art._hotelEdit = false; setHotel(cfg, art, art._stop, v); }).catch(() => toast(t('Couldn’t load that place right now.'))) }); }
     const cur = art._hotelAt(art._stop); const saved = planLoad(cfg).some(x => x.lat != null && !x.hotel);
@@ -5562,8 +5603,11 @@ function wireHotel(cfg, art, mapCtl) {
       if (mapCtl) { if (h) mapCtl.center(h.lat, h.lon, 15); else if (cityHs.length > 1 && mapCtl.fit) mapCtl.fit(cityHs.map(x => [x.lat, x.lon])); else if (ss[art._stop]) mapCtl.center(ss[art._stop].lat, ss[art._stop].lon, 13); } }
     fold();
   };
+  // a hotel added after the map opened (a PDF booking, a replacement) is found on the map then too, not on the next visit
+  let unk = null, busy = false;
+  function locate(all) { const k = all.flat().filter(h => h.lat == null && h.q).map(h => h.q).join('|'); if (!k || k === unk || busy) return; unk = k; busy = true;
+    resolveHotels(cfg).then(n => { busy = false; if (n && document.body.contains(art)) ui(); }).catch(() => { busy = false; }); }
   art._hotelUI = ui; ui();
-  resolveHotels(cfg).then(n => { if (n && document.body.contains(art)) ui(); }).catch(() => {});
   const find = (q) => { const m = bar.querySelector('[data-hotel-msg]'); if (q.length < 2) return; if (m) m.textContent = t('Searching…');
     const s = ss[art._stop]; geocode(`${q}, ${s.city || s.name}`).then(xs => { const r = xs.find(x => x.lat != null && !(x.types || []).some(ty => ty === 'country' || ty === 'continent') && distM(x.lat, x.lon, s.lat, s.lon) < 80000); if (!r) { if (m) m.textContent = t('No match. Try the hotel name and street.'); return; } art._hotelEdit = false; setHotel(cfg, art, art._stop, { ...r, name: r.name || q }); })
       .catch(() => { if (m) m.textContent = navigator.onLine === false ? t('Offline') : t('Search is unavailable right now'); }); };
@@ -5571,7 +5615,7 @@ function wireHotel(cfg, art, mapCtl) {
     if (d.hotelPick != null) { art._pick[art._stop] = +d.hotelPick; ui(true); return; }
     if ('hotelAdd' in d) { art._hotelEdit = true; ui(); const q = bar.querySelector('[data-hotel-q]'); if (q) q.focus(); }
     if ('hotelCancel' in d) { art._hotelEdit = false; ui(); }
-    if (d.hotelDel) { art._pick[art._stop] = 0; removeHotel(cfg, art, d.hotelDel); }
+    if (d.hotelDel) bkRemove(cfg, art, d.hotelDel);
     if ('hotelFind' in d) find((bar.querySelector('[data-hotel-q]') || {}).value.trim()); });
   if (key) key.addEventListener('click', (e) => { if (!e.target.closest('[data-hotel-go]')) return; const h = art._hotelAt(art._stop); if (h && mapCtl) mapCtl.centerOn(h.lat, h.lon, 16); });
   art.addEventListener('click', (e) => {
@@ -6604,9 +6648,15 @@ function docReviewHTML(c, items, st = {}) {
   const dates = di < 0 ? '' : ed === di ? `<div class="dr-dates"><ul class="dr-lines">${editHTML(di)}</ul></div>` : `<div class="dr-dates"><span><b>Trip dates</b> ${esc(dateRange(items[di].date, items[di].end))}</span><button type="button" class="link" data-dr-edit="${di}">Edit</button></div>`;
   return `<div class="dr" data-sheet="doc-review"><p class="dr-lead">Found in your document. Untick anything you don't want, or tap a row to see it.</p>${dates}
     <div class="dr-gs">${groups.map(G => { const on = !off[G.g], op = !!open[G.g]; const name = drGroupName(c, G, items);
-      return `<div class="dr-g${on ? '' : ' off'}${op ? ' open' : ''}" data-dr-g="${esc(G.g)}"><div class="dr-gh"><input type="checkbox" class="dr-on" data-dr-gon="${esc(G.g)}" ${on ? 'checked' : ''} aria-label="Add ${esc(name)}"><button type="button" class="dr-gt" data-dr-open="${esc(G.g)}" aria-expanded="${op}"><span class="dr-gn"><b>${esc(name)}</b> · ${esc(drGroupCount(c, G, items))}${G.sec === 'route' && stopsOf(c).length ? '<small class="muted">Replaces the current route</small>' : ''}</span><i class="dr-chev" aria-hidden="true"></i></button></div>
+      return `<div class="dr-g${on ? '' : ' off'}${op ? ' open' : ''}" data-dr-g="${esc(G.g)}"><div class="dr-gh"><input type="checkbox" class="dr-on" data-dr-gon="${esc(G.g)}" ${on ? 'checked' : ''} aria-label="Add ${esc(name)}"><button type="button" class="dr-gt" data-dr-open="${esc(G.g)}" aria-expanded="${op}"><span class="dr-gn"><b>${esc(name)}</b> · ${esc(drGroupCount(c, G, items))}${G.sec === 'route' && stopsOf(c).length ? '<small class="muted">Replaces the current route</small>' : ''}${G.sec === 'schedule' && on ? docHotelSwapHTML(c, G.idx.map(i => items[i]).filter(x => !x.gone)) : ''}</span><i class="dr-chev" aria-hidden="true"></i></button></div>
         ${op ? `<ul class="dr-lines">${G.idx.map(i => i === ed ? editHTML(i) : `<li><button type="button" class="dr-line" data-dr-edit="${i}">${esc(drLine(c, items[i]))}</button></li>`).join('')}</ul>` : ''}</div>`; }).join('')}</div>
     <div class="btns"><button type="button" class="btn primary" data-doc-apply ${n ? '' : 'disabled'}>${st.key && st.key !== 'main' ? 'Add' : 'Add to page'}</button><button type="button" class="btn ghost" data-doc-cancel>Cancel</button></div></div>`;
+}
+// the review says which of the organizer's hotels a document's hotel will replace (hostHotelReplace, on a copy)
+function docHotelSwapHTML(c, its) {
+  const news = its.map(x => ({ date: isoDay(x.date), time: isoTime(x.time), title: cleanText(x.title, 120), kind: x.kind || '' })).filter(x => x.date && x.title);
+  const gone = hostHotelReplace({ ...c, schedule: (c.schedule || []).concat(news) }, news).filter(hotelCiLine).map(x => hostHotelName(x.title));
+  return gone.length ? `<small class="muted dr-swap">Replaces ${esc([...new Set(gone)].join(', '))}</small>` : '';
 }
 // apply the reviewed items to a copy of the page (async: route stops and the venue are looked up on the map)
 async function docApply(cfg, items) {
@@ -6624,6 +6674,7 @@ async function docApply(cfg, items) {
   // items are fitted to the document's span, not squeezed into the example's ten days (or dropped to Unscheduled)
   const docSpan = (live.find(x => Array.isArray(x.span)) || {}).span; const sp0 = sampleSpan(next);
   const fitTo = isTrip(next) && docSpan && sampleDates(next) && sp0 && (docSpan[1] < addDays(sp0[0], -3) || docSpan[0] > addDays(sp0[1], 3)) ? docSpan : null;
+  const fromDoc = []; // the schedule items this document brought (or already on the page)
   for (const x of live) {
     const title = cleanText(x.title, 120), text = cleanLong(x.text, 3000), date = isoDay(x.date), time = isoTime(x.time); let m;
     if (x.sec === 'basics') {
@@ -6632,7 +6683,8 @@ async function docApply(cfg, items) {
       if (x.key === 'venue' && title && !next.venue) { const r = await aiResolveVenue(title, cleanText(x.text, 200)).catch(() => null); if (r) { next.venue = { name: r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc }; next.tz = await lookupTZ(r.lat, r.lon).catch(() => ''); } }
     } else if (x.sec === 'schedule') {
       const it = { date: isTrip(next) ? (fitTo ? fitTripDate(fitTo[0], fitTo[1], date) : fitTripDate(next.start, next.end, date)) : date || next.start.slice(0, 10), time, title: title || cleanText(text, 120), note: title ? cleanText(text, 200) : '', ...(PLAN_KINDS[x.kind] ? { kind: x.kind } : {}) };
-      if (it.title && !next.schedule.some(y => y.date === it.date && y.time === it.time && y.title === it.title)) next.schedule.push(it);
+      const had = it.title && next.schedule.find(y => y.date === it.date && y.time === it.time && y.title === it.title);
+      if (had) fromDoc.push(had); else if (it.title) { next.schedule.push(it); fromDoc.push(it); }
     } else if (x.sec === 'notes') { const label = title || cleanText(text, 60); if (label && !next.notes.some(y => y.label === label && (y.text || '') === (title ? cleanText(text, 600) : ''))) next.notes.push({ label, text: title ? cleanText(text, 600) : '', url: httpsUrl(x.url || '') }); }
     else if (x.sec === 'custom') {
       const tgt = x.target && next.custom.find(y => customSid(y) === x.target);
@@ -6657,6 +6709,7 @@ async function docApply(cfg, items) {
     } else if ((m = x.sec.match(/^access:(\w+)$/))) { if (text) next.access = { ...(next.access || {}), [m[1]]: cleanText(text, 300) }; }
   }
   if (next.end && next.start && next.end.slice(0, 10) < next.start.slice(0, 10)) next.end = '';
+  hostHotelReplace(next, fromDoc); // a new hotel's check-in takes the place of the old hotel for those nights
   const out = sampleDropped(next); delete out._ek; // the example's sample itinerary / route, wholly apart from the document's: gone
   return normalize(out);
 }
@@ -6968,7 +7021,7 @@ function tripPlanHTML(c, opt = null) {
     const same = c.schedule.map((x, i) => [x, i]).filter(([x]) => x.date === d).map(([, i]) => i); const items = c.schedule.map((x, i) => [x, i]).filter(([x, i]) => it ? i === opt.item : x.date === d);
     return `<div class="plan-day">${it ? fieldWrap('Day', `<input id="tp-date" type="date" data-s="${opt.item}" data-k="date" value="${esc(it.date || '')}">`, 'tp-date') : opt && opt.day ? '' : `<h3>${d >= c.start.slice(0, 10) ? `<span class="dayn">Day ${daysBetween(c.start, d) + 1}</span> ` : ''}${esc(friendlyDate(d))}</h3>`}
       ${items.map(([x, i], k) => `<div class="rowed plan-item"><div class="plan-top"><select data-s="${i}" data-k="kind" aria-label="Kind">${Object.entries(PLAN_KINDS).map(([v, l]) => `<option value="${v}" ${(x.kind || 'activity') === v ? 'selected' : ''}>${l}</option>`).join('')}</select><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time (optional)"><span class="mv"><button type="button" data-tp-mv="${i}" data-dir="-1" ${same.indexOf(i) <= 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-tp-mv="${i}" data-dir="1" ${same.indexOf(i) === same.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button></span></div>
-        <input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="${(x.kind || 'activity') === 'reservation' ? 'Dinner at…, tour, tickets' : (x.kind === 'note' ? 'Something to remember' : 'What you’re doing')}" aria-label="Title">${(x.kind || 'activity') === 'note' ? '' : schedPlaceHTML(x, i)}<input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Confirmation or a note" aria-label="Note"><button type="button" class="ic del" data-sdel="${i}" aria-label="Remove">Remove</button></div>`).join('')}
+        <input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="${(x.kind || 'activity') === 'reservation' ? 'Dinner at…, tour, tickets' : (x.kind === 'note' ? 'Something to remember' : 'What you’re doing')}" aria-label="Title">${(x.kind || 'activity') === 'note' ? '' : schedPlaceHTML(x, i)}<input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Confirmation or a note" aria-label="Note">${hotelCiLine(x) ? `<button type="button" class="ic del bk-rm" data-sdel="${i}" data-sdel-hotel aria-label="Remove hotel ${esc(hostHotelName(x.title))}">${TRASH_IC}Remove hotel</button>` : `<button type="button" class="ic del" data-sdel="${i}" aria-label="Remove">Remove</button>`}</div>`).join('')}
       ${it ? '' : `<button type="button" class="btn sm" data-tp-add="${d}">+ Add to this day</button>`}</div>`;
   }).join('')}${opt ? '' : `<div class="btns">${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`}`;
 }

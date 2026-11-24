@@ -30,7 +30,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btns { display: flex; flex-wrap: wrap; gap: .5rem; }
 .toast, #toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); background: var(--ink); color: #fff; padding: .7em 1.2em; border-radius: 999px; font-weight: 600; opacity: 0; pointer-events: none; transition: .2s; z-index: 9999; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
-#toast.act { pointer-events: auto; display: flex; align-items: center; gap: .8em; max-width: calc(100vw - 24px); white-space: nowrap; }
+#toast.act { pointer-events: auto; display: flex; align-items: center; gap: .8em; width: max-content; max-width: calc(100vw - 24px); box-sizing: border-box; white-space: normal; line-height: 1.3; }
+#toast.act .toast-act { flex: none; white-space: nowrap; }
 #toast .toast-act { font: inherit; color: #fff; background: none; border: 0; padding: .2em .1em; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; min-height: 32px; }
 /* Delete in My pages: a quiet button that still reads as destructive */
 [data-mp-del].btn, [data-mine-del].btn { color: var(--route-ink); }
@@ -1253,6 +1254,13 @@ dialog.ds-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .ds-acts .btn, .ds-links .btn { min-height: 40px; }
 .ds-acts:empty { display: none; }
 .btn.danger-t { color: var(--route-ink, #B4402F); }
+/* one-tap Remove hotel (trash + label) in My trip, the hotel sheet and Nearby's hotel bar */
+.rm-ic { width: 1.05em; height: 1.05em; vertical-align: -.17em; margin-right: .3em; flex: none; }
+.bk-rm { color: #A3272D; white-space: nowrap; }
+.mini-b.bk-rm { border-color: color-mix(in srgb, #A3272D 35%, var(--line)); }
+.mini-b.bk-rm:hover { background: #A3272D; border-color: #A3272D; color: #fff; }
+.hb .link.bk-rm { display: inline-flex; align-items: center; font-weight: 600; min-height: 40px; }
+.ic.del .rm-ic { margin-right: .25em; }
 .ds-sheet .gal { gap: 8px; margin: 0; } .ds-sheet .gal figure, .ds-sheet .gal .ph-add { width: 92px; height: 92px; border-radius: 12px; }
 .ds-sheet .gal .ph-add { border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, transparent); }
 .ds-ph-hint { margin: -2px 0 0; }
