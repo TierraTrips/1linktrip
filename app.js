@@ -1467,6 +1467,11 @@ function blankEvent(type) {
   return { v: 2, type, title: '', tagline: '', host: '', description: '', start: s, end: '', tz: '', venue: null, cover: '',
     theme: { ...typeDefaults(type).theme }, tools: defaultTools(type), off: type === 'Trip' ? { rsvp: true } : {}, schedule: [], notes: [], x: {}, bring: '', custom: [] };
 }
+// a NEW page (setup, Start from a website / a document): RSVP starts off except on weddings (Dylan 11/24: "Leave off by
+// default"); the organizer turns it on in Builder → RSVP. Not in blankEvent: normalize fills old pages from it, and pages
+// already out there keep the RSVP they have.
+const rsvpDefaultOff = (type) => type !== 'Wedding';
+function freshEvent(type) { const c = blankEvent(type); if (rsvpDefaultOff(c.type)) c.off = { ...c.off, rsvp: true }; return c; }
 // the organizer's own sections: cfg.custom = [{ id, title, text, label, url, img }]; on the page as section 'c-<id>'
 const blankCustom = () => ({ id: Math.random().toString(36).slice(2, 8), title: '', text: '', label: '', url: '', img: '' });
 const customSid = (x) => 'c-' + x.id;
@@ -2106,6 +2111,8 @@ function wireItin(cfg, art) {
   // every new booking goes through the one upsert: a match updates the item already there (Replace? asked here)
   const saveNew = (add) => { add = add.map(x => { const y = { ...x }; if (y._gen != null) { if (y.name !== y._gen) delete y.ph; delete y._gen; } return y; }); arrivalPick(add); return bkSave(cfg, art, add, () => { const sl = formSlot(); if (sl && !sl.querySelector('.itin-sheet')) sheet(''); return formSlot(); }).then(() => rerender()); };
   art._bkChanged = rerender;
+  // Remove on a hotel row elsewhere in My trip (itinerary, saved spots); the bookings list handles its own
+  art.addEventListener('click', (e) => { const b = e.target.closest('[data-bk-rm]'); if (!b || body.contains(b)) return; e.stopPropagation(); bkRemove(cfg, art, b.dataset.bkRm); });
   const fileOk = () => LS.get('signedIn') ? aiModes().then(m => m.includes('file')) : aiReady();
   const openChooser = () => { const slot = sheet(bkChooserHTML()); fileOk().then(ok => { const b = slot.querySelector('[data-itin-mode="file"]'); if (b && ok) b.hidden = false; }).catch(() => {}); };
   const openReview = (xs) => { review = xs.map(x => ({ ...x })); if (!review.length) return openChooser(); sheet(bkReviewHTML(review)); };
@@ -2424,7 +2431,8 @@ function renderSheet() {
   const only = (k, i) => !F || F.k !== k || i === fi; const one = (k) => !!F && F.k === k;
   if (op) body = op.body;
   else if (id === 'route') body = routeHTML(c, one('st') ? fi : null);
-  else if (tc) { const sp = typeSpec(c); body = tc[3].map(k => xFieldHTML(c, sp.fields.find(f => f[0] === k), tc[3].length === 1)).join(''); }
+  else if (tc) { const sp = typeSpec(c); body = tc[3].map(k => xFieldHTML(c, sp.fields.find(f => f[0] === k), tc[3].length === 1)).join('');
+    const bd = typeData(c); if (id === 'block' && BLOCK_KEYS.some(k => bd[k])) body += `<div class="btns"><button type="button" class="btn sm bk-rm hb-rm" data-b="rm-block">${TRASH_IC}Remove ${esc(bd.blockHotel || 'room block')}</button></div>`; }
   else if (id === 'schedule' && isTrip(c)) body = tripPlanHTML(c, F && F.k === 'day' ? { day: F.d } : one('s') ? { item: fi } : null);
   else if (id === 'schedule') body = `${c.schedule.map((x, i) => !only('s', i) ? '' : `<div class="rowed"><div class="two"><input type="date" data-s="${i}" data-k="date" value="${esc(x.date)}" aria-label="Date"><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time"></div><input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="What's happening" aria-label="Title">${schedPlaceHTML(x, i)}<input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Note (optional)" aria-label="Note">${hotelCiLine(x) ? `<button type="button" class="ic del bk-rm" data-sdel="${i}" data-sdel-hotel aria-label="Remove hotel ${esc(hostHotelName(x.title))}">${TRASH_IC}Remove hotel</button>` : `<button type="button" class="ic del" data-sdel="${i}" aria-label="Remove item">Remove</button>`}</div>`).join('')}
     ${one('s') ? '' : `<div class="btns"><button type="button" class="btn sm" data-b="add-sched">+ Add item</button>${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`}`;
@@ -2491,6 +2499,9 @@ function wireInputs(root) {
     else if (d.sw) { cfg.theme.accent = d.sw; changed(true); }
     else if (d.font) { cfg.theme.font = d.font; loadFont(d.font); changed(true); }
     else if (d.themeMode) { cfg.theme.mode = d.themeMode; changed(true); }
+    else if (d.b === 'rm-block') { // the room block's hotel, code, link and book-by go together; Undo puts them back
+      const xd = cfg.x[cfg.type] || {}; const was = Object.fromEntries(BLOCK_KEYS.map(k => [k, xd[k]])); BLOCK_KEYS.forEach(k => { delete xd[k]; }); changed(true);
+      undoToast(`Removed ${was.blockHotel || 'the room block'}`, () => { if (c() !== cfg) return; const y = (cfg.x[cfg.type] = cfg.x[cfg.type] || {}); BLOCK_KEYS.forEach(k => { if (was[k] != null) y[k] = was[k]; }); changed(true); }); }
     else if (d.b === 'add-sched') { const last = cfg.schedule[cfg.schedule.length - 1]; cfg.schedule.push({ date: last?.date || cfg.start.slice(0, 10), time: '', title: '', note: '' }); changed(true); }
     else if (d.sdel != null && 'sdelHotel' in d) { // a hotel: its check-in and its check-out go together; Undo puts both back
       const x = cfg.schedule[+d.sdel]; if (!x) return; const was = cfg.schedule.slice(); const gone = [x, ...hotelCoLines(cfg.schedule, x)];
@@ -2693,7 +2704,7 @@ let SU = null;
 function renderSetup() {
   LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
   document.title = 'Create a page · 1LinkTrip';
-  SU = { step: 0, cfg: blankEvent('Party'), results: [], q: '', msg: '' }; LS.del('draftHosted'); LS.set('draftId', newPid());
+  SU = { step: 0, cfg: freshEvent('Party'), results: [], q: '', msg: '' }; LS.del('draftHosted'); LS.set('draftId', newPid());
   B = { cfg: SU.cfg, venueResults: [] };
   $('#app').innerHTML = `<div class="setup"><div class="su-main"></div><div class="su-preview"><div class="su-tag">Preview</div><div class="b-frame" id="su-frame"></div></div></div>`;
   suRender();
@@ -2763,7 +2774,7 @@ document.addEventListener('click', (e) => {
     if (url) suAIGo();
     else if (SU.pick) {
       const type = SU.pick; const keep = { title: c.title, start: c.start, end: c.end, venue: c.venue, tz: c.tz };
-      if (!(SU.typed && c.type === type)) { SU.cfg = Object.assign(blankEvent(type), keep); B.cfg = SU.cfg; }
+      if (!(SU.typed && c.type === type)) { SU.cfg = Object.assign(freshEvent(type), keep); B.cfg = SU.cfg; }
       SU.typed = true; SU.step = 1; suRender();
     }
   } else if (d.whenTg != null) { whenToggle(c); suRender(); const f = $(hasTime(c.start) ? '#su-st' : '#su-sd'); if (f) f.focus(); }
@@ -3202,6 +3213,7 @@ function hostedProblem(msg, retry) {
 // check constraint) after the guest's own note: "<note>\n\n[[1lt:{"v":1,...}]]". rqParse splits them again; replies
 // without it (older ones, or with every question off) read exactly as before.
 const RQ_MARK = '[[1lt:';
+const BLOCK_KEYS = ['blockHotel', 'blockUrl', 'blockCode', 'blockBy'];
 // ---- RSVP (builder → RSVP): the organizer either collects replies here (the form below, cfg.rsvpVia 'form') or points guests
 // at their own link ('link', the URL in x[type].rsvp); a reply-by date (x[type].rsvpBy) for both. off.rsvp turns RSVP off.
 // Pages from before the one RSVP card had an "RSVP" link card (weddings) and an "RSVP form" card side by side; they
@@ -4754,7 +4766,8 @@ function planHTML(cfg) {
     const meta = x.ent === 'book' ? [x.kindLabel, view === 'type' && x.day ? dayLabel(cfg, x.day) : '', x.time ? fmtTime(x.time) : '', x.conf ? t('Conf. {n}', { n: x.conf }) : '']
       : [view === 'type' && x.day ? dayLabel(cfg, x.day) : '', x.time ? fmtTime(x.time) : '', x.addr ? x.addr.split(',').slice(0, 2).join(',') : ''];
     const name = x.ent === 'book' ? `<b class="plan-t"><span>${esc(x.name)}</span></b>` : `<b class="plan-t"><span class="plan-name">${esc(x.name)}</span></b>`;
-    return `<li class="plan-row${x.ent === 'book' ? ' bk' : ''}${x.booked && x.ent !== 'book' ? ' booked' : ''}"${x.ent === 'book' ? '' : ` data-plan-id="${esc(x.id)}"`}><button type="button" class="pr-go"${ref ? ` data-ds="${esc(ref)}"` : ''}>${thumbHTML(bk || planLoad(cfg).find(y => y.id === x.id) || x, x.cc)}<span class="pr-tx">${name}<small>${esc(meta.filter(Boolean).join(' · '))}</small>${x.ent !== 'book' && (x.rating || x.booked || x.note) ? `<span class="pr-x">${x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}${x.booked ? `<em class="pr-bk">✓ ${t('Booked')}</em>` : ''}${x.note ? `<span class="pr-note">${esc(x.note)}</span>` : ''}</span>` : ''}</span><i class="tl-chev" aria-hidden="true"></i></button></li>`; };
+    const rm = bk && bk.id && LODGE.has(bk.kind) ? rmBtnHTML(bk.id, 'pr-rm') : '';
+    return `<li class="plan-row${x.ent === 'book' ? ' bk' : ''}${x.booked && x.ent !== 'book' ? ' booked' : ''}${rm ? ' has-rm' : ''}"${x.ent === 'book' ? '' : ` data-plan-id="${esc(x.id)}"`}><button type="button" class="pr-go"${ref ? ` data-ds="${esc(ref)}"` : ''}>${thumbHTML(bk || planLoad(cfg).find(y => y.id === x.id) || x, x.cc)}<span class="pr-tx">${name}<small>${esc(meta.filter(Boolean).join(' · '))}</small>${x.ent !== 'book' && (x.rating || x.booked || x.note) ? `<span class="pr-x">${x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}${x.booked ? `<em class="pr-bk">✓ ${t('Booked')}</em>` : ''}${x.note ? `<span class="pr-note">${esc(x.note)}</span>` : ''}</span>` : ''}</span><i class="tl-chev" aria-hidden="true"></i></button>${rm}</li>`; };
   let groups;
   if (view === 'type') {
     groups = CC_CATS.map(([k]) => k).concat(['']).map(k => [k ? ccLabel(k) : t('Other'), xs.filter(x => x.cc === k).sort((a, b) => (a.day || '9999').localeCompare(b.day || '9999') || byTime(a, b))]).filter(([, g]) => g.length);
@@ -4984,6 +4997,8 @@ function bkRemove(cfg, art, id) {
   toastAction(t('Removed {n}', { n: gone.name || t(ITIN_KINDS[gone.kind] || 'Booking') }), t('Undo'), () => {
     const ys = itinLoad(cfg).filter(y => y.id !== gone.id); ys.splice(Math.min(i, ys.length), 0, gone); goneDel(cfg, [gone.id]); itinSave(cfg, ys); bkChanged(art); if (LS.get('signedIn')) syncPush(cfg); });
 }
+// the Remove button on a hotel's row (My trip: itinerary, saved spots) — trash + the word, one tap, Undo toast
+const rmBtnHTML = (id, cls = '') => `<button type="button" class="bk-rm hrm-b ${cls}" data-bk-rm="${esc(id)}" aria-label="${esc(t('Remove hotel'))}">${TRASH_IC}<span>${t('Remove')}</span></button>`;
 const TRASH_IC = '<svg class="rm-ic" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
 // saves the bookings; ids that left are remembered so a pull from the account can't bring them back
 function itinSave(cfg, xs) { const now = new Set(xs.map(x => x.id)); goneAdd(cfg, (LS.get(itinKey(cfg), null) || []).map(x => x.id).filter(id => id && !now.has(id))); LS.set(itinKey(cfg), xs); }
@@ -5257,11 +5272,11 @@ function dsBookingHTML(cfg, x, back) {
   const idx = itinLoad(cfg).findIndex(y => y.id === x.id);
   return `${dsHead({ back, icon: ccIcon(cat), kicker: [t(ITIN_KINDS[x.kind] || 'Booking'), city].filter(Boolean).join(' · '), title: x.name || t(ITIN_KINDS[x.kind] || 'Booking'),
       sub: g === 'lodge' && bkDay(x.start) ? esc(dateRange(bkDay(x.start), bkDay(x.end) || bkDay(x.start))) : '' })}
-    <div class="ds-b">${bkOffTrip(cfg, x) ? `<p class="ds-warn" role="note">${esc(t('These dates don’t match the trip ({d}). Check this booking.', { d: routeSpan(cfg) ? dateRange(...routeSpan(cfg)) : '' }))}</p>` : ''}${dsFacts(fs)}${am.length ? `<p class="ds-tags">${am.map(a => `<span class="tag">${esc(a)}</span>`).join('')}</p>` : ''}${PERF}
+    <div class="ds-b">${bkOffTrip(cfg, x) ? `<p class="ds-warn" role="note">${esc(t('These dates don’t match the trip ({d}). Check this booking.', { d: routeSpan(cfg) ? dateRange(...routeSpan(cfg)) : '' }))}</p>` : ''}${dsFacts(fs)}${idx >= 0 && g === 'lodge' ? `<div class="ds-acts ds-rm"><button type="button" class="btn sm bk-rm hb-rm" data-ds-rmbk="${esc(x.id)}">${TRASH_IC}${t('Remove hotel')}</button></div>` : ''}${am.length ? `<p class="ds-tags">${am.map(a => `<span class="tag">${esc(a)}</span>`).join('')}</p>` : ''}${PERF}
     ${x.kind === 'flight' ? '' : dsWhereHTML(x.name || '', x.address || '', geo, pid, cat, { q: [x.name, x.address].filter(Boolean).join(', '), key: [x.name, x.address].filter(Boolean).join(', ') })}
     ${x.note ? `<section class="ds-sec"><h3>${t('Notes')}</h3><p class="ds-note">${esc(x.note).replace(/\n/g, '<br>')}</p></section>` : ''}
     ${x.id ? dsPhotosHTML(x, 'bk:' + x.id) : ''}
-    <div class="ds-acts">${links}${idx >= 0 ? `<button type="button" class="btn sm ghost" data-ds-edit="${idx}">${t('Edit booking')}</button>` : ''}${idx >= 0 && g === 'lodge' ? `<button type="button" class="btn sm ghost danger-t bk-rm" data-ds-rmbk="${esc(x.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}</div></div>`;
+    <div class="ds-acts">${links}${idx >= 0 ? `<button type="button" class="btn sm ghost" data-ds-edit="${idx}">${t('Edit booking')}</button>` : ''}</div></div>`;
 }
 // a saved / planned place: what and where, the guest's plan for it (day, category, booked), details, photos
 function dsPlaceHTML(cfg, x, back) {
@@ -5562,7 +5577,8 @@ function spotsHTML(cfg) {
   const row = (r) => { const x = r.x; const ref = r.hotel ? (x.id ? 'bk:' + x.id : 'hh:' + x.name) : 'pl:' + x.id;
     const it = r.hotel ? itinLoad(cfg).find(y => y.id === x.id) || x : x;
     const meta = r.hotel ? [t('Your hotel'), hotelDates(x), showCity ? r.city : ''] : [showCity ? r.city : '', x.day ? fmt(x.day, { weekday: 'short', month: 'short', day: 'numeric' }) : '', x.addr && !showCity ? x.addr.split(',')[0] : ''];
-    return `<li class="sp-row"><button type="button" class="sp-go" data-ds="${esc(ref)}">${thumbHTML(it, r.cat)}<span class="sp-tx"><b>${esc(x.name)}</b><small>${esc(meta.filter(Boolean).join(' · '))}</small>${!r.hotel && x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}</span></button><a class="sp-map" href="${esc(gmapsLink(x))}" target="_blank" rel="noopener noreferrer" aria-label="${esc(t('Open {n} in Google Maps', { n: x.name }))}" title="${esc(t('Open in Google Maps'))}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.1-7-11.5a7 7 0 0 1 14 0C19 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span>${t('Maps')}</span></a></li>`; };
+    const rm = r.hotel && x.id && x.src !== 'host' ? rmBtnHTML(x.id, 'sp-rm') : '';
+    return `<li class="sp-row${rm ? ' has-rm' : ''}"><button type="button" class="sp-go" data-ds="${esc(ref)}">${thumbHTML(it, r.cat)}<span class="sp-tx"><b>${esc(x.name)}</b><small>${esc(meta.filter(Boolean).join(' · '))}</small>${!r.hotel && x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}</span></button><a class="sp-map" href="${esc(gmapsLink(x))}" target="_blank" rel="noopener noreferrer" aria-label="${esc(t('Open {n} in Google Maps', { n: x.name }))}" title="${esc(t('Open in Google Maps'))}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.1-7-11.5a7 7 0 0 1 14 0C19 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span>${t('Maps')}</span></a>${rm}</li>`; };
   const groups = SPOT_ORDER.map(k => [k, rows.filter(r => (SPOT_ORDER.includes(r.cat) ? r.cat : '') === k)]).filter(([, g]) => g.length);
   return `<div class="sp-groups">${groups.map(([k, g]) => `<details class="sp-g" data-spot-g="${k || 'other'}"${SPOT_SHUT.has(k || 'other') && groups.length > 1 ? '' : ' open'}><summary>${ccIcon(k || 'pin')}<span class="sp-h">${esc(k ? ccLabel(k) : t('Other'))}</span><span class="sp-n">${g.length}</span><i class="sp-tog" aria-hidden="true"></i></summary><ul class="plist spots">${g.map(row).join('')}</ul></details>`).join('')}</div>
     <div class="btns sp-kml"><button type="button" class="btn sm" data-kml>${t('Save all to Google Maps')}</button></div><p class="muted small">${t('Import into Google My Maps — shows in the Google Maps app under Saved → Maps')}</p>`;
@@ -5580,7 +5596,7 @@ function hotelBarHTML(cfg, art) {
   const form = `<form class="hb-set" onsubmit="return false"><label for="hb-q">${esc(hs.length ? t('Add a hotel') : t('Set your hotel'))}${city ? ` <small class="muted">${esc(city)}</small>` : ''}</label><div class="search"><input id="hb-q" data-hotel-q placeholder="${t('Search your hotel')}" autocomplete="off"><button type="submit" class="btn sm" data-hotel-find>${t('Find')}</button></div>${hs.length ? `<button type="button" class="link" data-hotel-cancel>${t('Cancel')}</button>` : ''}<p class="hint" data-hotel-msg role="status" aria-live="polite"></p></form>`;
   if (!hs.length || art._hotelEdit) return chips + form;
   if (!h) return `${chips}<div class="hb"><img class="hb-ic" src="${HOTEL_PIN}" alt=""><div class="hb-t"><span class="lbl">${esc(lbl)}</span><b>${esc(t('{n} hotels', { n: hs.length }))}</b></div><button type="button" class="btn sm" data-hotel-add>${t('Add')}</button></div>`;
-  return `${chips}<div class="hb"><img class="hb-ic" src="${HOTEL_PIN}" alt=""><div class="hb-t"><span class="lbl">${esc(lbl)}</span><b>${esc(h.name)}</b><small class="muted">${esc(sub(h))}</small></div>${h.src !== 'host' && h.id ? `<button type="button" class="link bk-rm" data-hotel-del="${esc(h.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}<button type="button" class="btn sm" data-hotel-add>${t('Add')}</button></div>`;
+  return `${chips}<div class="hb"><img class="hb-ic" src="${HOTEL_PIN}" alt=""><div class="hb-t"><span class="lbl">${esc(lbl)}</span><b>${esc(h.name)}</b><small class="muted">${esc(sub(h))}</small></div><div class="hb-acts">${h.src !== 'host' && h.id ? `<button type="button" class="btn sm bk-rm hb-rm" data-hotel-del="${esc(h.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}<button type="button" class="btn sm" data-hotel-add>${t('Add')}</button></div></div>`;
 }
 function wireHotel(cfg, art, mapCtl) {
   const fold = () => art._cx && art._cx();
@@ -5774,7 +5790,7 @@ const isoTime = (s) => /^\d{2}:\d{2}$/.test(s || '') ? s : '';
 const httpsUrl = (u) => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ''; } catch { return ''; } };
 // the function's event JSON → a 1LinkTrip config (venue resolved separately)
 function aiEventToCfg(d) {
-  const type = TYPES.includes(d.type) ? d.type : 'Party'; const c = blankEvent(type);
+  const type = TYPES.includes(d.type) ? d.type : 'Party'; const c = freshEvent(type);
   c.title = cleanText(d.title, 80); c.tagline = cleanText(d.tagline, 140); c.host = cleanText(d.host, 120);
   c.description = String(d.description || '').replace(/<[^>]*>/g, '').slice(0, 3000).trim();
   const sd = isoDay(d.start_date); if (sd) c.start = sd + (isoTime(d.start_time) ? 'T' + d.start_time : '');
@@ -5892,7 +5908,7 @@ async function startFromDocument(file, msgEl, type) {
   const part = await bookingFile(file);
   const j = await aiImport({ mode: 'doc', files: [part], ...(type && TYPES.includes(type) ? { type } : {}) });
   const d = j.data || {}; const typ = type && TYPES.includes(type) ? type : TYPES.includes(d.type) ? d.type : 'Party';
-  const base = blankEvent(typ); const items = docItems(base, { ...d, type: typ }, 'auto');
+  const base = freshEvent(typ); const items = docItems(base, { ...d, type: typ }, 'auto');
   if (!items.length && !cleanText(d.title, 80)) throw new Error('Nothing found to fill in. Try another file, or pick a category below.');
   say('Finding the places…');
   const cfg = await docApply(base, items);
@@ -7108,7 +7124,7 @@ function designClick(b, cfg) {
   if (d.b === 'cover-clear') { cfg.cover = ''; changed(true); return true; }
   if (d.b === 'logo-clear') { delete cfg.logo; changed(true); return true; }
   if (d.brand) return brandClick(b);
-  if (d.b === 'type-defaults') { const td = typeDefaults(cfg.type); cfg.theme = { ...td.theme }; cfg.tools = defaultTools(cfg.type); delete cfg.order; ['about', 'details', 'access', 'rsvp', 'schedule'].forEach(k => { cfg.off[k] = false; }); loadFont(cfg.theme.font); changed(true); toast(`${cfg.type} defaults applied`); return true; }
+  if (d.b === 'type-defaults') { const td = typeDefaults(cfg.type); cfg.theme = { ...td.theme }; cfg.tools = defaultTools(cfg.type); delete cfg.order; ['about', 'details', 'access', 'rsvp', 'schedule'].forEach(k => { cfg.off[k] = false; }); if (rsvpDefaultOff(cfg.type)) cfg.off.rsvp = true; loadFont(cfg.theme.font); changed(true); toast(`${cfg.type} defaults applied`); return true; }
   return false;
 }
 function designInput(i, cfg) {
@@ -7414,5 +7430,5 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

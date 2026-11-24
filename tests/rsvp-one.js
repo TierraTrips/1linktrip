@@ -114,7 +114,18 @@ const formOnly = { ...WED, x: { Wedding: { rsvpBy: '2027-01-15' } } };
         ok(await mode() === 'form' && await page.$eval('#sheet [data-rq="meal"]', i => i.checked) && await page.inputValue('#sheet [data-rq-meals]') === 'Fish\nChicken', `@${w} old page: form with questions + link → Collect replies here, questions kept`);
         await page.click('#sheet [data-rsvp-via="link"]'); ok(await page.inputValue('#sheet [data-x="rsvp"]') === LINK, `@${w} and its link is still there`);
         await page.click('#sheet [data-b="close"]');
-        // another type: same card under For any event, the form by default
+        // a NEW page: RSVP is off except on weddings (Dylan 11/24 "Leave off by default"); the card switches it on
+        const fresh = await page.evaluate(() => { const E = window.__ep; return E.TYPES.filter(t => t !== 'Trip').map(t => [t, E.rsvpOf(E.normalize({ ...E.freshEvent(t), title: 'X' })).on]); });
+        ok(fresh.every(([t, on]) => on === (t === 'Wedding')), `@${w} new pages: RSVP on only for Wedding ${JSON.stringify(fresh.filter(([, on]) => on))}`);
+        await open({ ...(await page.evaluate(() => window.__ep.freshEvent('Concert'))), title: 'Night show', start: '2027-05-01T19:00' });
+        ok(!(await page.$eval('.b-form [data-card="rsvp"]', b => b.classList.contains('on'))) && !(await page.$('#preview .stub-actions a.btn.primary[href*="rsvp"], #preview #sec-rsvp')), `@${w} new Concert: RSVP card off, no RSVP on the page`);
+        await page.click('[data-card="rsvp"]'); await page.waitForSelector('#sheet [data-rsvp-via]');
+        ok(await mode() === 'off', `@${w} new Concert: the card reads No RSVP`);
+        await page.click('#sheet [data-rsvp-via="form"]'); await page.waitForTimeout(400); d = await draft();
+        ok(!d.off.rsvp && d.rsvpVia === 'form', `@${w} new Concert: Collect replies here switches it on`);
+        await page.click('#sheet [data-b="close"]'); await page.waitForTimeout(500);
+        ok(await page.$eval('.b-form [data-card="rsvp"]', b => b.classList.contains('on')) && (await page.evaluate(() => window.__ep.rsvpOf(JSON.parse(localStorage.getItem('ep:draft'))).on)), `@${w} new Concert: RSVP card ticked, guests get the form`);
+        // an existing page of another type (saved before, no off.rsvp): keeps its RSVP — same card under For any event, the form by default
         await open({ v: 2, type: 'Party', title: 'Sam turns 30', start: '2027-05-01T19:00', venue: null });
         await page.click('[data-card="rsvp"]'); await page.waitForSelector('#sheet [data-rsvp-via]');
         ok(await mode() === 'form', `@${w} Party: Collect replies here by default`);

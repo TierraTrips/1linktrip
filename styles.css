@@ -1259,8 +1259,14 @@ dialog.ds-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .bk-rm { color: #A3272D; white-space: nowrap; }
 .mini-b.bk-rm { border-color: color-mix(in srgb, #A3272D 35%, var(--line)); }
 .mini-b.bk-rm:hover { background: #A3272D; border-color: #A3272D; color: #fff; }
-.hb .link.bk-rm { display: inline-flex; align-items: center; font-weight: 600; min-height: 40px; }
+.hb { flex-wrap: wrap; } .hb .hb-t { flex: 1 1 150px; }
+.hb-acts { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+.btn.hb-rm { display: inline-flex; align-items: center; color: #A3272D; border-color: color-mix(in srgb, #A3272D 40%, var(--line, #ddd)); }
 .ic.del .rm-ic { margin-right: .25em; }
+.hrm-b { display: inline-flex; align-items: center; gap: 0; min-height: 36px; padding: .3em .75em; border-radius: 999px; border: 1.3px solid color-mix(in srgb, #A3272D 40%, var(--line, #ddd)); background: transparent; font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer; }
+.hrm-b:hover { background: #A3272D; border-color: #A3272D; color: #fff; }
+#sec-plan .plan-row.has-rm { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.spots li.sp-row.has-rm { grid-template-columns: minmax(0, 1fr) auto auto; }
 .ds-sheet .gal { gap: 8px; margin: 0; } .ds-sheet .gal figure, .ds-sheet .gal .ph-add { width: 92px; height: 92px; border-radius: 12px; }
 .ds-sheet .gal .ph-add { border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, transparent); }
 .ds-ph-hint { margin: -2px 0 0; }

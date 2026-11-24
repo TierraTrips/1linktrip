@@ -137,7 +137,7 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: `$
       // hotel sheet
       await page.click('#sec-itinerary .bk-go'); await page.waitForSelector('dialog.ds-sheet[open]');
       const srm = await page.$('dialog.ds-sheet [data-ds-rmbk="gr1"]'); ok(!!srm && /Remove hotel/.test(await srm.textContent()), `@${w} hotel sheet: Remove hotel`);
-      await shot(page, `remove-sheet-${w}`);
+      await page.waitForTimeout(500); await shot(page, `remove-sheet-${w}`);
       await srm.click(); await page.waitForTimeout(400);
       ok(!(await page.$('dialog.ds-sheet[open]')) && (await itin(page)).length === 0, `@${w} sheet Remove → sheet closes, hotel gone`);
       await page.click('#toast .toast-act'); await page.waitForTimeout(300);
@@ -154,6 +154,22 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: `$
       ok((await itin(page)).length === 0 && !/Gracery/.test(await bar(page)), `@${w} still gone after reload`);
       ok(page._err.length === 0, `@${w} no page errors ${page._err}`); await ctx.close();
     }
+
+    // 3b — every hotel row in My trip carries its own Remove: Your itinerary and Saved spots
+    { const { ctx, page } = await setup(browser);
+      const seed = { itin: [{ id: 'gr1', kind: 'hotel', name: 'Hotel Gracery Shinjuku', address: 'Kabukicho', lat: 35.695, lon: 139.702, start: '2027-04-01T15:00', end: '2027-04-04T11:00', confNo: 'GR-2' }] };
+      await open(page, 'mytrip', seed);
+      const pr = await page.$('#sec-plan [data-bk-rm="gr1"]'); ok(!!pr && /Remove/.test(await pr.textContent()) && !!(await pr.$('svg.rm-ic')), 'Your itinerary: hotel row has trash + Remove');
+      const sp = await page.$('#sec-spots [data-bk-rm="gr1"]'); ok(!!sp && /Remove/.test(await sp.textContent()), 'Saved spots: hotel row has trash + Remove');
+      ok((await overflow(page)) === 0, 'rows fit');
+      if (SHOTS) await page.locator('#sec-plan').screenshot({ path: `${SHOTS}/remove-itinerary-row.png` });
+      if (SHOTS) await page.locator('#sec-spots').screenshot({ path: `${SHOTS}/remove-spots-row.png` });
+      await pr.click(); await page.waitForTimeout(400);
+      ok((await itin(page)).length === 0 && !(await page.$('[data-bk-rm="gr1"]')) && !(await page.$('dialog.ds-sheet[open]')), 'itinerary Remove → gone everywhere, no sheet opened');
+      await page.click('#toast .toast-act'); await page.waitForTimeout(300);
+      await page.click('#sec-spots [data-bk-rm="gr1"]'); await page.waitForTimeout(400);
+      ok((await itin(page)).length === 0, 'saved spots Remove → gone');
+      ok(page._err.length === 0, `no page errors ${page._err}`); await ctx.close(); }
 
     // 4 — organizer: a document's new hotel replaces the old one at that stop (check-in + check-out), nothing else
     { const { ctx, page } = await setup(browser);
@@ -190,6 +206,22 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: `$
       await page.click('#undo button'); await page.waitForTimeout(500);
       const back = await page.evaluate(() => JSON.parse(localStorage.getItem('ep:draft')).schedule.map(x => x.title));
       ok(back.length === 3 && back[0] === 'Check in: Park Hotel Tokyo', `Undo restores both (${back})`);
+      ok(page._err.length === 0, `no page errors ${page._err}`); await ctx.close(); }
+
+    // 6 — organizer builder, wedding: the room block's hotel has a plainly labelled Remove (hotel + code + link + date), Undo
+    { const { ctx, page } = await setup(browser);
+      const wed = { v: 2, type: 'Wedding', title: 'Maya & Leo', start: '2027-03-12T16:00', venue: null, x: { Wedding: { blockHotel: 'Hotel Esencia', blockCode: 'MAYALEO27', blockBy: '2027-01-15', blockUrl: 'https://example.com/block' } } };
+      await page.evaluate(() => localStorage.clear());
+      await page.goto(BASE + '#edit=' + await page.evaluate((c) => window.__ep.packEvent(c), wed)); await page.waitForSelector('[data-card="block"]');
+      await page.click('[data-card="block"]'); await page.waitForSelector('#sheet[open] [data-b="rm-block"]');
+      ok(/^Remove Hotel Esencia$/.test((await page.textContent('#sheet [data-b="rm-block"]')).trim()), 'room block card: Remove <hotel>');
+      await shot(page, 'builder-remove-block');
+      await page.click('#sheet [data-b="rm-block"]'); await page.waitForTimeout(500);
+      const x = await page.evaluate(() => JSON.parse(localStorage.getItem('ep:draft')).x.Wedding || {});
+      ok(!x.blockHotel && !x.blockCode && !x.blockBy && !x.blockUrl, `room block cleared ${JSON.stringify(x)}`);
+      await page.click('#undo button'); await page.waitForTimeout(500);
+      const y = await page.evaluate(() => JSON.parse(localStorage.getItem('ep:draft')).x.Wedding || {});
+      ok(y.blockHotel === 'Hotel Esencia' && y.blockCode === 'MAYALEO27', 'Undo restores it');
       ok(page._err.length === 0, `no page errors ${page._err}`); await ctx.close(); }
   } catch (e) { console.error(e); fails.push(String(e)); }
   await browser.close();
