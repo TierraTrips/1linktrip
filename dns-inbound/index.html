@@ -1,0 +1,37 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>1LinkTrip: email-forward DNS records</title><meta name="robots" content="noindex">
+<style>body{font:16px/1.45 -apple-system,system-ui,sans-serif;margin:0;padding:20px;background:#E7E9EE;color:#111;max-width:760px}
+.card{background:#fff;border-radius:16px;padding:16px;margin:14px 0}h3{margin:0 0 8px}ol{margin:0;padding-left:20px}li{margin:6px 0}
+.row{display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap}.row span{flex:0 0 90px;color:#555;font-size:14px}
+.row code{flex:1;min-width:160px;font:14px ui-monospace,Menlo,monospace;background:#F1F2F5;border-radius:8px;padding:8px;overflow-wrap:anywhere}
+button{font:600 14px -apple-system,system-ui,sans-serif;padding:8px 12px;border:0;border-radius:8px;background:#0F6E72;color:#fff}
+.note{font-size:14px;color:#555}.warn{font-size:14px;background:#FFF6E0;color:#6b4700;border-radius:8px;padding:10px;margin:8px 0}a{color:#0F6E72}</style></head>
+<body><h2 style="margin:0 0 4px">Turn on "forward a booking email"</h2><div class="note">Namecheap, about 5 minutes. Adds 4 records for <b>in.1linktrip.com</b> only; the website is untouched. Takes up to an hour to take effect.</div>
+
+<div class="card"><h3>1. Open Advanced DNS</h3><ol>
+<li>Namecheap → <b>Domain List</b> → <b>Manage</b> next to <b>1linktrip.com</b> → <b>Advanced DNS</b> tab.</li></ol></div>
+
+<div class="card"><h3>2. Three records under Host Records</h3><ol>
+<li>Tap <b>Add New Record</b> → choose <b>TXT Record</b>. Paste Host and Value below, TTL <b>Automatic</b>, tap the green check.</li></ol>
+<div class="row"><span>Host</span><code>resend._domainkey.in</code><button>Copy</button></div>
+<div class="row"><span>Value</span><code>p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC7SPwFK2lL/pFHK4a9TrkxakB18IfpOewAuhpreVz2NFfS4NUdEYBhJs765to9lM5ak6sk7OpF1WrcBBM90ADxJlGr/VKWkQ1jQCklHNYUFJ9mobXHjZjA4QNDWyfLry+5zxRAPQFQxo8DZORnoCiH1J/KApdBId10ksFJ4JL3/wIDAQAB</code><button>Copy</button></div>
+<ol start="2"><li><b>Add New Record</b> → <b>CNAME Record</b>, TTL Automatic, green check:</li></ol>
+<div class="row"><span>Host</span><code>send.in</code><button>Copy</button></div>
+<div class="row"><span>Value</span><code>send.forge.rmta.net</code><button>Copy</button></div>
+<ol start="3"><li><b>Add New Record</b> → <b>CNAME Record</b> again:</li></ol>
+<div class="row"><span>Host</span><code>rsend.in</code><button>Copy</button></div>
+<div class="row"><span>Value</span><code>rsend.forge.rmta.net</code><button>Copy</button></div></div>
+
+<div class="card"><h3>3. One mail record (MX)</h3>
+<div class="warn"><b>Check first.</b> Scroll down to <b>Mail Settings</b>. Right now it says <b>Email Forwarding</b> (that's what forwards any @1linktrip.com addresses you've set up). Adding this record means switching it to <b>Custom MX</b>, which can stop those forwards. Look at <b>Domain</b> tab → <b>Redirect Email</b>: if you have forwards there you want to keep, stop here and tell Hayden. If it's empty or you don't use them, carry on.</div>
+<ol><li>Under <b>Mail Settings</b>, pick <b>Custom MX</b>.</li>
+<li><b>Add New Record</b> there. Host and Value below; the unlabeled box after Value is Priority: type <code>10</code>. TTL Automatic, green check.</li></ol>
+<div class="row"><span>Host</span><code>in</code><button>Copy</button></div>
+<div class="row"><span>Value</span><code>receive.forge.rmta.net</code><button>Copy</button></div>
+<div class="row"><span>Priority</span><code>10</code><button>Copy</button></div>
+<ol start="3"><li>Tap <b>Save All Changes</b> if Namecheap shows it.</li></ol></div>
+
+<div class="card"><h3>4. Tell Hayden "inbound DNS done"</h3><div class="note">bbbot checks the records, runs a test forward, then switches the "Forward bookings" button on in the app. Nothing to do in Resend.</div></div>
+
+<script>document.querySelectorAll('.row button').forEach(b=>b.onclick=async()=>{const v=b.previousElementSibling.textContent;try{await navigator.clipboard.writeText(v)}catch(e){}b.textContent='Copied ✓';setTimeout(()=>b.textContent='Copy',1500)})</script>
+</body></html>
