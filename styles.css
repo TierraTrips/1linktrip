@@ -1066,6 +1066,7 @@ html.is-offline body::before { content: 'Offline'; position: fixed; top: max(12p
 .ev-hero > .onp-pen { position: absolute; top: 12px; right: 12px; z-index: 2; background: rgba(255,255,255,.92); color: #12141B; }
 .onp-box { position: relative; padding-right: 54px !important; }
 .onp-box > .onp-pen { position: absolute; top: 10px; right: 8px; }
+.onp-side > .onp-pen { margin: 0 0 6px; width: 36px; height: 36px; }
 .onp-add { display: inline-flex; align-items: center; min-height: 44px; margin: 10px 8px 0 0; padding: 0 16px; border: 1.5px dashed color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 999px; background: none; color: var(--accent); font: inherit; font-weight: 650; font-size: .9rem; cursor: pointer; }
 .day > .onp-add { min-height: 40px; margin: 2px 0 6px; padding: 0 12px; font-size: .84rem; }
 .onp-adds { display: flex; flex-wrap: wrap; }

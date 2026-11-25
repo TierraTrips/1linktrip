@@ -114,6 +114,25 @@ const guest = (page) => page.evaluate(() => ({
       ok(!page._err.length, `@${w} builder: no page errors ${page._err.join(' | ')}`);
       await ctx.close();
 
+      // ---- on-page editing (Dylan 11/24: "the fly into under events doesn't seem to be editable"): the ticket's Fly into
+      // is a tap target in the builder preview → a "Fly into" sheet; No airport → back to an airport from the same spot ----
+      ({ ctx, page } = await setup(browser, w));
+      await page.evaluate(() => localStorage.clear());
+      await page.goto(BASE + '#edit=' + await pack(page, { ...CFG, flyInto: 'TQO' })); await page.waitForSelector('.b-form');
+      await page.click('.seg [data-tab="preview"]'); await page.waitForSelector('#preview .ev.onp .stub-side[data-ed="fly"] .onp-pen'); await page.waitForTimeout(500);
+      await page.click('#preview .stub-side .code'); await page.waitForSelector('#sheet[open] #sh-fly');
+      ok(await page.$eval('#sheet h2', e => e.firstChild.textContent) === 'Fly into' && await page.$eval('#sh-fly', s => s.value) === 'TQO', `@${w} on-page: tap the ticket's Fly into → Fly into sheet on TQO`);
+      await page.selectOption('#sh-fly', 'none'); await page.waitForTimeout(600); await page.click('#sheet .btn.primary.big'); await page.waitForTimeout(500);
+      ok(await page.evaluate(() => JSON.parse(localStorage.getItem('ep:draft')).flyInto) === 'none' && await page.$eval('#preview .stub-side', e => !/Fly into/.test(e.textContent) && e.dataset.ed === 'fly'), `@${w} on-page: No airport saved; the ticket shows the date and stays editable`);
+      await page.click('#preview .stub-side .onp-pen'); await page.waitForSelector('#sheet[open] #sh-fly');
+      await page.selectOption('#sh-fly', 'CUN'); await page.waitForTimeout(600); await page.click('#sheet .btn.primary.big'); await page.waitForTimeout(500);
+      ok(await page.evaluate(() => JSON.parse(localStorage.getItem('ep:draft')).flyInto) === 'CUN' && await page.$eval('#preview .stub-side .code', e => e.textContent) === 'CUN', `@${w} on-page: back to CUN from the ticket`);
+      await page.click('#preview .stub-main .onp-pen'); await page.waitForSelector('#sheet[open]');
+      ok(await page.$eval('#sh-fly', s => s.value).catch(() => null) === 'CUN', `@${w} on-page: Date and place sheet has Fly into too`);
+      ok((await overflow(page)).length === 0, `@${w} on-page Fly into: no overflow ${(await overflow(page)).join(' ')}`);
+      ok(!page._err.length, `@${w} on-page: no page errors ${page._err.join(' | ')}`);
+      await ctx.close();
+
       // ---- guest page with the organizer's pick: pack → unpack → every consumer ----
       ({ ctx, page } = await setup(browser, w));
       await page.evaluate(() => localStorage.clear());

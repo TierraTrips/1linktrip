@@ -2523,12 +2523,12 @@ function buildForm() {
   placeAutocomplete($('#vq', f), { bias: () => null, onPick: (id, tok) => gpVenue(id, tok).then(r => { B.vq = ''; B.venueResults = []; pickVenue(r); }).catch(() => toast('Couldn’t load that place')) });
 }
 // "Fly into": the airport guests are pointed to (ticket, Travel → flights, rental cars). Automatic unless the organizer picks one.
-function flyIntoFieldHTML(c) {
+function flyIntoFieldHTML(c, p = 'f') {
   const v = c.venue; if (!v || !isFinite(v.lat) || !isFinite(v.lon)) return '';
   const { list, auto } = airportChoices(v.lat, v.lon); if (!list.length) return '';
   const pin = c.flyInto && !list.some(a => a.iata === c.flyInto) && airportByCode(c.flyInto) ? [apRow(airportByCode(c.flyInto), v.lat, v.lon)] : [];
   const lab = (a) => `${a.iata} · ${a.city || a.name} · ${fmtDist(a.d, v.cc)}`; const au = list.find(a => a.iata === auto);
-  return fieldWrap('Fly into', `<select id="f-fly" data-f="flyInto"><option value="">${esc(au ? `Automatic (${au.iata} · ${au.city || au.name})` : 'Automatic')}</option><option value="none"${c.flyInto === 'none' ? ' selected' : ''}>No airport (don't show flying info)</option>${list.concat(pin).map(a => `<option value="${esc(a.iata)}"${a.iata === c.flyInto ? ' selected' : ''}>${esc(lab(a))}</option>`).join('')}</select><p class="hint">The airport guests see on the ticket, flight searches and rental cars. Change it, or pick No airport if guests won't fly.</p>`, 'f-fly');
+  return fieldWrap('Fly into', `<select id="${p}-fly" data-f="flyInto"><option value="">${esc(au ? `Automatic (${au.iata} · ${au.city || au.name})` : 'Automatic')}</option><option value="none"${c.flyInto === 'none' ? ' selected' : ''}>No airport (don't show flying info)</option>${list.concat(pin).map(a => `<option value="${esc(a.iata)}"${a.iata === c.flyInto ? ' selected' : ''}>${esc(lab(a))}</option>`).join('')}</select><p class="hint">The airport guests see on the ticket, flight searches and rental cars. Change it, or pick No airport if guests won't fly.</p>`, p + '-fly');
 }
 function venueFieldHTML(c) {
   return c.venue ? `<div class="venue-sel"><div><b>${esc(c.venue.name)}</b><span>${esc(c.venue.address || '')}</span></div><button type="button" class="btn sm" data-b="clear-venue">Change</button></div>
@@ -2664,6 +2664,9 @@ function onpDecorate(cfg, art) {
   if (hero && !hero.dataset.ed) { hero.dataset.ed = 'hero'; hero.insertAdjacentHTML('beforeend', pen('hero', 'title and photo')); }
   const sm = art.querySelector('.stub-main');
   if (sm && !sm.dataset.ed) { sm.dataset.ed = 'when'; sm.classList.add('onp-box'); sm.insertAdjacentHTML('beforeend', pen('when', isTrip(cfg) ? 'dates and destination' : 'date and place')); }
+  // the ticket's "Fly into" (or, with No airport, the date in its place): tap → just that choice
+  const ss = art.querySelector('.stub-side');
+  if (ss && !ss.dataset.ed && flyIntoFieldHTML(cfg)) { ss.dataset.ed = 'fly'; ss.classList.add('onp-side'); ss.insertAdjacentHTML('afterbegin', pen('fly', 'fly into airport')); }
   const body = art.querySelector('.ev-panel[data-panel="event"] .ev-body'); if (!body) return;
   $$('[data-sec]', body).forEach(s => {
     const id = s.dataset.sec; if (s.dataset.ed || !(ONP_SEC[id] || /^c-/.test(id))) return;
@@ -2692,7 +2695,7 @@ function onpTap(e) {
 }
 function onpGo(ed) {
   const c = B.cfg; const [k, a = '', b = ''] = ed.split(':');
-  if (k === 'hero' || k === 'when' || k === 'gallery') return onpOpen(k);
+  if (k === 'hero' || k === 'when' || k === 'gallery' || k === 'fly') return onpOpen(k);
   if (k === 'sec') { if (/^c-/.test(a)) { const x = c.custom.find(y => customSid(y) === a); return x ? onpOpen('custom', { k: 'cs', o: x }, a) : null; } return onpOpen(ONP_SEC[a] || a, null, a); }
   if (k === 's' && c.schedule[+a]) return onpOpen('schedule', { k: 's', o: c.schedule[+a], i: +a });
   if (k === 'day') return onpOpen('schedule', { k: 'day', d: a });
@@ -2742,8 +2745,9 @@ function onpSheet(c, id) {
       ${fieldWrap(isTrip(c) ? 'Destination name on the page' : 'Venue name on the page', `<input id="sh-vname" data-v="name" value="${esc(v.name)}">`, 'sh-vname')}`
       : `<div class="field"><label for="vq-sh">${isTrip(c) ? 'Destination' : 'Venue'}</label><div class="search"><input id="vq-sh" placeholder="${isTrip(c) ? 'City or region' : 'Venue name or address'}" value="${esc(B.vq || '')}"><button type="button" class="btn" data-b="search">Search</button></div></div>
       <ul class="vres">${B.venueResults.map((r, i) => `<li><button type="button" data-pick="${i}"><b>${esc(r.name)}</b><span>${esc(r.display)}</span></button></li>`).join('')}</ul>${B.vmsg ? `<p class="hint">${esc(B.vmsg)}</p>` : ''}`;
-    return { title: isTrip(c) ? 'Dates and destination' : 'Date and place', body: whenFieldsHTML(c, 'sh') + venue };
+    return { title: isTrip(c) ? 'Dates and destination' : 'Date and place', body: whenFieldsHTML(c, 'sh') + venue + flyIntoFieldHTML(c, 'sh') };
   }
+  if (id === 'fly') return { title: 'Fly into', body: flyIntoFieldHTML(c, 'sh') || '<p class="hint">Pick a venue first.</p>' };
   if (id === 'details') {
     const cs = (TYPE_CARDS[c.type] || []).filter(x => x[0] !== 'route' && x[0] !== 'companions').concat([COMMON_CARDS.find(x => x[0] === 'notes'), COMMON_CARDS.find(x => x[0] === 'bring')]);
     return { title: 'Need to know', body: `<div class="cards">${cs.map(x => cardBtn(c, x)).join('')}</div>` };
