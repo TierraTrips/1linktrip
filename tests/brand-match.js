@@ -28,7 +28,7 @@ const setFile = (page, sel, path, type = 'image/png') => page.evaluate(([sel, b6
   const f = new File([u], name, { type }); const i = document.querySelector(sel); const dt = new DataTransfer(); dt.items.add(f); i.files = dt.files; i.dispatchEvent(new Event('change', { bubbles: true })); }, [sel, fs.readFileSync(path).toString('base64'), path.split('/').pop(), type]);
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   const USER = { id: 'u0000000-0000-4000-8000-0000000000b7', email: 'host@example.com' };
   const mk = async (w, user) => {
     const ctx = await browser.newContext({ viewport: { width: w, height: 900 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
@@ -108,7 +108,7 @@ const setFile = (page, sel, path, type = 'image/png') => page.evaluate(([sel, b6
       ok(/^https:\/\/.*\/storage\/v1\/object\/public\/event-files\//.test(c.logo || ''), `@${w} page logo = ${c.logo}`);
       await page.waitForSelector('#preview .ev-logo', { state: 'attached' }); ok(await page.$eval('#preview .ev-logo', i => i.complete && i.naturalWidth > 0), `@${w} logo shows in the page header`);
       ok(!!(await page.$('.logo-row img')), `@${w} Design shows the logo with Remove`);
-      if (SHOTS) { await page.click('.seg button[data-tab="preview"]').catch(() => {}); await page.waitForTimeout(300); await page.locator('#preview .ev-hero').screenshot({ path: `${SHOTS}/brand-hero-${w}.png` }).catch(e => console.log('shot', e.message)); await page.click('.seg button[data-tab="edit"]').catch(() => {}); }
+      if (SHOTS) { await page.click('.b-set-h [data-act="settings"]').catch(() => {}); await page.waitForTimeout(300); await page.locator('#preview .ev-hero').screenshot({ path: `${SHOTS}/brand-hero-${w}.png` }).catch(e => console.log('shot', e.message)); await page.click('.b-top [data-act="settings"]').catch(() => {}); }
       await page.click('[data-b="logo-clear"]'); c = await draft(page); ok(!c.logo && !(await page.$('#preview .ev-logo')), `@${w} Remove logo`);
     } else {
       ok(!c.logo && /Sign in to add the logo/.test(await page.textContent('[data-brand-msg]')), `@${w} signed out: colors applied, asked to sign in for the logo`);

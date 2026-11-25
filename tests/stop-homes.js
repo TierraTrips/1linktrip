@@ -41,7 +41,7 @@ const homes = (page) => page.evaluate(() => { const c = window.__epCfg; return w
 const grab = (page, packed) => page.evaluate((p) => { window.__epCfg = window.__ep.unpackEvent ? window.__ep.unpackEvent(p) : null; return !!window.__epCfg; }, packed);
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   try {
     // ---------------- Part 1: Dylan's legacy Japan page heals at load ----------------
     { const { ctx, page } = await setup(browser, 390);

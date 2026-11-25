@@ -18,7 +18,7 @@ function fakeSupabase(user) {
     auth: { getSession: async () => ({ data: { session: user ? { user, access_token: 'a.b.c' } : null } }), signInWithOtp: async () => ({ error: null }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) } }) };
 }
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   const USER = { id: 'u0000000-0000-4000-8000-0000000000cc', email: 'host@example.com' };
   const mk = async ({ user = USER, locale = 'en-US', slow = 0 } = {}) => {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block', locale });
@@ -58,7 +58,7 @@ function fakeSupabase(user) {
     await page.click('#sheet [data-tr-edit="ja"]'); ok(await page.$eval('#sheet details.tr-review[data-tr-lang="ja"]', d => d.open), 'Edit translation opens the lines to edit');
     await page.evaluate(() => document.querySelector('#sheet').close());
     // preview switch
-    await page.click('.seg [data-tab="preview"]').catch(() => {});
+    await page.click('.b-set-h [data-act="settings"]').catch(() => {});
     await page.waitForSelector('.onp-bar [data-pv-lang]');
     ok((await page.$$eval('.onp-bar [data-pv-lang]', bs => bs.map(b => b.textContent).join('|'))) === 'English|日本語', 'Preview in: English | 日本語');
     await page.click('.onp-bar [data-pv-lang="ja"]'); await page.waitForTimeout(600);

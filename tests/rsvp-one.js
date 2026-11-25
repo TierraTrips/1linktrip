@@ -71,7 +71,7 @@ const legacyBoth = { ...legacyLink, rsvpq: { meal: true, meals: ['Fish', 'Chicke
 const formOnly = { ...WED, x: { Wedding: { rsvpBy: '2027-01-15' } } };
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   try {
     for (const w of [390, 320]) {
       // ---------- builder: one RSVP card ----------

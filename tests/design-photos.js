@@ -20,7 +20,7 @@ const bigPhoto = (page, w = 4000, h = 2600) => page.evaluateHandle(async ([w, h]
 const setFile = async (page, sel, fileHandle) => page.evaluate(([sel, f]) => { const i = document.querySelector(sel); const dt = new DataTransfer(); dt.items.add(f); i.files = dt.files; i.dispatchEvent(new Event('change', { bubbles: true })); }, [sel, fileHandle]);
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   const USER = { id: 'u0000000-0000-4000-8000-000000000009', email: 'host@example.com' };
   for (const w of [390, 320]) {
     const ctx = await browser.newContext({ viewport: { width: w, height: 900 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });

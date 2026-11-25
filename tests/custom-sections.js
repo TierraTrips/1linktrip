@@ -23,7 +23,7 @@ const overflow = (page) => page.evaluate(() => {
 });
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   const ctxFor = (w) => browser.newContext({ viewport: { width: w, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
   let ctx = await ctxFor(390); let page = await ctx.newPage();
   await page.goto(BASE); await page.waitForFunction(() => window.__ep && window.EXAMPLES);

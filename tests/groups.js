@@ -26,7 +26,7 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
 const ROUTE = /open-meteo|overpass|nominatim|googleapis|tile\.openstreetmap|timeapi|photon|maps\.mail\.ru|supabase\.co/;
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   const mk = async (w) => { const ctx = await browser.newContext({ viewport: { width: w, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
     const page = await ctx.newPage(); page._err = []; page.on('pageerror', e => page._err.push(String(e))); await page.route(ROUTE, r => r.abort()); return { ctx, page }; };
 
@@ -68,7 +68,7 @@ const ROUTE = /open-meteo|overpass|nominatim|googleapis|tile\.openstreetmap|time
     ok(cfg.presets.length === 2 && cfg.presets[0].a === '2027-03-11' && cfg.presets[0].h.name === 'Papaya Playa Project' && cfg.presets[1].h.name === 'Casa Malca', `saved in the page: ${JSON.stringify(cfg.presets)}`);
     const pvOpts = await page.$$eval('#preview .mi-opt b', bs => bs.map(b => b.textContent));
     ok(pvOpts.length === 2 && /Mar 11/.test(pvOpts[0]), `preview shows the options under the ticket (${pvOpts.join(' | ')})`);
-    await page.click('.seg [data-tab="preview"]'); await page.waitForSelector('#preview .mi-opt'); await page.waitForTimeout(500);
+    await page.click('.b-set-h [data-act="settings"]'); await page.waitForSelector('#preview .mi-opt'); await page.waitForTimeout(500);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/groups-builder-preview-390.png` });
     await page.click('#preview .mi-opt'); await page.waitForSelector('#sheet[open] [data-b="add-preset"]');
     ok(true, 'tapping the options in the preview opens Stay options');

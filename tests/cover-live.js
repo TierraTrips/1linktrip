@@ -36,7 +36,7 @@ function fakeSupabase() {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   let store = '[]'; // the "server": shared by both devices
   const mk = async (user) => {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });

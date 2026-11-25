@@ -65,7 +65,7 @@ const sheetText = (page) => page.$eval('dialog.ds-sheet[open]', d => d.innerText
 const USER = { id: 'u0000000-0000-4000-8000-0000000000ab', email: 'guest@example.com' };
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   try {
     // 1 — the badge rule
     { const { ctx, page } = await setup(browser);

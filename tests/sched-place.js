@@ -46,7 +46,7 @@ const draft = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('ep:
 const settle = (page) => page.waitForTimeout(450);
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   try {
     // ---- normalize: the place is kept (sanitized) through pack / unpack; junk is dropped ----
     {
@@ -131,7 +131,7 @@ const settle = (page) => page.waitForTimeout(450);
       ok(/Sushi Saito/.test(await page.textContent('#sheet .plan-item .s-place b')) && (await page.$$('#sheet .plan-item [data-sp-q]')).length === 1, `@${w} trip planner: the place shown on its item, a search on the other`);
       ok(await overflow(page) === 0, `@${w} no overflow (trip planner)`);
       await page.evaluate(() => document.querySelector('#sheet [data-b="close"]').click());
-      if (await page.$('.seg [data-tab="preview"]')) await page.click('.seg [data-tab="preview"]').catch(() => {});
+      if (await page.isVisible('.b-set-h [data-act="settings"]')) await page.click('.b-set-h [data-act="settings"]').catch(() => {});
       const ed = await page.waitForSelector('#preview .ev.onp [data-ed="s:1"]', { timeout: 8000 }).catch(() => null);
       if (ed) { await page.waitForTimeout(500); await page.click('#preview [data-ed="s:1"]'); await page.waitForSelector('#sheet[open]'); await page.waitForTimeout(150);
         ok((await page.$$('#sheet [data-sp-q]')).length === 1 && (await page.$$('#sheet .rowed')).length === 1, `@${w} on-page editor: the item's sheet has the Place search`); }

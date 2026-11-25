@@ -1670,15 +1670,6 @@ function legOf(ss, d) {
   ss.forEach((s, j) => { if (!s.from) return; const e = s.to && s.to > s.from ? s.to : s.from; const x = d < s.from ? daysBetween(d, s.from) : d > e ? daysBetween(e, d) : 0; if (x < dist || (x === dist && d >= s.from)) { best = j; dist = x; } });
   return best;
 }
-// the builder's Itinerary for a trip (on-page editing): one block per route stop, its days under it; undated days last
-function legsHTML(cfg, ss, days, dayHTML, dropEmpty = false, hide = null) {
-  const by = ss.map(() => []), rest = []; const nb = tabsFor(cfg).some(x => x[0] === 'nearby');
-  days.forEach(e => { const i = e[0] ? legOf(ss, e[0]) : -1; (i >= 0 ? by[i] : rest).push(e); });
-  const head = (s, i) => { const inner = `<span class="leg-t"><b>${esc(s.name)}</b>${stopRange(s) ? `<small>${esc(stopRange(s))}</small>` : ''}</span>`;
-    const ea = edA('st:' + (cfg.stops || []).indexOf(s)); i = stopsOf(cfg).indexOf(s);
-    return s.lat != null && nb ? `<button type="button" class="leg-h" data-route-stop="${i}"${ea}>${inner}<i class="leg-go" aria-hidden="true">›</i></button>` : `<div class="leg-h"${ea}>${inner}</div>`; };
-  return `<ol class="legs">${ss.map((s, i) => dropEmpty && !by[i].length ? '' : `<li class="leg${hide && by[i].length && by[i].every(e => hide.has(e[0])) ? ' l-more' : ''}">${head(s, i)}${by[i].length ? `<div class="leg-days">${by[i].map(dayHTML).join('')}</div>` : ''}</li>`).join('')}</ol>${rest.map(dayHTML).join('')}`;
-}
 // The guest Event tab is an overview (Dylan 12324/12330): one row per day that has plans ("Fri, Apr 2" + a one-line
 // summary), tap to open it. Trips: a small city heading ("Kyoto · Apr 5–8", tap → Nearby) starts each city's days; no
 // city tabs, no inline hotel/transport/restaurant blocks — a booking is one line ("Check in · Park Hotel Tokyo") that
@@ -1710,19 +1701,12 @@ function scheduleHTML(cfg) {
   const my = !ONP && mineOn(cfg) ? mineGet(cfg) : null; const away = (d) => !!my && !!d && (d < my.a || d > my.l); // Make it mine: days outside their stay
   const tm = (s) => fmtTime((s || '').slice(11, 16));
   const trip = isTrip(cfg);
-  if (ONP) { // the builder's on-page editing: every day open, every row and day tappable to edit
-    const tripHead = (d) => d ? `${cfg.start && d >= cfg.start.slice(0, 10) ? esc(t('Day {n}', { n: daysBetween(cfg.start, d) + 1 })) + ' · ' : ''}${esc(fmt(d, { weekday: 'short', month: 'short', day: 'numeric' }))}` : t('Unscheduled');
-    const evHead = (d) => d ? esc(fmt(d, { weekday: 'long', month: 'short', day: 'numeric' })) : t(trip ? 'Unscheduled' : 'Anytime');
-    const dayHTML = ([d, xs]) => `<div class="day"${d ? ` data-day="${esc(d)}"` : ''}><h3 class="day-h"${trip && d ? edA('day:' + d) : ''}>${trip ? tripHead(d) : evHead(d)}</h3><ol class="tl">${xs.map(x =>
-      `<li class="${x.bk || !x.ev ? 'mine' : ''}"${x.ev ? edA('s:' + x.si) : ''}><time>${esc(tm(x.start)) || (trip ? '' : '—')}</time><div><b>${esc(schedLine(cfg, x))}</b>${x.ev && !trip && (x.note || x.place) ? `<span>${esc([x.place, x.note].filter(Boolean).join(' · '))}</span>` : ''}</div></li>`).join('')}</ol></div>`;
-    return `<div class="sched-days">${legs ? legsHTML(cfg, legs, Object.entries(days), dayHTML) : Object.entries(days).map(dayHTML).join('')}</div>`;
-  }
   const dated = Object.keys(days).filter(Boolean).sort(); const def = dayOpenDefault(cfg, dated); const many = Object.keys(days).length > 1;
   const row = (x) => {
     const mark = (x.bk || (!x.ev && !x.co) ? ` <em class="yours">${t(x.pl ? 'Saved' : 'Yours')}</em>` : '') + schedHfBadge(cfg, x);
     const sub = x.ev && !trip && (x.note || x.place) ? esc(x.place && !(x.note || '').toLowerCase().includes(x.place.toLowerCase()) ? [x.place, x.note].filter(Boolean).join(' · ') : x.note) : '';
     const inner = `<span class="tl-tx"><b>${esc(schedLine(cfg, x))}${mark}</b>${sub ? `<span>${sub}</span>` : ''}</span>`;
-    return `<li class="${[x.ev && !x.bk ? '' : 'mine', x.co ? 'co' : '', x.kind ? 'k-' + esc(x.kind) : ''].filter(Boolean).join(' ')}"><time>${esc(tm(x.start)) || (trip ? '' : '—')}</time><div>${x.ref ? `<button type="button" class="tl-go" data-ds="${esc(x.ref)}">${inner}<i class="tl-chev" aria-hidden="true"></i></button>` : inner}</div></li>`;
+    return `<li class="${[x.ev && !x.bk ? '' : 'mine', x.co ? 'co' : '', x.kind ? 'k-' + esc(x.kind) : ''].filter(Boolean).join(' ')}"${x.ev ? edA('s:' + x.si) : ''}><time>${esc(tm(x.start)) || (trip ? '' : '—')}</time><div>${x.ref ? `<button type="button" class="tl-go" data-ds="${esc(x.ref)}">${inner}<i class="tl-chev" aria-hidden="true"></i></button>` : inner}</div></li>`;
   };
   const dayHTML = ([d, xs]) => {
     const open = !many || dayIsOpen(cfg, d, def);
@@ -1736,7 +1720,8 @@ function scheduleHTML(cfg) {
     const nb = tabsFor(cfg).some(x => x[0] === 'nearby'); const by = legs.map(() => []), rest = [];
     Object.entries(days).forEach(e => { const i = e[0] ? legOf(legs, e[0]) : -1; (i >= 0 ? by[i] : rest).push(e); });
     body = legs.map((s, i) => { const inner = `<b>${esc(s.name)}</b>${shortRange(s) ? `<small>${esc(shortRange(s))}</small>` : ''}`; const si = stopsOf(cfg).indexOf(s);
-      const h = s.lat != null && nb ? `<button type="button" class="city-h" data-route-stop="${si}">${inner}<i class="tl-chev" aria-hidden="true"></i></button>` : `<div class="city-h">${inner}</div>`;
+      const ea = edA('st:' + (cfg.stops || []).indexOf(s));
+      const h = s.lat != null && nb ? `<button type="button" class="city-h" data-route-stop="${si}"${ea}>${inner}<i class="tl-chev" aria-hidden="true"></i></button>` : `<div class="city-h"${ea}>${inner}</div>`;
       return `<div class="city-g">${h}${by[i].map(dayHTML).join('')}</div>`; }).join('') + rest.map(dayHTML).join('');
   } else body = Object.entries(days).map(dayHTML).join('');
   return `<div class="sched-days dlist">${body}</div>`;
@@ -1994,7 +1979,7 @@ function renderEvent(cfg, root, opts = {}) {
   art._useSrc = (k) => { art._srcs.add(k); const el = art.querySelector('[data-slot="attrib"]'); if (el) el.innerHTML = attribHTML(art._srcs); };
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-gpid]'); if (b && art._openGPlace) art._openGPlace(b.dataset.gpid); });
   art._hsCfg = cfg; art.addEventListener('click', (e) => { if (!e.target.closest('dialog')) hsClick(cfg, art, e); }); // Set as my hotel / Remove on list rows and map pins
-  wireEvent(cfg, art, seq, air, opts); wireMine(cfg, art, opts); wireDetailTaps(cfg, art, opts); if (!opts.onpage) wireReadMore(art); wireOffline(cfg, art, opts); if (!opts.preview) wireCollapse(cfg, art);
+  wireEvent(cfg, art, seq, air, opts); wireMine(cfg, art, opts); wireDetailTaps(cfg, art, opts); wireReadMore(art); wireOffline(cfg, art, opts); if (!opts.preview) wireCollapse(cfg, art);
   if (opts.hosted && typeof wireHosted === 'function') wireHosted(cfg, art, opts.hosted, opts);
   else if (demoRsvp(cfg, opts) && typeof wireHosted === 'function') wireHosted(cfg, art, { id: 'demo-' + opts.exampleId, demo: true }, opts); // an example's RSVP form: answers stay on this device
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-route-stop]'); if (!b || !art.querySelector('[data-panel="nearby"]')) return; showTab(art, 'nearby', opts); const ci = cityOfStop(cfg, +b.dataset.routeStop); if (art._nearCity) art._nearCity(ci); else if (art._osmCity) art._osmCity(ci); });
@@ -2376,21 +2361,21 @@ function renderViewer(cfg, { exampleId, tab } = {}) {
 let B = null; // builder state
 function renderBuilder(cfg, source, hosted, pid) {
   LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
-  document.title = 'Edit your page · 1LinkTrip';
-  B = { cfg: normalize(cfg), venueResults: [], tab: 'edit', card: null, hosted: hosted && hosted.id ? hosted : null }; delete B.cfg.demoTrip; // an example's sample My trip stays on the example
+  B = { cfg: normalize(cfg), venueResults: [], card: null, hosted: hosted && hosted.id ? hosted : null, tab0: window.__ownTab || '' }; window.__ownTab = null;
+  document.title = (B.cfg.title || 'Your page') + ' · 1LinkTrip'; delete B.cfg.demoTrip; // an example's sample My trip stays on the example
   { const f = spanFixed(B.cfg); if (f !== B.cfg) B.cfg = f; } // stored dates from an old import: fix them for good
   pagesAll(); // first run: the old single draft joins the list before this page replaces it (else it's listed twice)
   LS.set('draftHosted', B.hosted); B.pid = pid || newPid(); LS.set('draftId', B.pid); LS.set('draft', B.cfg); pageSave(B.pid, { cfg: B.cfg, hosted: B.hosted });
   $('#app').innerHTML = `
-  <div class="builder" data-tab="edit">
+  <div class="builder" data-set="0">
     <header class="b-top">
       <a class="brand sm" href="#">${BRAND}</a>
-      <div class="seg" role="tablist"><button role="tab" data-tab="edit" aria-selected="true">Edit</button><button role="tab" data-tab="preview" aria-selected="false">Preview</button></div>
+      <button type="button" class="btn sm ghost b-gear" data-act="settings" aria-expanded="false" aria-controls="b-set">${GEAR_IC}<span>Settings</span></button>
       <button class="btn primary sm" data-act="publish">Share</button>
       <div class="b-save" data-save role="status" aria-live="polite"></div>
     </header>
-    <form class="b-form" autocomplete="off" onsubmit="return false">${source ? `<p class="b-note">${esc(source)}</p>` : ''}</form>
-    <div class="b-preview"><div class="onp-bar"><label class="tool onp-tg"><input type="checkbox" data-onp-tg ${onpOn() ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>Tap to edit</label></div><div class="b-frame" id="preview"></div></div>
+    <div class="b-set" id="b-set"><div class="b-set-h"><b>Page settings</b><button type="button" class="btn sm" data-act="settings">Done</button></div><form class="b-form" autocomplete="off" onsubmit="return false">${source ? `<p class="b-note">${esc(source)}</p>` : ''}</form></div>
+    <div class="b-preview"><div class="onp-bar"><label class="tool onp-tg"><input type="checkbox" data-guest-tg><span class="sw" aria-hidden="true"></span>Preview as guest</label></div><div class="b-frame" id="preview"></div></div>
   </div>
   <dialog id="sheet" class="sheet"><form class="sheet-in" autocomplete="off" onsubmit="return false"></form></dialog>
   <dialog id="pub"><form method="dialog" class="pub">
@@ -2400,9 +2385,11 @@ function renderBuilder(cfg, source, hosted, pid) {
     <div class="btns"><button type="button" class="btn primary" data-act="copy">Copy link</button><button type="button" class="btn" data-act="native-share" hidden>Share…</button><button type="button" class="btn" data-act="qr">QR code</button><a class="btn" id="pub-open" href="#" target="_blank" rel="noopener noreferrer">Open page</a><button class="btn ghost">Close</button></div>
   </form></dialog>`;
   buildForm(); saveStatus('');
+  if (new URLSearchParams(location.search).get('e')) $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase())); // '#' can't leave a ?e= link
   const bl = $('.builder');
+  { const top = $('.b-top'); const set = () => { if (top.isConnected) bl.style.setProperty('--btop', Math.round(top.getBoundingClientRect().height) + 'px'); }; set(); if (typeof ResizeObserver === 'function') new ResizeObserver(set).observe(top); }
   bl.addEventListener('click', (e) => {
-    const tb = e.target.closest('[data-tab]'); if (tb && tb.tagName === 'BUTTON') { bl.dataset.tab = tb.dataset.tab; $$('.seg button').forEach(b => b.setAttribute('aria-selected', String(b === tb))); if (tb.dataset.tab === 'preview') { maps.forEach(m => m.invalidateSize()); window.scrollTo(0, 0); } }
+    if (e.target.closest('[data-act="settings"]')) setPanel(bl.dataset.set !== '1');
     if (e.target.closest('[data-act="publish"]')) publishTranslated();
   });
   const dlg = $('#pub');
@@ -2414,11 +2401,10 @@ function renderBuilder(cfg, source, hosted, pid) {
   });
   const sh = $('#sheet');
   sh.addEventListener('close', () => { if (B.onp) onpCleanup(); B.onp = false; B.focus = null; B.onpSec = null; sh.classList.remove('onp'); B.card = null; if (DU && DU.key !== 'main') DU = null; buildForm(); });
-  $('#preview').addEventListener('click', onpTap, true);
+  $('#preview').addEventListener('click', onpTap, true); $('#preview').addEventListener('keydown', onpTap, true);
   $('.onp-bar').addEventListener('click', (e) => { const b = e.target.closest('[data-pv-lang]'); if (!b) return; B.pvLang = b.dataset.pvLang === srcLang(B.cfg) ? '' : b.dataset.pvLang; paintPvLang(); preview(); });
-  $('[data-onp-tg]').addEventListener('change', (e) => { LS.set('onpEdit', e.target.checked); if (!e.target.checked && sh.open && B.onp) sh.close(); preview(); });
+  $('[data-guest-tg]').addEventListener('change', (e) => { B.asGuest = e.target.checked; bl.classList.toggle('as-guest', B.asGuest); if (B.asGuest && sh.open && B.onp) sh.close(); preview(); });
   if (!document._onpEsc) { document._onpEsc = true; document.addEventListener('keydown', (e) => { const d = $('#sheet'); if (e.key === 'Escape' && d && d.open && d.classList.contains('onp') && !d.matches(':modal') && !$('#confirmdlg[open]')) d.close(); }); }
-  if (window.__onpOpen) { window.__onpOpen = false; bl.dataset.tab = 'preview'; $$('.seg button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === 'preview'))); }
   if (window.__sharePub) { window.__sharePub = false; setTimeout(() => publishTranslated(), 0); } // Share from the setup's last step or the owner's own page
   sh.addEventListener('click', (e) => { if (e.target === sh) sh.close(); });
   wireInputs(sh.querySelector('.sheet-in'));
@@ -2430,6 +2416,13 @@ function renderBuilder(cfg, source, hosted, pid) {
   if (window.__openCard) { const id = window.__openCard; window.__openCard = null; openCard(id); }
   if (acctOn()) acctPushNow(); // signed in: the page is on the account from the start (not shared until Share)
   wireVendors(); vnSync();
+}
+// Settings (type, design, sections, vendors, documents, AI edit): a panel over the page on phones, a column beside it on wide screens
+function setPanel(on) {
+  const bl = $('.builder'); if (!bl) return; bl.dataset.set = on ? '1' : '0';
+  $$('[data-act="settings"]', bl).forEach(b => b.setAttribute('aria-expanded', String(on)));
+  if (on) { const p = $('#b-set'); if (p) p.scrollTop = 0; }
+  maps.forEach(m => { try { m.invalidateSize(); } catch {} });
 }
 async function publishTranslated() {
   const c = B.cfg; const langs = (c.langs || []).filter(l => l !== srcLang(c));
@@ -2478,7 +2471,7 @@ function pvLangHTML() { const c = B && B.cfg; const ls = c ? [srcLang(c), ...(c.
   if (!ls.includes(B.pvLang)) B.pvLang = ''; const cur = B.pvLang || srcLang(c);
   return `<span class="pv-lang" role="group" aria-label="Preview in"><span class="muted small">Preview in:</span>${ls.map(l => `<button type="button" class="pv-l ${l === cur ? 'on' : ''}" aria-pressed="${l === cur}" data-pv-lang="${l}">${esc(langName(l))}</button>`).join('')}</span>`; }
 function paintPvLang() { const bar = $('.onp-bar'); if (!bar) return; let el = bar.querySelector('.pv-lang'); const h = pvLangHTML(); if (el) { if (h) el.outerHTML = h; else el.remove(); } else if (h) bar.insertAdjacentHTML('beforeend', h); }
-const preview = debounce(() => { const p = $('#preview'); if (!p) return; const sc = p.parentElement; const y = sc.scrollTop; const tab = p.querySelector('[data-tab-go][aria-selected="true"]')?.dataset.tabGo; paintPvLang();
+const preview = debounce(() => { const p = $('#preview'); if (!p) return; const sc = p.parentElement; const y = sc.scrollTop; const tab = p.querySelector('[data-tab-go][aria-selected="true"]')?.dataset.tabGo || (B && B.tab0) || undefined; paintPvLang();
   const pl = B.pvLang && B.pvLang !== srcLang(B.cfg) ? B.pvLang : '';
   if (pl) { const was = LANG; LANG = pl; try { renderEvent(translatedView(B.cfg, pl), p, { preview: true, shareUrl: shareURL(B.cfg), tab, onpage: false, src: B.cfg }); } finally { LANG = was; } }
   else renderEvent(B.cfg, p, { preview: true, shareUrl: shareURL(B.cfg), tab, onpage: onpOn() });
@@ -2686,28 +2679,34 @@ function wireInputs(root) {
 // ---------- on-page editing: in the builder preview, tap a part of the page to edit just that part ----------
 // The page is rendered with { onpage: true } (helpers tag items with data-ed); onpDecorate adds the pencils and + buttons.
 // A tap opens the card sheet with only that part's fields (B.onp, B.focus = one item); both paths edit the same B.cfg.
-const onpOn = () => LS.get('onpEdit', true) !== false;
+const onpOn = () => !!B && !B.asGuest; // the owner's page is editable by tapping unless they preview it as a guest
 const ONP_SEC = { route: 'route', about: 'about', details: 'details', rsvp: 'rsvp', access: 'access', schedule: 'schedule' };
 const ONP_PEN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
+const GEAR_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
+// The owner's page is the guest page; every part they can edit is one tap target (data-ed) with a light hover/press state.
+// Blocks (cover, ticket, section headings) carry a small pencil mark — a hint inside the target, not a second button.
 function onpDecorate(cfg, art) {
   art.classList.add('onp');
-  const pen = (ed, label) => `<button type="button" class="onp-pen" data-ed="${esc(ed)}" aria-label="${esc('Edit ' + label)}">${ONP_PEN}</button>`;
+  const mark = `<i class="onp-mk" aria-hidden="true">${ONP_PEN}</i>`;
+  const target = (el, ed, label) => { el.dataset.ed = ed; if (!/^(BUTTON|A)$/.test(el.tagName)) { el.tabIndex = 0; el.setAttribute('role', 'button'); } if (label) el.setAttribute('aria-label', label); };
   const hero = art.querySelector('.ev-hero');
-  if (hero && !hero.dataset.ed) { hero.dataset.ed = 'hero'; hero.insertAdjacentHTML('beforeend', pen('hero', 'title and photo')); }
+  if (hero && !hero.dataset.ed) { target(hero, 'hero', 'Edit title and photo'); hero.insertAdjacentHTML('beforeend', mark); }
   const sm = art.querySelector('.stub-main');
-  if (sm && !sm.dataset.ed) { sm.dataset.ed = 'when'; sm.classList.add('onp-box'); sm.insertAdjacentHTML('beforeend', pen('when', isTrip(cfg) ? 'dates and destination' : 'date and place')); }
+  if (sm && !sm.dataset.ed) { target(sm, 'when', isTrip(cfg) ? 'Edit dates and destination' : 'Edit date and place'); sm.classList.add('onp-box'); sm.insertAdjacentHTML('beforeend', mark); }
   // the ticket's "Fly into" (or, with No airport, the date in its place): tap → just that choice
   const ss = art.querySelector('.stub-side');
-  if (ss && !ss.dataset.ed && flyIntoFieldHTML(cfg)) { ss.dataset.ed = 'fly'; ss.classList.add('onp-side'); ss.insertAdjacentHTML('afterbegin', pen('fly', 'fly into airport')); }
+  if (ss && !ss.dataset.ed && flyIntoFieldHTML(cfg)) { target(ss, 'fly', 'Edit fly into airport'); ss.classList.add('onp-side'); ss.insertAdjacentHTML('afterbegin', mark); }
+  // other tagged items (itinerary rows, notes, stops, need-to-know rows) are focusable taps too
+  $$('[data-ed]', art).forEach(el => { if (el.tabIndex < 0 && !/^(BUTTON|A)$/.test(el.tagName)) { el.tabIndex = 0; el.setAttribute('role', 'button'); } });
   const body = art.querySelector('.ev-panel[data-panel="event"] .ev-body'); if (!body) return;
   $$('[data-sec]', body).forEach(s => {
     const id = s.dataset.sec; if (s.dataset.ed || !(ONP_SEC[id] || /^c-/.test(id))) return;
     s.dataset.ed = 'sec:' + id; s.classList.add('onp-sec');
-    const h = s.querySelector('.sec-h'); if (h) h.insertAdjacentHTML('beforeend', pen('sec:' + id, h.textContent));
+    const h = s.querySelector('.sec-h'); if (h) { h.insertAdjacentHTML('beforeend', mark); h.tabIndex = 0; h.setAttribute('role', 'button'); h.setAttribute('aria-label', 'Edit ' + h.textContent); }
     const sb = s.querySelector('.sec-b') || s;
     const add = (ed, label, where = sb) => where.insertAdjacentHTML('beforeend', `<button type="button" class="onp-add" data-ed="${esc(ed)}">+ ${esc(label)}</button>`);
     if (id === 'schedule') {
-      if (isTrip(cfg)) $$('.day[data-day]', s).forEach(dd => add('add:s:' + dd.dataset.day, 'Add to this day', dd));
+      $$('.day[data-day]', s).forEach(dd => { const d = dd.dataset.day; const ol = dd.querySelector('ol.tl'); if (d && ol) ol.insertAdjacentHTML('beforeend', `<li class="onp-li"><button type="button" class="onp-add" data-ed="add:s:${esc(d)}">+ ${isTrip(cfg) ? 'Add to this day' : 'Add item'}</button></li>`); });
       const row = document.createElement('div'); row.className = 'onp-adds'; sb.appendChild(row);
       add('add:s', isTrip(cfg) ? 'Add to itinerary' : 'Add item', row); if (routeInItin(cfg)) add('add:st', 'Add a stop', row);
     }
@@ -2719,10 +2718,15 @@ function onpDecorate(cfg, art) {
   if (!art._onpMo && typeof MutationObserver === 'function') { art._onpMo = new MutationObserver(() => { if (document.body.contains(art) && body.querySelector('[data-sec]:not([data-ed])')) onpDecorate(cfg, art); }); art._onpMo.observe(body, { childList: true, subtree: true }); }
 }
 // capture-phase tap on the preview: an edit target opens its sheet instead of doing what it does for guests
+// A section (sec:…) is a target only where nothing inside it is: its day toggles, links and booking rows keep doing what
+// they do for guests. An item (a row, a stop, the cover, the ticket) is edited wherever it's tapped.
 function onpTap(e) {
   if (!B || !onpOn()) return;
-  const art = e.target.closest('.ev.onp'); if (!art || e.target.closest('.ev-tabs')) return;
+  const art = e.target.closest('.ev.onp'); if (!art || e.target.closest('.ev-tabs, dialog')) return;
+  if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
   const el = e.target.closest('[data-ed]'); if (!el || !art.contains(el)) return;
+  if (e.type === 'keydown' && el.tagName === 'BUTTON') return; // a button's own click follows
+  if (/^sec:/.test(el.dataset.ed)) { const ia = e.target.closest('a[href], button, summary, input, select, textarea, label, [data-ds]'); if (ia && el.contains(ia)) return; }
   e.preventDefault(); e.stopPropagation(); onpGo(el.dataset.ed);
 }
 function onpGo(ed) {
@@ -2760,8 +2764,8 @@ function onpOpen(id, focus = null, secId = null) {
   const sh = $('#sheet'); if (!sh) return;
   if (B.onp) onpCleanup();
   B.onp = true; B.focus = focus; B.onpSec = secId; B.card = id; B.spEdit = null; if (DU && DU.key !== 'main') DU = null;
-  const wide = matchMedia('(min-width: 980px)').matches; const f = $('.b-form'), top = $('.b-top');
-  if (wide && f && top) { sh.style.setProperty('--onp-top', top.getBoundingClientRect().bottom + 'px'); sh.style.setProperty('--onp-w', f.getBoundingClientRect().width + 'px'); }
+  const wide = matchMedia('(min-width: 980px)').matches; const f = $('#b-set'), top = $('.b-top');
+  if (wide && top) { sh.style.setProperty('--onp-top', top.getBoundingClientRect().bottom + 'px'); sh.style.setProperty('--onp-w', (f && f.getBoundingClientRect().width || 440) + 'px'); $('.builder')?.style.setProperty('--onp-dock', (f && f.getBoundingClientRect().width || 440) + 'px'); }
   sh.classList.add('onp'); renderSheet();
   if (!sh.open) { if (wide) sh.show(); else sh.showModal(); }
   sh.querySelector('.sheet-in').scrollTop = 0;
@@ -3351,16 +3355,18 @@ async function renderHosted(slug, tab) {
   if (osm && cfg.venue && Array.isArray(osm.food)) memo.set(osmKey(cfg.venue.lat, cfg.venue.lon), Promise.resolve(osm));
   document.title = (cfg.title || 'Event') + ' · 1LinkTrip';
   LANG = guestLangPick(cfg); document.documentElement.lang = LANG; document.documentElement.dir = RTL.has(LANG) ? 'rtl' : 'ltr';
-  // the organizer (this device has the page in My pages) edits the page itself, on the page; everyone else gets a copy
-  const own = pagesAll().find(p => p.hosted && p.hosted.id === row.id);
-  $('.vbar').insertAdjacentHTML('beforeend', `${langPillsHTML(cfg)}${langSelectHTML(cfg)}${own ? vbarEditHTML(`#page=${esc(own.pid)}`, t('Edit page'), ' data-onp-open') : vbarEditHTML(`#edit=${packEvent(cfg)}`, t('Edit a copy'))}`);
-  requestAnimationFrame(pillInView);
-  $('[data-onp-open]')?.addEventListener('click', () => { window.__onpOpen = true; });
-  // only its organizer can open a page that isn't shared yet: say so, with Share right there
-  if (row.published === false) {
-    $('.viewer').insertAdjacentHTML('beforeend', `<div class="own-stale" role="status"><span>${t('Only you can see this page.')}</span>${own ? `<a class="btn sm primary" href="#page=${esc(own.pid)}" data-own-share>${t('Share')}</a>` : ''}</div>`);
-    $('[data-own-share]')?.addEventListener('click', () => { window.__sharePub = true; });
+  // the organizer (this device has the page in My pages) gets their page with tap-to-edit, right at its link; everyone else
+  // gets the guest page (and "Edit a copy"). The account's copy wins over an older one on this device, as in the sync.
+  let own = pagesAll().find(p => p.hosted && p.hosted.id === row.id);
+  if (own) {
+    const rt = Date.parse(row.updated_at) || 0;
+    if (!((own.edited || 0) > rt + 1000) && builderHash(row.config) !== builderHash(own.cfg)) { pageSave(own.pid, { cfg: normalize(row.config), edited: rt }); own = pagesAll().find(p => p.pid === own.pid) || own; }
+    if (row.published !== undefined && own.hosted.pub !== !!row.published) pageSave(own.pid, { hosted: { ...own.hosted, pub: !!row.published } });
+    window.__ownTab = tab; return renderBuilder(own.cfg, null, own.hosted, own.pid);
   }
+  $('.vbar').insertAdjacentHTML('beforeend', `${langPillsHTML(cfg)}${langSelectHTML(cfg)}${vbarEditHTML(`#edit=${packEvent(cfg)}`, t('Edit a copy'))}`);
+  requestAnimationFrame(pillInView);
+  if (row.published === false) $('.viewer').insertAdjacentHTML('beforeend', `<div class="own-stale" role="status"><span>${t('Only you can see this page.')}</span></div>`);
   guestRender(cfg, $('#ev-root'), { tab, hosted, shareUrl: hosted.url });
   // '#' alone can't leave a ?e= page (the hash doesn't change), so home links point at the app itself
   $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
@@ -3806,7 +3812,7 @@ async function renderMine(id, notice) {
   if (error) return shell(`<h1>My pages</h1><p>Couldn’t load your pages. ${esc(error.message)}</p>`);
   shell(`<div class="mine-h"><h1>My pages</h1><span class="muted small">${esc(user.email || '')} · <button type="button" class="link" data-mine="signout">Sign out</button></span></div>
     <section data-slot="mine-inbox"></section>
-    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · not shared'}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a>` : ''}</div><div class="btns"><a class="btn sm" href="${esc(shortURL(r.slug))}">View</a><button type="button" class="btn sm primary" data-mine-edit="${esc(r.id)}">Edit</button><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button>` : ''}<button type="button" class="btn sm ghost" data-mine-del="${esc(r.id)}" aria-label="Delete ${esc(cfg.title || 'Untitled')}">Delete</button></div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Share, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
+    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · not shared'}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a>` : ''}</div><div class="btns"><button type="button" class="btn sm primary" data-mine-edit="${esc(r.id)}">Open</button><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button>` : ''}<button type="button" class="btn sm ghost" data-mine-del="${esc(r.id)}" aria-label="Delete ${esc(cfg.title || 'Untitled')}">Delete</button></div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Share, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
   mineInbox(c, data).catch(() => {});
   if (data.length) msgReady().then(async ok => { // "2 new" next to pages with unanswered guest messages
     if (!ok) return; const { data: ms } = await c.from('event_messages').select('event_id,guest,from_host,created_at').in('event_id', data.map(x => x.id)).order('created_at', { ascending: true }).limit(5000);
@@ -3891,7 +3897,7 @@ async function renderMineEvent(id, shell, c, user) {
       ${guests.length ? `<h3 class="sub-h">Haven’t replied (${waiting.length})</h3>${waiting.length ? `<ul class="gl-list">${waiting.map(g => `<li>${esc(g.name || g.email)}${g.name && g.email ? ` <span class="muted small">${esc(g.email)}</span>` : ''}</li>`).join('')}</ul>` : '<p class="muted">Everyone on your list has replied.</p>'}` : ''}
     </section>
     ${msgs ? `<section class="mine-sec" id="mine-groups"><h2>${t('Groups')}</h2><div data-grp-root>${groupsEdHTML(groups)}</div></section>` : ''}
-    <section class="mine-sec"><h2>Page</h2><div class="btns"><button type="button" class="btn sm" data-pg="edit">Edit page</button><button type="button" class="btn sm ghost" data-pg="vis">${r.published ? 'Hide page' : 'Show page'}</button></div><p class="muted small">${r.published ? 'Anyone with the link can see it.' : 'Only you can see it.'}</p></section>`);
+    <section class="mine-sec"><h2>Page</h2><div class="btns"><button type="button" class="btn sm" data-pg="edit">Open page</button><button type="button" class="btn sm ghost" data-pg="vis">${r.published ? 'Hide page' : 'Show page'}</button></div><p class="muted small">${r.published ? 'Anyone with the link can see it.' : 'Only you can see it.'}</p></section>`);
   const m = $('.mine'); const again = () => { mineOpenThr = [...$$('details.thr[open]', m)].map(d => d.dataset.thr); return renderMine(id); };
   if (msgs) {
     $$('details.thr', m).forEach(d => { if (mineOpenThr.includes(d.dataset.thr)) d.open = true; d.addEventListener('toggle', () => { if (!d.open) return; const xs = msgs.filter(x => x.guest === d.dataset.thr); const last = xs[xs.length - 1]; if (last) { seen[d.dataset.thr] = last.created_at; LS.set(seenKey, seen); d.querySelector('.dot')?.remove(); } }); });
@@ -4459,10 +4465,8 @@ function myPagesHTML() {
   const xs = pagesAll().slice().sort((a, b) => (b.edited || b.updated || 0) - (a.edited || a.updated || 0)); if (!xs.length) return '';
   const cur = LS.get('draftId');
   return `<section class="land-mine" id="my-pages"><h2>My pages${acctOn() ? '' : ' <small class="muted">on this device</small>'}</h2><ul class="mp-list">${xs.slice(0, 30).map(x => { const c = spanFixed(normalize(clone(x.cfg))); const open = x.hosted ? (x.hosted.pub ? shortURL(x.hosted.slug) : '') : x.url;
-    // View = the page as guests see it: its short link (the owner sees a not-yet-shared one too), else its own link, else this device's copy
-    const viewURL = x.hosted && x.hosted.slug ? shortURL(x.hosted.slug) : x.url || '#e=' + packEvent(x.cfg);
-    return `<li style="${themeStyle(c.theme)}"><i class="mp-dot" aria-hidden="true"></i><div class="mp-t"><b>${esc(c.title || 'Untitled')}</b><span>${esc([TYPE_LABEL[c.type] || c.type, c.start ? dateRange(c.start, c.end) : '', open ? 'shared' : '', x.pid === cur ? 'open in editor' : ''].filter(Boolean).join(' · '))}</span></div>
-      <div class="mp-b"><a class="btn sm" href="${esc(viewURL)}" aria-label="View ${esc(c.title || 'Untitled')}">View</a><a class="btn sm primary" href="#page=${esc(x.pid)}" aria-label="Edit ${esc(c.title || 'Untitled')}">Edit</a><a class="btn sm ghost" href="#dup=${esc(x.pid)}">Duplicate</a><button type="button" class="btn sm ghost" data-mp-del="${esc(x.pid)}" aria-label="Delete ${esc(c.title || 'Untitled')}">Delete</button></div></li>`; }).join('')}</ul></section>`;
+    return `<li style="${themeStyle(c.theme)}"><i class="mp-dot" aria-hidden="true"></i><div class="mp-t"><b>${esc(c.title || 'Untitled')}</b><span>${esc([TYPE_LABEL[c.type] || c.type, c.start ? dateRange(c.start, c.end) : '', open ? 'shared' : '', x.pid === cur ? 'last opened' : ''].filter(Boolean).join(' · '))}</span></div>
+      <div class="mp-b"><a class="btn sm primary" href="#page=${esc(x.pid)}" aria-label="Open ${esc(c.title || 'Untitled')}">Open</a><a class="btn sm ghost" href="#dup=${esc(x.pid)}">Duplicate</a><button type="button" class="btn sm ghost" data-mp-del="${esc(x.pid)}" aria-label="Delete ${esc(c.title || 'Untitled')}">Delete</button></div></li>`; }).join('')}</ul></section>`;
 }
 function renderExamples() {
   document.title = 'Example pages · 1LinkTrip'; scrollTo(0, 0);
@@ -4495,8 +4499,9 @@ function wireLanding() {
 addEventListener('ep-pages', () => {
   const land = $('.land.home');
   if (land) { const h = myPagesHTML(), sec = $('#my-pages', land); if (sec) { if (h) sec.outerHTML = h; else sec.remove(); } else if (h) $('.land-hero', land)?.insertAdjacentHTML('afterend', h); }
+  // a guest page that turns out to be this account's own (pages arrived from the account): reopen it as the owner's page
   const v = $('.viewer .vbar a[href^="#edit="]'); const slug = new URLSearchParams(location.search).get('e');
-  if (v && slug) { const own = pagesAll().find(p => p.hosted && p.hosted.slug === slug); if (own) { v.outerHTML = `<a class="btn sm" href="#page=${esc(own.pid)}" data-onp-open>${t('Edit page')}</a>`; $('[data-onp-open]')?.addEventListener('click', () => { window.__onpOpen = true; }); } }
+  if (v && slug && !$('#sheet[open], dialog.ds-sheet[open]') && pagesAll().some(p => p.hosted && p.hosted.slug === slug)) route();
 });
 
 // ================= City × Category: one compact control bar for every list of places and plans =================
@@ -5751,9 +5756,8 @@ function wireReadMore(art) {
   art.addEventListener('click', (e) => { const b = e.target.closest('.rm-b'); if (!b) return; const el = b.previousElementSibling; if (!el) return;
     const open = !el.classList.contains('rm-open'); el.classList.toggle('rm-open', open); el.classList.toggle('rm', !open); b.textContent = t(open ? 'Show less' : 'Read more'); b.setAttribute('aria-expanded', String(open)); });
 }
-// taps anywhere on the page: [data-ds] opens its sheet (not in the builder's on-page editing)
+// taps anywhere on the page: [data-ds] opens its sheet (on the owner's page, a part they can edit opens its editor first)
 function wireDetailTaps(cfg, art, opts) {
-  if (opts.onpage) return;
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-ds]'); if (!b || !b.isConnected || b.closest('dialog.ds-sheet') || e.target.closest('a[href]')) return; /* a sheet re-painted under the tap already handled it */ e.preventDefault(); openDetail(cfg, art, b.dataset.ds); });
   art.addEventListener('toggle', (e) => { const g = e.target; if (g.matches && g.matches('details.sp-g')) { if (g.open) SPOT_SHUT.delete(g.dataset.spotG); else SPOT_SHUT.add(g.dataset.spotG); } }, true);
   art.addEventListener('keydown', (e) => { if (e.key !== 'Enter' && e.key !== ' ') return; const b = e.target.closest && e.target.closest('[data-ds]'); if (!b || b.tagName === 'BUTTON' || b.closest('dialog.ds-sheet')) return; e.preventDefault(); openDetail(cfg, art, b.dataset.ds); });

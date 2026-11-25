@@ -35,7 +35,7 @@ const rows = (page) => page.$$eval('#sheet .st-row', ls => ls.map(l => ({ n: (l.
 const setDate = async (page, sel, v) => { await page.$eval(sel, (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }, v); await settle(page); };
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   try {
     for (const w of [390, 320]) {
       const { ctx, page } = await setup(browser, w);

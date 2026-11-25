@@ -37,7 +37,7 @@ function fakeSupabase() {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   const USER = { id: 'u0000000-0000-4000-8000-0000000000aa', email: 'host@example.com' };
   const mk = async () => {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
@@ -132,7 +132,7 @@ function fakeSupabase() {
     const ev = await events(page);
     ok(ev.length === 1 && ev[0].published === true && page.url().endsWith('?e=' + ev[0].slug), 'Save to My pages → short link, live (its long link was already shared) ' + page.url());
     ok(ev[0].config.title === 'Share test trip edited', 'the saved page is the latest version from this device');
-    ok(/Edit page/.test(await page.textContent('.vbar')), 'the short link is the owner’s page (Edit page)');
+    await page.waitForSelector('#preview [data-ed="hero"]'); ok(!!(await page.$('.builder')), 'the short link is the owner’s page (tap to edit)');
     ok(!page._err.length, 'no page errors ' + page._err.join(' | '));
     await ctx.close();
   }
