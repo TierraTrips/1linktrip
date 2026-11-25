@@ -1,7 +1,7 @@
 // Offline mode for guests. A shared trip page opened online is kept on the device (the app by the service worker; the
 // page's config, its documents and photos in the 'ep-data' cache; My trip in localStorage). Offline (context.setOffline):
 // the page, itinerary, bookings, saved spots, shopping list and documents open; Nearby shows an Offline note with the
-// hotel + saved spots (no map tiles cached); an RSVP sent offline is kept and goes out when the connection is back;
+// hotel + saved spots (no map tiles cached); an RSVP sent offline (on a party page; trips have none) is kept and goes out when the connection is back;
 // "Save for offline" in My trip is on by default and off removes this page's copies. 390.
 //
 //   python3 -m http.server 18765 --bind 127.0.0.1 &  PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS=1 node tests/offline.js
@@ -21,6 +21,9 @@ const CFG = { v: 2, type: 'Trip', title: 'Japan in spring', start: '2027-04-01',
   schedule: [{ date: '2027-04-01', time: '11:00', title: 'Flight LAX → HND', note: 'JL 61', kind: 'reservation' }, { date: '2027-04-06', time: '', title: 'Fushimi Inari at dawn', note: '' }],
   files: [{ id: 'f1', sec: 'route', name: 'Japan plan.pdf', url: DOC, type: 'pdf', size: 2000 }],
   tools: { nearby: true, weather: true, travel: false, stay: false, tours: false, mytrip: true, packing: true, shopping: true } };
+// Trips have no RSVP (fe114a4), so the offline RSVP runs on a second hosted page, a party, kept on the device the same way
+const PARTY = { v: 2, type: 'Party', title: 'Spring party', start: '2027-05-01T18:00', end: '2027-05-01T23:00', tz: 'Asia/Tokyo', off: {},
+  venue: { name: 'Tokyo', address: 'Tokyo, Japan', lat: 35.6764, lon: 139.65, city: 'Tokyo', country: 'Japan', cc: 'jp' }, schedule: [] };
 const PDF = Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(2000, 32)]);
 
 (async () => {
@@ -30,6 +33,7 @@ const PDF = Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(2000, 32)]);
   await ctx.route(`${SBURL}/rest/v1/**`, async (r) => {
     if (!net) return r.abort('internetdisconnected'); const u = r.request().url(); restHits++;
     if (r.request().method() === 'POST' && /\/rsvps/.test(u)) { rsvps.push(JSON.parse(r.request().postData())); return r.fulfill({ status: 201, body: '' }); }
+    if (/events\?slug=eq\.spring-party-ab2cd/.test(u)) return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify([{ id: 'e2', slug: 'spring-party-ab2cd', config: PARTY, updated_at: '2026-11-12T00:00:00Z' }]) });
     if (/events\?slug=eq\.japan-trip-ab2cd/.test(u)) return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify([{ id: 'e1', slug: 'japan-trip-ab2cd', config: CFG, updated_at: '2026-11-12T00:00:00Z' }]) });
     return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '[]' });
   });
@@ -42,6 +46,10 @@ const PDF = Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(2000, 32)]);
   await page.goto(BASE + '?e=japan-trip-ab2cd'); await page.waitForSelector('#sec-schedule');
   await page.evaluate(() => navigator.serviceWorker.ready); await page.reload(); await page.waitForSelector('#sec-schedule');
   ok(await page.evaluate(() => !!navigator.serviceWorker.controller), 'service worker controls the page');
+  ok(!(await page.$('#rs-name')), 'a trip page has no RSVP form');
+  // the party page, opened once online too
+  await page.goto(BASE + '?e=spring-party-ab2cd'); await page.waitForSelector('#rs-name');
+  await page.goto(BASE + '?e=japan-trip-ab2cd'); await page.waitForSelector('#sec-schedule');
   // My trip data the guest made
   const k = await page.evaluate(() => Object.keys(localStorage).find(x => x.startsWith('ep:modes:')) || '');
   await page.click('[data-tab-go="mytrip"]'); await page.waitForSelector('[data-offline]');
@@ -75,13 +83,15 @@ const PDF = Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(2000, 32)]);
   ok(/Showing the copy saved on this device/.test(await page.textContent('[data-offline-st]')), 'My trip says it is the saved copy');
   await page.click('#sec-shop summary'); ok(/Matcha/.test(await page.textContent('#sec-shop')), 'shopping list offline');
   // RSVP offline → kept, sent when back online
-  await page.click('[data-tab-go="event"]'); await page.waitForSelector('#rs-name');
+  await page.goto(BASE + '?e=spring-party-ab2cd'); await page.waitForSelector('#rs-name', { timeout: 15000 });
+  ok(await page.textContent('.ev-title') === 'Spring party', 'party page opens offline');
   await page.fill('#rs-name', 'Sam'); await page.click('[data-rsvp="send"]'); await page.waitForSelector('[data-rsvp-pending]');
   ok(rsvps.length === 0 && (await page.evaluate(() => JSON.parse(localStorage.getItem('ep:outbox')).length)) === 1, 'RSVP kept on the device');
   net = true; await ctx.setOffline(false);
   await page.waitForFunction(() => !(JSON.parse(localStorage.getItem('ep:outbox') || '[]')).length, null, { timeout: 10000 }).catch(() => {});
-  ok(rsvps.length === 1 && rsvps[0].name === 'Sam' && rsvps[0].event_id === 'e1', `RSVP sent once back online (${rsvps.length})`);
+  ok(rsvps.length === 1 && rsvps[0].name === 'Sam' && rsvps[0].event_id === 'e2', `RSVP sent once back online (${rsvps.length})`);
   ok(!(await page.$('[data-rsvp-pending]')), 'pending note cleared');
+  await page.goto(BASE + '?e=japan-trip-ab2cd'); await page.waitForSelector('#sec-schedule');
   // Save for offline off → this page's copies are removed
   await page.click('[data-tab-go="mytrip"]'); await page.click('.off-row .tool'); await page.waitForTimeout(500);
   const left = await page.evaluate(async () => (await (await caches.open('ep-data')).keys()).map(r => r.url));
