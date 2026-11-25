@@ -2813,7 +2813,7 @@ function onpSheet(c, id) {
     <label class="es-line es-note">${esIc('pencil')}<input id="sh-tagline" data-f="tagline" value="${esc(c.tagline)}" maxlength="140" placeholder="Add a tagline" aria-label="Tagline"></label></div>${coverFieldHTML(c)}` };
   if (id === 'when') {
     const v = c.venue;
-    const venue = v ? `${esMapBand(+v.lat, +v.lon, isTrip(c) ? 11 : 15)}<input id="sh-vname" class="es-title" data-v="name" value="${esc(v.name)}" aria-label="${isTrip(c) ? 'Destination name on the page' : 'Venue name on the page'}">
+    const venue = v ? `${esMapBand(+v.lat, +v.lon, !v.city && !v.region && v.country ? 4 : !v.city && v.region ? 7 : isTrip(c) ? 11 : 15)}<input id="sh-vname" class="es-title" data-v="name" value="${esc(v.name)}" aria-label="${isTrip(c) ? 'Destination name on the page' : 'Venue name on the page'}">
       <p class="es-sub"><span>${esc(v.address || '')}</span>${v.address ? ' · ' : ''}<button type="button" class="es-chg" data-b="clear-venue">Change</button></p>`
       : `<div class="es-line es-placeq search">${esIc('search')}<input id="vq-sh" placeholder="${isTrip(c) ? 'City or region' : 'Venue name or address'}" aria-label="${isTrip(c) ? 'Destination' : 'Venue'}" value="${esc(B.vq || '')}" enterkeyhint="search"><button type="button" class="es-find" data-b="search">Search</button></div>
       <ul class="vres">${B.venueResults.map((r, i) => `<li><button type="button" data-pick="${i}"><b>${esc(r.name)}</b><span>${esc(r.display)}</span></button></li>`).join('')}</ul>${B.vmsg ? `<p class="hint">${esc(B.vmsg)}</p>` : ''}`;
@@ -2990,7 +2990,7 @@ function roListHTML(c, i) {
   const pos = g.order.indexOf(i); const a = Math.max(0, Math.min(pos - 3, g.order.length - 7)); const rows = g.order.slice(a, a + 7);
   return `<div class="es-ro"><p class="es-lbl" id="ro-l">${esc(g.label)} · hold to reorder</p><span class="vh" id="ro-help">Up and down arrow keys move it</span>
     <ol class="ro-ol" data-ro-off="${a}" aria-labelledby="ro-l">${rows.map(j => { const y = c.schedule[j]; const nm = y.title || 'Untitled';
-      return `<li class="ro-it${j === i ? ' me' : ''}" data-ro="${j}"><button type="button" class="ro-grip" data-ro-grip="${j}" aria-label="Move ${esc(nm)}, ${esc(esDay(y.date))}" aria-describedby="ro-help">${esIc('grip')}</button><time>${esc(fmt(y.date, { weekday: 'short' }).toUpperCase())} ${+y.date.slice(8, 10)}</time><span class="ro-t">${esc(nm)}</span>${y.time ? `<small>${esc(fmtTime(y.time))}</small>` : ''}</li>`; }).join('')}</ol></div>`;
+      return `<li class="ro-it${j === i ? ' me' : ''}" data-ro="${j}"><button type="button" class="ro-grip" data-ro-grip="${j}" aria-label="Move ${esc(nm)}, ${esc(esDay(y.date))}" aria-describedby="ro-help">${esIc('grip')}</button><time>${esc(fmt(y.date, { weekday: 'short' }).toUpperCase())} ${+y.date.slice(8, 10)}</time><span class="ro-t${y.title ? '' : ' ph'}">${esc(nm)}</span>${y.time ? `<small>${esc(fmtTime(y.time))}</small>` : ''}</li>`; }).join('')}</ol></div>`;
 }
 // move item j to position `to` in its group's page order. It takes the day of the item it moved past.
 function itemMove(c, j, to) {
@@ -3088,7 +3088,7 @@ function stopCardHTML(c, i) {
     return `<label class="es-d${k === 'to' ? ' r' : ''}${v ? '' : ' ph'}"><small>${lbl}</small><b>${esc(v ? esDay(v) : 'Add a date')}</b><input id="st-${k}-${i}" type="date" data-st="${i}" data-k="${k}" value="${esc(v)}"${k === 'to' && s.from ? ` min="${esc(s.from.slice(0, 10))}"` : ''} aria-label="${lbl}"></label>`; };
   const hotels = li < 0 ? [] : c.schedule.map((x, j) => [x, j]).filter(([x]) => hotelStayLine(x) && legOf(named, x.date) === li);
   return `<div class="rowed st-row es-card es-stop" data-st-row="${i}">
-    ${s.name ? esMapBand(+s.lat, +s.lon, 11) : ''}
+    ${s.name ? esMapBand(+s.lat, +s.lon, s.cc && !s.city && !s.region && s.country === s.name ? 4 : 11) : ''}
     ${s.name ? `<h3 class="es-title es-city">${esc(s.name)}</h3><p class="es-sub"><span>${esc([s.region, s.country].filter(Boolean).join(', '))}</span>${s.region || s.country ? ' · ' : ''}<button type="button" class="es-chg" data-st-clear="${i}">Change</button></p>`
       : `<div class="es-line es-placeq search">${esIc('search')}<input id="st-q-${i}" data-st-q="${i}" placeholder="City or place" aria-label="City or place" autocomplete="off" enterkeyhint="search"><button type="button" class="es-find" data-st-find="${i}">Find</button></div>`}
     <div class="es-stay">${dt('from', 'Arrive')}${dt('to', 'Leave')}
