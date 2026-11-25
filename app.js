@@ -2435,7 +2435,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   if (!document._onpEsc) { document._onpEsc = true; document.addEventListener('keydown', (e) => { const d = $('#sheet'); if (e.key === 'Escape' && d && d.open && d.classList.contains('onp') && !d.matches(':modal') && !$('#confirmdlg[open]')) d.close(); }); }
   if (window.__sharePub) { window.__sharePub = false; setTimeout(() => publishTranslated(), 0); } // Share from the setup's last step or the owner's own page
   sh.addEventListener('click', (e) => { if (e.target === sh) sh.close(); });
-  wireInputs(sh.querySelector('.sheet-in'));
+  wireInputs(sh.querySelector('.sheet-in')); esWire(sh);
   DU = null; PH = null; wireDocs(sh.querySelector('.sheet-in')); wireDocs($('.b-form')); wirePageDrop(); docAIKnown(); wirePhotos(sh.querySelector('.sheet-in')); wirePhotos($('.b-form'));
   if (typeof wirePubHost === 'function') wirePubHost();
   if (SB && (LS.get('signedIn') || B.hosted)) msgReady().then(ok => { if (ok && B && !$('[data-card="msgs"]')) buildForm(); }); // no network for signed-out drafts
@@ -2492,7 +2492,7 @@ const builderHash = (cfg) => { const c = spanFixed(normalize(clone(cfg))); delet
 function saveStatus(st) {
   const el = $('[data-save]'); if (!el || !B) return;
   const txt = st === 'saving' ? 'Saving…' : st === 'saved' ? 'Saved' : st === 'local' ? 'Saved on this device' : '';
-  el.innerHTML = txt ? `<span>${esc(txt)}</span>` : '';
+  el.innerHTML = txt ? `<span>${esc(txt)}</span>` : ''; shSaveStatus(st);
 }
 // "Preview in: English | 日本語": the organizer sees the page as guests in each language do (on-page editing stays on the original)
 function pvLangHTML() { const c = B && B.cfg; const ls = c ? [srcLang(c), ...(c.langs || []).filter(l => l !== srcLang(c))] : []; if (ls.length < 2) { if (B) B.pvLang = ''; return ''; }
@@ -2581,7 +2581,7 @@ function flyIntoFieldHTML(c, p = 'f') {
   const { list, auto } = airportChoices(v.lat, v.lon); if (!list.length) return '';
   const pin = c.flyInto && !list.some(a => a.iata === c.flyInto) && airportByCode(c.flyInto) ? [apRow(airportByCode(c.flyInto), v.lat, v.lon)] : [];
   const lab = (a) => `${a.iata} · ${a.city || a.name} · ${fmtDist(a.d, v.cc)}`; const au = list.find(a => a.iata === auto);
-  return fieldWrap('Fly into', `<select id="${p}-fly" data-f="flyInto"><option value="">${esc(au ? `Automatic (${au.iata} · ${au.city || au.name})` : 'Automatic')}</option><option value="none"${c.flyInto === 'none' ? ' selected' : ''}>No airport (don't show flying info)</option>${list.concat(pin).map(a => `<option value="${esc(a.iata)}"${a.iata === c.flyInto ? ' selected' : ''}>${esc(lab(a))}</option>`).join('')}</select><p class="hint">The airport guests see on the ticket, flight searches and rental cars. Change it, or pick No airport if guests won't fly.</p>`, p + '-fly');
+  return fieldWrap('Fly into', `<select id="${p}-fly" data-f="flyInto"><option value="">${esc(au ? `Automatic (${au.iata} · ${au.city || au.name})` : 'Automatic')}</option><option value="none"${c.flyInto === 'none' ? ' selected' : ''}>No airport (don't show flying info)</option>${list.concat(pin).map(a => `<option value="${esc(a.iata)}"${a.iata === c.flyInto ? ' selected' : ''}>${esc(lab(a))}</option>`).join('')}</select>${p === 'sh' ? '' : '<p class="hint">The airport guests see on the ticket, flight searches and rental cars. Change it, or pick No airport if guests won\'t fly.</p>'}`, p + '-fly');
 }
 function venueFieldHTML(c) {
   return c.venue ? `<div class="venue-sel"><div><b>${esc(c.venue.name)}</b><span>${esc(c.venue.address || '')}</span></div><button type="button" class="btn sm" data-b="clear-venue">Change</button></div>
@@ -2589,7 +2589,7 @@ function venueFieldHTML(c) {
     : `<div class="field"><label for="vq">${isTrip(c) ? 'Destination' : 'Venue'}</label><div class="search"><input id="vq" placeholder="${isTrip(c) ? 'City or region' : 'Venue name or address'}" value="${esc(B.vq || '')}"><button type="button" class="btn" data-b="search">Search</button></div></div>
       <ul class="vres">${B.venueResults.map((r, i) => `<li><button type="button" data-pick="${i}"><b>${esc(r.name)}</b><span>${esc(r.display)}</span></button></li>`).join('')}</ul>${B.vmsg ? `<p class="hint">${esc(B.vmsg)}</p>` : ''}`;
 }
-function openCard(id) { if (B.onp) { onpCleanup(); B.focus = null; B.onpSec = null; } if (id === 'custom' && !B.cfg.custom.length) B.cfg.custom.push(blankCustom()); if (DU && DU.key !== 'main') DU = null; B.card = id; B.spEdit = null; renderSheet(); const sh = $('#sheet'); if (!sh.open) sh.showModal(); }
+function openCard(id) { if (B.onp) { onpCleanup(); B.focus = null; B.onpSec = null; } B.shDirty = false; B.shSave = ''; if (id === 'custom' && !B.cfg.custom.length) B.cfg.custom.push(blankCustom()); if (DU && DU.key !== 'main') DU = null; B.card = id; B.spEdit = null; renderSheet(); const sh = $('#sheet'); if (!sh.open) sh.showModal(); esAutogrow(sh); }
 function renderSheet() {
   const c = B.cfg; const id = B.card; const form = $('#sheet .sheet-in'); if (!form || !id) return;
   const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id); const cc = allCards(c).common.find(x => x[0] === id) || COMMON_CARDS.find(x => x[0] === id);
@@ -2597,21 +2597,25 @@ function renderSheet() {
   const op = B.onp ? onpSheet(c, id) : null; const F = B.onp && B.focus || null; const fi = F ? onpIdx(c) : -1;
   const only = (k, i) => !F || F.k !== k || i === fi; const one = (k) => !!F && F.k === k;
   if (op) body = op.body;
-  else if (id === 'route') body = routeHTML(c, one('st') ? fi : null);
+  else if (id === 'route') body = one('st') && fi >= 0 ? stopCardHTML(c, fi) : routeHTML(c, one('st') ? fi : null);
   else if (tc) { const sp = typeSpec(c); body = tc[3].map(k => xFieldHTML(c, sp.fields.find(f => f[0] === k), tc[3].length === 1)).join('');
     const bd = typeData(c); if (id === 'block') body += hfFormHTML(hfOfBlock(bd), 'hf-block', { en: true, note: true, attr: 'data-hf-block' });
     if (id === 'block' && BLOCK_KEYS.some(k => bd[k])) body += `<div class="btns"><button type="button" class="btn sm bk-rm hb-rm" data-b="rm-block">${TRASH_IC}Remove ${esc(bd.blockHotel || 'room block')}</button></div>`; }
+  else if (id === 'schedule' && one('s') && fi >= 0) body = itemCardHTML(c, fi);
   else if (id === 'schedule' && isTrip(c)) body = tripPlanHTML(c, F && F.k === 'day' ? { day: F.d } : one('s') ? { item: fi } : null);
   else if (id === 'schedule') body = `${c.schedule.map((x, i) => !only('s', i) ? '' : `<div class="rowed"><div class="two"><input type="date" data-s="${i}" data-k="date" value="${esc(x.date)}" aria-label="Date"><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time"></div><input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="What's happening" aria-label="Title">${schedPlaceHTML(x, i)}${hotelCiLine(x) ? schedHotelHF(x, i) : `<input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Note (optional)" aria-label="Note">`}${hotelCiLine(x) ? `<button type="button" class="ic del bk-rm" data-sdel="${i}" data-sdel-hotel aria-label="Remove hotel ${esc(hostHotelName(x.title))}">${TRASH_IC}Remove hotel</button>` : `<button type="button" class="ic del" data-sdel="${i}" aria-label="Remove item">Remove</button>`}</div>`).join('')}
     ${one('s') ? '' : `<div class="btns"><button type="button" class="btn sm" data-b="add-sched">+ Add item</button>${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`}`;
-  else if (id === 'notes') body = `${c.notes.map((x, i) => !only('n', i) ? '' : `<div class="rowed"><input data-n="${i}" data-k="label" value="${esc(x.label)}" placeholder="Title" aria-label="Title"><input data-n="${i}" data-k="text" value="${esc(x.text || '')}" placeholder="Text" aria-label="Text"><input data-n="${i}" data-k="url" type="url" value="${esc(x.url || '')}" placeholder="Link (optional)" aria-label="Link">${B.onp ? `<div class="plan-ctl"><span class="mv"><button type="button" data-onp-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-onp-mv="${i}" data-dir="1" ${i === c.notes.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button></span><button type="button" class="ic del" data-ndel="${i}" aria-label="Remove">Remove</button></div>` : `<button type="button" class="ic del" data-ndel="${i}" aria-label="Remove">Remove</button>`}</div>`).join('')}
+  else if (id === 'notes' && one('n') && fi >= 0) { const x = c.notes[fi]; body = `<div class="rowed es-card"><input class="es-title" data-n="${fi}" data-k="label" value="${esc(x.label)}" placeholder="Title" aria-label="Title">
+    <label class="es-line es-note">${esIc('pencil')}<input data-n="${fi}" data-k="text" value="${esc(x.text || '')}" placeholder="Add text" aria-label="Text"></label>
+    <label class="es-line es-note">${esIc('link')}<input data-n="${fi}" data-k="url" type="url" value="${esc(x.url || '')}" placeholder="Add a link" aria-label="Link"></label></div>`; }
+  else if (id === 'notes') body = `${c.notes.map((x, i) => !only('n', i) ? '' : `<div class="rowed"><input data-n="${i}" data-k="label" value="${esc(x.label)}" placeholder="Title" aria-label="Title"><input data-n="${i}" data-k="text" value="${esc(x.text || '')}" placeholder="Text" aria-label="Text"><input data-n="${i}" data-k="url" type="url" value="${esc(x.url || '')}" placeholder="Link (optional)" aria-label="Link">${F ? '' : B.onp ? `<div class="plan-ctl"><span class="mv"><button type="button" data-onp-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-onp-mv="${i}" data-dir="1" ${i === c.notes.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button></span><button type="button" class="ic del" data-ndel="${i}" aria-label="Remove">Remove</button></div>` : `<button type="button" class="ic del" data-ndel="${i}" aria-label="Remove">Remove</button>`}</div>`).join('')}
     ${one('n') ? '' : '<button type="button" class="btn sm" data-b="add-note">+ Add note</button>'}`;
   else if (id === 'custom') body = `${c.custom.map((x, i) => !only('cs', i) ? '' : `<div class="rowed cs-row"><input data-cs="${i}" data-k="title" value="${esc(x.title)}" placeholder="Title" aria-label="Title" maxlength="80" required>
     <textarea data-cs="${i}" data-k="text" rows="4" placeholder="Text" aria-label="Text" maxlength="3000">${esc(x.text)}</textarea>
     <div class="two"><input data-cs="${i}" data-k="label" value="${esc(x.label)}" placeholder="Link name" aria-label="Link name" maxlength="80"><input data-cs="${i}" data-k="url" type="url" value="${esc(x.url)}" placeholder="Link, https://…" aria-label="Link"></div>
     ${SB ? photoCtlHTML('cs:' + i, x.img, `<input data-cs="${i}" data-k="img" type="url" value="${esc(x.img)}" placeholder="or a photo link, https://…" aria-label="Photo link">`) : `<div class="cover-row">${httpsUrl(x.img) ? `<img src="${esc(x.img)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<input data-cs="${i}" data-k="img" type="url" value="${esc(x.img)}" placeholder="Photo link, https://…" aria-label="Photo link"></div>`}
     ${docBlockHTML(customSid(x))}
-    <button type="button" class="ic del" data-cdel="${i}" aria-label="Delete ${esc(x.title || 'section')}">Delete</button></div>`).join('')}
+    ${F ? '' : `<button type="button" class="ic del" data-cdel="${i}" aria-label="Delete ${esc(x.title || 'section')}">Delete</button>`}</div>`).join('')}
     ${one('cs') ? '' : '<button type="button" class="btn sm" data-b="add-custom">+ Add section</button>'}`;
   else if (id === 'langs') body = langsCardHTML(c);
   else if (id === 'about') body = `${aboutSiteHTML(c)}${fieldWrap('Hosted by', `<input id="f-host" data-f="host" value="${esc(c.host)}">`, 'f-host')}${fieldWrap('About', `<textarea id="f-desc" data-f="description" rows="6">${esc(c.description)}</textarea>`, 'f-desc')}`;
@@ -2624,9 +2628,12 @@ function renderSheet() {
   else if (typeof extraCardBody === 'function') body = extraCardBody(id, c);
   const head = (op && op.title) || (F && onpTitle(c, id)) || title;
   if (id !== 'custom' && !F && docCardOk(c, id)) body += docBlockHTML(id);
-  if (B.onp) body += onpFoot(c);
+  const foot = B.onp ? onpFoot(c) : ''; const menu = shMenu(c, id, F, fi);
   setTimeout(() => { if (id === 'stays') wirePresetAC(); if (id === 'schedule') wireSchedPlaceAC(); if (id === 'route') wireRouteAC(c); if (id === 'msgs') loadCardGroups(); if (id === 'when') { const q = $('#sheet #vq-sh'); if (q) placeAutocomplete(q, { bias: () => null, onPick: (pid, tok) => gpVenue(pid, tok).then(r => { B.vq = ''; B.venueResults = []; pickVenue(r); }).catch(() => toast('Couldn’t load that place')) }); } }, 0);
-  form.innerHTML = `<div class="grab" aria-hidden="true"></div><h2>${esc(head)}<button type="button" class="x" data-b="close" aria-label="Close">×</button></h2><div class="sheet-b">${body}</div><button type="button" class="btn primary big" data-b="close">Done</button>`;
+  const lbl = F && (F.k === 's' || F.k === 'st') ? shEyebrow(c, F, fi) || head : head;
+  form.innerHTML = `<div class="grab" aria-hidden="true"></div><div class="sh-top"><h2><span class="sh-lbl" tabindex="-1" autofocus>${esc(lbl)}</span><button type="button" class="x sh-round" data-b="close" aria-label="Close">×</button></h2>${shSavedHTML()}${menu}</div>
+    <div class="sheet-b${F ? ' es-one' : ''}">${body}</div><div class="sh-foot">${foot}<button type="button" class="btn primary big" data-b="close">Done</button></div><p class="vh" role="status" aria-live="polite" data-sh-live></p>`;
+  esAutogrow(form);
 }
 // one input handler for the form and the card sheet
 function wireInputs(root) {
@@ -2661,6 +2668,7 @@ function wireInputs(root) {
   root.onkeydown = (e) => { if ((e.target.id === 'vq' || e.target.id === 'vq-sh') && e.key === 'Enter') { e.preventDefault(); venueSearch(); } if (e.target.id === 'f-site' && e.key === 'Enter') { e.preventDefault(); aboutFill(); } };
   root.onclick = (e) => {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset; const cfg = c();
+    if (root.closest('#sheet') && esClick(b, cfg)) return;
     if (B.onp && root.closest('#sheet') && onpClick(b, cfg)) return;
     if (designClick(b, cfg) || tripClick(b, cfg) || routeClick(b, cfg)) return;
     if (b.dataset.trGo || b.dataset.trEdit) { langsClick(b, cfg); return; }
@@ -2791,25 +2799,25 @@ function onpCleanup() {
 function onpOpen(id, focus = null, secId = null) {
   const sh = $('#sheet'); if (!sh) return;
   if (B.onp) onpCleanup();
-  B.onp = true; B.focus = focus; B.onpSec = secId; B.card = id; B.spEdit = null; if (DU && DU.key !== 'main') DU = null;
+  B.onp = true; B.focus = focus; B.onpSec = secId; B.card = id; B.spEdit = null; B.shDirty = false; B.shSave = ''; if (DU && DU.key !== 'main') DU = null;
   const wide = matchMedia('(min-width: 980px)').matches; const f = $('#b-set'), top = $('.b-top');
   if (wide && top) { sh.style.setProperty('--onp-top', top.getBoundingClientRect().bottom + 'px'); sh.style.setProperty('--onp-w', (f && f.getBoundingClientRect().width || 440) + 'px'); $('.builder')?.style.setProperty('--onp-dock', (f && f.getBoundingClientRect().width || 440) + 'px'); }
   sh.classList.add('onp'); renderSheet();
-  if (!sh.open) { if (wide) sh.show(); else sh.showModal(); }
+  if (!sh.open) { if (wide) sh.show(); else sh.showModal(); } esAutogrow(sh);
   sh.querySelector('.sheet-in').scrollTop = 0;
   if (focus && focus.fresh) setTimeout(() => sh.querySelector('.sheet-b input:not([type="date"]):not([type="time"]):not([type="file"]), .sheet-b textarea')?.focus(), 60);
 }
 // sheet body for the on-page parts that have no card of their own, or null
 function onpSheet(c, id) {
-  if (id === 'hero') return { title: 'Title and photo', body: `${fieldWrap('Title', `<input id="sh-title" data-f="title" value="${esc(c.title)}" maxlength="80">`, 'sh-title')}
-    ${fieldWrap('Tagline', `<input id="sh-tagline" data-f="tagline" value="${esc(c.tagline)}" maxlength="140" placeholder="Optional">`, 'sh-tagline')}${coverFieldHTML(c)}` };
+  if (id === 'hero') return { title: 'Title and photo', body: `<div class="es-card es-hero"><input id="sh-title" class="es-title" data-f="title" value="${esc(c.title)}" maxlength="80" placeholder="Title" aria-label="Title">
+    <label class="es-line es-note">${esIc('pencil')}<input id="sh-tagline" data-f="tagline" value="${esc(c.tagline)}" maxlength="140" placeholder="Add a tagline" aria-label="Tagline"></label></div>${coverFieldHTML(c)}` };
   if (id === 'when') {
     const v = c.venue;
-    const venue = v ? `<div class="venue-sel"><div><b>${esc(v.name)}</b><span>${esc(v.address || '')}</span></div><button type="button" class="btn sm" data-b="clear-venue">Change</button></div>
-      ${fieldWrap(isTrip(c) ? 'Destination name on the page' : 'Venue name on the page', `<input id="sh-vname" data-v="name" value="${esc(v.name)}">`, 'sh-vname')}`
-      : `<div class="field"><label for="vq-sh">${isTrip(c) ? 'Destination' : 'Venue'}</label><div class="search"><input id="vq-sh" placeholder="${isTrip(c) ? 'City or region' : 'Venue name or address'}" value="${esc(B.vq || '')}"><button type="button" class="btn" data-b="search">Search</button></div></div>
+    const venue = v ? `${esMapBand(+v.lat, +v.lon, isTrip(c) ? 11 : 15)}<input id="sh-vname" class="es-title" data-v="name" value="${esc(v.name)}" aria-label="${isTrip(c) ? 'Destination name on the page' : 'Venue name on the page'}">
+      <p class="es-sub"><span>${esc(v.address || '')}</span>${v.address ? ' · ' : ''}<button type="button" class="es-chg" data-b="clear-venue">Change</button></p>`
+      : `<div class="es-line es-placeq search">${esIc('search')}<input id="vq-sh" placeholder="${isTrip(c) ? 'City or region' : 'Venue name or address'}" aria-label="${isTrip(c) ? 'Destination' : 'Venue'}" value="${esc(B.vq || '')}" enterkeyhint="search"><button type="button" class="es-find" data-b="search">Search</button></div>
       <ul class="vres">${B.venueResults.map((r, i) => `<li><button type="button" data-pick="${i}"><b>${esc(r.name)}</b><span>${esc(r.display)}</span></button></li>`).join('')}</ul>${B.vmsg ? `<p class="hint">${esc(B.vmsg)}</p>` : ''}`;
-    return { title: isTrip(c) ? 'Dates and destination' : 'Date and place', body: whenFieldsHTML(c, 'sh') + venue + flyIntoFieldHTML(c, 'sh') };
+    return { title: isTrip(c) ? 'Dates and destination' : 'Date and place', body: `<div class="es-card es-when">${venue}${whenFieldsHTML(c, 'sh')}</div>${flyIntoFieldHTML(c, 'sh')}` };
   }
   if (id === 'fly') return { title: 'Fly into', body: flyIntoFieldHTML(c, 'sh') || '<p class="hint">Pick a venue first.</p>' };
   if (id === 'details') {
@@ -2832,13 +2840,8 @@ function onpTitle(c, id) {
 }
 // the bottom of an on-page sheet: Show all (one item) and the section's place on the page
 function onpFoot(c) {
-  const F = B.focus; let h = '';
-  if (F && F.k !== 'cs') h += `<button type="button" class="link strong" data-onp-all>Show all</button>`;
-  const sid = B.onpSec; const o = sectionOrder(c); const i = o.indexOf(sid);
-  if (sid && i >= 0 && !(sid === 'route' && routeInItin(c)) && (!F || F.k === 'cs')) {
-    h += `<div class="onp-secctl"><span class="mv"><button type="button" data-sec-mv="${esc(sid)}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move section up">↑</button><button type="button" data-sec-mv="${esc(sid)}" data-dir="1" ${i === o.length - 1 ? 'disabled' : ''} aria-label="Move section down">↓</button></span><button type="button" class="link" data-onp-hide="${esc(sid)}">Hide section</button></div>`;
-  }
-  return h ? `<div class="onp-foot">${h}</div>` : '';
+  const F = B.focus;
+  return F && F.k !== 'cs' ? `<button type="button" class="link strong sh-all" data-onp-all>${esIc('eye')}Show all</button>` : '';
 }
 // clicks in an on-page sheet; true when handled
 function onpClick(b, cfg) {
@@ -2875,6 +2878,224 @@ function undoToast(msg, fn) {
   el.querySelector('button').onclick = () => { el.remove(); fn(); };
   requestAnimationFrame(() => el.classList.add('show'));
   clearTimeout(undoToast._t); undoToast._t = setTimeout(() => el.remove(), 7000);
+}
+// ---------- edit sheets: one look for every owner sheet ("the item is its own card") ----------
+// Top: a small label (Day 21 · Kyoto, Stop 4 of 6, the sheet's name), Saved once an edit is saved, … for the rarer actions
+// (move, remove, hide), ×. The thing being edited is a card: its name big and typed in place, its date/time as chips,
+// its place and note as lines. Edits save as they're made; Done only closes. Show all stays at the bottom.
+const ES_IC = {
+  activity: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+  reservation: '<path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4z"/><path d="M14 6v12" stroke-dasharray="2 2.5"/>',
+  note: '<path d="M5 4h10l4 4v12H5z"/><path d="M15 4v4h4M8 12h8M8 16h5"/>',
+  cal: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/>',
+  clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+  search: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',
+  more: '<circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/>',
+  grip: '<g fill="currentColor" stroke="none"><circle cx="9" cy="7" r="1.4"/><circle cx="15" cy="7" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="17" r="1.4"/><circle cx="15" cy="17" r="1.4"/></g>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  up: '<path d="M12 19V5M6 11l6-6 6 6"/>', down: '<path d="M12 5v14M6 13l6 6 6-6"/>',
+  trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+  bed: '<path d="M3 18V7M3 14h18v4M21 14v-3a3 3 0 0 0-3-3h-7v6"/><circle cx="7" cy="11" r="1.8"/>',
+  chev: '<path d="M9 6l6 6-6 6"/>', pencil: '<path d="M4 20l1-4L16 5l3 3L8 19z"/>',
+  eye: '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  minus: '<path d="M6 12h12"/>', plus: '<path d="M12 6v12M6 12h12"/>', x: '<path d="M7 7l10 10M17 7L7 17"/>',
+  hide: '<path d="M3 3l18 18M10.6 6.1A10.6 10.6 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3.2 3.9M6.6 6.6C3.8 8.4 2 12 2 12s3.5 6 10 6a9.7 9.7 0 0 0 4.4-1"/>',
+};
+const esIc = (k, cls = '') => `<svg class="es-ic${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" aria-hidden="true">${ES_IC[k] || ''}</svg>`;
+const esDay = (d) => d ? fmt(d, { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+// the small label at the top of a one-item sheet
+function shEyebrow(c, F, fi) {
+  if (F.k === 'st') { const ss = c.stops || []; return ss.length > 1 && fi >= 0 ? `Stop ${fi + 1} of ${ss.length}` : 'Stop'; }
+  const x = c.schedule[fi]; if (!x || !x.date) return schedTitle(c);
+  if (!isTrip(c)) return friendlyDate(x.date);
+  const day = c.start && x.date >= c.start.slice(0, 10) ? `Day ${daysBetween(c.start, x.date) + 1}` : esDay(x.date);
+  const ss = stopsOf(c); const st = ss.length ? ss[legOf(ss, x.date)] : null;
+  return st ? `${day} · ${st.city || st.name}` : `${day} · ${esDay(x.date)}`;
+}
+// Saved: shows once an edit made in this sheet is saved (the header keeps the page-wide status)
+const shSavedHTML = () => `<span class="sh-saved" data-sh-saved>${B && B.shSave ? shSavedTxt(B.shSave) : ''}</span>`;
+const shSavedTxt = (st) => st === 'saving' ? '<span class="sh-sv">Saving…</span>' : st ? `${esIc('check')}<span>Saved</span>` : '';
+function shSaveStatus(st) { const sh = $('#sheet'); if (!B || !sh || !sh.open) return; if (st === 'saving') B.shDirty = true; if (!B.shDirty) return;
+  B.shSave = st === 'saving' ? 'saving' : st ? 'saved' : ''; const el = sh.querySelector('[data-sh-saved]'); if (el) el.innerHTML = shSavedTxt(B.shSave); }
+// … : the sheet's rarer actions. Each entry: [data attributes, icon, label, { dis, del }] or '-' (a rule)
+function shMenu(c, id, F, fi) {
+  if (!B.onp) return ''; const it = []; const ss = c.stops || [];
+  const sec = () => { const sid = B.onpSec; const o = sectionOrder(c); const i = o.indexOf(sid);
+    if (!sid || i < 0 || (sid === 'route' && routeInItin(c))) return;
+    it.push([`data-sec-mv="${esc(sid)}" data-dir="-1"`, 'up', 'Move section up', { dis: i === 0 }], [`data-sec-mv="${esc(sid)}" data-dir="1"`, 'down', 'Move section down', { dis: i === o.length - 1 }], [`data-onp-hide="${esc(sid)}"`, 'hide', 'Hide section']); };
+  if (F && F.k === 's' && fi >= 0) { const x = c.schedule[fi];
+    if (isTrip(c)) it.push(['data-tp-day', 'cal', 'Move to another day'], '-');
+    it.push([`data-sdel="${fi}"${hotelCiLine(x) ? ' data-sdel-hotel' : ''}`, 'trash', hotelCiLine(x) ? 'Remove hotel' : 'Remove', { del: true }]); }
+  else if (F && F.k === 'st' && fi >= 0) it.push([`data-st-mv="${fi}" data-dir="-1"`, 'up', 'Move earlier', { dis: fi === 0 }], [`data-st-mv="${fi}" data-dir="1"`, 'down', 'Move later', { dis: fi === ss.length - 1 }], '-', [`data-st-del="${fi}"`, 'trash', 'Remove', { del: true }]);
+  else if (F && F.k === 'n' && fi >= 0) it.push([`data-onp-mv="${fi}" data-dir="-1"`, 'up', 'Move up', { dis: fi === 0 }], [`data-onp-mv="${fi}" data-dir="1"`, 'down', 'Move down', { dis: fi === c.notes.length - 1 }], '-', [`data-ndel="${fi}"`, 'trash', 'Remove', { del: true }]);
+  else if (F && F.k === 'cs' && fi >= 0) { sec(); if (it.length) it.push('-'); it.push([`data-cdel="${fi}"`, 'trash', 'Delete section', { del: true }]); }
+  else if (!F) sec();
+  if (!it.length) return '';
+  return `<button type="button" class="sh-round sh-more" data-sh-more aria-label="More" aria-haspopup="menu" aria-expanded="false" aria-controls="sh-menu">${esIc('more')}</button>
+    <div class="sh-menu" id="sh-menu" role="menu" hidden>${it.map(x => x === '-' ? '<hr>' : `<button type="button" role="menuitem" ${x[0]}${x[3] && x[3].dis ? ' disabled' : ''} class="${x[3] && x[3].del ? 'del' : ''}">${esIc(x[1])}<span>${esc(x[2])}</span></button>`).join('')}</div>`;
+}
+function shMenuOpen(on) {
+  const m = $('#sheet .sh-menu'), b = $('#sheet [data-sh-more]'); if (!m || !b) return;
+  m.hidden = !on; b.setAttribute('aria-expanded', String(on)); b.classList.toggle('on', on);
+  if (on) m.querySelector('button:not([disabled])')?.focus();
+}
+// a real map, cropped: the OpenStreetMap tiles the page's maps already use, the point in the middle (w×h CSS px)
+function osmCrop(lat, lon, z, w, h) {
+  if (!isFinite(lat) || !isFinite(lon)) return ''; const n = 2 ** z; const r = lat * Math.PI / 180;
+  const x = (lon + 180) / 360 * n * 256, y = (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n * 256; const x0 = x - w / 2, y0 = y - h / 2; let img = '';
+  for (let tx = Math.floor(x0 / 256); tx * 256 < x0 + w; tx++) for (let ty = Math.floor(y0 / 256); ty * 256 < y0 + h; ty++) {
+    if (ty < 0 || ty >= n) continue;
+    img += `<img src="https://tile.openstreetmap.org/${z}/${((tx % n) + n) % n}/${ty}.png" alt="" draggable="false" style="left:${Math.round(tx * 256 - x0)}px;top:${Math.round(ty * 256 - y0)}px" onerror="this.remove()">`; }
+  return `<span class="es-tiles" style="width:${w}px;height:${h}px;margin:${-h / 2}px 0 0 ${-w / 2}px">${img}</span><i class="es-pin" aria-hidden="true"></i>`;
+}
+const esMapBand = (lat, lon, z) => isFinite(lat) && isFinite(lon) ? `<div class="es-band" aria-hidden="true">${osmCrop(lat, lon, z, 640, 104)}<small>© OpenStreetMap</small></div>` : '';
+// ---- the itinerary item ----
+function itemCardHTML(c, i) {
+  const x = c.schedule[i]; const trip = isTrip(c); const k = trip ? (PLAN_KINDS[x.kind] ? x.kind : 'activity') : 'activity'; const hotel = hotelCiLine(x);
+  const ph = !trip ? 'What’s happening' : k === 'reservation' ? 'Dinner at…, tour, tickets' : k === 'note' ? 'Something to remember' : 'What you’re doing';
+  const chip = (kind, ic, txt, inp, set) => `<span class="es-chip${set ? '' : ' ghost'}" data-chip="${kind}">${esIc(ic)}<span data-chip-t>${esc(txt)}</span>${inp}</span>`;
+  return `<div class="rowed plan-item es-card it-card k-${k}" data-it="${i}">
+    <span class="es-kind" aria-hidden="true">${esIc(hotel ? 'bed' : k)}</span>
+    <textarea class="es-title" data-s="${i}" data-k="title" rows="1" maxlength="200" placeholder="${ph}" aria-label="Title">${esc(x.title)}</textarea>
+    <div class="es-chips">${chip('date', 'cal', x.date ? esDay(x.date) : 'Add a day', `<input id="tp-date" type="date" data-s="${i}" data-k="date" value="${esc(x.date || '')}" aria-label="Day">`, !!x.date)}${chip('time', 'clock', x.time ? fmtTime(x.time) : 'Add a time', `<input type="time" data-s="${i}" data-k="time" value="${esc(x.time || '')}" aria-label="Time">${x.time ? `<button type="button" class="es-chip-x" data-tp-notime="${i}" aria-label="Remove the time">${esIc('x')}</button>` : ''}`, !!x.time)}</div>
+    ${trip && k === 'note' ? '' : itemPlaceHTML(x, i)}
+    ${hotel ? `<div class="es-line es-hf">${esIc('bed')}<div class="es-tx">${hfFoldHTML(hfOfEv(x), 'hf-s' + i, { en: true, attr: `data-hf-s="${i}"` })}</div></div>
+      <label class="es-line es-note">${esIc('pencil')}<textarea data-s="${i}" data-k="note" rows="1" maxlength="1000" placeholder="Notes: confirmation, late check-in, requests" aria-label="Notes">${esc(x.note || '')}</textarea></label>`
+      : `<label class="es-line es-note">${esIc('pencil')}<textarea data-s="${i}" data-k="note" rows="1" maxlength="1000" placeholder="${trip ? 'Confirmation or a note' : 'Add a note'}" aria-label="Note">${esc(x.note || '')}</textarea></label>`}
+  </div>
+  ${trip ? `<div class="es-kinds" role="radiogroup" aria-label="Type">${Object.entries(PLAN_KINDS).map(([v, l]) => `<button type="button" role="radio" aria-checked="${k === v}" tabindex="${k === v ? 0 : -1}" class="es-kt${k === v ? ' on' : ''}" data-tp-kind="${v}" data-tp-i="${i}">${esIc(v)}<span>${l}</span></button>`).join('')}</div>${roListHTML(c, i)}` : ''}`;
+}
+// the item's place: Add a place (search as you type; Enter or Find for a plain search), or the place with a map crop
+function itemPlaceHTML(x, i) {
+  const p = x.place;
+  if (p && B.spEdit !== i) { const sub = p.address && p.address !== p.name ? p.address : '';
+    const dir = p.lat != null ? `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}` : `https://www.google.com/maps/dir/?api=1&destination=${enc([p.name, p.address].filter(Boolean).join(', '))}`;
+    return `<div class="es-line es-place s-place">${p.lat != null ? `<span class="es-thumb" title="Map © OpenStreetMap">${osmCrop(p.lat, p.lon, 15, 64, 48)}</span>` : esIc('search')}<div class="es-tx"><button type="button" class="es-pl" data-sp-chg="${i}" aria-label="Change place: ${esc(p.name)}"><b>${esc(p.name)}</b></button><small>${sub ? `${esc(sub)} · ` : ''}<a href="${esc(dir)}" target="_blank" rel="noopener noreferrer">Directions</a></small></div><button type="button" class="es-x" data-sp-del="${i}" aria-label="Remove place">${esIc('x')}</button></div>`; }
+  return `<div class="es-line es-placeq s-place-q search">${esIc('search')}<input id="sp-q-${i}" data-sp-q="${i}" value="${p ? esc(p.name) : ''}" placeholder="Add a place" aria-label="Place" autocomplete="off" enterkeyhint="search"><button type="button" class="es-find" data-sp-find="${i}">Find</button></div>`;
+}
+// page order of some schedule items: by day, then time; an item with no time follows the one before it in the list
+function schedOrder(c, idx) {
+  const last = {}; return idx.map(j => { const y = c.schedule[j]; const d = y.date || '9999'; const h = y.time || last[d] || ''; if (y.time) last[d] = y.time; return [j, d, h]; })
+    .sort((a, b) => a[1].localeCompare(b[1]) || a[2].localeCompare(b[2]) || a[0] - b[0]).map(a => a[0]);
+}
+// the item among its neighbors: the items in the same city (a trip with stops), else the same day
+function itemGroup(c, i) {
+  const x = c.schedule[i]; if (!x || !x.date) return null; const ss = stopsOf(c); const li = ss.length ? legOf(ss, x.date) : -1;
+  const s = li >= 0 ? ss[li] : null; const inG = s ? (y) => !!y.date && legOf(ss, y.date) === li : (y) => y.date === x.date;
+  return { label: s ? `In ${s.city || s.name}` : esDay(x.date), order: schedOrder(c, c.schedule.map((_, j) => j).filter(j => inG(c.schedule[j]))) };
+}
+function roListHTML(c, i) {
+  const g = itemGroup(c, i); if (!g || g.order.length < 2) return '';
+  const pos = g.order.indexOf(i); const a = Math.max(0, Math.min(pos - 3, g.order.length - 7)); const rows = g.order.slice(a, a + 7);
+  return `<div class="es-ro"><p class="es-lbl" id="ro-l">${esc(g.label)} · hold to reorder</p><span class="vh" id="ro-help">Up and down arrow keys move it</span>
+    <ol class="ro-ol" data-ro-off="${a}" aria-labelledby="ro-l">${rows.map(j => { const y = c.schedule[j]; const nm = y.title || 'Untitled';
+      return `<li class="ro-it${j === i ? ' me' : ''}" data-ro="${j}"><button type="button" class="ro-grip" data-ro-grip="${j}" aria-label="Move ${esc(nm)}, ${esc(esDay(y.date))}" aria-describedby="ro-help">${esIc('grip')}</button><time>${esc(fmt(y.date, { weekday: 'short' }).toUpperCase())} ${+y.date.slice(8, 10)}</time><span class="ro-t">${esc(nm)}</span>${y.time ? `<small>${esc(fmtTime(y.time))}</small>` : ''}</li>`; }).join('')}</ol></div>`;
+}
+// move item j to position `to` in its group's page order. It takes the day of the item it moved past.
+function itemMove(c, j, to) {
+  const g = itemGroup(c, j); if (!g) return false; const from = g.order.indexOf(j); const rest = g.order.filter(k => k !== j); to = Math.max(0, Math.min(rest.length, to));
+  if (from < 0 || to === from) return false;
+  const x = c.schedule[j]; const objs = rest.map(k => c.schedule[k]); const passed = to > from ? objs[to - 1] : objs[to]; if (!passed) return false;
+  if (passed.date) x.date = passed.date;
+  const P = objs[to - 1], N = objs[to]; const arr = c.schedule; arr.splice(arr.indexOf(x), 1);
+  if (P && P.date === x.date) arr.splice(arr.indexOf(P) + 1, 0, x); else if (N) arr.splice(arr.indexOf(N), 0, x); else arr.push(x);
+  return true;
+}
+function itemMoved(c, x, kb) {
+  changed(true); const k = c.schedule.indexOf(x); const g = itemGroup(c, k); const live = $('#sheet [data-sh-live]');
+  if (live && g) live.textContent = `${x.title || 'Item'}: ${esDay(x.date)}, ${g.order.indexOf(k) + 1} of ${g.order.length}`;
+  if (kb) $(`#sheet [data-ro-grip="${k}"]`)?.focus();
+}
+// date / time typed or picked: the chips, the label and the list follow without redrawing the fields
+function itemRefresh(i) {
+  const c = B.cfg; const x = c.schedule[i]; const card = $(`#sheet .it-card[data-it="${i}"]`); if (!x || !card) return;
+  const set = (k, txt, on) => { const ch = card.querySelector(`[data-chip="${k}"]`); if (!ch) return; ch.querySelector('[data-chip-t]').textContent = txt; ch.classList.toggle('ghost', !on); };
+  set('date', x.date ? esDay(x.date) : 'Add a day', !!x.date); set('time', x.time ? fmtTime(x.time) : 'Add a time', !!x.time);
+  const ch = card.querySelector('[data-chip="time"]'); const xb = ch && ch.querySelector('.es-chip-x');
+  if (ch && x.time && !xb) ch.insertAdjacentHTML('beforeend', `<button type="button" class="es-chip-x" data-tp-notime="${i}" aria-label="Remove the time">${esIc('x')}</button>`); else if (xb && !x.time) xb.remove();
+  const l = $('#sheet .sh-lbl'); if (l && B.focus) l.textContent = shEyebrow(c, B.focus, i);
+  const ro = $('#sheet .es-ro'); const h = isTrip(c) ? roListHTML(c, i) : '';
+  if (ro) { if (h) ro.outerHTML = h; else ro.remove(); } else if (h) $('#sheet .es-kinds')?.insertAdjacentHTML('afterend', h);
+}
+// clicks on the edit sheets' own controls; true when handled
+function esClick(b, cfg) {
+  const d = b.dataset;
+  if ('shMore' in d) { shMenuOpen(b.getAttribute('aria-expanded') !== 'true'); return true; }
+  if (b.closest('.sh-menu')) shMenuOpen(false);
+  if (d.onpGo) { onpGo(d.onpGo); return true; }
+  if (d.tpKind) { const x = cfg.schedule[+d.tpI]; if (x && x.kind !== d.tpKind) { x.kind = d.tpKind; changed(true); setTimeout(() => $(`#sheet [data-tp-kind="${d.tpKind}"]`)?.focus(), 0); } return true; }
+  if (d.tpNotime != null) { const x = cfg.schedule[+d.tpNotime]; if (x) { x.time = ''; changed(true); setTimeout(() => $('#sheet [data-chip="time"] input')?.focus(), 0); } return true; }
+  if ('tpDay' in d) { const inp = $('#sheet #tp-date'); if (inp) { inp.focus(); try { inp.showPicker(); } catch { /* the field has focus */ } } return true; }
+  return false;
+}
+// title and note grow with their text (one line until there's more)
+function esAutogrow(root) { $$('.es-title, .es-note textarea, .es-one .rowed textarea', root).forEach(esGrow); }
+function esGrow(t) { if (!t || t.tagName !== 'TEXTAREA' || !t.offsetParent) return; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }
+// the reorder list: hold a row (or grab its handle) and drag; the handle also moves with the arrow keys
+let RO = null;
+function roDown(e) {
+  const li = e.target.closest && e.target.closest('#sheet .ro-it'); if (!li || (e.button && e.pointerType === 'mouse')) return;
+  const grip = e.target.closest('.ro-grip'); if (RO) roEnd(false);
+  RO = { li, ol: li.parentElement, y: e.clientY, y0: e.clientY, pid: e.pointerId, on: false, t: 0 };
+  if (grip) { e.preventDefault(); roStart(); } else RO.t = setTimeout(roStart, 350);
+}
+function roStart() { if (!RO) return; RO.on = true; RO.li.classList.add('drag'); RO.ol.classList.add('dragging'); try { RO.li.setPointerCapture(RO.pid); } catch { /* released */ } if (navigator.vibrate) try { navigator.vibrate(8); } catch { /* no vibration */ } }
+function roMove(e) {
+  if (!RO || e.pointerId !== RO.pid) return;
+  if (!RO.on) { if (Math.abs(e.clientY - RO.y0) > 8) roEnd(false); return; }
+  e.preventDefault(); const li = RO.li; const dy = e.clientY - RO.y;
+  const prev = li.previousElementSibling, next = li.nextElementSibling;
+  if (dy < 0 && prev && e.clientY < prev.getBoundingClientRect().top + prev.offsetHeight / 2) { RO.y -= prev.offsetHeight; li.after(prev); }
+  else if (dy > 0 && next && e.clientY > next.getBoundingClientRect().top + next.offsetHeight / 2) { RO.y += next.offsetHeight; li.before(next); }
+  li.style.transform = `translateY(${e.clientY - RO.y}px)`;
+}
+function roEnd(drop) {
+  const r = RO; RO = null; if (!r) return; clearTimeout(r.t); r.li.classList.remove('drag'); r.ol.classList.remove('dragging'); r.li.style.transform = '';
+  if (!drop || !r.on) return;
+  const c = B.cfg; const j = +r.li.dataset.ro; const x = c.schedule[j]; const to = +r.ol.dataset.roOff + [...r.ol.children].indexOf(r.li);
+  if (x && itemMove(c, j, to)) itemMoved(c, x, false); else renderSheet();
+}
+function roKey(e) {
+  const g = e.target.closest && e.target.closest('#sheet [data-ro-grip]'); if (!g || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+  e.preventDefault(); const c = B.cfg; const j = +g.dataset.roGrip; const x = c.schedule[j]; const gr = itemGroup(c, j); if (!x || !gr) return;
+  if (itemMove(c, j, gr.order.indexOf(j) + (e.key === 'ArrowUp' ? -1 : 1))) itemMoved(c, x, true);
+}
+// the sheet's own wiring, once per builder
+function esWire(sh) {
+  const form = sh.querySelector('.sheet-in');
+  form.addEventListener('pointerdown', roDown); form.addEventListener('pointermove', roMove); form.addEventListener('pointerup', () => roEnd(true)); form.addEventListener('pointercancel', () => roEnd(false));
+  form.addEventListener('touchmove', (e) => { if (RO && RO.on) e.preventDefault(); }, { passive: false });
+  form.addEventListener('contextmenu', (e) => { if (e.target.closest('.ro-it')) e.preventDefault(); });
+  form.addEventListener('input', (e) => { const t = e.target; if (t.matches('textarea')) esGrow(t); if (t.matches('.it-card [data-chip] input')) itemRefresh(+t.dataset.s); });
+  form.addEventListener('click', (e) => { const t = e.target; if (t.matches && t.matches('.es-chip input')) { try { t.showPicker(); } catch { /* typed instead */ } }
+    const m = form.querySelector('.sh-menu:not([hidden])'); if (m && !e.target.closest('.sh-menu, [data-sh-more]')) shMenuOpen(false); });
+  form.addEventListener('keydown', (e) => {
+    roKey(e);
+    if (e.key === 'Escape' && form.querySelector('.sh-menu:not([hidden])')) { e.preventDefault(); e.stopPropagation(); shMenuOpen(false); $('#sheet [data-sh-more]')?.focus(); return; }
+    const mi = e.target.closest && e.target.closest('.sh-menu [role="menuitem"]');
+    if (mi && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); const xs = $$('.sh-menu [role="menuitem"]:not([disabled])', form); const k = xs.indexOf(mi); xs[(k + (e.key === 'ArrowDown' ? 1 : -1) + xs.length) % xs.length]?.focus(); }
+    const kt = e.target.closest && e.target.closest('[data-tp-kind]');
+    if (kt && /^Arrow(Left|Right|Up|Down)$/.test(e.key)) { e.preventDefault(); const xs = $$('[data-tp-kind]', form); const k = xs.indexOf(kt); xs[(k + (/Right|Down/.test(e.key) ? 1 : -1) + xs.length) % xs.length].click(); }
+    if (e.target.matches && e.target.matches('.es-title') && e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+  }, true);
+  sh.addEventListener('cancel', (e) => { if (form.querySelector('.sh-menu:not([hidden])')) { e.preventDefault(); shMenuOpen(false); } });
+}
+// ---- the stop ----
+function stopCardHTML(c, i) {
+  const ss = c.stops || []; const s = ss[i]; if (!s) return ''; const n = nightsOf(s); const named = stopsOf(c); const li = named.indexOf(s);
+  const dt = (k, lbl) => { const v = k === 'from' ? (s.from || '').slice(0, 10) : (s.to || '').slice(0, 10);
+    return `<label class="es-d${k === 'to' ? ' r' : ''}${v ? '' : ' ph'}"><small>${lbl}</small><b>${esc(v ? esDay(v) : 'Add a date')}</b><input id="st-${k}-${i}" type="date" data-st="${i}" data-k="${k}" value="${esc(v)}"${k === 'to' && s.from ? ` min="${esc(s.from.slice(0, 10))}"` : ''} aria-label="${lbl}"></label>`; };
+  const hotels = li < 0 ? [] : c.schedule.map((x, j) => [x, j]).filter(([x]) => hotelStayLine(x) && legOf(named, x.date) === li);
+  return `<div class="rowed st-row es-card es-stop" data-st-row="${i}">
+    ${s.name ? esMapBand(+s.lat, +s.lon, 11) : ''}
+    ${s.name ? `<h3 class="es-title es-city">${esc(s.name)}</h3><p class="es-sub"><span>${esc([s.region, s.country].filter(Boolean).join(', '))}</span>${s.region || s.country ? ' · ' : ''}<button type="button" class="es-chg" data-st-clear="${i}">Change</button></p>`
+      : `<div class="es-line es-placeq search">${esIc('search')}<input id="st-q-${i}" data-st-q="${i}" placeholder="City or place" aria-label="City or place" autocomplete="off" enterkeyhint="search"><button type="button" class="es-find" data-st-find="${i}">Find</button></div>`}
+    <div class="es-stay">${dt('from', 'Arrive')}${dt('to', 'Leave')}
+      ${stopDated(s) ? `<div class="es-nights st-nights" role="group" aria-label="Nights"><button type="button" data-st-n="${i}" data-dir="-1" ${n ? '' : 'disabled'} aria-label="One night fewer">${esIc('minus')}</button><span>${n == null ? 'Set the leave date' : n === 0 ? 'Day trip' : nightsTxt(n)}</span><button type="button" data-st-n="${i}" data-dir="1" aria-label="One more night">${esIc('plus')}</button></div>` : ''}</div>
+    ${stopNoteHTML(c, i)}
+    ${hotels.map(([x, j]) => `<button type="button" class="es-line es-go" data-onp-go="s:${j}">${esIc('bed')}<span class="es-tx"><b>${esc(hostHotelName(x.title) || x.title)}</b><small>Check in ${esc(esDay(x.date))}</small></span>${esIc('chev')}</button>`).join('')}
+  </div>`;
 }
 async function venueSearch() {
   const inSheet = !!$('#sheet #vq-sh'); const q = ($(inSheet ? '#sheet #vq-sh' : '#vq')?.value || '').trim(); B.vq = q;
@@ -6478,14 +6699,7 @@ function shiftPanelHTML(c) {
     <div class="btns"><button type="button" class="btn primary" data-sh="apply"${n ? '' : ' disabled'}>Move trip</button><button type="button" class="btn ghost" data-sh="cancel">Cancel</button></div></div>`;
 }
 function routeHTML(c, only = null) {
-  const ss = Array.isArray(c.stops) ? c.stops : [];
-  const prevDated = (i) => { for (let j = i - 1; j >= 0; j--) if (stopDated(ss[j])) return ss[j]; return null; };
-  // gentle notes between stops: an overlap (with Make room) or a gap (with Insert a stop here)
-  const note = (s, i) => { const p = prevDated(i); if (!p || !stopDated(s) || !isoDay(p.to || '')) return '';
-    const d = daysBetween(p.to, s.from.slice(0, 10)); const pn = p.name || 'the stop before';
-    if (d < 0) return `<p class="st-note warn">Overlaps ${esc(pn)} by ${nightsTxt(-d)}. <button type="button" class="link" data-st-push="${i}" data-n="${-d}">Move ${esc(s.name || 'this stop')} and later stops ${-d} day${-d === 1 ? '' : 's'} later</button></p>`;
-    if (d > 0) return `<p class="st-note">${nightsTxt(d)} with no stop after ${esc(pn)}. <button type="button" class="link" data-st-ins="${ss.indexOf(p)}">Insert a stop here</button></p>`;
-    return ''; };
+  const ss = Array.isArray(c.stops) ? c.stops : []; const note = (s, i) => stopNoteHTML(c, i);
   const row = (s, i) => { const n = nightsOf(s);
     return `<li class="rowed st-row${B && B.flashStop === s ? ' flash' : ''}" data-st-row="${i}">
       ${s.name ? `<div class="venue-sel"><div><b>${esc(s.name)}</b><span>${esc([s.region, s.country].filter(Boolean).join(', '))}</span></div><button type="button" class="btn sm" data-st-clear="${i}">Change</button></div>`
@@ -6500,6 +6714,15 @@ function routeHTML(c, only = null) {
   return `${c.start && isTrip(c) ? `<div class="rt-sum"><div><span class="lbl-s">Trip dates</span><b>${esc(tripSpanTxt(c))}</b>${nd ? `<small>${ss.filter(x => x.name).length} stop${ss.filter(x => x.name).length === 1 ? '' : 's'} · in date order</small>` : ''}</div>${B && B.shift ? '' : `<div class="rt-acts">${B && B.shiftUndo ? '<button type="button" class="btn sm ghost" data-sh="undo">Undo move</button>' : ''}<button type="button" class="btn sm" data-sh="open">Move trip dates</button></div>`}</div>${B && B.shift ? shiftPanelHTML(c) : ''}` : ''}
     <ol class="route-ed">${ss.map((s, i) => row(s, i) + (i < ss.length - 1 ? `<li class="st-ins"><button type="button" data-st-ins="${i}" aria-label="Insert a stop after ${esc(s.name || 'this stop')}">+ Insert a stop</button></li>` : '')).join('')}</ol>
     <button type="button" class="btn sm" data-st-add>+ Add a stop</button>`;
+}
+// gentle notes between stops: an overlap (with Make room) or a gap (with Insert a stop here)
+function stopNoteHTML(c, i) {
+  const ss = Array.isArray(c.stops) ? c.stops : []; const s = ss[i]; let p = null; for (let j = i - 1; j >= 0 && !p; j--) if (stopDated(ss[j])) p = ss[j];
+  if (!p || !stopDated(s) || !isoDay(p.to || '')) return '';
+  const d = daysBetween(p.to, s.from.slice(0, 10)); const pn = p.name || 'the stop before';
+  if (d < 0) return `<p class="st-note warn">Overlaps ${esc(pn)} by ${nightsTxt(-d)}. <button type="button" class="link" data-st-push="${i}" data-n="${-d}">Move ${esc(s.name || 'this stop')} and later stops ${-d} day${-d === 1 ? '' : 's'} later</button></p>`;
+  if (d > 0) return `<p class="st-note">${nightsTxt(d)} with no stop after ${esc(pn)}. <button type="button" class="link" data-st-ins="${ss.indexOf(p)}">Insert a stop here</button></p>`;
+  return '';
 }
 function setStop(cfg, i, v) {
   const prev = cfg.stops[i] || {};

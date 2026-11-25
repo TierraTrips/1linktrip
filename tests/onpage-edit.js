@@ -42,6 +42,7 @@ const AFF = '#preview [data-ed], #preview .onp, #preview .onp-mk, #preview .onp-
   };
   const tap = async (page, ed) => { await page.click(`#preview [data-ed="${ed}"]`); await page.waitForSelector('#sheet[open]'); await page.waitForTimeout(150); };
   const done = async (page) => { await page.click('#sheet .btn.primary.big'); await page.waitForFunction(() => !document.querySelector('#sheet[open]')); await settle(page); };
+  const more = async (page) => { await page.click('#sheet [data-sh-more]'); await page.waitForSelector('#sheet .sh-menu:not([hidden])'); }; // move / remove / hide live in the sheet's … menu
   const openDay = (page, d) => page.evaluate((d) => { const b = document.querySelector(`#preview [data-day-tog="${d}"]`); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); }, d);
 
   // ---------- guest pages: untouched, no affordances ----------
@@ -99,7 +100,7 @@ const AFF = '#preview [data-ed], #preview .onp, #preview .onp-mk, #preview .onp-
   await page.fill(`#sheet [data-s="${si}"][data-k="title"]`, 'Welcome drinks');
   await page.waitForTimeout(800);
   ok(/Welcome drinks/.test(await page.textContent('#preview #sec-schedule')), 'item edit shows on the page live');
-  await page.click(`#sheet [data-sdel="${si}"]`); await page.waitForSelector('#confirmdlg[open]');
+  await more(page); await page.click(`#sheet [data-sdel="${si}"]`); await page.waitForSelector('#confirmdlg[open]');
   ok(/Delete “Welcome drinks”\?/.test(await page.textContent('#confirmdlg h2')), 'delete asks first (in-app dialog)');
   await page.click('#confirmdlg button[value="ok"]'); await page.waitForFunction(() => !document.querySelector('#sheet[open]')); await settle(page);
   ok(!/Welcome drinks/.test(await page.textContent('#preview #sec-schedule')), 'deleted: gone from the page, sheet closed');
@@ -126,7 +127,7 @@ const AFF = '#preview [data-ed], #preview .onp, #preview .onp-mk, #preview .onp-
   ok(/Sunscreen/.test(await page.textContent('#preview #sec-details')) && (await draft(page)).notes.length === nNotes + 1, 'new note on the page and saved');
   await tap(page, 'n:' + ni);
   ok(await sheetRows(page) === 1 && await page.textContent('#sheet h2') === 'Sunscreen×', 'note tap → that note');
-  if (ni > 0) { await page.click(`#sheet [data-onp-mv="${ni}"][data-dir="-1"]`); await page.waitForTimeout(500); ok((await draft(page)).notes[ni - 1].label === 'Sunscreen' && await sheetRows(page) === 1, 'note moved up, still focused'); }
+  if (ni > 0) { await more(page); await page.click(`#sheet [data-onp-mv="${ni}"][data-dir="-1"]`); await page.waitForTimeout(500); ok((await draft(page)).notes[ni - 1].label === 'Sunscreen' && await sheetRows(page) === 1, 'note moved up, still focused'); }
   await done(page);
 
   // type-specific row → its card
@@ -149,11 +150,11 @@ const AFF = '#preview [data-ed], #preview .onp, #preview .onp-mk, #preview .onp-
   ok(await page.$$eval('#sheet .cs-row', es => es.length) === 1 && !(await page.$('#sheet [data-b="add-custom"]')), 'custom section heading → just that section');
   const ord0 = await page.$$eval('#preview .ev-panel[data-panel="event"] [data-sec]', es => es.map(e => e.dataset.sec));
   if (ord0.indexOf(csId) > 0) {
-    await page.click(`#sheet [data-sec-mv="${csId}"][data-dir="-1"]`); await settle(page);
+    await more(page); await page.click(`#sheet [data-sec-mv="${csId}"][data-dir="-1"]`); await settle(page);
     const ord1 = await page.$$eval('#preview .ev-panel[data-panel="event"] [data-sec]', es => es.map(e => e.dataset.sec));
     ok(ord1.indexOf(csId) === ord0.indexOf(csId) - 1, `section moved up on the page: ${ord1.join()}`);
   }
-  await page.click(`#sheet [data-onp-hide="${csId}"]`); await page.waitForFunction(() => !document.querySelector('#sheet[open]')); await settle(page);
+  await more(page); await page.click(`#sheet [data-onp-hide="${csId}"]`); await page.waitForFunction(() => !document.querySelector('#sheet[open]')); await settle(page);
   ok(!(await page.$(`#preview #sec-${csId}`)) && (await draft(page)).off[csId] === true, 'Hide section: gone from the page');
   await page.click('#undo button'); await settle(page);
   ok(!!(await page.$(`#preview #sec-${csId}`)), 'Undo: section back');
@@ -215,7 +216,7 @@ const AFF = '#preview [data-ed], #preview .onp, #preview .onp-mk, #preview .onp-
   ok(/Ramen at Ichiran/.test(await page.textContent('#preview #sec-schedule')), 'new plan on the page');
   const st = await page.$eval('#preview .city-h[data-ed^="st:"]', e => e.dataset.ed);
   await tap(page, st);
-  ok(await page.$$eval('#sheet .route-ed > li', es => es.length) === 1 && !(await page.$('#sheet [data-st-add]')), 'city heading → just that stop');
+  ok(await page.$$eval('#sheet .st-row', es => es.length) === 1 && !!(await page.$('#sheet .es-stop')) && !(await page.$('#sheet [data-st-add]')), 'city heading → just that stop');
   await done(page);
   ok(await page.isVisible('#preview [data-ed="add:st"]'), '+ Add a stop');
   // the owner's own bookings (My trip) keep their own sheets and Edit form
