@@ -1,5 +1,5 @@
-// Nearby, per route city: "Your hotel" — from the guest's own hotel booking (My trip), else the host's stay on the
-// itinerary for that leg, else one the guest sets (search + Find). It is a deep-blue bed pin with no text until hovered or
+// Nearby, per route city: "Your hotel" — from the guest's own hotel booking (My trip) (the host's stay on the itinerary
+// is a Suggested row with Choose, Dylan 11/25), else one the guest sets (search + Find). It is a deep-blue bed pin with no text until hovered or
 // tapped (popup with name + dates), highest on the map, with a key + a "Hotel" button that re-centers on it. Nearby searches start at the hotel and
 // distances are measured from it. ☆ on any place saves it (plan item, synced like My trip), shows as a gold star pin,
 // and is listed per city in My trip → Saved spots (☆ places only; the stay hotel is in Your itinerary) with Open in Google Maps, plus Save all to Google Maps (a KML file)
@@ -118,7 +118,10 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
     await pick(page, 'city', '1');
     await page.waitForFunction(() => /Ryokan Sakura/i.test(document.querySelector('[data-slot="hotel"]').textContent) && !/Finding/.test(document.querySelector('[data-slot="hotel"]').textContent), null, { timeout: 8000 }).catch(() => {});
     const kb = await page.textContent('[data-slot="hotel"]');
-    ok(/Your hotel in Kyoto/.test(kb) && /Ryokan Sakura/.test(kb) && /From the itinerary/.test(kb), `@${w} Kyoto hotel from the host's itinerary: ${kb.replace(/\s+/g, ' ')}`);
+    // invite link (Dylan 11/25): the host's stay is a suggestion until the guest chooses it
+    ok(/Your hotel in Kyoto/.test(kb) && /No hotel yet/.test(kb) && /Ryokan Sakura/.test(kb) && /Suggested by the organizer/.test(kb), `@${w} Kyoto: the host's stay is suggested: ${kb.replace(/\s+/g, ' ')}`);
+    await page.click('[data-slot="hotel"] .hb-sugs [data-hs-set]'); await page.waitForTimeout(400);
+    ok(/Ryokan Sakura/.test(await page.textContent('[data-slot="hotel"] .hb-list')) && !/No hotel yet/.test(await page.textContent('[data-slot="hotel"]')), `@${w} Choose: the ryokan is their Kyoto hotel`);
     await page.waitForTimeout(400);
     const nb2 = [...reqs].reverse().find(x => /searchNearby/.test(x.url));
     ok(nb2 && near(nb2.b.locationRestriction.circle.center.latitude, 35.0036), `@${w} Kyoto searches start at the ryokan`);

@@ -5,7 +5,7 @@
 //  - Travel modes: a choice made earlier shows as just the chosen modes + Change (stays open while tapping).
 //  - Hide on Where to stay, Airlines, Hotels near the venue, Rental counters; one "Show hidden (N)" restores them.
 // Also Between stops (Dylan: "it just opens up Google Maps between hotels"): each leg runs from the hotel at the stop
-// being left to the hotel at the next stop — the guest's booking over the organizer's check-in; no hotel → the stop.
+// being left to the hotel at the next stop — the guest's own hotel (the organizer's check-in is a suggestion); no hotel → the stop.
 //
 //   python3 -m http.server 18765 --bind 127.0.0.1 &  node tests/travel-hide.js
 const { chromium } = require(process.env.PW || 'playwright');
@@ -139,7 +139,8 @@ const shown = (page) => page.evaluate(() => { const v = (s) => { const e = docum
       {
         const { ctx, page } = await setup(browser, HOST, GEO);
         const d = await dir(page);
-        ok(q(d[0], 'destination') === '34.9858,135.7588' && q(d[0], 'origin') === `${TOKYO.lat},${TOKYO.lon}`, `organizer's hotel when the guest has none (Tokyo has none → the stop): ${d[0]}`);
+        // invite link (Dylan 11/25): the organizer's check-in is only a suggestion until the guest chooses it → stop to stop
+        ok(q(d[0], 'destination') === `${KYOTO.lat},${KYOTO.lon}` && q(d[0], 'origin') === `${TOKYO.lat},${TOKYO.lon}`, `organizer's suggested hotel is not the guest's: stop → stop: ${d[0]}`);
         await ctx.close();
       }
       {

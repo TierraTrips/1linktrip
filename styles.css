@@ -1742,3 +1742,9 @@ dialog.shr-dlg { padding: 0; border: 0; width: min(520px, 100vw); max-width: 100
 .ov-f input, .ov-f textarea { width: 100%; }
 .ov-priv { margin: 0; }
 .ov-show { margin-top: 10px; }
+/* invite link: the organizer's hotels are suggestions (Dylan 11/25) */
+.sug-tag { font: 600 .62rem var(--mono); font-style: normal; letter-spacing: .06em; text-transform: uppercase; color: var(--muted, var(--slate)); border: 1px dashed currentColor; padding: 1px 5px; border-radius: 5px; vertical-align: 2px; margin-left: 4px; }
+.hb-sl { margin-top: 10px; }
+.hb-sr .hb-ic, .hpin.sug img { opacity: .55; }
+.hb-sr .hs-slot.mini { flex: none; }
+.mk-sug img { opacity: .55; }
