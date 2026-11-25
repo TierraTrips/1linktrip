@@ -52,6 +52,7 @@ const PDF = Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(2000, 32)]);
   await page.evaluate(() => { const key = Object.keys(localStorage).find(x => x.startsWith('ep:shop:')).replace('ep:shop:', ''); localStorage.setItem('ep:plan:' + key, JSON.stringify([{ id: 's1', src: 'osm', ref: 'n1', name: 'Tsukiji Outer Market', lat: 35.6655, lon: 139.7707, addr: '4 Chome Tsukiji', type: 'food', day: '' }])); });
 
   // ---------- offline ----------
+  await page.click('[role="tab"][data-tab-go="event"]'); // a reload keeps the open tab (tab-reload.js): start from Event
   await ctx.setOffline(true); net = false;
   await page.reload(); await page.waitForSelector('#sec-schedule', { timeout: 15000 });
   ok(await page.textContent('.ev-title') === 'Japan in spring', 'page opens offline');

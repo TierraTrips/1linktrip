@@ -2140,12 +2140,43 @@ function wireTravelHide(cfg, art) {
     if (e.target.closest('[data-th-show]')) { LS.del(thKey(cfg)); paint(); }
   });
 }
+// The open tab rides in the address bar (replaceState, so no extra history entries): a reload, a bookmark or the share sheet
+// reopens it (Dylan 11/25: "refresh and stay on your current tab"). ?e=<slug>#t=nearby, ?demo=…#t=…, #e=…&t=…, and the
+// organizer's own page (?e= or #page=<pid>&t=…, builder preview). Event = no tab part, unless the address also has
+// ?city=/&cat= (those alone open Nearby), then #t=event. A link that asks for a tab (?city=&cat=, Share my trip) has no
+// tab part when it arrives, so it still opens what it asks for; a plain shared link opens on Event.
+function tabURL(art, k, opts = {}) {
+  if (opts.preview && !art.closest('#preview')) return; // setup's preview and the like
+  const h = location.hash, q = new URLSearchParams(location.search); const cc = q.has('city') || q.has('cat'); let nh = null;
+  if (/^#(e|ex|page)=/.test(h)) { const base = h.split('&t=')[0]; nh = k === 'event' && !cc ? base : `${base}&t=${k}`; }
+  else if ((q.get('e') || q.get('demo')) && (h === '' || h === '#' || /^#t=/.test(h))) nh = k === 'event' && !cc ? '' : '#t=' + k;
+  if (nh === null || nh === h || (nh === '' && h === '#')) return;
+  try { history.replaceState(history.state, '', location.pathname + location.search + nh); } catch {}
+}
+// ...and the scroll position within that tab (this browser tab only: sessionStorage), restored on a reload
+const vyKey = () => { const p = document.querySelector('.viewer #ev-root .ev-panel:not([hidden])'); if (!p) return ''; const q = new URLSearchParams(location.search);
+  return 'epY:' + (q.get('e') ? 'e:' + q.get('e') : q.get('demo') ? 'd:' + q.get('demo') : 'h:' + hashStr(location.hash.split('&t=')[0])) + ':' + p.dataset.panel; };
+let vyBusy = false, vyTried = false;
+addEventListener('scroll', debounce(() => { if (vyBusy) return; const k = vyKey(); if (k) try { sessionStorage.setItem(k, String(Math.round(scrollY))); } catch {} }, 150), { passive: true });
+function scrollBack() {
+  if (vyTried) return; vyTried = true;
+  let nav; try { nav = performance.getEntriesByType('navigation')[0]; } catch {} if (!nav || nav.type !== 'reload') return;
+  const k = vyKey(); let y = 0; try { y = k ? +sessionStorage.getItem(k) || 0 : 0; } catch {} if (y < 40) return;
+  const ev = ['wheel', 'touchstart', 'keydown', 'mousedown']; let n = 0, iv = 0;
+  const stop = () => { vyBusy = false; clearInterval(iv); ev.forEach(e => removeEventListener(e, stop)); };
+  vyBusy = true; ev.forEach(e => addEventListener(e, stop, { passive: true }));
+  // the tab's lists (Nearby places, maps) arrive late: keep at it until the page is tall enough and it holds
+  iv = setInterval(() => { if (vyKey() !== k) return stop(); window.scrollTo(0, y); n = Math.abs(scrollY - y) < 2 ? n + 1 : 0; if (n >= 3) stop(); }, 120);
+  setTimeout(stop, 6000);
+}
+try { history.scrollRestoration = 'manual'; } catch {}
+addEventListener('hashchange', () => { vyTried = true; }); // only the reloaded page itself, not one opened from it
 function showTab(art, k, opts = {}) {
   $$('.ev-panel', art).forEach(p => { p.hidden = p.dataset.panel !== k; });
   $$('[data-tab-go]', art).forEach(b => b.setAttribute('aria-selected', String(b.dataset.tabGo === k)));
   if (k === 'nearby') maps.forEach(m => { try { m.invalidateSize(); } catch {} });
   (art._showFns || []).forEach(f => { try { f(k); } catch {} });
-  if (!opts.preview && /^#(e|ex)=/.test(location.hash)) { const base = location.hash.split('&t=')[0]; history.replaceState(null, '', k === 'event' ? base : `${base}&t=${k}`); }
+  tabURL(art, k, opts);
   if (!opts.preview) window.scrollTo(0, 0); else art.closest('.b-preview, .su-preview')?.scrollTo(0, 0);
 }
 
@@ -2515,6 +2546,7 @@ function renderViewer(cfg, { exampleId, tab } = {}) {
   const foot = $('.ev-foot a'); if (foot && exampleId) foot.setAttribute('href', editHref);
   if (location.search) $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
   window.scrollTo(0, 0);
+  scrollBack();
 }
 
 // ---------- editor ----------
@@ -3762,6 +3794,7 @@ async function renderHosted(slug, tab) {
   // '#' alone can't leave a ?e= page (the hash doesn't change), so home links point at the app itself
   $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
   window.scrollTo(0, 0);
+  scrollBack();
 }
 function hostedProblem(msg, retry) {
   $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a></header><section class="broken"><h1>${esc(msg)}</h1>${retry ? `<button class="btn primary" onclick="location.reload()">${t('Try again')}</button>` : `<a class="btn primary" href="${esc(siteBase())}">${t('Go to 1LinkTrip')}</a>`}</section></main>`;
@@ -9052,7 +9085,7 @@ function route() {
   if (h === 'examples') { SU = null; return renderExamples(); }
   if (h === 'setup') return renderSetup();
   if (h === 'new') { const d = LS.get('draft'); return d && d.title ? renderBuilder(d, null, LS.get('draftHosted'), LS.get('draftId') || undefined) : renderSetup(); }
-  if (h.startsWith('page=')) { const x = pagesAll().find(p => p.pid === h.slice(5)); if (x) return renderBuilder(x.cfg, null, x.hosted, x.pid); }
+  if (h.startsWith('page=')) { const x = pagesAll().find(p => p.pid === h.slice(5)); if (x) { window.__ownTab = tab || ''; return renderBuilder(x.cfg, null, x.hosted, x.pid); } }
   if (h.startsWith('dup=')) { const x = pagesAll().find(p => p.pid === h.slice(4)); if (x) { const pid = newPid(); history.replaceState(null, '', siteBase() + '#page=' + pid); return renderBuilder(duplicateCfg(x.cfg), 'This is a copy. Tap Share to get its own link.', null, pid); } }
   SU = null; renderLanding();
 }
