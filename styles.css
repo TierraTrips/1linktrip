@@ -768,9 +768,10 @@ button.leg-h { cursor: pointer; } button.leg-h:focus-visible { outline: 2px soli
 .inbox-note { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 10%, transparent); margin-bottom: 10px; }
 .inbox-l { flex-basis: 100%; margin: 0; padding-left: 18px; font-size: .9rem; }
 /* Forward bookings: the personal address + Copy (My trip, My pages); empty slot until the inbound function is set up */
-.fwd-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 8%, transparent); margin: 10px 0; }
-.fwd-tx { flex: 1; min-width: 0; display: grid; gap: 2px; }
-.fwd-addr { font: .85rem ui-monospace, Menlo, monospace; overflow-wrap: anywhere; background: none; padding: 0; }
+.fwd-row { display: grid; gap: 6px; padding: 12px 14px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 8%, transparent); margin: 10px 0; }
+.fwd-h { display: block; } .fwd-p, .fwd-or { margin: 0; } .fwd-p { font-size: .92rem; line-height: 1.35; } .fwd-or { overflow-wrap: anywhere; }
+.fwd-a { display: flex; align-items: center; gap: 10px; min-width: 0; } .fwd-a .btn { flex: none; }
+.fwd-addr { flex: 1; min-width: 0; font: .85rem ui-monospace, Menlo, monospace; overflow-wrap: anywhere; background: none; padding: 0; }
 .inbox-mine select { font: inherit; padding: 6px 8px; border-radius: 10px; max-width: 100%; }
 .mine .fwd-row { background: var(--paper, #fff); border-radius: 14px; padding: 14px 16px; } .mine [data-slot="mine-inbox"]:not(:empty) { margin-bottom: 22px; } .mine [data-slot="mine-inbox"] h2 { font-size: 1.1rem; margin: 18px 0 10px; }
 .bk-ask { padding: 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 12%, transparent); margin: 8px 0; }

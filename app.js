@@ -6696,7 +6696,7 @@ function fwdLoad() {
     return (FWD = { addr: `add-${data.token}@${st.domain}`, any: `trips@${st.domain}`, email: u.email || '' });
   })().catch(() => null).then(v => { if (!v) fwdP = null; return v; }));
 }
-function fwdHTML() { return FWD && LS.get('signedIn') ? `<div class="fwd-row"><div class="fwd-tx"><b>${t('Forward bookings')}</b><code class="fwd-addr">${esc(FWD.addr)}</code>${FWD.email ? `<span class="muted small">${esc(t('or forward from {email} to {any}', { email: FWD.email, any: FWD.any }))}</span>` : ''}</div><button type="button" class="btn sm" data-fwd-copy>${t('Copy')}</button></div>` : ''; }
+function fwdHTML() { return FWD && LS.get('signedIn') ? `<div class="fwd-row"><b class="fwd-h">${t('Forward bookings')}</b><p class="fwd-p">${t('Forward any confirmation email to this address and it’s added to your trip.')}</p><div class="fwd-a"><code class="fwd-addr">${esc(FWD.addr)}</code><button type="button" class="btn sm" data-fwd-copy>${t('Copy')}</button></div>${FWD.email ? `<p class="fwd-or muted small">${esc(t('Or send from {email} to {any}', { email: FWD.email, any: FWD.any }))}</p>` : ''}</div>` : ''; }
 function fwdSlot() { return `<div data-slot="fwd">${fwdHTML()}</div>`; }
 function fwdFill(root) { return fwdLoad().then(v => { if (v) $$('[data-slot="fwd"]', root || document).forEach(el => { if (!el.firstElementChild) el.innerHTML = fwdHTML(); }); }); }
 document.addEventListener('click', async (e) => {

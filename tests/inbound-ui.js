@@ -1,5 +1,5 @@
 // "Forward bookings" in the app (the inbound function + Resend Inbound). The row — personal address add-<token>@<domain>,
-// Copy, "or forward from <sign-in email> to trips@<domain>" — shows in My trip and My pages only when signed in AND the
+// Copy, "Or send from <sign-in email> to trips@<domain>" — shows in My trip and My pages only when signed in AND the
 // inbound function says it's set up (GET → { enabled, domain }); dormant (not deployed / not configured / signed out) it's
 // not there at all. Forwarded bookings the function saved for this trip become bookings through the same add path as
 // Add a booking (dedupe/merge); Inbox ones show a one-tap "Add to this trip" in My trip, and an "Add to…" trip picker in My pages.
@@ -100,7 +100,10 @@ const rows = (page, t) => page.evaluate((t) => window.__db[t] || [], t);
       await page.waitForSelector('#sec-itinerary .fwd-row', { timeout: 5000 }).catch(() => {});
       const txt = await page.textContent('#sec-itinerary .fwd-row').catch(() => '');
       ok(txt.includes('Forward bookings') && txt.includes(`add-${TOKEN}@in.1linktrip.com`), `@${w} My trip: Forward bookings + personal address (${txt.slice(0, 90)})`);
-      ok(txt.includes('or forward from dylan@example.com to trips@in.1linktrip.com'), `@${w} My trip: "or forward from <sign-in email>" line`);
+      ok(txt.includes('Or send from dylan@example.com to trips@in.1linktrip.com'), `@${w} My trip: "Or send from <sign-in email>" line`);
+      ok(txt.includes('Forward any confirmation email to this address and it’s added to your trip.'), `@${w} My trip: one-sentence explainer`);
+      const stacked = await page.evaluate(() => { const r = (s) => document.querySelector('#sec-itinerary .fwd-row ' + s).getBoundingClientRect(); const h = r('.fwd-h'), p = r('.fwd-p'), a = r('.fwd-addr'), o = r('.fwd-or'); return h.bottom <= p.top + 1 && p.bottom <= a.top + 1 && a.bottom <= o.top + 1; });
+      ok(stacked, `@${w} My trip: title, sentence, address, alternate each on their own line`);
       const toks = await rows(page, 'inbound_tokens'); ok(toks.length === 1 && toks[0].owner === USER.id, `@${w} token row made for this account (${toks.length})`);
       await page.click('#sec-itinerary [data-fwd-copy]'); await page.waitForTimeout(200);
       ok(await page.evaluate(() => navigator.clipboard.readText()) === `add-${TOKEN}@in.1linktrip.com`, `@${w} Copy puts the address on the clipboard`);
