@@ -5036,7 +5036,7 @@ function wireTripCC(cfg, art, opts) {
     const sl = (SHOW.find(x => x[0] === F.show) || [0, ''])[1];
     ccFill(box, {
       row: (cities.length ? ccTabs({ key: 'city', aria: t('City'), value: F.ci >= 0 ? String(F.ci) : '', ph: t('All cities'), cls: 'dd-city', opts: [{ v: '', l: t('All') }].concat(cities.map(c => ({ v: String(c.i), l: c.l }))) }) : '')
-        + ccChips({ key: 'cat', aria: t('Category'), values: F.cats.length ? F.cats : ['all'], cls: 'dd-cat', opts: [{ v: 'all', l: t('All'), ic: 'all', n: n.all }].concat(TRIP_CATS.filter(k => n[k] || F.cats.includes(k)).map(k => ({ v: k, l: ccLabel(k), ic: k, n: n[k] || 0 }))) })
+        + (!TRIP_CATS.some(k => n[k] || F.cats.includes(k)) ? '' : ccChips({ key: 'cat', aria: t('Category'), values: F.cats.length ? F.cats : ['all'], cls: 'dd-cat', opts: [{ v: 'all', l: t('All'), ic: 'all', n: n.all }].concat(TRIP_CATS.filter(k => n[k] || F.cats.includes(k)).map(k => ({ v: k, l: ccLabel(k), ic: k, n: n[k] || 0 }))) }))
         + (F.cats.includes('transport') && Object.keys(n.sub).length > 1 ? ccChips({ key: 'tsub', aria: t('Transport'), values: F.tsubs, cls: 'cc-subs', opts: TSUBS.filter(([k]) => n.sub[k]).map(([k, l]) => ({ v: k, l: t(l), ic: k === 'other' ? 'transport' : k, n: n.sub[k] })) }) : ''),
       filt: ccFiltersBtn(F.show ? 1 : 0),
       pills: F.show ? ccPills([['show', t(sl)]], '') : '', sheet: ccSheet(body, t('Done'), 'data-cct-sub') });

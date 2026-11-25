@@ -38,7 +38,7 @@ async function setup(browser, ls) {
   page._url = BASE + '#e=' + packed + '&t=mytrip';
   await open(page); return { ctx, page };
 }
-async function open(page) { await page.goto(page._url); await page.reload(); await page.waitForSelector('[data-ccb="trip"] .cc-chip'); await page.waitForTimeout(300); }
+async function open(page) { await page.goto(page._url); await page.reload(); await page.waitForSelector('[data-ccb="trip"]'); await page.waitForTimeout(400); }
 const T = '[data-ccb="trip"]';
 // which glyph an icon shows: its first shape's attributes, as written in the glyph
 const ICON_OF = `(svg, ks) => { const f = svg.firstElementChild; const a = [...f.attributes].map(x => x.name + '="' + x.value + '"').join(' '); const sh = '<' + f.tagName.toLowerCase() + ' ' + a; return ks.find(k => window.__ep.ccIcon(k).includes(sh)) || ''; }`;
@@ -56,8 +56,10 @@ const tap = async (page, key, v) => { await page.click(`${T} [data-dd="${key}"] 
         ua: S('Depart Tokyo Haneda (HND) on UA 7924 (operated by All Nippon Airways)'), land: S('Land at Haneda Airport'), fno: X({ kind: 'other', name: 'UA 7924' }),
         shinkansen: S('Shinkansen Tokyo to Kanazawa'), jr: S('JR Pass exchange'), nex: S('Narita Express to Shinjuku'), bus: S('Willer night bus to Osaka'), limo: S('Airport limousine bus'),
         car: S('Toyota Rent a Car pick-up'), hertz: S('Hertz at LAX'), taxi: S('Uber to the hotel'), cab: S('Taxi to Haneda Airport'), ferry: S('Ferry to Miyajima'), wtaxi: S('Water taxi to Burano'),
+        chipsEmpty: document.querySelectorAll('[data-ccb="trip"] [data-dd="cat"]').length,
         none: S('Dinner at Sushi Saito'), metroMuseum: S('Metropolitan Museum'),
         kinds: ['flight', 'train', 'bus', 'car', 'taxi', 'ferry'].map(k => X({ kind: k, name: 'x' })).join(), explicit: X({ kind: 'other', tsub: 'ferry', name: 'Thing' }), other: X({ kind: 'other', name: 'Transfer' }) }; });
+      ok(r.chipsEmpty === 0, `an empty My trip has no category chips (not a lone "All 0")`);
       ok(r.ua === 'flight' && r.land === 'flight' && r.fno === 'flight', `flight: UA 7924 line / Land at Haneda / a bare flight number ${JSON.stringify([r.ua, r.land, r.fno])}`);
       ok(r.shinkansen === 'train' && r.jr === 'train' && r.nex === 'train', `train: Shinkansen / JR / Narita Express`);
       ok(r.bus === 'bus' && r.limo === 'bus', `bus: night bus / airport limousine bus (not a flight)`);
