@@ -1578,3 +1578,7 @@ dialog.ds-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .sec-h.th-sh { display: flex; align-items: center; gap: 6px; }
 .th-x-stay #sec-stay, .th-x-airlines .airline-pick, .th-x-counters .th-counters, .th-x-hotels .th-hotels { display: none; }
 .th-foot { display: flex; justify-content: center; margin: 4px 0 8px; } .th-foot:has(> [hidden]) { display: none; }
+/* My trip: Transport's subtype filter (only when it has more than one kind) — smaller chips under the categories */
+.cc-chips.cc-subs { gap: 6px; }
+.cc-subs .cc-chip { min-height: 36px; padding: 0 11px 0 5px; font-size: .82rem; gap: 5px; }
+.cc-subs .cc-chip .cci { width: 24px; height: 24px; }

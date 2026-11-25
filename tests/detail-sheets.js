@@ -97,6 +97,7 @@ const sheet = (page) => page.evaluate(() => { const d = document.querySelector('
       ok(await overflow(page) === 0, `@${w} event tab: no overflow`);
       // ---- My trip: saved spots by category ----
       await page.click('[data-tab-go="mytrip"]'); await page.waitForSelector('#sec-spots');
+      if (await page.$('[data-ccb="trip"] [data-dd-v="all"][aria-pressed="false"]')) { await page.click('[data-ccb="trip"] [data-dd-v="all"]'); await page.waitForTimeout(200); } // My trip opens on Hotels (11/25): look at everything
       const gs = await page.$$eval('#sec-spots .sp-g', ds => ds.map(d => `${d.querySelector('.sp-h').textContent}:${d.querySelector('.sp-n').textContent}`));
       ok(gs.join() === 'Restaurants:2,Cafés:1,Sights:1', `@${w} saved spots grouped by category with counts (stay hotel not repeated) ${gs}`);
       await page.click('#sec-spots .sp-g[data-spot-g="restaurants"] > summary');

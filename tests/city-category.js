@@ -171,9 +171,9 @@ const ctr = (x) => (x.b.locationRestriction || x.b.locationBias).circle.center;
     ok((await page.$$eval('[data-gp-body] .place-row b', bs => bs.map(b => b.textContent))).every(x => /@34\.99/.test(x)), `@${w} reopened: Kyoto's places listed`);
     // ---- My trip: Kyoto · Restaurants ----
     await page.click('.ev-tabs [data-tab-go="mytrip"]'); await page.waitForSelector(`${TRIP} [data-dd="cat"]`);
-    ok(await label(page, 'city', TRIP) === 'All' && await label(page, 'cat', TRIP) === '', `@${w} My trip opens on everything`);
+    ok(await label(page, 'city', TRIP) === 'All' && await label(page, 'cat', TRIP) === 'Hotels', `@${w} My trip opens on Hotels (Dylan 11/25: hotels first, by default)`);
     const allPlan = await page.$$eval('#sec-plan .plan-row', xs => xs.length);
-    await pick(page, 'city', '1', TRIP); await pick(page, 'cat', 'restaurants', TRIP);
+    await pick(page, 'city', '1', TRIP); await pick(page, 'cat', 'hotels', TRIP); await pick(page, 'cat', 'restaurants', TRIP); // chips are multi-select: Hotels off, Restaurants on
     const plan = await page.$$eval('#sec-plan .plan-row', xs => xs.map(x => x.querySelector('.plan-name, .plan-t > span:not(.cci)').textContent));
     ok(plan.join() === 'Nishiki Market', `@${w} Kyoto · Restaurants in Your itinerary: ${plan} (of ${allPlan})`);
     const spots = await page.$$eval('#sec-spots .sp-h', hs => hs.map(h => h.textContent)); const spotN = await page.$$eval('#sec-spots .spots li', xs => xs.map(x => x.querySelector('b').textContent.trim()));
@@ -183,7 +183,7 @@ const ctr = (x) => (x.b.locationRestriction || x.b.locationBias).circle.center;
     const bk = await page.$$eval('#sec-itinerary ul.bookings > li:not([hidden]) b', bs => bs.map(b => b.textContent));
     ok(bk.join() === 'Hotel Granvia Kyoto', `@${w} Kyoto · Hotels → ${bk}`);
     const catCounts = await page.$$eval(`${TRIP} [data-dd="cat"] [data-dd-v] small`, xs => xs.map(x => +x.textContent));
-    await pick(page, 'cat', 'hotels', TRIP); ok(await label(page, 'cat', TRIP) === '' && (await page.$$eval('#sec-itinerary ul.bookings > li:not([hidden])', xs => xs.length)) > 1, `@${w} tapping the active chip again clears it`); await pick(page, 'cat', 'hotels', TRIP);
+    await pick(page, 'cat', 'hotels', TRIP); await pick(page, 'cat', 'restaurants', TRIP); ok(await label(page, 'cat', TRIP) === 'All' && (await page.$$eval('#sec-itinerary ul.bookings > li:not([hidden])', xs => xs.length)) > 1, `@${w} tapping the active chips again clears them (All)`);
     ok(catCounts.length >= 3 && catCounts.every(n => n > 0), `@${w} category list shows Kyoto counts ${catCounts}`);
     // All cities · Cafés, then Saved only + search (focus kept while typing)
     await pick(page, 'city', '', TRIP); await pick(page, 'cat', 'cafes', TRIP);

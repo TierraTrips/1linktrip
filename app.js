@@ -546,7 +546,7 @@ const VENDORS = [
   [/amtrak/i, 'train', 'Amtrak'], [/eurostar/i, 'train', 'Eurostar'], [/trainline/i, 'train', 'Trainline'], [/\bsncf\b/i, 'train', 'SNCF'], [/\brenfe\b/i, 'train', 'Renfe'], [/via rail/i, 'train', 'VIA Rail'],
   [/marriott/i, 'hotel', 'Marriott'], [/hilton/i, 'hotel', 'Hilton'], [/hyatt/i, 'hotel', 'Hyatt'], [/\bihg\b|holiday inn/i, 'hotel', 'IHG'], [/booking\.com/i, 'hotel', 'Booking.com'], [/hotels\.com/i, 'hotel', 'Hotels.com'], [/expedia/i, 'hotel', 'Expedia']
 ];
-const ITIN_KINDS = { flight: 'Flight', hotel: 'Hotel', stay: 'Rental home', car: 'Rental car', food: 'Restaurant', train: 'Train', tour: 'Tour or activity', other: 'Other' };
+const ITIN_KINDS = { flight: 'Flight', hotel: 'Hotel', stay: 'Rental home', car: 'Rental car', food: 'Restaurant', train: 'Train', bus: 'Bus', taxi: 'Taxi or rideshare', ferry: 'Ferry', tour: 'Tour or activity', other: 'Other' };
 
 // "Deluxe Room, 1 King Bed" → ['Deluxe Room', '1 King Bed']; a room without a trailing bed part stays as it is
 const roomBedSplit = (room) => { const m = String(room || '').match(/^(.+?)\s*[,·–]\s*((?:\d+\s*x?\s*)?(?:king|queen|double|twin|single|full)(?:[- ]size)?\s*(?:beds?)?)\s*$/i); return m ? [m[1].trim(), m[2].trim()] : [String(room || '').trim(), '']; };
@@ -1823,7 +1823,7 @@ function bookingsHTML(cfg) {
     const via = viaOf(x); const viaUrl = via && via.url;
     const links = [fl.status ? ext(fl.status, t('Flight status'), 'mini-b') : '', viaUrl ? ext(viaUrl, `${t('Manage booking')} · ${via.name}`, 'mini-b') : fl.manage ? ext(fl.manage, t('Manage booking'), 'mini-b') : '', x.link ? ext(x.link, t('Open booking'), 'mini-b') : ''].join('');
     const it = ccBkItem(cfg, x);
-    return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div>${x.id ? `<button type="button" class="pr-go bk-go" data-ds="bk:${esc(x.id)}">${thumbHTML(x, it.cat)}<span class="pr-tx">` : '<span class="pr-tx">'}<b class="plan-t"><span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${bkOffTrip(cfg, x) ? `<span class="bk-warn">${esc(t('Not on the trip dates'))}</span>` : ''}${detVal(x, 'room') || (LODGE.has(x.kind) && hfBadge(hfOfBk(x), bkDay(x.end) || bkDay(x.start))) ? `<span class="bk-room">${esc(detVal(x, 'room') || '')}${LODGE.has(x.kind) ? hfBadgeHTML(hfOfBk(x), bkDay(x.end) || bkDay(x.start)) : ''}</span>` : ''}${x.note && !LODGE.has(x.kind) ? `<span class="pr-note">${esc(x.note)}</span>` : ''}${x.id ? '</span><i class="tl-chev" aria-hidden="true"></i></button>' : '</span>'}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button>${LODGE.has(x.kind) && x.id ? `<button type="button" class="mini-b bk-rm" data-bk-rm="${esc(x.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}</div></div></li>`;
+    return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-sub="${it.sub}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div>${x.id ? `<button type="button" class="pr-go bk-go" data-ds="bk:${esc(x.id)}">${thumbHTML(x, ccIk(it.cat, x))}<span class="pr-tx">` : '<span class="pr-tx">'}<b class="plan-t"><span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${bkOffTrip(cfg, x) ? `<span class="bk-warn">${esc(t('Not on the trip dates'))}</span>` : ''}${detVal(x, 'room') || (LODGE.has(x.kind) && hfBadge(hfOfBk(x), bkDay(x.end) || bkDay(x.start))) ? `<span class="bk-room">${esc(detVal(x, 'room') || '')}${LODGE.has(x.kind) ? hfBadgeHTML(hfOfBk(x), bkDay(x.end) || bkDay(x.start)) : ''}</span>` : ''}${x.note && !LODGE.has(x.kind) ? `<span class="pr-note">${esc(x.note)}</span>` : ''}${x.id ? '</span><i class="tl-chev" aria-hidden="true"></i></button>' : '</span>'}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button>${LODGE.has(x.kind) && x.id ? `<button type="button" class="mini-b bk-rm" data-bk-rm="${esc(x.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}</div></div></li>`;
   }).join('')}</ul>${ccNoneHTML().replace('class="muted cc-none"', `class="muted cc-none"${order.some(([x]) => F.ok(ccBkItem(cfg, x))) ? ' hidden' : ''}`)}` : ''}
   <div class="btns itin-btns"><button type="button" class="btn primary" data-itin-add>+ ${t('Add a booking')}</button>${items.length ? `<button type="button" class="btn" data-itin-ics>${t('Add to calendar')}</button>` : ''}</div><div data-slot="itin-form"></div>${cfg.demoTrip ? '' : fwdSlot(cfg)}`;
 }
@@ -4554,7 +4554,13 @@ const CC_GLYPH = {
   tours: '<path d="M3.5 7.5h17v3a2 2 0 0 0 0 3.5v2.5h-17V14a2 2 0 0 0 0-3.5zM14.5 7.5v1.6M14.5 11.2v1.6M14.5 14.9v1.6"/>',
   shopping: '<path d="M5 8h14l-1.2 12.5H6.2zM9 10V6.5a3 3 0 0 1 6 0V10"/>',
   hotels: '<path d="M3 19V6M3 15h18v4M21 15v-3.5A2.5 2.5 0 0 0 18.5 9H11v6"/><circle cx="7" cy="11.5" r="1.8"/>',
-  transport: '<rect x="6" y="3" width="12" height="13" rx="3"/><path d="M6 10h12M9 20l-1.5 2M15 20l1.5 2M9 16l-1 4M15 16l1 4"/>',
+  transport: '<circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h7.5a3 3 0 0 0 0-6h-7a3 3 0 0 1 0-6H16"/>',
+  flight: '<path d="M12 2.8c.8 0 1.4.7 1.4 1.5v5.2l7.1 4.1v1.9l-7.1-2.1v4.4l2 1.5v1.6L12 20l-3.4 1.1v-1.6l2-1.5v-4.4l-7.1 2.1v-1.9l7.1-4.1V4.3c0-.8.6-1.5 1.4-1.5z"/>',
+  train: '<rect x="6" y="3" width="12" height="13" rx="3"/><path d="M6 10h12M9 20l-1.5 2M15 20l1.5 2M9 16l-1 4M15 16l1 4"/>',
+  bus: '<rect x="5" y="3" width="14" height="15" rx="2.5"/><path d="M5 11h14M5 7h14M8 18v2.5M16 18v2.5M8.5 14.5h.01M15.5 14.5h.01"/>',
+  car: '<path d="M4.5 16.5v-4l2.2-5.5h10.6l2.2 5.5v4zM4.5 16.5v2.5M19.5 16.5v2.5M4.5 12.5h15M8 14.5h.01M16 14.5h.01"/>',
+  taxi: '<path d="M10 3.5h4V7M4.5 16.5v-4l2.2-5.5h10.6l2.2 5.5v4zM4.5 16.5v2.5M19.5 16.5v2.5M4.5 12.5h15M8 14.5h.01M16 14.5h.01"/>',
+  ferry: '<path d="M3 18.5c1.5 1.2 3 1.2 4.5 0s3-1.2 4.5 0 3 1.2 4.5 0 3-1.2 4.5 0M4.5 15l1.2-5h12.6l1.2 5M8.5 10V6h7v4M12 6V3.5"/>',
   all: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
   pin: '<path d="M12 21s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/>',
 };
@@ -4618,13 +4624,13 @@ function ccFromURL(cfg) {
   const q = new URLSearchParams(location.search); const c = q.get('city'), k = ccCatId(q.get('cat')); const ci = ccCityIdx(cfg, c);
   if (ci < 0 && !k) return false;
   const p = {}; if (ci >= 0) p.city = ccCities(cfg)[ci].k; if (k) p.cat = k;
-  ccSet(cfg, 'trip', p, false); ccSet(cfg, 'nearby', k === 'transport' ? { city: p.city || ccGet(cfg, 'nearby').city || '' } : p, false);
+  ccSet(cfg, 'trip', k ? { ...p, cats: [k], cat: '', tsub: [] } : p, false); ccSet(cfg, 'nearby', k === 'transport' ? { city: p.city || ccGet(cfg, 'nearby').city || '' } : p, false);
   return true;
 }
 // ---- the pieces ----
 // city tabs (tap to switch) and category chips (icon + label in the category's color; tap the active one again to clear)
 const ccTabs = (o) => `<div class="cc-tabs" role="tablist" aria-label="${esc(o.aria)}" data-dd="${esc(o.key)}">${o.opts.map(x => `<button type="button" role="tab" class="cc-tab" data-dd-v="${esc(x.v)}" aria-selected="${x.v === o.value}">${esc(x.l)}</button>`).join('')}</div>`;
-const ccChips = (o) => `<div class="cc-chips" role="group" aria-label="${esc(o.aria)}" data-dd="${esc(o.key)}">${o.opts.map(x => `<button type="button" class="cc-chip" data-dd-v="${esc(x.v)}" aria-pressed="${x.v === o.value}" style="--cc:${ccColor(x.ic)}">${x.ic ? ccIcon(x.ic) : ''}<span>${esc(x.l)}</span>${x.n != null ? `<small>${x.n}</small>` : ''}</button>`).join('')}</div>`;
+const ccChips = (o) => `<div class="cc-chips${o.cls === 'cc-subs' ? ' cc-subs' : ''}" role="group" aria-label="${esc(o.aria)}" data-dd="${esc(o.key)}">${o.opts.map(x => `<button type="button" class="cc-chip" data-dd-v="${esc(x.v)}" aria-pressed="${o.values ? o.values.includes(x.v) : x.v === o.value}" style="--cc:${x.ic === 'all' ? 'var(--ink)' : ccColor(x.ic)}">${x.ic ? ccIcon(x.ic) : ''}<span>${esc(x.l)}</span>${x.n != null ? `<small>${x.n}</small>` : ''}</button>`).join('')}</div>`;
 // a tap on a city tab / category chip fires a bubbling 'dd' event { key, v } from its row
 document.addEventListener('click', (e) => {
   const o = e.target.closest('[data-dd-v]'); if (!o) return; const dd = o.closest('[data-dd]'); if (!dd) return;
@@ -4661,9 +4667,30 @@ function ccCatOfPlan(x) {
   if (ty === 'activity') return g === 'tours' ? 'tours' : 'sights';
   return g;
 }
-const BK_CAT = { flight: 'transport', train: 'transport', car: 'transport', hotel: 'hotels', stay: 'hotels', food: 'restaurants', tour: 'tours' };
-const ccCatOfBooking = (x) => BK_CAT[x.kind] || ccCatOfTypes([], x.name);
-const ccCatOfEv = (x) => ccCatOfTypes([], x.title || x.name) || (x.kind === 'activity' ? 'sights' : '');
+const BK_CAT = { flight: 'transport', train: 'transport', car: 'transport', bus: 'transport', taxi: 'transport', ferry: 'transport', hotel: 'hotels', stay: 'hotels', food: 'restaurants', tour: 'tours' };
+const ccCatOfBooking = (x) => BK_CAT[x.kind] || ccCatOfTypes([], x.name) || (tSubOfText([x.name, x.flight].join(' ')) ? 'transport' : '');
+const ccCatOfEv = (x) => ccCatOfTypes([], x.title || x.name) || (tSubOfText(x.title || x.name) ? 'transport' : '') || (x.kind === 'activity' ? 'sights' : '');
+// ---- transport subtypes (Dylan 11/25: "Flight has a picture of a train ... different icons for cars, trains, bus, taxi,
+// flights"): one Transport category, each item a subtype with its own icon. A booking's Type says it (Flight, Train,
+// Bus, Rental car, Taxi or rideshare, Ferry); else it is read from the words: ferry/boat → taxi/rideshare → bus/coach →
+// train/rail/Shinkansen/JR → rental-car companies → flight words / an airline's flight number (UA 7924) / airport.
+const TSUBS = [['flight', 'Flights'], ['train', 'Trains'], ['bus', 'Bus'], ['car', 'Rental car'], ['taxi', 'Taxi or rideshare'], ['ferry', 'Ferry'], ['other', 'Other']];
+const TSUB_KIND = { flight: 'flight', train: 'train', bus: 'bus', car: 'car', taxi: 'taxi', ferry: 'ferry' };
+function tSubOfText(raw) {
+  raw = String(raw || ''); const s = ' ' + raw.toLowerCase() + ' ';
+  if (/\b(ferry|ferries|boat|hydrofoil|catamaran|jetfoil|water ?bus|water taxi)\b/.test(s)) return 'ferry';
+  if (/\b(taxi|taxis|cab|uber|lyft|rideshare|ride[- ]share|grab|didi|car service|chauffeur|limo|private transfer)\b/.test(s)) return 'taxi';
+  if (/\b(bus|buses|coach|shuttle|highway bus|willer|greyhound|flixbus|megabus|limousine bus)\b/.test(s)) return 'bus';
+  if (/\b(train|trains|rail|railway|shinkansen|jr|amtrak|eurostar|nozomi|hikari|kodama|mizuho|kagayaki|hakutaka|thunderbird|haruka|narita express|skyliner|limited express|subway|metro|tram|monorail)\b/.test(s)) return 'train';
+  if (/\b(rental car|car rental|rent[- ]a[- ]car|hire car|car hire|hertz|avis|sixt|europcar|alamo|enterprise rent|thrifty|toyota rent|times car|orix rent|nippon rent|budget rent)\b/.test(s)) return 'car';
+  if (/\b(flight|flights|fly|flying|airlines?|airways|land at|landing at|layover|boarding)\b/.test(s)) return 'flight';
+  if ((raw.match(/\b[A-Z0-9]{2} ?\d{1,4}\b/g) || []).some(m => /[A-Z]/.test(m.slice(0, 2)) && typeof AIRLINES !== 'undefined' && AIRLINES[m.slice(0, 2)])) return 'flight';
+  if (/\bairport\b/.test(s)) return 'flight';
+  return '';
+}
+const tSub = (x) => !x ? 'other' : TSUB_KIND[x.kind] || (TSUBS.some(y => y[0] === x.tsub) ? x.tsub : '') || tSubOfText([x.name, x.title, x.flight].filter(Boolean).join(' ')) || 'other';
+// the icon key for an item: its category, a transport item's own subtype
+const ccIk = (cat, x) => cat !== 'transport' ? cat : (k => k === 'other' ? 'transport' : k)(tSub(x));
 function ccCityOfPlan(cfg, x) {
   if (ccCities(cfg).length < 2) return 0;
   if (x.lat != null) return spotCity(cfg, x); return x.day ? stopOfDay(cfg, x.day) : -1;
@@ -4674,13 +4701,25 @@ function ccCityOfBooking(cfg, x) {
   const g = x.lat != null ? x : null; if (g && x.kind !== 'flight') return nearestStop(cfg, g);
   return bkDay(x.start) ? stopOfDay(cfg, bkDay(x.start)) : -1;
 }
-// the trip scope's filter: { on, ok(item) } for items { city, cat, text, saved, booked, host }
-function ccTrip(cfg) {
-  const st = ccGet(cfg, 'trip'); const ci = ccCityIdx(cfg, st.city); const cat = ccCatId(st.cat); const q = String(st.q || '').trim(); const show = st.show || '';
-  return { st, ci, cat, q, show, on: ci >= 0 || !!cat || !!q || !!show, sub: !!cat || !!q || !!show,
-    ok: (it) => (ci < 0 || it.city === ci) && (!cat || it.cat === cat) && (!q || lfMatch(q, it.text)) && (!show || (show === 'saved' ? it.saved : show === 'booked' ? it.booked : show === 'host' ? it.host : true)) };
+// My trip's category chips (Dylan 11/25): Hotels, then Transport, then Restaurants, then the rest; several at once
+// (flights + trains + hotels together); Hotels until the guest picks (when they have one). st.cats: [] = All.
+const TRIP_CATS = ['hotels', 'transport', 'restaurants', 'cafes', 'bars', 'sights', 'tours', 'shopping'];
+function ccTripCats(cfg, st) {
+  if (Array.isArray(st.cats)) return st.cats.map(ccCatId).filter(Boolean);
+  if (st.cat) return [ccCatId(st.cat)].filter(Boolean); // a choice from before multi-select / a ?cat= link
+  return typeof itineraryEntries === 'function' && itineraryEntries(cfg).some(x => x.cc === 'hotels') ? ['hotels'] : [];
 }
-const ccBkItem = (cfg, x) => ({ city: ccCityOfBooking(cfg, x), cat: ccCatOfBooking(x), text: [x.name, x.address, x.confNo, t(ITIN_KINDS[x.kind] || '')].filter(Boolean).join(' '), saved: false, booked: true });
+// the trip scope's filter: { on, ok(item) } for items { city, cat, sub, text, saved, booked, host }
+function ccTrip(cfg) {
+  const st = ccGet(cfg, 'trip'); const ci = ccCityIdx(cfg, st.city); const cats = ccTripCats(cfg, st); const cat = cats.length === 1 ? cats[0] : '';
+  const tsubs = cats.includes('transport') && Array.isArray(st.tsub) ? st.tsub.filter(k => TSUBS.some(y => y[0] === k)) : [];
+  const q = String(st.q || '').trim(); const show = st.show || '';
+  const rest = (it) => (ci < 0 || it.city === ci) && (!q || lfMatch(q, it.text)) && (!show || (show === 'saved' ? it.saved : show === 'booked' ? it.booked : show === 'host' ? it.host : true));
+  const subOk = (it) => it.cat !== 'transport' || !tsubs.length || tsubs.includes(it.sub || 'other');
+  return { st, ci, cat, cats, tsubs, q, show, on: ci >= 0 || !!cats.length || !!q || !!show, sub: !!cats.length || !!q || !!show, rest, subOk,
+    ok: (it) => rest(it) && (!cats.length || cats.includes(it.cat)) && subOk(it) };
+}
+const ccBkItem = (cfg, x) => ({ city: ccCityOfBooking(cfg, x), cat: ccCatOfBooking(x), sub: tSub(x), text: [x.name, x.address, x.confNo, t(ITIN_KINDS[x.kind] || '')].filter(Boolean).join(' '), saved: false, booked: true });
 // the trip Itinerary gets the bar when there is something to narrow down: several cities, or a long list
 const ccItinOn = (cfg) => isTrip(cfg) && (ccCities(cfg).length > 1 || (cfg.schedule || []).length + (cfg.tools.mytrip ? itinLoad(cfg).length + planLoad(cfg).length : 0) >= 8);
 const ccNoneHTML = () => `<p class="muted cc-none">${t('Nothing matches these filters.')} <button type="button" class="link" data-cct-clear>${t('Clear filters')}</button></p>`;
@@ -4937,7 +4976,7 @@ function planCardClick(cfg, art, dlg, e, place) {
   return true;
 }
 const PTYPES = [['flight', 'Flights'], ['stay', 'Hotels & stays'], ['transport', 'Transport'], ['food', 'Restaurants'], ['activity', 'Tours & activities'], ['other', 'Other']];
-const itinType = (x) => ({ flight: 'flight', hotel: 'stay', stay: 'stay', car: 'transport', train: 'transport', food: 'food', tour: 'activity' }[x.kind] || 'other');
+const itinType = (x) => ({ flight: 'flight', hotel: 'stay', stay: 'stay', car: 'transport', train: 'transport', bus: 'transport', taxi: 'transport', ferry: 'transport', food: 'food', tour: 'activity' }[x.kind] || 'other');
 // type from a Google place's types or an OpenStreetMap category
 function placeType(types, cat) {
   const ts = (types || []).join(' ') + ' ' + (cat || '');
@@ -4949,11 +4988,11 @@ function placeType(types, cat) {
 }
 // one list: places the guest added + bookings they entered (each with its city and category for the City × Category bar)
 function itineraryEntries(cfg) {
-  const ps = planLoad(cfg).map((x, i) => ({ ...x, ent: 'plan', type: x.type || 'other', order: i, cc: ccCatOfPlan(x), city: ccCityOfPlan(cfg, x) }));
-  const bs = itinLoad(cfg).map((x, i) => ({ ent: 'book', id: 'bk' + i, bi: i, name: x.name || t(ITIN_KINDS[x.kind] || 'Booking'), type: itinType(x), day: (x.start || '').slice(0, 10), time: (x.start || '').slice(11, 16), addr: x.address || '', conf: x.confNo || '', booked: true, kindLabel: t(ITIN_KINDS[x.kind] || ''), order: 1000 + i, cc: ccCatOfBooking(x), city: ccCityOfBooking(cfg, x) }));
+  const ps = planLoad(cfg).map((x, i) => ({ ...x, ent: 'plan', type: x.type || 'other', order: i, cc: ccCatOfPlan(x), sub: tSub(x), city: ccCityOfPlan(cfg, x) }));
+  const bs = itinLoad(cfg).map((x, i) => ({ ent: 'book', id: 'bk' + i, bi: i, name: x.name || t(ITIN_KINDS[x.kind] || 'Booking'), type: itinType(x), day: (x.start || '').slice(0, 10), time: (x.start || '').slice(11, 16), addr: x.address || '', conf: x.confNo || '', booked: true, kindLabel: t(ITIN_KINDS[x.kind] || ''), order: 1000 + i, cc: ccCatOfBooking(x), sub: tSub(x), city: ccCityOfBooking(cfg, x) }));
   return ps.concat(bs);
 }
-const ccItem = (x) => ({ city: x.city, cat: x.cc, text: [x.name, x.addr, x.note, x.conf, x.kindLabel].filter(Boolean).join(' '), saved: x.ent === 'plan', booked: !!x.booked });
+const ccItem = (x) => ({ city: x.city, cat: x.cc, sub: x.sub, text: [x.name, x.addr, x.note, x.conf, x.kindLabel].filter(Boolean).join(' '), saved: x.ent === 'plan', booked: !!x.booked });
 function planHTML(cfg) {
   const all = itineraryEntries(cfg);
   if (!all.length) return `<p class="muted">${t('Add places from the Nearby tab.')}</p>`;
@@ -4967,10 +5006,10 @@ function planHTML(cfg) {
       : [view === 'type' && x.day ? dayLabel(cfg, x.day) : '', x.time ? fmtTime(x.time) : '', x.addr ? x.addr.split(',').slice(0, 2).join(',') : ''];
     const name = x.ent === 'book' ? `<b class="plan-t"><span>${esc(x.name)}</span>${bk && LODGE.has(bk.kind) ? hfBadgeHTML(hfOfBk(bk), bkDay(bk.end) || bkDay(bk.start)) : ''}</b>` : `<b class="plan-t"><span class="plan-name">${esc(x.name)}</span></b>`;
     const rm = bk && bk.id && LODGE.has(bk.kind) ? rmBtnHTML(bk.id, 'pr-rm') : '';
-    return `<li class="plan-row${x.ent === 'book' ? ' bk' : ''}${x.booked && x.ent !== 'book' ? ' booked' : ''}${rm ? ' has-rm' : ''}"${x.ent === 'book' ? '' : ` data-plan-id="${esc(x.id)}"`}><button type="button" class="pr-go"${ref ? ` data-ds="${esc(ref)}"` : ''}>${thumbHTML(bk || planLoad(cfg).find(y => y.id === x.id) || x, x.cc)}<span class="pr-tx">${name}<small>${esc(meta.filter(Boolean).join(' · '))}</small>${x.ent !== 'book' && (x.rating || x.booked || x.note) ? `<span class="pr-x">${x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}${x.booked ? `<em class="pr-bk">✓ ${t('Booked')}</em>` : ''}${x.note ? `<span class="pr-note">${esc(x.note)}</span>` : ''}</span>` : ''}</span><i class="tl-chev" aria-hidden="true"></i></button>${rm}</li>`; };
+    return `<li class="plan-row${x.ent === 'book' ? ' bk' : ''}${x.booked && x.ent !== 'book' ? ' booked' : ''}${rm ? ' has-rm' : ''}"${x.ent === 'book' ? '' : ` data-plan-id="${esc(x.id)}"`}><button type="button" class="pr-go"${ref ? ` data-ds="${esc(ref)}"` : ''}>${(o => thumbHTML(o, ccIk(x.cc, o)))(bk || planLoad(cfg).find(y => y.id === x.id) || x)}<span class="pr-tx">${name}<small>${esc(meta.filter(Boolean).join(' · '))}</small>${x.ent !== 'book' && (x.rating || x.booked || x.note) ? `<span class="pr-x">${x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}${x.booked ? `<em class="pr-bk">✓ ${t('Booked')}</em>` : ''}${x.note ? `<span class="pr-note">${esc(x.note)}</span>` : ''}</span>` : ''}</span><i class="tl-chev" aria-hidden="true"></i></button>${rm}</li>`; };
   let groups;
   if (view === 'type') {
-    groups = CC_CATS.map(([k]) => k).concat(['']).map(k => [k ? ccLabel(k) : t('Other'), xs.filter(x => x.cc === k).sort((a, b) => (a.day || '9999').localeCompare(b.day || '9999') || byTime(a, b))]).filter(([, g]) => g.length);
+    groups = TRIP_CATS.concat(['']).map(k => [k ? ccLabel(k) : t('Other'), xs.filter(x => x.cc === k).sort((a, b) => (a.day || '9999').localeCompare(b.day || '9999') || byTime(a, b))]).filter(([, g]) => g.length);
   } else {
     const dated = [...new Set(xs.filter(x => x.day).map(x => x.day))].sort();
     groups = dated.map(d => [dayLabel(cfg, d), xs.filter(x => x.day === d).sort(byTime)]).concat([[t('Saved for later'), xs.filter(x => !x.day).sort(byTime)]]).filter(([, g]) => g.length);
@@ -4982,7 +5021,10 @@ function wireTripCC(cfg, art, opts) {
   // a chip's number = the rows My trip's itinerary lists once that chip is tapped (same entries, same filter): the
   // organizer's schedule lives on the Event tab, so its check-in / flight lines are not counted here (Dylan 11/24:
   // "Hotels 9" over 3 listed hotels — 6 organizer "Check in:" lines were added on top of his 3 bookings)
-  const counts = (F) => { const n = {}; itineraryEntries(cfg).map(ccItem).forEach(x => { if (x.cat && F.ok({ ...x, cat: F.cat || x.cat })) n[x.cat] = (n[x.cat] || 0) + 1; }); return n; };
+  // several chips at once: a chip's number is what that chip alone lists; Transport's follows its subtype filter (the rows
+  // it shows), and each subtype chip counts its own rows. All = everything the other filters let through.
+  const counts = (F) => { const n = { all: 0 }, sub = {}; itineraryEntries(cfg).map(ccItem).forEach(x => { if (!F.rest(x)) return; n.all++; if (!x.cat) return;
+    if (x.cat === 'transport') sub[x.sub || 'other'] = (sub[x.sub || 'other'] || 0) + 1; if (F.subOk(x)) n[x.cat] = (n[x.cat] || 0) + 1; }); n.sub = sub; return n; };
   const SHOW = [['', 'Everything'], ['saved', 'Saved only'], ['booked', 'Booked'], ['host', 'Event only']];
   const fill = (where, el) => {
     const F = ccTrip(cfg); const cities = ccCities(cfg); const n = counts(F);
@@ -4994,7 +5036,8 @@ function wireTripCC(cfg, art, opts) {
     const sl = (SHOW.find(x => x[0] === F.show) || [0, ''])[1];
     ccFill(box, {
       row: (cities.length ? ccTabs({ key: 'city', aria: t('City'), value: F.ci >= 0 ? String(F.ci) : '', ph: t('All cities'), cls: 'dd-city', opts: [{ v: '', l: t('All') }].concat(cities.map(c => ({ v: String(c.i), l: c.l }))) }) : '')
-        + ccChips({ key: 'cat', aria: t('Category'), value: F.cat, ph: t('All categories'), cls: 'dd-cat', opts: CC_CATS.filter(([k]) => n[k] || F.cat === k).map(([k, l]) => ({ v: k, l: t(l), ic: k, n: n[k] || 0 })) }),
+        + ccChips({ key: 'cat', aria: t('Category'), values: F.cats.length ? F.cats : ['all'], cls: 'dd-cat', opts: [{ v: 'all', l: t('All'), ic: 'all', n: n.all }].concat(TRIP_CATS.filter(k => n[k] || F.cats.includes(k)).map(k => ({ v: k, l: ccLabel(k), ic: k, n: n[k] || 0 }))) })
+        + (F.cats.includes('transport') && Object.keys(n.sub).length > 1 ? ccChips({ key: 'tsub', aria: t('Transport'), values: F.tsubs, cls: 'cc-subs', opts: TSUBS.filter(([k]) => n.sub[k]).map(([k, l]) => ({ v: k, l: t(l), ic: k === 'other' ? 'transport' : k, n: n.sub[k] })) }) : ''),
       filt: ccFiltersBtn(F.show ? 1 : 0),
       pills: F.show ? ccPills([['show', t(sl)]], '') : '', sheet: ccSheet(body, t('Done'), 'data-cct-sub') });
   };
@@ -5003,7 +5046,7 @@ function wireTripCC(cfg, art, opts) {
     const pb = art.querySelector('#sec-plan .sec-b'); if (pb) pb.innerHTML = planHTML(cfg);
     const sp = art.querySelector('#sec-spots .sec-b'); if (sp) sp.innerHTML = spotsHTML(cfg);
     const ul = art.querySelector('#sec-itinerary ul.bookings');
-    if (ul) { const F = ccTrip(cfg); let any = false; ul.querySelectorAll('li[data-cc-cat]').forEach(li => { const ok = F.ok({ city: +li.dataset.ccCity, cat: li.dataset.ccCat, text: li.dataset.ccText, saved: false, booked: true }); li.hidden = !ok; any = any || ok; }); const none = ul.nextElementSibling; if (none && none.classList.contains('cc-none')) none.hidden = any; }
+    if (ul) { const F = ccTrip(cfg); let any = false; ul.querySelectorAll('li[data-cc-cat]').forEach(li => { const ok = F.ok({ city: +li.dataset.ccCity, cat: li.dataset.ccCat, sub: li.dataset.ccSub, text: li.dataset.ccText, saved: false, booked: true }); li.hidden = !ok; any = any || ok; }); const none = ul.nextElementSibling; if (none && none.classList.contains('cc-none')) none.hidden = any; }
     const sb = art.querySelector('[data-slot="sched-body"]'); if (sb) { if (opts.onpage) { art._renderSchedule && art._renderSchedule(); return; } sb.innerHTML = scheduleHTML(cfg); }
     bars();
   };
@@ -5012,7 +5055,9 @@ function wireTripCC(cfg, art, opts) {
   art.addEventListener('dd', (e) => {
     if (!mine(e.target)) return; const { key, v } = e.detail; const cities = ccCities(cfg);
     if (key === 'city') ccSet(cfg, 'trip', { city: v === '' ? '' : (cities[+v] || {}).k || '' });
-    if (key === 'cat') ccSet(cfg, 'trip', { cat: ccTrip(cfg).cat === v ? '' : v });
+    if (key === 'cat') { const F = ccTrip(cfg); const cs = v === 'all' ? [] : F.cats.includes(v) ? F.cats.filter(k => k !== v) : F.cats.concat(v);
+      ccSet(cfg, 'trip', { cats: TRIP_CATS.filter(k => cs.includes(k)), cat: '', ...(cs.includes('transport') ? {} : { tsub: [] }) }); }
+    if (key === 'tsub') { const ts = ccTrip(cfg).tsubs; ccSet(cfg, 'trip', { tsub: ts.includes(v) ? ts.filter(k => k !== v) : ts.concat(v) }, false); }
     refresh();
   });
   art.addEventListener('input', debounce((e) => { if (!e.target.matches || !e.target.matches('[data-cct-q]')) return; ccSet(cfg, 'trip', { q: e.target.value.slice(0, 60) }, false); refresh(); }, 120));
@@ -5022,13 +5067,13 @@ function wireTripCC(cfg, art, opts) {
     if (d.cctShow != null) ccSet(cfg, 'trip', { show: d.cctShow }, false);
     else if (d.cctGroup) { ccSet(cfg, 'trip', { group: d.cctGroup }, false); LS.set('planview:' + syncKey(cfg), d.cctGroup); }
     else if (d.cctSub != null || d.ccPill != null) ccSet(cfg, 'trip', { show: '' }, false);
-    else if (d.cctClear != null) { ccSet(cfg, 'trip', { city: '', cat: '', q: '', show: '' }); $$('[data-cct-q]', art).forEach(i => { i.value = ''; }); }
+    else if (d.cctClear != null) { ccSet(cfg, 'trip', { city: '', cat: '', cats: [], tsub: [], q: '', show: '' }); $$('[data-cct-q]', art).forEach(i => { i.value = ''; }); }
     refresh();
   });
 }
 function wirePlan(cfg, art, mapCtl) {
   const sec0 = art.querySelector('#sec-plan'); const body = sec0 && sec0.querySelector('.sec-b');
-  const pins = () => { if (mapCtl) mapCtl.setSaved(planLoad(cfg).filter(x => x.lat != null && !x.hotel).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, ic: ccCatOfPlan(x), onClick: () => openPlan(x) }))); };
+  const pins = () => { if (mapCtl) mapCtl.setSaved(planLoad(cfg).filter(x => x.lat != null && !x.hotel).map(x => ({ lat: x.lat, lon: x.lon, title: x.name, ic: ccIk(ccCatOfPlan(x), x), onClick: () => openPlan(x) }))); };
   const openPlan = (x) => { if (x.src === 'g' && art._openGPlace) art._openGPlace(x.ref); else if (art._openPlace) art._openPlace(x.ref); };
   const render = () => { if (body) body.innerHTML = planHTML(cfg); art._renderSchedule && art._renderSchedule(); pins(); const sp = art.querySelector('#sec-spots .sec-b'); if (sp) sp.innerHTML = spotsHTML(cfg); art._hotelUI && art._hotelUI(); dsRefresh(art); };
   art._planChanged = render; pins();
@@ -5311,7 +5356,7 @@ const DET = {
   train: [['seat', 'Seat'], ['cabin', 'Class'], ['price', 'Price paid']],
   car: [['carClass', 'Car class'], ['price', 'Price paid']],
 };
-const detGroup = (x) => { const k = x.kind, ty = x.type; return LODGE.has(k) || (!k && ty === 'stay') ? 'lodge' : k === 'flight' ? 'flight' : k === 'car' ? 'car' : k === 'train' ? 'train' : k === 'food' || (!k && ty === 'food') ? 'food' : k === 'tour' || k === 'other' || (!k && (ty === 'activity' || ty === 'other')) ? 'tour' : ''; };
+const detGroup = (x) => { const k = x.kind, ty = x.type; return LODGE.has(k) || (!k && ty === 'stay') ? 'lodge' : k === 'flight' ? 'flight' : k === 'car' ? 'car' : k === 'train' || k === 'bus' || k === 'ferry' ? 'train' : k === 'food' || (!k && ty === 'food') ? 'food' : k === 'tour' || k === 'other' || (!k && (ty === 'activity' || ty === 'other')) ? 'tour' : ''; };
 const detVal = (x, key) => (x.det || {})[key];
 const HF_DET = new Set(['room', 'beds', 'cancelBy']); // a hotel's room + cancellation: the hotel fields (hfFormHTML), up front in the booking form
 function detSet(x, key, v) { const d = { ...(x.det || {}) }; if (v == null || v === '' || (Array.isArray(v) && !v.length)) delete d[key]; else d[key] = v; if (Object.keys(d).length) x.det = d; else delete x.det; return x; }
@@ -5596,7 +5641,7 @@ function dsBookingHTML(cfg, x, back) {
   const am = detAmen(x); const geo = bkGeo(x); const pid = placeIdOf(x);
   const links = [via && via.url ? ext(via.url, `${t('Manage booking')} · ${via.name}`, 'btn sm') : fl.manage ? ext(fl.manage, t('Manage booking'), 'btn sm') : '', fl.status ? ext(fl.status, t('Flight status'), 'btn sm') : '', x.link ? ext(x.link, t('Open booking'), 'btn sm') : ''].join('');
   const idx = itinLoad(cfg).findIndex(y => y.id === x.id);
-  return `${dsHead({ back, icon: ccIcon(cat), kicker: [t(ITIN_KINDS[x.kind] || 'Booking'), city].filter(Boolean).join(' · '), title: x.name || t(ITIN_KINDS[x.kind] || 'Booking'),
+  return `${dsHead({ back, icon: ccIcon(ccIk(cat, x)), kicker: [t(ITIN_KINDS[x.kind] || 'Booking'), city].filter(Boolean).join(' · '), title: x.name || t(ITIN_KINDS[x.kind] || 'Booking'),
       sub: g === 'lodge' && bkDay(x.start) ? esc(dateRange(bkDay(x.start), bkDay(x.end) || bkDay(x.start))) : '' })}
     <div class="ds-b">${bkOffTrip(cfg, x) ? `<p class="ds-warn" role="note">${esc(t('These dates don’t match the trip ({d}). Check this booking.', { d: routeSpan(cfg) ? dateRange(...routeSpan(cfg)) : '' }))}</p>` : ''}${dsFacts(fs)}${idx >= 0 && g === 'lodge' ? `<div class="ds-acts ds-rm"><button type="button" class="btn sm bk-rm hb-rm" data-ds-rmbk="${esc(x.id)}">${TRASH_IC}${t('Remove hotel')}</button></div>` : ''}${am.length ? `<p class="ds-tags">${am.map(a => `<span class="tag">${esc(a)}</span>`).join('')}</p>` : ''}${PERF}
     ${x.kind === 'flight' ? '' : dsWhereHTML(x.name || '', x.address || '', geo, pid, cat, { q: [x.name, x.address].filter(Boolean).join(', '), key: [x.name, x.address].filter(Boolean).join(', ') })}
@@ -5610,7 +5655,7 @@ function dsPlaceHTML(cfg, x, back) {
   const fs = [dsFact(t('Day'), x.day ? dayLabel(cfg, x.day) : t('Saved for later')), dsFact(t('Time'), x.time ? fmtTime(x.time) : ''), dsFact(t('Confirmation'), x.booked ? x.conf || '' : ''),
     ...ls.map(l => { const m = l.match(/^([^:]+):\s*(.+)$/); return m ? dsFact(m[1], m[2]) : ''; })];
   const geo = x.lat != null ? { lat: x.lat, lon: x.lon } : null;
-  return `${dsHead({ back, icon: ccIcon(cat), kicker: [ccLabel(cat), x.booked ? t('Booked') : ''].filter(Boolean).join(' · '), title: x.name || t('Place'), sub: x.rating ? gRatingHTML(x) : '' })}
+  return `${dsHead({ back, icon: ccIcon(ccIk(cat, x)), kicker: [ccLabel(cat), x.booked ? t('Booked') : ''].filter(Boolean).join(' · '), title: x.name || t('Place'), sub: x.rating ? gRatingHTML(x) : '' })}
     <div class="ds-b">${dsFacts(fs)}${detAmen(x).length ? `<p class="ds-tags">${detAmen(x).map(a => `<span class="tag">${esc(a)}</span>`).join('')}</p>` : ''}${PERF}
     ${dsWhereHTML(x.name || '', x.addr || '', geo, x.src === 'g' ? x.ref : '', cat)}
     ${x.hours ? `<section class="ds-sec"><h3>${t('Hours')}</h3><p class="ds-note">${esc(prettyHours(x.hours))}</p></section>` : ''}
@@ -5658,7 +5703,7 @@ function dsEventHTML(cfg, si, back) {
   const where = p ? dsWhereHTML(p.name, p.address && p.address !== p.name ? p.address : '', p.lat != null ? p : null, p.gid || '', cat, { key: [p.name, p.address].filter(Boolean).join(', ') })
     : isTrip(cfg) ? dsWhereHTML(x.title, city ? [city.city || city.name, city.country].filter(Boolean).join(', ') : '', null, '', cat, { q: [x.title, city ? city.city || city.name : v && v.city].filter(Boolean).join(', ') }).replace(`<h3>${t('Location')}</h3>`, `<h3>${t('Find it')}</h3>`)
     : x.title ? find([x.title, v && (v.city || v.region)].filter(Boolean).join(', ')) : '';
-  return `${dsHead({ back, icon: ccIcon(cat || 'pin'), kicker: [x.kind && x.kind !== 'activity' ? t(PLAN_KINDS[x.kind] || '') : isTrip(cfg) ? t('Plan') : t(cfg.type || 'Event'), city ? city.name : ''].filter(Boolean).join(' · '), title: x.title, sub: p ? esc(p.name) : '' })}
+  return `${dsHead({ back, icon: ccIcon(ccIk(cat, x) || 'pin'), kicker: [x.kind && x.kind !== 'activity' ? t(PLAN_KINDS[x.kind] || '') : isTrip(cfg) ? t('Plan') : t(cfg.type || 'Event'), city ? city.name : ''].filter(Boolean).join(' · '), title: x.title, sub: p ? esc(p.name) : '' })}
     <div class="ds-b">${dsFacts([dsFact(t('Date'), d ? fmt(d, { weekday: 'long', month: 'long', day: 'numeric' }) : ''), dsFact(t('Time'), x.time ? fmtTime(x.time) : '')])}
     ${x.note ? `<p class="ds-note ds-lead">${esc(x.note).replace(/\n/g, '<br>')}</p>` : ''}${PERF}
     ${where}</div>`;
@@ -5671,7 +5716,7 @@ function dsDayHTML(cfg, d, back) {
   const stays = itinLoad(cfg).filter(x => LODGE.has(x.kind) && bkDay(x.start) && bkDay(x.start) < d && bkDay(x.end) > d); // nights in the middle of a stay
   const row = (x) => { const cat = x._cc ? x._cc.cat : ''; const title = x.co ? t('Check out · {n}', { n: x.name || t('Hotel') }) : x.name || t(ITIN_KINDS[x.kind] || 'Booking');
     const sub = x.bk ? [t('Yours'), x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · ') : x.ev ? x.note || '' : x.pl ? t('Saved spot') : [t(ITIN_KINDS[x.kind] || ''), x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · ');
-    return `<li><button type="button" class="ds-row" ${x.ref ? `data-ds="${esc(x.ref)}"` : 'disabled'}><time>${esc(dsTm(x.start)) || '—'}</time>${ccIcon(x.co ? 'hotels' : cat || 'pin')}<span class="ds-row-t"><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${x.ref ? '<i class="ds-chev" aria-hidden="true"></i>' : ''}</button></li>`; };
+    return `<li><button type="button" class="ds-row" ${x.ref ? `data-ds="${esc(x.ref)}"` : 'disabled'}><time>${esc(dsTm(x.start)) || '—'}</time>${ccIcon(x.co ? 'hotels' : ccIk(cat, x) || 'pin')}<span class="ds-row-t"><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${x.ref ? '<i class="ds-chev" aria-hidden="true"></i>' : ''}</button></li>`; };
   return `${dsHead({ back, icon: '', kicker: [n ? t('Day {n}', { n }) : '', st && stopsOf(cfg).length > 1 ? st.name : ''].filter(Boolean).join(' · '), title: fmt(d, { weekday: 'long', month: 'long', day: 'numeric' }) })}
     <div class="ds-b">${xs.length || stays.length ? `<ol class="ds-day">${xs.map(row).join('')}${stays.map(x => row({ ...x, ref: 'bk:' + x.id, start: '', name: x.name, _cc: { cat: 'hotels' }, confNo: '' }).replace('<b>', `<b>${esc(t('Staying at'))} `)).join('')}</ol>` : `<p class="muted">${t('Nothing planned yet.')}</p>`}
     ${nb ? `<div class="ds-acts"><button type="button" class="btn sm" data-ds-near="${ci}">${esc(t('Explore {c}', { c: st.city || st.name }))}</button></div>` : ''}</div>`;
@@ -5953,11 +5998,12 @@ function spotsHTML(cfg) {
   const stays = itinLoad(cfg).filter(x => LODGE.has(x.kind)).map(x => ({ name: x.name || '', ref: x.ref || '' })).concat(hotelCands(cfg).map(c => ({ name: c.name || '', ref: '' })));
   const isStay = (x) => stays.some(h => (h.ref && x.ref && h.ref === x.ref) || (h.name && nameLike(h.name, x.name)));
   // the City × Category bar narrows the list: a city's spots only, each under its own category
-  const F = ccTrip(cfg); const cityI = (g) => g.i;
+  // Saved spots never lists the stays, so Hotels (My trip's default chip) can't narrow it: the other chosen categories do
+  const F = ccTrip(cfg); const cityI = (g) => g.i; const spCats = F.cats.filter(k => k !== 'hotels');
   const rows = []; let any = false;
   gs0.forEach(g => { const ci = many ? cityI(g) : 0;
     g.spots.forEach(x => { const cat = ccCatOfPlan(x); if (cat === 'hotels' && isStay(x)) return; any = true;
-      if (F.ok({ city: ci, cat, text: [x.name, x.addr, x.note].join(' '), saved: true, booked: !!x.booked })) rows.push({ x, cat, city: g.city }); }); });
+      const it = { city: ci, cat, text: [x.name, x.addr, x.note].join(' '), saved: true, booked: !!x.booked }; if (F.rest(it) && (!spCats.length || spCats.includes(cat))) rows.push({ x, cat, city: g.city }); }); });
   if (!any) return `<p class="muted">${t('Tap ☆ on a place in Nearby to save it here.')}</p>`;
   if (!rows.length) return ccNoneHTML();
   const showCity = many && F.ci < 0;
@@ -8284,5 +8330,5 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
