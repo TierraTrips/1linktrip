@@ -1707,3 +1707,38 @@ dialog.ds-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 @media (prefers-reduced-motion: reduce) { .ro-ol.dragging .ro-it { transition: none; } }
 .rowed .es-line.s-place { background: none; padding: 8px 0; flex-wrap: nowrap; border-radius: 0; }
 .ro-t.ph { color: #6E8C87; font-style: italic; }
+
+/* ---- Share: Invite guests | Share my trip; the personal copy (Edited / Updated — use the new one?) ---- */
+dialog.shr-dlg { padding: 0; border: 0; width: min(520px, 100vw); max-width: 100vw; margin: auto auto 0; border-radius: 22px 22px 0 0; background: var(--paper); color: var(--ink); }
+@media (min-width: 700px) { dialog.shr-dlg { margin: auto; border-radius: 18px; } }
+.shr-in { padding: 14px 18px calc(18px + env(safe-area-inset-bottom)); display: grid; gap: 12px; }
+.shr-top { display: flex; align-items: center; justify-content: space-between; }
+.shr-top h2 { font: 600 1.35rem var(--brand); margin: 0; }
+.shr-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 12px; background: var(--tint); }
+.shr-seg button { font: 600 .92rem var(--sans); color: var(--slate); background: none; border: 0; border-radius: 9px; min-height: 42px; cursor: pointer; }
+.shr-seg button[aria-selected="true"] { background: var(--gate); color: #fff; box-shadow: 0 2px 6px -2px rgba(15,74,80,.5); }
+.shr-sub { margin: 0; font-size: .9rem; color: var(--slate); }
+.shr-count { margin: 0; font: 600 .72rem var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--route-ink); }
+.shr-st { margin: 0; color: var(--slate); }
+.shr-link input { width: 100%; font: .8rem/1.4 var(--mono); border: 1.5px dashed var(--rule); border-radius: 10px; padding: 10px 12px; background: var(--field); color: var(--ink); text-overflow: ellipsis; }
+.shr-in .btns, .pub [data-shr-p] .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.shr-stop { margin-left: auto; color: #A3272D; }
+.shr-signin .signin { margin-top: 6px; }
+.pub [data-shr-p] { display: grid; gap: 12px; } .pub [data-shr-p][hidden] { display: none; }
+.shr-from { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; padding: 10px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); font-size: .9rem; }
+.shr-from b { font-weight: 600; } .shr-from .muted { color: var(--muted); font: 600 .64rem var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.shr-from .mini-b { margin-left: auto; border-color: var(--line); }
+.shr-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--route); box-shadow: 0 0 0 0 color-mix(in srgb, var(--route) 55%, transparent); animation: shr-pulse 2.4s ease-out infinite; flex: none; }
+@keyframes shr-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--route) 55%, transparent); } 70%, 100% { box-shadow: 0 0 0 7px transparent; } }
+@media (prefers-reduced-motion: reduce) { .shr-dot { animation: none; } }
+.ov-upd { font: 600 .6rem var(--mono); font-style: normal; letter-spacing: .06em; text-transform: uppercase; color: #fff; background: var(--route); padding: 2px 6px; border-radius: 5px; vertical-align: 2px; margin-left: 6px; }
+.dlist .ov-upd { padding: 1px 5px; }
+.ov-p { display: grid; gap: 6px; margin: 0 0 14px; padding: 12px 14px; border-radius: 12px; background: color-mix(in srgb, var(--route) 9%, var(--card, #fff)); border: 1.5px solid color-mix(in srgb, var(--route) 45%, transparent); }
+.ov-p b { font-size: .95rem; } .ov-p-n { font-size: .86rem; color: var(--muted, var(--slate)); overflow-wrap: anywhere; }
+.ov-p-b { display: flex; gap: 8px; margin-top: 2px; } .ov-p-b .btn { min-height: 38px; }
+.ov-acts { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.ov-conf { flex-basis: 100%; margin: 0 0 4px; display: flex; gap: 8px; align-items: baseline; } .ov-conf span { font-size: .8rem; color: var(--muted); } .ov-conf b { font-family: var(--mono); }
+.ov-f { display: grid; gap: 10px; } .ov-f .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ov-f input, .ov-f textarea { width: 100%; }
+.ov-priv { margin: 0; }
+.ov-show { margin-top: 10px; }

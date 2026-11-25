@@ -14,7 +14,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 const LS = {
   get(k, d = null) { try { const v = localStorage.getItem('ep:' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem('ep:' + k, JSON.stringify(v)); } catch { /* quota */ } },
+  set(k, v) { try { localStorage.setItem('ep:' + k, JSON.stringify(v)); } catch { /* quota */ } if (window.__shTouch) window.__shTouch(k); }, // a shared trip follows its bookings
   del(k) { try { localStorage.removeItem('ep:' + k); } catch {} }
 };
 
@@ -1577,6 +1577,10 @@ function normSchedPlace(p) {
   if (typeof p.gid === 'string' && /^[\w-]{1,300}$/.test(p.gid)) o.gid = p.gid;
   return o;
 }
+// a schedule item's id: made once from what it says (so a guest's device and the organizer's make the same one before it is
+// saved), kept from then on whatever the organizer changes; duplicates get the next one
+const schedIdOf = (x, n) => 'sc' + Math.abs([...`${x.date || ''}|${x.time || ''}|${x.title || ''}|${n}`].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) | 0, 7)).toString(36);
+function schedIds(sch) { const seen = new Set(); sch.forEach(x => { if (typeof x.id !== 'string' || !/^[\w-]{1,40}$/.test(x.id) || seen.has(x.id)) { let n = 0, id; do id = schedIdOf(x, n++); while (seen.has(id)); x.id = id; } seen.add(x.id); }); return sch; }
 function normalize(c) {
   c = c || {}; const legacy = !(c.v >= 2);
   const b = blankEvent(c.type);
@@ -1604,6 +1608,7 @@ function normalize(c) {
   if (/^#1f3a2e$/i.test(c.theme.accent || '')) c.theme.accent = LAGOON; // pages saved with the old Forest default
   c.tools = { ...defaultTools(c.type), ...(c.tools || {}) };
   c.off = c.off || {}; c.notes = Array.isArray(c.notes) ? c.notes : []; c.schedule = Array.isArray(c.schedule) ? c.schedule.filter(x => x && typeof x === 'object') : [];
+  schedIds(c.schedule); // a stable id per item (a guest's personal copy refers to it)
   schedFlightFix(c.schedule); // a flight line's arrival day from both airports' time zones (HND→JFK lands the same day)
   c.schedule.forEach(x => { if (x.place === undefined) return; const p = normSchedPlace(x.place); if (p) x.place = p; else delete x.place; }); // an item at its own place
   c.x = c.x && typeof c.x === 'object' ? c.x : {}; c.bring = typeof c.bring === 'string' ? c.bring : '';
@@ -1704,7 +1709,7 @@ function schedLine(cfg, x) {
 function scheduleHTML(cfg) {
   const { evs, mine } = schedEntries(cfg);
   const legs = routeInItin(cfg) && !cfg.off.route ? stopsOf(cfg) : null;
-  if (!evs.length && !mine.length && !legs) return '';
+  if (!evs.length && !mine.length && !legs) return ovHiddenHTML(cfg);
   const all = schedMerge(cfg, evs, mine);
   const days = {}; all.forEach(x => (days[(x.start || '').slice(0, 10)] = days[(x.start || '').slice(0, 10)] || []).push(x));
   const my = !ONP && mineOn(cfg) ? mineGet(cfg) : null; const away = (d) => !!my && !!d && (d < my.a || d > my.l); // Make it mine: days outside their stay
@@ -1712,7 +1717,7 @@ function scheduleHTML(cfg) {
   const trip = isTrip(cfg);
   const dated = Object.keys(days).filter(Boolean).sort(); const def = dayOpenDefault(cfg, dated); const many = Object.keys(days).length > 1;
   const row = (x) => {
-    const mark = (x.bk || (!x.ev && !x.co) ? ` <em class="yours">${t(x.pl ? 'Saved' : 'Yours')}</em>` : '') + schedHfBadge(cfg, x);
+    const mark = (x.bk || (!x.ev && !x.co) ? ` <em class="yours">${t(x.pl ? 'Saved' : 'Yours')}</em>` : '') + ovRowTag(cfg, x) + schedHfBadge(cfg, x);
     const sub = x.ev && !trip && (x.note || x.place) ? esc(x.place && !(x.note || '').toLowerCase().includes(x.place.toLowerCase()) ? [x.place, x.note].filter(Boolean).join(' · ') : x.note) : '';
     const inner = `<span class="tl-tx"><b>${esc(schedLine(cfg, x))}${mark}</b>${sub ? `<span>${sub}</span>` : ''}</span>`;
     return `<li class="${[x.ev && !x.bk ? '' : 'mine', x.co ? 'co' : '', x.kind ? 'k-' + esc(x.kind) : ''].filter(Boolean).join(' ')}"${x.ev ? edA('s:' + x.si) : ''}><time>${esc(tm(x.start)) || (trip ? '' : '—')}</time><div>${x.ref ? `<button type="button" class="tl-go" data-ds="${esc(x.ref)}">${inner}<i class="tl-chev" aria-hidden="true"></i></button>` : inner}</div></li>`;
@@ -1733,7 +1738,7 @@ function scheduleHTML(cfg) {
       const h = s.lat != null && nb ? `<button type="button" class="city-h" data-route-stop="${si}"${ea}>${inner}<i class="tl-chev" aria-hidden="true"></i></button>` : `<div class="city-h"${ea}>${inner}</div>`;
       return `<div class="city-g">${h}${by[i].map(dayHTML).join('')}</div>`; }).join('') + rest.map(dayHTML).join('');
   } else body = Object.entries(days).map(dayHTML).join('');
-  return `<div class="sched-days dlist">${body}</div>`;
+  return `<div class="sched-days dlist">${body}</div>${ovHiddenHTML(cfg)}`;
 }
 // an Event-tab row's cancellation badge: the guest's own hotel booking, else the organizer's check-in row
 function schedHfBadge(cfg, x) {
@@ -1823,12 +1828,13 @@ function bookingsHTML(cfg) {
     const via = viaOf(x); const viaUrl = via && via.url;
     const links = [fl.status ? ext(fl.status, t('Flight status'), 'mini-b') : '', viaUrl ? ext(viaUrl, `${t('Manage booking')} · ${via.name}`, 'mini-b') : fl.manage ? ext(fl.manage, t('Manage booking'), 'mini-b') : '', x.link ? ext(x.link, t('Open booking'), 'mini-b') : ''].join('');
     const it = ccBkItem(cfg, x);
-    return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-sub="${it.sub}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div>${x.id ? `<button type="button" class="pr-go bk-go" data-ds="bk:${esc(x.id)}">${thumbHTML(x, ccIk(it.cat, x))}<span class="pr-tx">` : '<span class="pr-tx">'}<b class="plan-t"><span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${bkOffTrip(cfg, x) ? `<span class="bk-warn">${esc(t('Not on the trip dates'))}</span>` : ''}${detVal(x, 'room') || (LODGE.has(x.kind) && hfBadge(hfOfBk(x), bkDay(x.end) || bkDay(x.start))) ? `<span class="bk-room">${esc(detVal(x, 'room') || '')}${LODGE.has(x.kind) ? hfBadgeHTML(hfOfBk(x), bkDay(x.end) || bkDay(x.start)) : ''}</span>` : ''}${x.note && !LODGE.has(x.kind) ? `<span class="pr-note">${esc(x.note)}</span>` : ''}${x.id ? '</span><i class="tl-chev" aria-hidden="true"></i></button>' : '</span>'}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button>${LODGE.has(x.kind) && x.id ? `<button type="button" class="mini-b bk-rm" data-bk-rm="${esc(x.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}</div></div></li>`;
+    return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-sub="${it.sub}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div>${x.id ? `<button type="button" class="pr-go bk-go" data-ds="bk:${esc(x.id)}">${thumbHTML(x, ccIk(it.cat, x))}<span class="pr-tx">` : '<span class="pr-tx">'}<b class="plan-t"><span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span>${x.sh && x.sh.n ? `<em class="ov-upd">${esc(t('Updated'))}</em>` : ''}</b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${bkOffTrip(cfg, x) ? `<span class="bk-warn">${esc(t('Not on the trip dates'))}</span>` : ''}${detVal(x, 'room') || (LODGE.has(x.kind) && hfBadge(hfOfBk(x), bkDay(x.end) || bkDay(x.start))) ? `<span class="bk-room">${esc(detVal(x, 'room') || '')}${LODGE.has(x.kind) ? hfBadgeHTML(hfOfBk(x), bkDay(x.end) || bkDay(x.start)) : ''}</span>` : ''}${x.note && !LODGE.has(x.kind) ? `<span class="pr-note">${esc(x.note)}</span>` : ''}${x.id ? '</span><i class="tl-chev" aria-hidden="true"></i></button>' : '</span>'}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button>${LODGE.has(x.kind) && x.id ? `<button type="button" class="mini-b bk-rm" data-bk-rm="${esc(x.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}</div></div></li>`;
   }).join('')}</ul>${ccNoneHTML().replace('class="muted cc-none"', `class="muted cc-none"${order.some(([x]) => F.ok(ccBkItem(cfg, x))) ? ' hidden' : ''}`)}` : ''}
   <div class="btns itin-btns"><button type="button" class="btn primary" data-itin-add>+ ${t('Add a booking')}</button>${items.length ? `<button type="button" class="btn" data-itin-ics>${t('Add to calendar')}</button>` : ''}</div><div data-slot="itin-form"></div>${cfg.demoTrip ? '' : fwdSlot(cfg)}`;
 }
 function myTripTabHTML(cfg) {
   const T = cfg.tools; const out = [];
+  if (T.mytrip) out.push(shFromHTML(cfg));
   if (T.mytrip) out.push(`<div class="ccb-wrap" data-slot="trip-cc"></div>`);
   if (T.mytrip) out.push(sec('plan', t('Your itinerary'), planHTML(cfg)));
   if (T.mytrip && cfg.venue) out.push(sec('spots', t('Saved spots'), spotsHTML(cfg)));
@@ -1945,6 +1951,7 @@ function renderEvent(cfg, root, opts = {}) {
     const seq0 = renderSeq + 1; repairStops(cfg).then(ok => { if (ok && renderSeq === seq0 && document.body.contains(root)) { const p = root.querySelector('.ev-panel:not([hidden])'); renderEvent(cfg, root, { ...opts, repaired: true, tab: p ? p.dataset.panel : opts.tab }); } }).catch(() => {});
   }
   if (!opts.src) opts = { ...opts, src: cfg }; // "Edit a copy" and the language picker keep the page as written
+  const cfgIn = cfg; if (!opts.onpage) cfg = guestView(cfg, opts); // type rule + the guest's personal copy
   cfg = tripView(cfg);
   if (!opts.preview && !opts.onpage) applyShifts(cfg); // the organizer moved the trip: this device's saved places follow
   // ?city=kyoto&cat=restaurants: that city and category in Nearby, My trip and the Itinerary (opens Nearby unless a tab is asked for)
@@ -1984,6 +1991,10 @@ function renderEvent(cfg, root, opts = {}) {
   </article>`;
   ONP = false;
   const art = root.querySelector('.ev');
+  art._src = opts.src; // a change to the personal copy draws the page again, on the same tab and scroll
+  art._rerender = (noDs) => { if (!document.body.contains(root)) return; const p = root.querySelector('.ev-panel:not([hidden])'); const y = window.scrollY; renderEvent(cfgIn, root, { ...opts, tab: p ? p.dataset.panel : opts.tab, noDs: !!noDs }); window.scrollTo(0, y); };
+  if (opts.preview || opts.onpage) { if (B && B.cfg && !opts.src.demoTrip) shareNote(B.cfg, true); } else shareNote(cfg, false);
+  art.addEventListener('click', (e) => { if (e.target.closest('[data-ov-show]')) { ovShowAll(cfg); art._rerender(true); } else if (e.target.closest('[data-shr-unfollow]')) { shareUnfollow(cfg); art._rerender(true); } });
   art._srcs = new Set();
   // a source is credited once it actually supplies the map or places (OpenStreetMap only when Google is unavailable)
   art._useSrc = (k) => { art._srcs.add(k); const el = art.querySelector('[data-slot="attrib"]'); if (el) el.innerHTML = attribHTML(art._srcs); };
@@ -2032,7 +2043,7 @@ function wireEvent(cfg, art, seq, air, opts) {
       dv.classList.toggle('open', open); a.setAttribute('aria-expanded', String(open)); const l = dv.querySelector(':scope > .tl'); if (l) l.hidden = !open; }
     else if (a.dataset.more != null) { a.closest('ul').querySelectorAll('.more').forEach(x => x.classList.remove('more')); a.closest('li').remove(); }
     else if (a.dataset.act === 'ics') { a.closest('details')?.removeAttribute('open'); downloadICS(cfg); }
-    else if (a.dataset.act === 'share') shareEvent(cfg, opts);
+    else if (a.dataset.act === 'share') shareSheet(cfg, opts, art);
     else if (a.dataset.act === 'rsvp') { const s = art.querySelector('#sec-rsvp'); if (!s) return; if (s.classList.contains('cx-col') && art._cxOpen) art._cxOpen('rsvp'); s.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
     else if (a.dataset.food) { const s = slot('food'); s.innerHTML = foodHTML(cfg, art._osm, a.dataset.food); }
   });
@@ -2408,9 +2419,12 @@ function renderBuilder(cfg, source, hosted, pid) {
   <dialog id="sheet" class="sheet"><form class="sheet-in" autocomplete="off" onsubmit="return false"></form></dialog>
   <dialog id="pub"><form method="dialog" class="pub">
     <h2>Your page is ready to share</h2>
+    <div data-pub-seg hidden>${shrSegHTML('plan')}</div>
+    <div data-shr-p="plan"><p class="shr-sub" data-pub-sub hidden>${esc(t(SHR_SUB.plan))}</p>
     <textarea id="pub-url" readonly rows="4"></textarea>
     <div id="pub-host"></div>
-    <div class="btns"><button type="button" class="btn primary" data-act="copy">Copy link</button><button type="button" class="btn" data-act="native-share" hidden>Share…</button><button type="button" class="btn" data-act="qr">QR code</button><a class="btn" id="pub-open" href="#" target="_blank" rel="noopener noreferrer">Open page</a><button class="btn ghost">Close</button></div>
+    <div class="btns"><button type="button" class="btn primary" data-act="copy">Copy link</button><button type="button" class="btn" data-act="native-share" hidden>Share…</button><button type="button" class="btn" data-act="qr">QR code</button><a class="btn" id="pub-open" href="#" target="_blank" rel="noopener noreferrer">Open page</a><button class="btn ghost">Close</button></div></div>
+    <div data-shr-p="trip" hidden><div data-shr-box></div><div class="btns"><button class="btn ghost">Close</button></div></div>
   </form></dialog>`;
   buildForm(); saveStatus('');
   if (new URLSearchParams(location.search).get('e')) $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase())); // '#' can't leave a ?e= link
@@ -2427,6 +2441,7 @@ function renderBuilder(cfg, source, hosted, pid) {
     if (a.dataset.act === 'native-share') navigator.share({ title: B.cfg.title, url: $('#pub-url').value }).catch(() => {});
     if (a.dataset.act === 'qr') openQR(B.cfg, $('#pub-url').value);
   });
+  dlg.addEventListener('click', (e) => { const tb = e.target.closest('[data-shr-tab]'); if (tb && B.hosted) { B.shrCtx = B.shrCtx && B.shrCtx.eid === B.hosted.id ? B.shrCtx : { cfg: B.cfg, eid: B.hosted.id, slug: B.hosted.slug, owner: true, back: location.hash }; B.shrCtx.cfg = B.cfg; shrTab(dlg, tb.dataset.shrTab, B.shrCtx); } });
   const sh = $('#sheet');
   sh.addEventListener('close', () => { if (B.onp) onpCleanup(); B.onp = false; B.focus = null; B.onpSec = null; sh.classList.remove('onp'); B.card = null; if (DU && DU.key !== 'main') DU = null; buildForm(); });
   $('#preview').addEventListener('click', onpTap, true); $('#preview').addEventListener('keydown', onpTap, true);
@@ -2466,7 +2481,7 @@ function publish(opts = {}) {
   if (!c.start) problems.push('a date');
   if (problems.length) { toast('Add ' + problems.join(' and ') + ' first'); return; }
   if (!c.ek) c.ek = eventKey(c); // pin the page's key (same value guests' devices already use) so its old links stay recognisable
-  if (!$('#pub').open) $('#pub').showModal();
+  if (!$('#pub').open) { $('#pub').showModal(); if (B.shrCtx || $('#pub [data-shr-tab]')) shrTab($('#pub'), 'plan', B.shrCtx || {}); }
   // Share gives the page's one short link (?e=), the same link forever; signed out → sign in first (or a one-time long link)
   if (!SB || opts.long) return shareLong();
   hostNow();
@@ -3604,6 +3619,10 @@ async function renderHosted(slug, tab) {
   if (osm && cfg.venue && Array.isArray(osm.food)) memo.set(osmKey(cfg.venue.lat, cfg.venue.lon), Promise.resolve(osm));
   document.title = (cfg.title || 'Event') + ' · 1LinkTrip';
   LANG = guestLangPick(cfg); document.documentElement.lang = LANG; document.documentElement.dir = RTL.has(LANG) ? 'rtl' : 'ltr';
+  // a "Share my trip" link (?s=<token>): the page plus that person's bookings, followed from now on (the token leaves the
+  // address so it isn't passed on by accident)
+  const sq = (new URLSearchParams(location.search).get('s') || '').toLowerCase(); let shArrived = false;
+  if (sq) { const q = new URLSearchParams(location.search); q.delete('s'); history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash); shArrived = /^[a-f0-9]{32}$/.test(sq); }
   // the organizer (this device has the page in My pages) gets their page with tap-to-edit, right at its link; everyone else
   // gets the guest page (and "Edit a copy"). The account's copy wins over an older one on this device, as in the sync.
   let own = pagesAll().find(p => p.hosted && p.hosted.id === row.id);
@@ -3613,6 +3632,8 @@ async function renderHosted(slug, tab) {
     if (row.published !== undefined && own.hosted.pub !== !!row.published) pageSave(own.pid, { hosted: { ...own.hosted, pub: !!row.published } });
     window.__ownTab = tab; return renderBuilder(own.cfg, null, own.hosted, own.pid);
   }
+  if (shArrived && !cfg.demoTrip) { const k = syncKey(cfg); const was = LS.get('shIn:' + k); if (was && was !== sq) shareUnfollow(cfg); if ((LS.get('shOut:' + k) || {}).tok !== sq) LS.set('shIn:' + k, sq); }
+  if (LS.get('shIn:' + syncKey(cfg))) { await shareFollow(cfg, hosted, shArrived); if (shArrived && !tab && cfg.tools && cfg.tools.mytrip && tabsFor(cfg).some(x => x[0] === 'mytrip')) tab = 'mytrip'; }
   $('.vbar').insertAdjacentHTML('beforeend', `${langPillsHTML(cfg)}${langSelectHTML(cfg)}${vbarEditHTML(`#edit=${packEvent(cfg)}`, t('Edit a copy'))}`);
   requestAnimationFrame(pillInView);
   if (row.published === false) $('.viewer').insertAdjacentHTML('beforeend', `<div class="own-stale" role="status"><span>${t('Only you can see this page.')}</span></div>`);
@@ -4016,6 +4037,7 @@ async function hostNow() {
     if (!h) throw new Error('This page belongs to another account. Edit a copy to share it.');
     const url = shortURL(h.slug); pubLink(url, 'Your link');
     B.pub = { state: 'done' }; renderPubHost(); renderHostNote(); saveStatus('saved');
+    { const sg = $('#pub [data-pub-seg]'), sb2 = $('#pub [data-pub-sub]'); if (sg) sg.hidden = false; if (sb2) sb2.hidden = false; } // Invite guests | Share my trip
   } catch (e) { const msg = pubWhy(e); toast('Couldn’t share: ' + msg); pubLink(null, 'Share your page'); B.pub = { state: 'error', msg }; renderPubHost(); }
 }
 function wirePubHost() {
@@ -5944,9 +5966,10 @@ function dsDayHTML(cfg, d, back) {
 }
 function dsHTML(cfg, ref, back) {
   const [k, id] = String(ref).split(/:(.+)/); if (!id) return '';
-  if (k === 'bk') { const x = itinLoad(cfg).find(y => y.id === id); return x ? dsBookingHTML(cfg, x, back) : ''; }
-  if (k === 'pl') { const x = planLoad(cfg).find(y => y.id === id); return x ? dsPlaceHTML(cfg, x, back) : ''; }
-  if (k === 'ev') return dsEventHTML(cfg, +id, back);
+  if (k === 'bk') { const x = itinLoad(cfg).find(y => y.id === id); return x ? dsInsTop(dsBookingHTML(cfg, x, back), shTopHTML(x, 'bk')) : ''; }
+  if (k === 'pl') { const x = planLoad(cfg).find(y => y.id === id); return x ? dsInsTop(dsPlaceHTML(cfg, x, back), shTopHTML(x, 'pl')) : ''; }
+  if (k === 'ev') { const h = dsEventHTML(cfg, +id, back); const x = cfg.schedule[+id]; if (!h || !cfg._gv || !x || !x.id) return h; // a guest: their copy's buttons
+    const at = h.lastIndexOf('</div>'); return dsInsTop(at < 0 ? h : h.slice(0, at) + ovActsHTML(x) + h.slice(at), ovTopHTML(x)); }
   if (k === 'day') return /^\d{4}-\d\d-\d\d$/.test(id) ? dsDayHTML(cfg, id, back) : '';
   if (k === 'hh') { const h = hotelsNow(cfg).flat().find(y => y.name === id); return dsHostHotelHTML(cfg, id, h ? h.from : '', back); }
   return '';
@@ -6005,6 +6028,7 @@ function wireDetailSheet(cfg, art, d) {
   d.addEventListener('click', (e) => {
     const b = e.target.closest('button,[data-ds]'); if (!b || !d.contains(b)) return;
     if ('dsClose' in b.dataset) return dsClose(art);
+    if (ovSheetClick(cfg, art, d, b) || shSheetClick(cfg, art, b)) return;
     if ('dsBack' in b.dataset) { const s = d._stack || []; if (s.length) openDetail(cfg, art, s[s.length - 1], 'back'); return; }
     if (b.dataset.ds) { openDetail(cfg, art, b.dataset.ds, 'child'); return; }
     if (b.dataset.dsEdit != null) { dsClose(art); setTimeout(() => { if (art.querySelector('[data-panel="mytrip"]')) showTab(art, 'mytrip'); const s2 = art.querySelector('#sec-itinerary'); const eb = s2 && s2.querySelector(`[data-itin-edit="${b.dataset.dsEdit}"]`); if (eb) { s2.scrollIntoView({ block: 'start' }); eb.click(); } }, 30); return; }
@@ -6055,7 +6079,7 @@ function wireDetailTaps(cfg, art, opts) {
   art.addEventListener('click', (e) => { const b = e.target.closest('[data-ds]'); if (!b || !b.isConnected || b.closest('dialog.ds-sheet') || e.target.closest('a[href]')) return; /* a sheet re-painted under the tap already handled it */ e.preventDefault(); openDetail(cfg, art, b.dataset.ds); });
   art.addEventListener('toggle', (e) => { const g = e.target; if (g.matches && g.matches('details.sp-g')) { if (g.open) SPOT_SHUT.delete(g.dataset.spotG); else SPOT_SHUT.add(g.dataset.spotG); } }, true);
   art.addEventListener('keydown', (e) => { if (e.key !== 'Enter' && e.key !== ' ') return; const b = e.target.closest && e.target.closest('[data-ds]'); if (!b || b.tagName === 'BUTTON' || b.closest('dialog.ds-sheet')) return; e.preventDefault(); openDetail(cfg, art, b.dataset.ds); });
-  const want = !opts.preview && dsParam(); if (want) setTimeout(() => { if (document.body.contains(art) && !openDetail(cfg, art, want, 'pop')) history.replaceState(null, '', dsURL('')); }, 0);
+  const want = !opts.preview && !opts.noDs && dsParam(); if (want) setTimeout(() => { if (document.body.contains(art) && !openDetail(cfg, art, want, 'pop')) history.replaceState(null, '', dsURL('')); }, 0);
 }
 
 // ================= the guest's hotel per city + saved spots (★) =================
@@ -7000,7 +7024,8 @@ const syncPush = debounce(async (cfg) => {
     .concat(planLoad(cfg).map(x => ({ id: x.id, page_key: key, kind: 'place', item: x, updated_at: new Date().toISOString() })))
     .concat(shopLoad(cfg).map(x => ({ id: x.id, page_key: key, kind: 'place', item: { ...x, shop: true }, updated_at: new Date().toISOString() })))
     .concat(LS.get(cxKey(cfg)) ? [{ id: 'ui-' + key, page_key: key, kind: 'place', item: { secui: true, ...LS.get(cxKey(cfg)) }, updated_at: new Date().toISOString() }] : [])
-    .concat(mineGet(cfg) ? [{ id: 'mine-' + key, page_key: key, kind: 'place', item: { mine: true, ...mineGet(cfg) }, updated_at: new Date().toISOString() }] : []); // Make it mine: their days
+    .concat(mineGet(cfg) ? [{ id: 'mine-' + key, page_key: key, kind: 'place', item: { mine: true, ...mineGet(cfg) }, updated_at: new Date().toISOString() }] : []) // Make it mine: their days
+    .concat(Object.keys(ovLoad(cfg).it).length || LS.get('shIn:' + key) ? [{ id: 'ov-' + key, page_key: key, kind: 'place', item: { ov: true, it: ovLoad(cfg).it, t: ovLoad(cfg).t || 0, shIn: LS.get('shIn:' + key) || '' }, updated_at: new Date().toISOString() }] : []); // their personal copy + the shared trip they follow
   if (rows.length) { const { error } = await c.from('trip_items').upsert(rows, { onConflict: 'owner,id' }); if (tableMissing(error)) { LS.set('syncOff', Date.now()); return; } }
   let q = c.from('trip_items').delete().eq('page_key', key); if (rows.length) q = q.not('id', 'in', `(${rows.map(r => '"' + r.id.replace(/"/g, '') + '"').join(',')})`);
   await q;
@@ -7013,12 +7038,17 @@ async function syncPull(cfg, art) {
   const mine = (data || []).filter(r => r.page_key === key); const inbox = (data || []).filter(r => r.page_key === 'inbox');
   const bk = withIds(cfg), pl = planLoad(cfg), sh = shopLoad(cfg); const have = new Set(bk.map(x => x.id).concat(pl.map(x => x.id), sh.map(x => x.id), LS.get(goneKey(cfg)) || [])); let added = 0; // merged-away / deleted ids stay gone
   const fw = []; // bookings forwarded by email (the inbound function), still as ai-import read them
-  mine.forEach(r => { if (r.item && r.item.mine === true) { if (!LS.get(mineKey(cfg))) { const { mine: _, ...m } = r.item; LS.set(mineKey(cfg), m); added++; } return; }
+  let ovNew = false;
+  mine.forEach(r => { if (r.item && r.item.ov === true) { const o = ovLoad(cfg); const it = r.item.it && typeof r.item.it === 'object' ? r.item.it : {};
+      if ((+r.item.t || 0) > (+o.t || 0)) { LS.set(ovKey(cfg), { it, t: +r.item.t }); ovNew = true; } // the newer copy wins (another device)
+      if (/^[a-f0-9]{32}$/.test(r.item.shIn || '') && !LS.get('shIn:' + key) && !(LS.get('shOut:' + key) || {}).tok) LS.set('shIn:' + key, r.item.shIn); return; }
+    if (r.item && r.item.mine === true) { if (!LS.get(mineKey(cfg))) { const { mine: _, ...m } = r.item; LS.set(mineKey(cfg), m); added++; } return; }
     if (r.item && r.item.secui) { if (!LS.get(cxKey(cfg))) { const { secui, ...ui } = r.item; LS.set(cxKey(cfg), ui); art._cx && art._cx(); } return; } if (have.has(r.id) || !r.item) return; if (r.item.inbound) { const x = inbItem(r); if (x) fw.push(x); return; } if (r.kind === 'place' && r.item.shop) { const { shop, ...x } = r.item; sh.push({ ...x, id: r.id }); } else if (r.kind === 'place') pl.push({ ...r.item, id: r.id }); else bk.push({ ...r.item, id: r.id }); added++; });
   if (added) { LS.set(shopKey(cfg), sh); art._shop && art._shop(); LS.set(itinKey(cfg), bk); LS.set(planKey(cfg), pl); bkClean(cfg); art._planChanged && art._planChanged(); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); }
   if (fw.length) { await bkSave(cfg, art, fw, null); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule(); }
   const gone = new Set(LS.get(goneKey(cfg)) || []);
   if (added || fw.length || !mine.length || mine.some(r => gone.has(r.id))) syncPush(cfg); // first sync uploads what this device already had; rows merged away here are deleted there
+  if (ovNew && art._rerender) setTimeout(() => art._rerender(), 0); // their personal copy changed on another device
   const slot = art.querySelector('#sec-plan .sec-b');
   const adds = inbox.map(inbItem).filter(Boolean);
   if (adds.length && slot) { // Inbox: forwarded bookings no trip's dates matched — one tap puts them in this one
@@ -7031,6 +7061,290 @@ async function syncPull(cfg, art) {
       art._planChanged && art._planChanged(); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); art._renderSchedule && art._renderSchedule();
     };
   }
+}
+
+// ================= Personal copy + "Share my trip" (Dylan 11/25) =================
+// A guest's view of a page = the organizer's plan + their own overlay (ov:<key>): they can edit an organizer's item (their
+// version replaces it, with their confirmation #), hide it, or add their own (My trip). The organizer's adds and changes
+// flow through; an item they edited that the organizer changed since keeps their version and asks "Updated — use the new
+// one?". Private to them: this device, and their account (a trip_items row, owner-only) when signed in.
+// Schedule items carry a stable id (normalize → schedIds); an entry whose item lost its id finds it again by its old title.
+const OV_F = ['title', 'date', 'time', 'note'];
+const ovKey = (cfg) => 'ov:' + syncKey(cfg);
+const ovPick = (x) => { const o = {}; OV_F.forEach(k => { o[k] = String((x && x[k]) || ''); }); return o; };
+const ovSame = (a, b) => OV_F.every(k => String((a && a[k]) || '') === String((b && b[k]) || ''));
+function ovLoad(cfg) { const o = LS.get(ovKey(cfg)); return o && typeof o === 'object' && o.it && typeof o.it === 'object' ? o : { it: {} }; }
+function ovSave(cfg, o) { o.t = Date.now(); if (!Object.keys(o.it).length) LS.del(ovKey(cfg)); else LS.set(ovKey(cfg), o); if (typeof syncPush === 'function' && LS.get('signedIn')) syncPush(cfg); }
+// the page's schedule with one guest's overlay on it. src: the same items as written (the guest may read a translation;
+// "changed since" compares the organizer's own words). → { sched, hidden, upd }
+function ovApply(sched, ov, src) {
+  const it = (ov && ov.it) || {}; const ids = new Set(sched.map(x => x.id)); const orig = new Map((src || sched).map(x => [x.id, x]));
+  const alias = {}; const taken = new Set();
+  Object.entries(it).forEach(([id, o]) => { if (ids.has(id) || !o || !o.b || !o.b.title) return;
+    const m = (src || sched).filter(x => !it[x.id] && !taken.has(x.id) && x.title === o.b.title); if (m.length === 1) { alias[id] = m[0].id; taken.add(m[0].id); } });
+  const by = {}; Object.entries(it).forEach(([id, o]) => { if (o) by[alias[id] || id] = { ...o, key: id }; });
+  const out = [], hidden = []; let upd = 0;
+  sched.forEach(x => {
+    const o = by[x.id]; if (!o) { out.push(x); return; }
+    if (o.h) { hidden.push(x); return; }
+    if (!o.e || !Object.keys(o.e).length) { out.push(x); return; }
+    const org = ovPick(orig.get(x.id) || x); const mine = OV_F.some(k => k in o.e); const u = mine && !!o.b && !ovSame(o.b, org); if (u) upd++;
+    out.push({ ...x, ...o.e, _ov: { id: o.key, upd: u, mine, org } });
+  });
+  return { sched: out, hidden, upd };
+}
+// one change to one entry (fn gets a copy, returns the new entry; an empty one is dropped)
+function ovSet(cfg, id, fn) {
+  const o = ovLoad(cfg); const nx = fn({ ...(o.it[id] || {}) });
+  if (nx && nx.e) Object.keys(nx.e).forEach(k => { if (nx.e[k] === undefined) delete nx.e[k]; });
+  if (nx && (nx.h || (nx.e && Object.keys(nx.e).length))) o.it[id] = nx; else delete o.it[id];
+  ovSave(cfg, o);
+}
+// the organizer's own bookings written on the plan (a hotel check-in / stay / check-out line, a flight line with airport codes)
+const orgBookingLine = (x) => !!x && ((hotelCiLine(x) && /^\s*check[- ]?in\s*([:\-–—·]|at\b)/i.test(x.title || '')) || hotelFreeLine(x) || (!!hotelCoName(x) && /^\s*check[- ]?out\s*[:\-–—·]/i.test(x.title || '')) || !!schedAirport(x));
+// What a page shows, before the tabs are drawn. Type rule (Dylan 11/25): a Trip's plan includes the organizer's hotels and
+// flights; every other type (wedding, conference, race…) shows the event schedule only: the organizer's own bookings
+// stay theirs (their page marks them "Only you") and travel only through Share my trip. A guest also gets their overlay.
+function guestView(cfg, opts) {
+  const c = { ...cfg, schedule: (cfg.schedule || []).slice() };
+  if (!isTrip(c)) c.schedule = c.schedule.filter(x => !orgBookingLine(x));
+  if (!opts.preview && !opts.onpage && !opts.exampleId && !cfg.demoTrip) {
+    const src = opts.src && Array.isArray(opts.src.schedule) ? opts.src.schedule : null;
+    const r = ovApply(c.schedule, ovLoad(c), src); c.schedule = r.sched; c._ovHidden = r.hidden.length; c._gv = true;
+  }
+  return c;
+}
+const ovSum = (o) => [o.date ? fmt(o.date, { weekday: 'short', month: 'short', day: 'numeric' }) : '', o.time ? fmtTime(o.time) : '', o.title].filter(Boolean).join(' · ');
+function ovTopHTML(x) {
+  const o = x && x._ov; if (!o || !o.upd) return '';
+  return `<div class="ov-p" role="status"><b>${esc(t('Updated — use the new one?'))}</b><span class="ov-p-n">${esc(ovSum(o.org))}</span><div class="ov-p-b"><button type="button" class="btn sm primary" data-ov-use="${esc(o.id)}">${esc(t('Use new'))}</button><button type="button" class="btn sm ghost" data-ov-keep="${esc(o.id)}">${esc(t('Keep mine'))}</button></div></div>`;
+}
+function ovActsHTML(x) {
+  const o = x._ov; const id = o ? o.id : x.id;
+  return `<div class="ds-acts ov-acts">${x.conf ? `<p class="ov-conf"><span>${esc(t('Your confirmation'))}</span><b>${esc(x.conf)}</b></p>` : ''}<button type="button" class="btn sm" data-ov-edit="${esc(id)}">${esc(t('Edit'))}</button><button type="button" class="btn sm ghost" data-ov-hide="${esc(id)}">${esc(t('Hide'))}</button>${o && o.mine && !o.upd ? `<button type="button" class="btn sm ghost" data-ov-use="${esc(id)}">${esc(t('Undo my changes'))}</button>` : ''}</div>`;
+}
+function ovFormHTML(x) {
+  const o = x._ov; const id = o ? o.id : x.id; const f = (k, label, inp) => `<div class="field"><label for="ov-${k}">${esc(t(label))}</label>${inp}</div>`;
+  return `<div class="ov-f" data-ov-form="${esc(id)}">
+    ${f('title', 'Title', `<input id="ov-title" data-ovk="title" maxlength="120" value="${esc(x.title || '')}">`)}
+    <div class="two">${f('date', 'Date', `<input id="ov-date" type="date" data-ovk="date" value="${esc(x.date || '')}">`)}${f('time', 'Time', `<input id="ov-time" type="time" data-ovk="time" value="${esc(x.time || '')}">`)}</div>
+    ${f('conf', 'Confirmation', `<input id="ov-conf" data-ovk="conf" maxlength="60" autocomplete="off" value="${esc(x.conf || '')}">`)}
+    ${f('note', 'Notes', `<textarea id="ov-note" data-ovk="note" rows="3" maxlength="600">${esc(x.note || '')}</textarea>`)}
+    <p class="muted small ov-priv">${esc(t('Only you see your changes.'))}</p>
+    <div class="btns"><button type="button" class="btn primary" data-ov-save="${esc(id)}">${esc(t('Save'))}</button><button type="button" class="btn ghost" data-ov-cancel>${esc(t('Cancel'))}</button></div></div>`;
+}
+// the organizer's item as written, by overlay id (the page's source items; a translated view keeps ids)
+const ovOrg = (cfg, src, id) => { const xs = (src && src.schedule) || []; return xs.find(x => x.id === id) || (cfg.schedule || []).find(x => x.id === id || (x._ov && x._ov.id === id)) || null; };
+// the sheet's buttons for an organizer's item (guest view)
+function ovSheetClick(cfg, art, d, b) {
+  const src = art._src || cfg; const rr = () => art._rerender && art._rerender();
+  if (b.dataset.ovEdit) { const x = cfg.schedule.find(y => (y._ov ? y._ov.id : y.id) === b.dataset.ovEdit); const body = d.querySelector('.ds-b'); if (!x || !body) return true; body.innerHTML = ovFormHTML(x); body.querySelector('#ov-title')?.focus(); return true; }
+  if ('ovCancel' in b.dataset) { dsRefresh(art); return true; }
+  if (b.dataset.ovSave) {
+    const id = b.dataset.ovSave; const org0 = ovOrg(cfg, src, id); const cur0 = cfg.schedule.find(y => (y._ov ? y._ov.id : y.id) === id);
+    const org = cur0 && cur0._ov ? cur0._ov.org : ovPick(org0); const v = {}; $$('[data-ovk]', d).forEach(el => { v[el.dataset.ovk] = String(el.value || '').trim(); });
+    ovSet(cfg, id, (e) => { const ed = {}; OV_F.forEach(k => { if (v[k] !== org[k]) ed[k] = k === 'title' ? v[k].slice(0, 120) : k === 'note' ? v[k].slice(0, 600) : v[k]; });
+      if (ed.date !== undefined && !isoDay(ed.date)) delete ed.date; if (ed.time !== undefined && ed.time && !isoTime(ed.time)) delete ed.time; if (ed.title === '') delete ed.title;
+      if (v.conf) ed.conf = v.conf.slice(0, 60); return { ...e, e: ed, b: org }; });
+    rr(); toast(t('Saved')); return true;
+  }
+  if (b.dataset.ovHide) { const id = b.dataset.ovHide; const org0 = ovOrg(cfg, src, id); ovSet(cfg, id, (e) => ({ ...e, h: 1, b: e.b || ovPick(org0) })); dsClose(art); art._rerender && art._rerender(true);
+    toastAction(t('Hidden'), t('Undo'), () => { ovSet(cfg, id, (e) => { delete e.h; return e; }); art._rerender && art._rerender(true); }); return true; }
+  if (b.dataset.ovUse) { const id = b.dataset.ovUse; const org0 = ovOrg(cfg, src, id); ovSet(cfg, id, (e) => { const ed = { ...(e.e || {}) }; OV_F.forEach(k => delete ed[k]); return { ...e, e: ed, b: ovPick(org0) }; }); rr(); return true; }
+  if (b.dataset.ovKeep) { const id = b.dataset.ovKeep; const cur0 = cfg.schedule.find(y => y._ov && y._ov.id === id); ovSet(cfg, id, (e) => ({ ...e, b: cur0 ? cur0._ov.org : e.b })); rr(); return true; }
+  return false;
+}
+// "Show hidden (N)" under the schedule (one control brings them all back)
+const ovHiddenHTML = (cfg) => cfg._gv && cfg._ovHidden ? `<button type="button" class="mini-b ov-show" data-ov-show>${esc(t('Show hidden ({n})', { n: cfg._ovHidden }))}</button>` : '';
+function ovShowAll(cfg) { const o = ovLoad(cfg); Object.keys(o.it).forEach(id => { delete o.it[id].h; if (!o.it[id].e || !Object.keys(o.it[id].e).length) delete o.it[id]; }); ovSave(cfg, o); }
+// a schedule row's tag: their version, or theirs with a newer one from the organizer
+const ovRowTag = (cfg, x) => { const ev = x.ev ? cfg.schedule[x.si] : null; const sh = (x.bk && x.bk.sh) || x.sh;
+  if ((ev && ev._ov && ev._ov.upd) || (sh && sh.n)) return ` <em class="ov-upd">${esc(t('Updated'))}</em>`;
+  if (ev && ev._ov && ev._ov.mine) return ` <em class="yours">${esc(t('Edited'))}</em>`;
+  return ONP && ev && !isTrip(cfg) && orgBookingLine(ev) ? ` <em class="yours ov-only">${esc(t('Only you'))}</em>` : ''; };
+
+// ---- Share my trip: a revocable link to the sharer's own bookings and planned places for this page ----
+// trip_shares (schema-5): one row per person per page, data = their My trip, kept current by their app; the link is
+// ?e=<slug>&s=<token>. Anyone with it gets the page's plan (live, as every guest) plus those bookings, copied into their own
+// My trip as the base of their personal copy: unchanged items follow the sharer's changes; items they changed keep their
+// version and ask "Updated — use the new one?"; items they removed stay removed. Stop sharing deletes the row: the link
+// reads nothing and copies stop updating.
+const SH_DROP = new Set(['sh', 'photos', 'inbound', 'ai']);
+const SH_SKIP = new Set(['id', 'sh', 'photos', 'lat', 'lon']); // compared content: what the person sees and edits
+const shCanon = (v) => Array.isArray(v) ? `[${v.map(shCanon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().filter(k => v[k] !== undefined && v[k] !== '' && v[k] !== null).map(k => JSON.stringify(k) + ':' + shCanon(v[k])).join(',')}}` : JSON.stringify(v);
+const shSnap = (x) => { const o = {}; Object.keys(x || {}).forEach(k => { if (!SH_DROP.has(k) && k !== 'id' && !k.startsWith('_')) o[k] = x[k]; }); return o; };
+const shCmp = (x) => { const o = {}; Object.keys(x || {}).forEach(k => { if (!SH_SKIP.has(k) && !k.startsWith('_')) o[k] = x[k]; }); return shCanon(o); };
+const shEq = (a, b) => shCmp(a) === shCmp(b);
+const shId = (tok, id) => 'sh' + String(tok).slice(0, 8) + '-' + String(id).replace(/[^\w-]/g, '').slice(0, 40);
+// three-way merge of one list (bookings or planned places): own = the recipient's list, shared = the sharer's now
+function shareMerge(own, shared, tok, gone) {
+  const g = new Set(gone || []); const out = []; let added = 0, updated = 0, pending = 0;
+  const src = new Map((shared || []).filter(s => s && s.id != null).map(s => [String(s.id), s])); const seen = new Set();
+  (own || []).forEach(x => {
+    if (!x || !x.sh || x.sh.t !== tok) { out.push(x); return; }
+    const s = src.get(x.sh.id); seen.add(x.sh.id); const edited = !shEq(x, x.sh.b);
+    if (!s) { if (edited) { const { sh, ...y } = x; out.push(y); } return; } // the sharer removed it: it goes too, unless they made it theirs
+    if (shEq(s, x.sh.b)) { if (x.sh.n) { const y = { ...x, sh: { ...x.sh } }; delete y.sh.n; out.push(y); } else out.push(x); return; }
+    if (!edited) { updated++; out.push({ ...shSnap(s), id: x.id, sh: { t: tok, id: x.sh.id, b: shSnap(s) } }); return; }
+    if (shEq(s, x)) { out.push({ ...x, sh: { t: tok, id: x.sh.id, b: shSnap(s) } }); return; } // their change is the new version
+    pending++; out.push({ ...x, sh: { ...x.sh, n: shSnap(s) } });
+  });
+  src.forEach((s, id) => { if (seen.has(id)) return; const nid = shId(tok, id); if (g.has(nid) || out.some(y => y && y.id === nid)) return; added++; out.push({ ...shSnap(s), id: nid, sh: { t: tok, id, b: shSnap(s) } }); });
+  return { list: out, added, updated, pending };
+}
+// the recipient's lists after a fetch of the shared trip (d = its data)
+function shareApply(cfg, d, tok) {
+  const key = syncKey(cfg); const bk = LS.get(itinKey(cfg), null) || []; const pl = LS.get(planKey(cfg), null) || [];
+  const present = new Set(bk.concat(pl).map(x => x && x.id)); const had = LS.get('shIds:' + key) || [];
+  const gone = new Set((LS.get('shGone:' + key) || []).concat(had.filter(id => !present.has(id)))); // removed here: stays removed
+  const ok = (xs) => (Array.isArray(xs) ? xs : []).filter(x => x && typeof x === 'object' && x.id != null).slice(0, 300);
+  const a = shareMerge(bk, ok(d && d.bk), tok, gone), b = shareMerge(pl, ok(d && d.pl), tok, gone);
+  LS.set(itinKey(cfg), a.list); LS.set(planKey(cfg), b.list);
+  LS.set('shGone:' + key, [...gone].slice(-300)); LS.set('shIds:' + key, a.list.concat(b.list).filter(x => x && x.sh).map(x => x.id));
+  if (LS.get('signedIn')) syncPush(cfg);
+  return { added: a.added + b.added, updated: a.updated + b.updated, pending: a.pending + b.pending };
+}
+// unfollow (or the link was turned off): copies stay, as the recipient's own
+function shareUnfollow(cfg) {
+  const key = syncKey(cfg); const strip = (xs) => xs.map(x => { if (!x || !x.sh) return x; const { sh, ...y } = x; return y; });
+  LS.set(itinKey(cfg), strip(LS.get(itinKey(cfg), null) || [])); LS.set(planKey(cfg), strip(LS.get(planKey(cfg), null) || []));
+  ['shIn:', 'shFrom:', 'shIds:', 'shGone:'].forEach(p => LS.del(p + key)); if (LS.get('signedIn')) syncPush(cfg);
+}
+const shareFetch = (tok) => rest('rpc/trip_share_get', { method: 'POST', body: { tok } }).then(r => Array.isArray(r) && r[0] ? r[0] : null);
+// a guest opening the page: follow the shared trip they came with (or follow before), merged before the page is drawn
+async function shareFollow(cfg, hosted, arrived) {
+  const key = syncKey(cfg); const tok = LS.get('shIn:' + key); if (!tok || !SB || cfg.demoTrip) return null;
+  const out = LS.get('shOut:' + key); if (out && out.tok === tok) { LS.del('shIn:' + key); return null; } // their own link
+  let row; try { row = await Promise.race([shareFetch(tok), new Promise((_, rej) => setTimeout(() => rej(new Error('slow')), 6000))]); } catch { return null; } // offline / slow: last copy stays
+  if (!row || (hosted && row.event_id !== hosted.id)) { shareUnfollow(cfg); if (arrived) toast(t('This shared trip link was turned off.')); return null; }
+  LS.set('shFrom:' + key, String(row.name || '').slice(0, 60));
+  const r = shareApply(cfg, row.data || {}, tok);
+  if (arrived && r.added) toast(row.name ? t('Added {n} from {s}’s trip', { n: r.added, s: row.name }) : t('Added {n} from a shared trip', { n: r.added }));
+  return r;
+}
+function shFromHTML(cfg) {
+  const key = syncKey(cfg); if (!LS.get('shIn:' + key)) return '';
+  const n = LS.get('shFrom:' + key) || '';
+  return `<div class="shr-from" data-slot="shr-from"><span class="shr-dot" aria-hidden="true"></span><b>${esc(n ? t('{s}’s trip', { s: n }) : t('Shared trip'))}</b><span class="muted">${esc(t('Live'))}</span><button type="button" class="mini-b" data-shr-unfollow>${esc(t('Unfollow'))}</button></div>`;
+}
+// the "Updated — use the new one?" prompt on a shared booking / planned place's sheet
+function shTopHTML(x, k) {
+  if (!x || !x.sh || !x.sh.n) return '';
+  const n = x.sh.n; const when = n.start ? dsDay(n.start) + (dsTm(n.start) ? ' · ' + dsTm(n.start) : '') : n.day ? dsDay(n.day) + (n.time ? ' · ' + fmtTime(n.time) : '') : '';
+  return `<div class="ov-p" role="status"><b>${esc(t('Updated — use the new one?'))}</b><span class="ov-p-n">${esc([n.name, when, n.confNo ? t('Conf. {n}', { n: n.confNo }) : ''].filter(Boolean).join(' · '))}</span><div class="ov-p-b"><button type="button" class="btn sm primary" data-sh-use="${k}:${esc(x.id)}">${esc(t('Use new'))}</button><button type="button" class="btn sm ghost" data-sh-keep="${k}:${esc(x.id)}">${esc(t('Keep mine'))}</button></div></div>`;
+}
+const dsInsTop = (html, top) => top ? html.replace('<div class="ds-b">', '<div class="ds-b">' + top) : html;
+function shSheetClick(cfg, art, b) {
+  const v = b.dataset.shUse || b.dataset.shKeep; if (!v) return false;
+  const [k, id] = v.split(/:(.+)/); const lk = k === 'pl' ? planKey(cfg) : itinKey(cfg); const xs = LS.get(lk, null) || []; const i = xs.findIndex(x => x && x.id === id); if (i < 0 || !xs[i].sh || !xs[i].sh.n) return true;
+  const x = xs[i]; xs[i] = b.dataset.shUse ? { ...x.sh.n, id: x.id, sh: { t: x.sh.t, id: x.sh.id, b: x.sh.n } } : { ...x, sh: { t: x.sh.t, id: x.sh.id, b: x.sh.n } };
+  LS.set(lk, xs); if (LS.get('signedIn')) syncPush(cfg);
+  if (k === 'pl') { art._planChanged && art._planChanged(); } else { bkChanged(art); const s2 = art.querySelector('#sec-itinerary .sec-b'); if (s2) s2.innerHTML = bookingsHTML(cfg); }
+  art._renderSchedule && art._renderSchedule(); dsRefresh(art); return true;
+}
+// ---- the sharer's side ----
+var SH_CFG = {}; // page key → { cfg, owner }: the page as last shown, for the copy that goes out
+// what goes out: their bookings and planned places (photos and their own personal-copy bookkeeping stay home); the organizer
+// of a non-Trip page adds the bookings written on their plan (the type rule keeps those off the page itself)
+function shareData(cfg, owner) {
+  const clean = (x) => { const o = {}; Object.keys(x || {}).forEach(k => { if (!SH_DROP.has(k) && !k.startsWith('_')) o[k] = x[k]; }); return o; };
+  const bk = (LS.get(itinKey(cfg), null) || []).filter(x => x && x.id).map(clean);
+  const pl = (LS.get(planKey(cfg), null) || []).filter(x => x && x.id && x.day).map(clean);
+  if (owner && !isTrip(cfg)) { const sch = cfg.schedule || [];
+    sch.filter(x => x.date && x.id && (hotelStayLine(x) || schedAirport(x))).forEach(x => bk.push(hotelStayLine(x)
+      ? { id: 'ev-' + x.id, kind: 'hotel', name: hotelCiLine(x) ? hostHotelName(x.title) : x.title, start: x.date + (x.time ? 'T' + x.time : ''), end: hostStay(cfg, sch, x)[1], ...(x.note ? { note: x.note } : {}) }
+      : { id: 'ev-' + x.id, kind: 'flight', name: x.title, start: x.date + (x.time ? 'T' + x.time : ''), ...(x.note ? { note: x.note } : {}) })); }
+  return { v: 1, bk: bk.slice(0, 200), pl: pl.slice(0, 300) };
+}
+const shName = (u) => { const m = (u && u.user_metadata) || {}; return String(m.full_name || m.name || '').trim().split(/\s+/)[0].slice(0, 60); };
+const sharePush = debounce(async (key) => {
+  const o = LS.get('shOut:' + key); const s = SH_CFG[key]; if (!o || !o.tok || !s || !LS.get('signedIn') || !SB) return;
+  try { const c = await sb(); const { data, error } = await c.from('trip_shares').update({ data: shareData(s.cfg, s.owner) }).eq('token', o.tok).select('token');
+    if (!error && Array.isArray(data) && !data.length) LS.del('shOut:' + key); } catch { /* next change tries again */ } // turned off on another device
+}, 1500);
+const shareNote = (cfg, owner) => { SH_CFG[syncKey(cfg)] = { cfg, owner: !!owner }; };
+const shareTouched = (k) => { const m = /^(?:itin|plan):(.+)$/.exec(k); if (m && SH_CFG[m[1]] && LS.get('shOut:' + m[1])) sharePush(m[1]); };
+window.__shTouch = shareTouched;
+// The Share sheet: two choices, side by side. "Invite guests" = the page's link (the plan; everyone picks their own hotels
+// and flights). "Share my trip" = the plan + your bookings, live, revocable. ctx: { cfg, eid, slug, url, owner }
+function shrSegHTML(on) {
+  return `<div class="shr-seg" role="tablist" aria-label="${esc(t('Share'))}">${[['plan', 'Invite guests'], ['trip', 'Share my trip']].map(([k, l]) => `<button type="button" role="tab" data-shr-tab="${k}" aria-selected="${on === k}">${esc(t(l))}</button>`).join('')}</div>`;
+}
+const SHR_SUB = { plan: 'The plan. Everyone picks their own hotels and flights.', trip: 'The plan with your bookings. Updates live.' };
+function shrTripHTML(st) {
+  const sub = `<p class="shr-sub">${esc(t(SHR_SUB.trip))}</p>`;
+  if (st.s === 'busy') return `${sub}<p class="shr-st" role="status">${esc(t('Making your link…'))}</p>`;
+  if (st.s === 'signin') return `${sub}<div class="bk-signin shr-signin"><p><b>${esc(t('Sign in to share your trip.'))}</b></p>${signInFormHTML('', LS.get('signinEmail') || '')}</div>`;
+  if (st.s === 'off') return `${sub}<p class="shr-st">${esc(t('Link turned off.'))}</p><div class="btns"><button type="button" class="btn primary" data-shr-new>${esc(t('New link'))}</button></div>`;
+  if (st.s === 'err') return `${sub}<p class="shr-st" role="alert">${esc(t('Couldn’t make a link.'))} ${esc(st.msg || '')}</p><div class="btns"><button type="button" class="btn primary" data-shr-new>${esc(t('Try again'))}</button></div>`;
+  const n = st.n || { bk: 0, pl: 0 };
+  return `${sub}<p class="shr-count">${esc([n.bk === 1 ? t('1 booking') : t('{n} bookings', { n: n.bk }), n.pl ? (n.pl === 1 ? t('1 plan') : t('{n} plans', { n: n.pl })) : ''].filter(Boolean).join(' · '))}</p>
+    <div class="shr-link"><input readonly value="${esc(st.url)}" aria-label="${esc(t('Link'))}" data-shr-url></div>
+    <div class="btns"><button type="button" class="btn primary" data-shr-copy>${esc(t('Copy link'))}</button>${navigator.share ? `<button type="button" class="btn" data-shr-native>${esc(t('Share…'))}</button>` : ''}<button type="button" class="btn ghost shr-stop" data-shr-stop>${esc(t('Stop sharing'))}</button></div>`;
+}
+async function shrTripLoad(box, ctx) {
+  const paint = (st) => { ctx.st = st; if (box.isConnected) box.innerHTML = shrTripHTML(st); };
+  paint({ s: 'busy' });
+  let u = null; try { u = SB ? await sbUser() : null; } catch { /* below */ }
+  if (!u) { paint({ s: 'signin' }); return; }
+  const key = syncKey(ctx.cfg); shareNote(ctx.cfg, ctx.owner);
+  try {
+    const c = await sb(); const data = shareData(ctx.cfg, ctx.owner);
+    let { data: row } = await c.from('trip_shares').select('token').eq('owner', u.id).eq('event_id', ctx.eid).maybeSingle();
+    if (row) { await c.from('trip_shares').update({ data, name: shName(u) }).eq('token', row.token); }
+    else { const r = await c.from('trip_shares').insert({ owner: u.id, event_id: ctx.eid, page_key: key, name: shName(u), data }).select('token').single(); row = r.data;
+      if (!row) ({ data: row } = await c.from('trip_shares').select('token').eq('owner', u.id).eq('event_id', ctx.eid).maybeSingle()); if (!row) throw r.error || new Error(''); }
+    LS.set('shOut:' + key, { tok: row.token, eid: ctx.eid });
+    paint({ s: 'link', url: `${shortURL(ctx.slug)}&s=${row.token}`, n: { bk: data.bk.length, pl: data.pl.length } });
+  } catch (e) { paint({ s: 'err', msg: navigator.onLine === false ? t('You’re offline.') : '' }); }
+}
+function shrTripWire(box, ctx) {
+  if (box._w) return; box._w = true;
+  box.addEventListener('click', async (e) => {
+    const b = e.target.closest('button,[data-si-oauth]'); if (!b || !box.contains(b)) return;
+    if (b.dataset.siOauth) { LS.set('afterSignIn', ctx.back || location.hash || '#mine'); return; }
+    if (b.dataset.si === 'send') { signInSubmit(box, () => LS.set('afterSignIn', ctx.back || location.hash || '#mine')); return; }
+    if (b.dataset.si === 'retry') { box.innerHTML = shrTripHTML({ s: 'signin' }); return; }
+    if ('shrNew' in b.dataset) { shrTripLoad(box, ctx); return; }
+    if ('shrCopy' in b.dataset) { copy(ctx.st.url); return; }
+    if ('shrNative' in b.dataset) { navigator.share({ title: ctx.cfg.title, url: ctx.st.url }).catch(() => {}); return; }
+    if ('shrStop' in b.dataset) {
+      b.disabled = true; const key = syncKey(ctx.cfg); const o = LS.get('shOut:' + key);
+      try { const c = await sb(); const u = await sbUser(); const q = c.from('trip_shares').delete().eq('event_id', ctx.eid); const { error } = await (u ? q.eq('owner', u.id) : q); if (error) throw error; LS.del('shOut:' + key); box.innerHTML = shrTripHTML({ s: 'off' }); toast(t('Link turned off')); }
+      catch { b.disabled = false; toast(t('Couldn’t turn it off. Try again.')); }
+      void o;
+    }
+  });
+  box.addEventListener('keydown', (e) => { if (e.target.id === 'si-email' && e.key === 'Enter') { e.preventDefault(); signInSubmit(box, () => LS.set('afterSignIn', ctx.back || location.hash || '#mine')); } });
+}
+// tab switch inside a sheet that has both panels ([data-shr-p="plan"|"trip"])
+function shrTab(root, k, ctx) {
+  $$('[data-shr-tab]', root).forEach(b => b.setAttribute('aria-selected', String(b.dataset.shrTab === k)));
+  $$('[data-shr-p]', root).forEach(p => { p.hidden = p.dataset.shrP !== k; });
+  const box = root.querySelector('[data-shr-p="trip"] [data-shr-box]') || root.querySelector('[data-shr-p="trip"]');
+  if (k === 'trip' && box) { shrTripWire(box, ctx); if (!ctx.st || ctx.st.s === 'signin' || ctx.st.s === 'err') shrTripLoad(box, ctx); }
+}
+// the guest page's Share button (a page with its short link); long links and examples keep the plain share
+function shareSheet(cfg, opts, art) {
+  const h = opts.hosted; if (!h || !h.id || !SB) return shareEvent(cfg, opts);
+  let d = document.getElementById('shr-dlg'); if (d) d.remove();
+  const url = opts.shareUrl || h.url || location.href.split('#')[0];
+  document.body.insertAdjacentHTML('beforeend', `<dialog id="shr-dlg" class="shr-dlg" aria-labelledby="shr-h"><div class="shr-in">
+    <div class="shr-top"><h2 id="shr-h">${esc(t('Share'))}</h2><button type="button" class="ds-x" data-shr-x aria-label="${esc(t('Close'))}">×</button></div>
+    ${shrSegHTML('plan')}
+    <div data-shr-p="plan"><p class="shr-sub">${esc(t(SHR_SUB.plan))}</p><div class="shr-link"><input readonly value="${esc(url)}" aria-label="${esc(t('Link'))}"></div>
+      <div class="btns"><button type="button" class="btn primary" data-shr-pcopy>${esc(t('Copy link'))}</button>${navigator.share ? `<button type="button" class="btn" data-shr-pnative>${esc(t('Share…'))}</button>` : ''}</div></div>
+    <div data-shr-p="trip" hidden></div></div></dialog>`);
+  d = document.getElementById('shr-dlg');
+  const ctx = { cfg: opts.src && opts.src.schedule ? cfg : cfg, eid: h.id, slug: h.slug, owner: false, back: art ? hostedBack(art) : '' };
+  d.addEventListener('click', (e) => {
+    if (e.target === d || e.target.closest('[data-shr-x]')) { d.close(); return; }
+    const tb = e.target.closest('[data-shr-tab]'); if (tb) { shrTab(d, tb.dataset.shrTab, ctx); return; }
+    if (e.target.closest('[data-shr-pcopy]')) copy(url);
+    if (e.target.closest('[data-shr-pnative]')) navigator.share({ title: cfg.title, text: cfg.tagline || cfg.title, url }).catch(() => {});
+  });
+  d.addEventListener('close', () => d.remove());
+  d.showModal(); return d;
 }
 
 // ================= "Forward bookings": each event's own address (inbound function + Resend) =================
@@ -8553,5 +8867,5 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
