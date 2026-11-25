@@ -1748,3 +1748,15 @@ dialog.shr-dlg { padding: 0; border: 0; width: min(520px, 100vw); max-width: 100
 .hb-sr .hb-ic, .hpin.sug img { opacity: .55; }
 .hb-sr .hs-slot.mini { flex: none; }
 .mk-sug img { opacity: .55; }
+
+/* light formatting: **bold**, *italic*, ==highlight== in organizer and guest text (rtHTML) */
+.ev mark, .ds-sheet mark, .sheet mark, dialog mark { background: #FFE58A; color: #1A1A1A; padding: 0 .12em; border-radius: 3px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.ev.dark mark, dialog.dark mark { background: #F2C94C; color: #111; }
+.ev strong { font-weight: 750; }
+/* the formatting toolbar: floats over the selected text in a formattable field */
+.rt-bar { position: fixed; z-index: 2147483000; display: flex; gap: 2px; padding: 4px; background: #1C1E24; border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.28); }
+.rt-bar[hidden] { display: none; }
+.rt-bar button { min-width: 40px; height: 36px; border: 0; border-radius: 7px; background: transparent; color: #fff; font: 600 1rem/1 system-ui, sans-serif; cursor: pointer; display: grid; place-items: center; }
+.rt-bar button:hover, .rt-bar button:focus-visible { background: rgba(255,255,255,.14); }
+.rt-bar b { font-weight: 800; } .rt-bar i { font-family: Georgia, serif; font-style: italic; font-size: 1.08rem; }
+.rt-bar mark { background: #FFE58A; color: #111; padding: 1px 5px; border-radius: 3px; font-weight: 700; }

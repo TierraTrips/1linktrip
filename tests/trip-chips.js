@@ -74,7 +74,7 @@ const tap = async (page, key, v) => { await page.click(`${T} [data-dd="${key}"] 
     {
       const { ctx, page } = await setup(browser, { ['itin:' + K]: BK });
       let c = await chips(page);
-      ok(c.map(x => x.v).join() === 'all,hotels,transport,restaurants', `order: All, Hotels, Transport, Restaurants (${c.map(x => x.v)})`);
+      ok(c.map(x => x.v).join() === 'all,hotels,transport,restaurants,activities', `order: All, Hotels, Transport, Restaurants, Activities (${c.map(x => x.v)})`);
       ok(c.filter(x => x.on).map(x => x.v).join() === 'hotels', `Hotels pressed by default`);
       ok((await rows(page)).join() === 'Park Hyatt Tokyo,Ace Hotel Kyoto', `lists the hotels only: ${await rows(page)}`);
       ok(c.find(x => x.v === 'hotels').n === 2 && c.find(x => x.v === 'transport').n === 3 && c.find(x => x.v === 'all').n === 6, `numbers: ${JSON.stringify(c)}`);
@@ -104,6 +104,41 @@ const tap = async (page, key, v) => { await page.click(`${T} [data-dd="${key}"] 
       const opts = await page.evaluate(() => { document.querySelector('[data-itin-add]').click(); return new Promise(r => setTimeout(() => { const m = document.querySelector('[data-itin-mode="manual"]'); if (m) m.click(); setTimeout(() => r([...document.querySelectorAll('#sec-itinerary [data-it="kind"] option')].map(o => o.value)), 200); }, 200)); });
       ok(['bus', 'taxi', 'ferry'].every(k => opts.includes(k)), `booking Type picker: ${opts}`);
       ok(!page._err.length, `no page errors ${page._err.join(' | ')}`);
+      await ctx.close();
+    }
+    // ---- Activities (Dylan 11/25): one chip after Restaurants for sights + things to do (saved spots + Tour bookings);
+    //      multi-select with the others; its number = the rows it lists; an old "sights"/"tours" choice reads as Activities ----
+    {
+      const PL = [{ id: 'p1', src: 'g', ref: 'g1', name: 'Senso-ji', type: 'activity', cat: 'sights', day: '2027-04-02', lat: 35.7148, lon: 139.7967 },
+        { id: 'p2', src: 'g', ref: 'g2', name: 'Tsukiji food tour', type: 'activity', cat: 'tours', day: '2027-04-03', time: '09:00', lat: 35.6655, lon: 139.7707 },
+        { id: 'p3', src: 'g', ref: 'g3', name: 'Ichiran Shibuya', type: 'food', cat: 'restaurants', day: '2027-04-02', lat: 35.661, lon: 139.701 }];
+      const BKA = BK.concat([{ id: 'a1', kind: 'tour', name: 'teamLab Planets', start: '2027-04-04T10:00' }]);
+      const { ctx, page } = await setup(browser, { ['itin:' + K]: BKA, ['plan:' + K]: PL });
+      let c = await chips(page);
+      ok(c.map(x => x.v).join() === 'all,hotels,transport,restaurants,activities', `order with activities: ${c.map(x => x.v)}`);
+      ok(!c.some(x => x.v === 'sights' || x.v === 'tours'), `no separate Sights / Things to do chips`);
+      ok(c.find(x => x.v === 'activities').n === 3, `Activities number = 3 (Senso-ji, food tour, teamLab): ${JSON.stringify(c)}`);
+      const plan = () => page.$$eval('#sec-plan .plan-row .plan-t span', xs => xs.map(x => x.textContent));
+      await tap(page, 'cat', 'hotels'); await tap(page, 'cat', 'activities'); c = await chips(page);
+      ok(c.filter(x => x.on).map(x => x.v).join() === 'activities', `Activities alone`);
+      const pa = await plan(); ok(pa.length === 3 && ['Senso-ji', 'Tsukiji food tour', 'teamLab Planets'].every(n => pa.includes(n)), `lists the activities only: ${pa}`);
+      ok(pa.length === c.find(x => x.v === 'activities').n, `chip number = rows listed (${pa.length})`);
+      await tap(page, 'cat', 'restaurants'); c = await chips(page);
+      const pr = await plan(); ok(c.filter(x => x.on).map(x => x.v).join() === 'restaurants,activities' && pr.length === 5 && pr.includes('Ichiran Shibuya') && pr.includes('Sushi Saito'), `Restaurants + Activities together: ${pr}`);
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/trip-chips-activities.png`, fullPage: false });
+      const of = await overflow(page); ok(!of.length, `@390 no overflow with 5 chips ${of}`);
+      // a stored pre-11/25 choice (Things to do) opens as Activities
+      await page.evaluate((k) => localStorage.setItem('ep:cc:trip:' + k, JSON.stringify({ cats: ['tours'] })), K); await open(page); c = await chips(page);
+      ok(c.filter(x => x.on).map(x => x.v).join() === 'activities', `old "tours" choice → Activities (${c.filter(x => x.on).map(x => x.v)})`);
+      ok(!page._err.length, `no page errors ${page._err.join(' | ')}`);
+      await ctx.close();
+    }
+    // ---- Activities with nothing saved: the chip is still there; tapping it says so and points to Nearby ----
+    {
+      const { ctx, page } = await setup(browser, { ['itin:' + K]: BK });
+      await tap(page, 'cat', 'hotels'); await tap(page, 'cat', 'activities'); const c = await chips(page);
+      ok(c.find(x => x.v === 'activities').n === 0 && c.find(x => x.v === 'activities').on, `Activities 0, pressed`);
+      const msg = await page.textContent('#sec-plan .sec-b'); ok(/No activities saved yet/.test(msg), `empty Activities message: ${msg.trim().slice(0, 80)}`);
       await ctx.close();
     }
     // ---- one subtype only → no subtype chips; no hotels → nothing pre-picked ----

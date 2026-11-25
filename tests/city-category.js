@@ -182,7 +182,8 @@ const ctr = (x) => (x.b.locationRestriction || x.b.locationBias).circle.center;
     await pick(page, 'cat', 'hotels', TRIP);
     const bk = await page.$$eval('#sec-itinerary ul.bookings > li:not([hidden]) b', bs => bs.map(b => b.textContent));
     ok(bk.join() === 'Hotel Granvia Kyoto', `@${w} Kyoto · Hotels → ${bk}`);
-    const catCounts = await page.$$eval(`${TRIP} [data-dd="cat"] [data-dd-v] small`, xs => xs.map(x => +x.textContent));
+    // Activities is one of the four main chips (always shown, 11/25), so it may read 0 here; the others are listed because they have rows
+    const catCounts = await page.$$eval(`${TRIP} [data-dd="cat"] [data-dd-v]:not([data-dd-v="activities"]) small`, xs => xs.map(x => +x.textContent));
     await pick(page, 'cat', 'hotels', TRIP); await pick(page, 'cat', 'restaurants', TRIP); ok(await label(page, 'cat', TRIP) === 'All' && (await page.$$eval('#sec-itinerary ul.bookings > li:not([hidden])', xs => xs.length)) > 1, `@${w} tapping the active chips again clears them (All)`);
     ok(catCounts.length >= 3 && catCounts.every(n => n > 0), `@${w} category list shows Kyoto counts ${catCounts}`);
     // All cities · Cafés, then Saved only + search (focus kept while typing)

@@ -10,6 +10,122 @@ const enc = encodeURIComponent;
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const pad = (n) => String(n).padStart(2, '0');
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+// ---------- light formatting (Dylan 11/25: "highlight/bold/italic text to make certain things stand out") ----------
+// Kept in the plain text as a tiny markdown subset: **bold**, *italic*, ==highlight==. rtHTML escapes every character of
+// the text and only ever emits <strong>, <em>, <mark> of its own, so nothing typed can become HTML. A marker needs text
+// right next to it (no space) and a partner on the same line; anything unmatched stays as typed ("5 * 3", "*sold out").
+// A single * between two Latin letters/digits stays a star (2*3*4); CJK text needs no spaces around markers.
+const RT_TAG = { '**': 'strong', '*': 'em', '==': 'mark' };
+function rtParse(s, emit) {
+  s = String(s ?? ''); const out = [], st = []; let buf = '', i = 0;
+  const word = (c) => !!c && /[A-Za-z0-9À-ɏ]/.test(c); const sp = (c) => !c || /\s/.test(c);
+  const flush = () => { if (buf) { out.push(emit.text(buf)); buf = ''; } };
+  const unwind = (k = 0) => { while (st.length > k) { const o = st.pop(); out[o.at] = emit.text(o.m); } };
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '\n') { flush(); unwind(); out.push('\n'); i++; continue; }
+    if (c !== '*' && c !== '=') { buf += c; i++; continue; }
+    let j = i; while (s[j] === c) j++; let n = j - i; const prev = s[i - 1], next = s[j];
+    if ((c === '=' && n !== 2) || n > 3) { buf += s.slice(i, j); i = j; continue; }
+    flush();
+    if (!sp(prev)) { // close: the nearest open marker this run can end (markers opened inside it and left open stay as typed)
+      for (;;) {
+        if (!n) break; let k = -1, m = '';
+        for (let x = st.length - 1; x >= 0; x--) { const o = st[x];
+          if (c === '=' && o.m === '==') { k = x; m = '=='; break; }
+          if (c === '*' && o.m === '**' && n >= 2) { k = x; m = '**'; break; }
+          if (c === '*' && o.m === '*' && (n > 1 || !word(next))) { k = x; m = '*'; break; } }
+        if (k < 0 || out.length === st[k].at + 1) break; // nothing between the markers: not formatting
+        unwind(k + 1); const o = st.pop(); out[o.at] = emit.open(RT_TAG[m]); out.push(emit.close(RT_TAG[m])); n -= m.length;
+      }
+    }
+    if (n && !sp(next) && (c === '=' || n > 1 || !word(prev))) { // open
+      const ms = c === '=' ? ['=='] : n === 3 ? ['**', '*'] : n === 2 ? ['**'] : ['*'];
+      ms.forEach(m => { st.push({ m, at: out.length }); out.push(''); }); n = 0;
+    }
+    if (n) out.push(emit.text(c.repeat(n)));
+    i = j;
+  }
+  flush(); unwind(); return out.join('');
+}
+const RT_H = { text: esc, open: (t) => `<${t}>`, close: (t) => `</${t}>` };
+const RT_P = { text: (s) => s, open: () => '', close: () => '' };
+const rtHTML = (s) => rtParse(s, RT_H); // one line or several (\n kept): safe HTML
+const rtPlain = (s) => rtParse(s, RT_P); // the text without its markers: calendar files, previews, titles
+const rtBr = (s) => rtHTML(s).replace(/\n/g, '<br>');
+const rtParas = (s) => String(s || '').split(/\n\s*\n/).filter(p => p.trim()).map(p => `<p>${rtBr(p.trim())}</p>`).join('');
+// translation: markers travel as <b>/<i>/<mark> (models keep tags around the right words); back to markers after, with an
+// unmatched tag dropped and spaces moved outside the markers
+const RT_TR = { '**': 'b', '*': 'i', '==': 'mark' };
+const rtToTags = (s) => rtParse(s, { text: (x) => x, open: (t) => `<${RT_TR[Object.keys(RT_TAG).find(k => RT_TAG[k] === t)]}>`, close: (t) => `</${RT_TR[Object.keys(RT_TAG).find(k => RT_TAG[k] === t)]}>` });
+function rtFromTags(s) {
+  const M = { b: '**', i: '*', mark: '==' }; const out = [], st = []; let last = 0; s = String(s ?? '');
+  for (const m of s.matchAll(/<(\/?)(b|i|mark)>/gi)) {
+    out.push(s.slice(last, m.index)); last = m.index + m[0].length; const tag = m[2].toLowerCase();
+    if (!m[1]) { st.push({ tag, at: out.length }); continue; }
+    const k = st.map(o => o.tag).lastIndexOf(tag); if (k < 0) continue;
+    const o = st[k]; st.length = k; const seg = out.splice(o.at).join(''); const w = seg.match(/^(\s*)([\s\S]*?)(\s*)$/);
+    out.push(w[2] ? w[1] + M[tag] + w[2] + M[tag] + w[3] : seg);
+  }
+  out.push(s.slice(last)); return out.join('');
+}
+// the formatting toolbar: select text in a formattable field → B / I / highlight above it (below it on touch screens,
+// clear of the phone's own copy/paste bar); Cmd/Ctrl+B and Cmd/Ctrl+I. Toggles the markers around the selection.
+const RT_FIELDS = '#f-desc, textarea[data-cs][data-k="text"], [data-n][data-k="text"], [data-s][data-k="note"], [data-hk="note"], [data-it="note"], [data-dsp="note"], #ov-note, [data-rt]';
+function rtToggle(el, m) {
+  let a = el.selectionStart, b = el.selectionEnd; const v = el.value; if (a == null || a === b) return false;
+  while (a < b && /\s/.test(v[a])) a++; while (b > a && /\s/.test(v[b - 1])) b--; if (a === b) return false;
+  const L = m.length; let nv, na, nb;
+  const wrapped = (x, y) => v.slice(x - L, x) === m && v.slice(y, y + L) === m && (m !== '*' || (v[x - L - 1] !== '*' && v[y + L] !== '*') || (v.slice(x - 3, x) === '***' && v.slice(y, y + 3) === '***'));
+  if (wrapped(a, b)) { nv = v.slice(0, a - L) + v.slice(a, b) + v.slice(b + L); na = a - L; nb = b - L; } // just inside the markers
+  else if (v.slice(a, a + L) === m && v.slice(b - L, b) === m && b - a > 2 * L && (m !== '*' || (v[a + 1] !== '*' && v[b - 2] !== '*'))) { nv = v.slice(0, a) + v.slice(a + L, b - L) + v.slice(b); na = a; nb = b - 2 * L; } // markers selected too
+  else { // per line: a marker can't span a line break
+    const parts = v.slice(a, b).split('\n').map(l => { const w = l.match(/^(\s*)(.*?)(\s*)$/); return w[2] ? w[1] + m + w[2] + m + w[3] : l; }).join('\n');
+    nv = v.slice(0, a) + parts + v.slice(b); na = a + L; nb = a + parts.length - L;
+  }
+  if (el.maxLength > 0 && nv.length > el.maxLength) { toast(t('That’s over this field’s length limit.')); return true; }
+  el.focus(); el.value = nv; el.setSelectionRange(na, nb);
+  el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return true;
+}
+// where the selection's start sits on screen, via a mirror of the field
+function rtCaret(el, pos) {
+  const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); const d = document.createElement('div');
+  ['fontFamily', 'fontSize', 'fontWeight', 'letterSpacing', 'lineHeight', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'boxSizing', 'textIndent', 'wordSpacing'].forEach(k => { d.style[k] = cs[k]; });
+  Object.assign(d.style, { position: 'fixed', visibility: 'hidden', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', whiteSpace: el.tagName === 'TEXTAREA' ? 'pre-wrap' : 'pre', overflowWrap: 'break-word', overflow: 'hidden' });
+  d.textContent = el.value.slice(0, pos); const sEl = document.createElement('span'); sEl.textContent = el.value.slice(pos, pos + 1) || '.'; d.appendChild(sEl); document.body.appendChild(d);
+  const sr = sEl.getBoundingClientRect(); d.remove();
+  return { x: Math.min(Math.max(sr.left - el.scrollLeft, r.left), r.right), top: Math.max(sr.top - el.scrollTop, r.top), bottom: Math.min(sr.bottom - el.scrollTop, r.bottom) };
+}
+let rtBar = null, rtEl = null;
+function rtHide() { if (rtBar) rtBar.hidden = true; rtEl = null; }
+function rtShow(el) {
+  if (!rtBar) {
+    rtBar = document.createElement('div'); rtBar.className = 'rt-bar'; rtBar.setAttribute('role', 'toolbar'); rtBar.setAttribute('aria-label', t('Format text')); rtBar.hidden = true;
+    rtBar.innerHTML = [['**', '<b>B</b>', 'Bold', '⌘B'], ['*', '<i>I</i>', 'Italic', '⌘I'], ['==', '<mark>H</mark>', 'Highlight', '']].map(([m, l, a, k]) => `<button type="button" data-rt-m="${m}" aria-label="${esc(t(a))}" title="${esc(t(a) + (k ? ' (' + (/Mac|iPhone|iPad/.test(navigator.platform) ? k : k.replace('⌘', 'Ctrl+')) + ')' : ''))}">${l}</button>`).join('');
+    // keep the field's selection: the bar never takes focus
+    rtBar.addEventListener('pointerdown', (e) => e.preventDefault()); rtBar.addEventListener('mousedown', (e) => e.preventDefault());
+    rtBar.addEventListener('click', (e) => { const b = e.target.closest('[data-rt-m]'); if (!b || !rtEl) return; const el = rtEl; rtToggle(el, b.dataset.rtM); requestAnimationFrame(() => rtShow(el)); });
+  }
+  const host = el.closest('dialog[open]') || document.body; if (rtBar.parentNode !== host) host.appendChild(rtBar); // inside an open sheet: above its backdrop
+  rtEl = el; rtBar.hidden = false;
+  const c = rtCaret(el, el.selectionStart); const touch = matchMedia('(pointer: coarse)').matches; const w = rtBar.offsetWidth || 120, h = rtBar.offsetHeight || 40;
+  const e2 = touch ? rtCaret(el, Math.max(el.selectionStart, el.selectionEnd - 1)) : c;
+  let y = touch ? e2.bottom + 10 : c.top - h - 8; if (!touch && y < 4) y = rtCaret(el, el.selectionEnd).bottom + 8; if (y + h > innerHeight - 4) y = Math.max(4, c.top - h - 8);
+  const x = Math.min(Math.max(4, c.x - w / 2 + 8), innerWidth - w - 4);
+  rtBar.style.left = x + 'px'; rtBar.style.top = y + 'px';
+}
+function rtWatch() {
+  if (document._rtOn) return; document._rtOn = true;
+  const check = () => { const el = document.activeElement; if (el && el.matches && el.matches(RT_FIELDS) && el.selectionStart !== el.selectionEnd && /\S/.test(el.value.slice(el.selectionStart, el.selectionEnd))) rtShow(el); else rtHide(); };
+  document.addEventListener('selectionchange', () => requestAnimationFrame(check));
+  ['select', 'mouseup', 'keyup', 'touchend'].forEach(ev => document.addEventListener(ev, (e) => { if (e.target && e.target.matches && e.target.matches(RT_FIELDS)) setTimeout(check, 0); }, true));
+  document.addEventListener('focusout', () => setTimeout(check, 0), true);
+  document.addEventListener('scroll', () => { if (rtEl) check(); }, true); addEventListener('resize', () => { if (rtEl) check(); });
+  document.addEventListener('keydown', (e) => {
+    const el = e.target; if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || !el.matches || !el.matches(RT_FIELDS)) return;
+    const m = { b: '**', i: '*' }[e.key.toLowerCase()]; if (!m) return; e.preventDefault(); if (rtToggle(el, m)) requestAnimationFrame(check);
+  }, true);
+}
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 const LS = {
@@ -450,7 +566,7 @@ function icsText(cfg, url) {
   lines.push(...ev('main', cfg.title, s, e, [cfg.tagline, url].filter(Boolean).join('\n\n')));
   cfg.schedule.filter(x => x.date && x.time && x.title).forEach((x, i) => {
     const st = wallToUTC(`${x.date}T${x.time}`, schedZone(x) || cfg.tz); // a flight line's time is local at its airport
-    lines.push(...ev('s' + i, `${x.title} · ${cfg.title}`, st, new Date(st.getTime() + 3600e3), [x.note, url].filter(Boolean).join('\n\n'), x.place ? [x.place.name, x.place.address !== x.place.name ? x.place.address : ''].filter(Boolean).join(', ') : ''));
+    lines.push(...ev('s' + i, `${x.title} · ${cfg.title}`, st, new Date(st.getTime() + 3600e3), [rtPlain(x.note), url].filter(Boolean).join('\n\n'), x.place ? [x.place.name, x.place.address !== x.place.name ? x.place.address : ''].filter(Boolean).join(', ') : ''));
   });
   lines.push('END:VCALENDAR');
   return lines.map(fold).join('\r\n');
@@ -781,7 +897,7 @@ function itinICS(cfg) {
       allDay ? `DTSTART;VALUE=DATE:${x.start.replace(/-/g, '')}` : `DTSTART:${fz[0] ? icsStamp(wallToUTC(x.start, fz[0])) : loc(x.start)}`,
       allDay ? `DTEND;VALUE=DATE:${end.slice(0, 10).replace(/-/g, '')}` : `DTEND:${fz[0] && end.length === 16 ? icsStamp(wallToUTC(end, x.end === end ? fz[1] : fz[0])) : loc(end)}`,
       `SUMMARY:${esc2(x.name || ITIN_KINDS[x.kind] || 'Reservation')}`, `LOCATION:${esc2(x.address)}`,
-      `DESCRIPTION:${esc2([x.confNo ? 'Confirmation ' + x.confNo : '', x.note, fLinks.status, x.link].filter(Boolean).join('\n'))}`, 'END:VEVENT');
+      `DESCRIPTION:${esc2([x.confNo ? 'Confirmation ' + x.confNo : '', rtPlain(x.note), fLinks.status, x.link].filter(Boolean).join('\n'))}`, 'END:VEVENT');
     // a hotel's free-cancellation deadline: its own event (timed when the time is known, else all day) with a reminder the day before
     const h = LODGE.has(x.kind) ? hfOfBk(x) : null; const c = h && !h.nonRef ? h.cancelBy : '';
     if (c) lines.push('BEGIN:VEVENT', `UID:itin-${i}-cx-${c.replace(/\D/g, '')}@eventpages`, `DTSTAMP:${now}`,
@@ -1076,8 +1192,8 @@ function foodHTML(cfg, data, filter = 'all') {
 const withArt = (d, art) => { const o = Object.create(d); Object.defineProperty(o, '__art', { value: art }); return o; };
 function lfBarHTML(key, f, { ph, chips = [], sorts = [] }) {
   const filt = chips.length || sorts.length > 1;
-  const grp = (id) => id.startsWith('p:') ? 'Price' : id.startsWith('r:') ? 'Rating' : id === 'airport' || id === 'town' ? 'Where' : 'Show';
-  const body = ['Where', 'Show', 'Price', 'Rating'].map(g => { const cs = chips.filter(c => grp(c[0]) === g); return cs.length ? ccGroup(t(g), cs.map(([id, label, on]) => ccChip(on, `data-lf-chip="${esc(id)}"${id === 'airport' ? ' data-lf-def' : ''}`, esc(label))).join('')) : ''; }).join('')
+  const grp = (id) => id.startsWith('p:') ? 'Price' : id.startsWith('r:') ? 'Rating' : id.startsWith('k:') ? 'Kind' : id === 'airport' || id === 'town' ? 'Where' : 'Show';
+  const body = ['Kind', 'Where', 'Show', 'Price', 'Rating'].map(g => { const cs = chips.filter(c => grp(c[0]) === g); return cs.length ? ccGroup(t(g), cs.map(([id, label, on]) => ccChip(on, `data-lf-chip="${esc(id)}"${id === 'airport' ? ' data-lf-def' : ''}`, esc(label))).join('')) : ''; }).join('')
     + (sorts.length > 1 ? `<div class="cc-g cc-sels"><label class="field"><span>${esc(t('Sort by'))}</span><select data-lf-sort>${sorts.map(([k, l]) => `<option value="${k}" ${f.sort === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label></div>` : '');
   const ps = chips.filter(c => c[2] && c[0] !== 'airport').map(c => [c[0], c[1]]).concat(sorts.length > 1 && f.sort && f.sort !== sorts[0][0] ? [['sort', (sorts.find(x => x[0] === f.sort) || [0, ''])[1]]] : []);
   return `<div class="lf ccb" data-lf="${key}" role="group" aria-label="${esc(t('Filters'))}"><div class="ccb-row lf-row"><div class="gp-search lf-q"><input type="search" data-lf-q value="${esc(f.q || '')}" placeholder="${esc(ph)}" aria-label="${esc(ph)}" enterkeyhint="search" autocomplete="off"></div>${filt ? ccFiltersBtn(ps.length) : ''}</div><div class="ccb-pills" data-ccb-pills${ps.length ? '' : ' hidden'}>${lfPills(ps)}</div>${filt ? `<dialog class="cc-sheet" data-ccb-sheet aria-label="${esc(t('Filters'))}">${ccSheet(body, t('Done'), 'data-lf-clear')}</dialog>` : ''}</div>`;
@@ -1092,7 +1208,7 @@ function lfSync(box) {
   const fb = bar.querySelector('[data-cc-filters]'); if (fb) fb.outerHTML = ccFiltersBtn(ps.length);
 }
 const lfMatch = (q, ...xs) => { const n = (x) => String(x || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, ''); const w = n(q).trim().split(/\s+/).filter(Boolean); const hay = n(xs.join(' ')); return w.every(x => hay.includes(x)); };
-const lfSort = (rows, sort) => sort === 'rating' ? rows.slice().sort((a, b) => (b.rating || 0) - (a.rating || 0) || (b.count || 0) - (a.count || 0) || a.d - b.d) : rows.slice().sort((a, b) => a.d - b.d);
+const lfSort = (rows, sort) => sort === 'rating' ? rows.slice().sort((a, b) => (b.rating || 0) - (a.rating || 0) || (b.count || 0) - (a.count || 0) || a.d - b.d) : sort === 'name' ? rows.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), LANG, { sensitivity: 'base', numeric: true })) : rows.slice().sort((a, b) => a.d - b.d);
 const lfCount = (n, active, total) => `<p class="pf-count muted small" role="status" aria-live="polite">${esc(n === 1 ? t('1 place') : t('{n} places', { n }))}${active ? ` · <button type="button" class="link" data-lf-clear>${t('Clear filters')}</button>` : ''}</p>`;
 // one delegated handler per page: lists register { f, list(), chip(id), clear() } under art._lf[key]
 function lfWire(art) {
@@ -1114,20 +1230,25 @@ function lfWire(art) {
 // hotels and sights near the venue (OpenStreetMap or Google): search by name, within walking distance, sort by distance or rating
 // hotels also get price level ($ … $$$$, Google's priceLevel; several can be on) and minimum rating (4+ / 4.5+)
 function nearListRegister(art, key, cfg, rows, rowHTML, { more, walkLabel, hotel }) {
-  art._lf = art._lf || {}; const prev = art._lf[key]; const f = prev ? prev.f : { q: '', walk: false, sort: 'dist', price: [], minR: 0 };
-  f.price = f.price || []; f.minR = f.minR || 0;
+  art._lf = art._lf || {}; const prev = art._lf[key]; const f = prev ? prev.f : { q: '', walk: false, sort: 'dist', price: [], minR: 0, kinds: [] };
+  f.price = f.price || []; f.minR = f.minR || 0; f.kinds = f.kinds || [];
   const hasRating = rows.some(r => r.rating); const prices = hotel ? ['$', '$$', '$$$', '$$$$'].filter(p => rows.some(r => r.price === p)) : [];
+  // sights: by kind (museums, temples & landmarks, parks…) from what the rows are; sorted by name too (Dylan 11/25)
+  const act = key === 'sights'; const kindOf = (r) => actKind({ name: r.name, type: r.kind, types: (r.types || []).concat(String(r.kind || '').replace(/ /g, '_')) });
+  const kinds = act ? ACT_KINDS.map(k => k[0]).concat('other').filter(k => rows.some(r => kindOf(r) === k)) : [];
   const x = art._lf[key] = { f, hasRating,
-    on: (id) => id === 'walk' ? f.walk : id.startsWith('p:') ? f.price.includes(id.slice(2)) : id.startsWith('r:') ? f.minR === +id.slice(2) : false,
-    chip: (id) => { if (id === 'walk') f.walk = !f.walk; else if (id.startsWith('p:')) { const p = id.slice(2); f.price = f.price.includes(p) ? f.price.filter(y => y !== p) : f.price.concat(p); } else if (id.startsWith('r:')) f.minR = f.minR === +id.slice(2) ? 0 : +id.slice(2); },
-    clear: () => { f.q = ''; f.walk = false; f.sort = 'dist'; f.price = []; f.minR = 0; },
+    on: (id) => id === 'walk' ? f.walk : id.startsWith('p:') ? f.price.includes(id.slice(2)) : id.startsWith('r:') ? f.minR === +id.slice(2) : id.startsWith('k:') ? f.kinds.includes(id.slice(2)) : false,
+    chip: (id) => { if (id === 'walk') f.walk = !f.walk; else if (id.startsWith('p:')) { const p = id.slice(2); f.price = f.price.includes(p) ? f.price.filter(y => y !== p) : f.price.concat(p); } else if (id.startsWith('r:')) f.minR = f.minR === +id.slice(2) ? 0 : +id.slice(2); else if (id.startsWith('k:')) { const k = id.slice(2); f.kinds = f.kinds.includes(k) ? f.kinds.filter(y => y !== k) : f.kinds.concat(k); } },
+    clear: () => { f.q = ''; f.walk = false; f.sort = 'dist'; f.price = []; f.minR = 0; f.kinds = []; },
     list: () => {
-      const xs = lfSort(rows.filter(r => (!f.q || lfMatch(f.q, r.name, r.kind ? t(r.kind) : '')) && (!f.walk || r.d <= 1500) && (!f.price.length || f.price.includes(r.price)) && (!f.minR || (r.rating || 0) >= f.minR)), hasRating ? f.sort : 'dist');
-      const active = !!(f.q || f.walk || f.price.length || f.minR); const fold = !active && xs.length > more + 1;
+      const xs = lfSort(rows.filter(r => (!f.q || lfMatch(f.q, r.name, r.kind ? t(r.kind) : '')) && (!f.walk || r.d <= 1500) && (!f.price.length || f.price.includes(r.price)) && (!f.minR || (r.rating || 0) >= f.minR) && (!f.kinds.length || f.kinds.includes(kindOf(r)))), hasRating || (act && f.sort === 'name') ? f.sort : 'dist');
+      const active = !!(f.q || f.walk || f.price.length || f.minR || f.kinds.length); const fold = !active && xs.length > more + 1;
       return `${active ? lfCount(xs.length, true) : ''}${xs.length ? `<ul class="plist rich">${xs.map((r, i) => rowHTML(r, fold && i >= more)).join('')}${fold ? `<li class="more-li"><button type="button" class="btn sm" data-more>${t('Show {n} more', { n: xs.length - more })}</button></li>` : ''}</ul>` : `<p class="muted">${t('Nothing matches these filters.')} <button type="button" class="link" data-lf-clear>${t('Clear filters')}</button></p>`}`;
     } };
   lfWire(art);
-  return `<div data-lf-box="${key}">${rows.length > more ? lfBarHTML(key, f, { ph: t('Search by name'), chips: [['walk', walkLabel, f.walk], ...prices.map(p => ['p:' + p, p, f.price.includes(p)]), ...(hotel && hasRating ? [['r:4', '★ 4+', f.minR === 4], ['r:4.5', '★ 4.5+', f.minR === 4.5]] : [])], sorts: hasRating ? [['dist', t('Distance')], ['rating', t('Rating')]] : [] }) : ''}<div data-lf-list>${x.list()}</div></div>`;
+  const kindChips = kinds.length > 1 ? kinds.map(k => ['k:' + k, k === 'other' ? t('Other') : t(ACT_KINDS.find(y => y[0] === k)[1]), f.kinds.includes(k)]) : [];
+  const sorts = [['dist', t('Distance')], ...(hasRating ? [['rating', t('Rating')]] : []), ...(act ? [['name', t('Name')]] : [])];
+  return `<div data-lf-box="${key}">${rows.length > (act ? 4 : more) ? lfBarHTML(key, f, { ph: t('Search by name'), chips: [...kindChips, ['walk', walkLabel, f.walk], ...prices.map(p => ['p:' + p, p, f.price.includes(p)]), ...(hotel && hasRating ? [['r:4', '★ 4+', f.minR === 4], ['r:4.5', '★ 4.5+', f.minR === 4.5]] : [])], sorts: sorts.length > 1 ? sorts : [] }) : ''}<div data-lf-list>${x.list()}</div></div>`;
 }
 // "See prices": one button → a small menu of Google / Expedia / Booking.com with the stay's nights + guests filled in.
 // Formats checked live (Nov 2026, iPhone Safari): Google Hotels reads the hotel + dates from the query text (it opens on
@@ -1651,14 +1772,14 @@ const sec = (id, title, body, cls = '') => body ? `<section class="ev-sec ${cls}
 function notesHTML(cfg) {
   const ns = cfg.notes.filter(x => x.label && (x.url || x.text)); if (!ns.length) return '';
   return `<ul class="links">${ns.map(x => x.url
-    ? `<li${edA('n:' + cfg.notes.indexOf(x))}><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(x.label)}</b><span>${esc(x.text || hostOf(x.url))}</span>${arrow}</a></li>`
-    : `<li class="note"${edA('n:' + cfg.notes.indexOf(x))}><b>${esc(x.label)}</b><span>${esc(x.text)}</span></li>`).join('')}</ul>`;
+    ? `<li${edA('n:' + cfg.notes.indexOf(x))}><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(x.label)}</b><span>${x.text ? rtHTML(x.text) : esc(hostOf(x.url))}</span>${arrow}</a></li>`
+    : `<li class="note"${edA('n:' + cfg.notes.indexOf(x))}><b>${esc(x.label)}</b><span>${rtBr(x.text)}</span></li>`).join('')}</ul>`;
 }
 function customSecHTML(cfg, sid) {
   const x = (cfg.custom || []).find(y => customSid(y) === sid); if (!x || !(x.title || '').trim() || cfg.off[sid]) return '';
   const img = httpsUrl(x.img), url = httpsUrl(x.url);
   const body = (img ? `<img class="cs-img" src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '')
-    + ((x.text || '').trim() ? `<div class="rm-box">${(x.text || '').split(/\n\s*\n/).filter(p => p.trim()).map(p => `<p>${esc(p.trim()).replace(/\n/g, '<br>')}</p>`).join('')}</div>` : '')
+    + ((x.text || '').trim() ? `<div class="rm-box">${rtParas(x.text)}</div>` : '')
     + (url ? `<ul class="links"><li><a href="${esc(url)}" target="_blank" rel="noopener noreferrer"><b>${esc((x.label || '').trim() || hostOf(url))}</b>${(x.label || '').trim() ? `<span>${esc(hostOf(url))}</span>` : ''}${arrow}</a></li></ul>` : '')
     + docsHTML(cfg, [sid]);
   return sec(sid, x.title, body, 'cs');
@@ -1672,7 +1793,7 @@ function needToKnowHTML(cfg) {
 }
 function aboutHTML(cfg) {
   if (cfg.off.about || !(cfg.description || cfg.host)) return '';
-  return `${cfg.host ? `<p class="host"><span class="lbl">${t('Hosted by')}</span> ${esc(cfg.host)}</p>` : ''}${cfg.description ? `<div class="rm-box">${cfg.description.split(/\n\s*\n/).filter(Boolean).map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}</div>` : ''}`;
+  return `${cfg.host ? `<p class="host"><span class="lbl">${t('Hosted by')}</span> ${esc(cfg.host)}</p>` : ''}${cfg.description ? `<div class="rm-box">${rtParas(cfg.description)}</div>` : ''}`;
 }
 const scheduleSecHTML = (cfg) => sec('schedule', t(schedTitle(cfg)), `<div data-slot="sched-body">${scheduleHTML(cfg)}</div>` + (cfg.off.schedule ? '' : docsHTML(cfg, ['schedule'])) + (routeInItin(cfg) && !cfg.off.route ? docsHTML(cfg, ['route']).replace(/^<ul class="docs/, '<ul class="route-docs docs') : ''), isTrip(cfg) ? 'itin' : '');
 // trips show their route (cities + dates) as the Itinerary's legs instead of a separate Route section
@@ -1718,7 +1839,7 @@ function scheduleHTML(cfg) {
   const dated = Object.keys(days).filter(Boolean).sort(); const def = dayOpenDefault(cfg, dated); const many = Object.keys(days).length > 1;
   const row = (x) => {
     const mark = (x.bk || (!x.ev && !x.co) ? ` <em class="yours">${t(x.pl ? 'Saved' : 'Yours')}</em>` : '') + ovRowTag(cfg, x) + schedHfBadge(cfg, x);
-    const sub = x.ev && !trip && (x.note || x.place) ? esc(x.place && !(x.note || '').toLowerCase().includes(x.place.toLowerCase()) ? [x.place, x.note].filter(Boolean).join(' · ') : x.note) : '';
+    const sub = x.ev && !trip && (x.note || x.place) ? (x.place && !(x.note || '').toLowerCase().includes(x.place.toLowerCase()) ? [esc(x.place), x.note ? rtHTML(x.note) : ''].filter(Boolean).join(' · ') : rtHTML(x.note)) : '';
     const inner = `<span class="tl-tx"><b>${esc(schedLine(cfg, x))}${mark}</b>${sub ? `<span>${sub}</span>` : ''}</span>`;
     return `<li class="${[x.ev && !x.bk ? '' : 'mine', x.co ? 'co' : '', x.kind ? 'k-' + esc(x.kind) : ''].filter(Boolean).join(' ')}"${x.ev ? edA('s:' + x.si) : ''}><time>${esc(tm(x.start)) || (trip ? '' : '—')}</time><div>${x.ref ? `<button type="button" class="tl-go" data-ds="${esc(x.ref)}">${inner}<i class="tl-chev" aria-hidden="true"></i></button>` : inner}</div></li>`;
   };
@@ -1828,7 +1949,7 @@ function bookingsHTML(cfg) {
     const via = viaOf(x); const viaUrl = via && via.url;
     const links = [fl.status ? ext(fl.status, t('Flight status'), 'mini-b') : '', viaUrl ? ext(viaUrl, `${t('Manage booking')} · ${via.name}`, 'mini-b') : fl.manage ? ext(fl.manage, t('Manage booking'), 'mini-b') : '', x.link ? ext(x.link, t('Open booking'), 'mini-b') : ''].join('');
     const it = ccBkItem(cfg, x);
-    return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-sub="${it.sub}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div>${x.id ? `<button type="button" class="pr-go bk-go" data-ds="bk:${esc(x.id)}">${thumbHTML(x, ccIk(it.cat, x))}<span class="pr-tx">` : '<span class="pr-tx">'}<b class="plan-t"><span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span>${x.sh && x.sh.n ? `<em class="ov-upd">${esc(t('Updated'))}</em>` : ''}</b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${bkOffTrip(cfg, x) ? `<span class="bk-warn">${esc(t('Not on the trip dates'))}</span>` : ''}${detVal(x, 'room') || (LODGE.has(x.kind) && hfBadge(hfOfBk(x), bkDay(x.end) || bkDay(x.start))) ? `<span class="bk-room">${esc(detVal(x, 'room') || '')}${LODGE.has(x.kind) ? hfBadgeHTML(hfOfBk(x), bkDay(x.end) || bkDay(x.start)) : ''}</span>` : ''}${x.note && !LODGE.has(x.kind) ? `<span class="pr-note">${esc(x.note)}</span>` : ''}${x.id ? '</span><i class="tl-chev" aria-hidden="true"></i></button>' : '</span>'}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button>${LODGE.has(x.kind) && x.id ? `<button type="button" class="mini-b bk-rm" data-bk-rm="${esc(x.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}</div></div></li>`;
+    return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-sub="${it.sub}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div>${x.id ? `<button type="button" class="pr-go bk-go" data-ds="bk:${esc(x.id)}">${thumbHTML(x, ccIk(it.cat, x))}<span class="pr-tx">` : '<span class="pr-tx">'}<b class="plan-t"><span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span>${x.sh && x.sh.n ? `<em class="ov-upd">${esc(t('Updated'))}</em>` : ''}</b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${bkOffTrip(cfg, x) ? `<span class="bk-warn">${esc(t('Not on the trip dates'))}</span>` : ''}${detVal(x, 'room') || (LODGE.has(x.kind) && hfBadge(hfOfBk(x), bkDay(x.end) || bkDay(x.start))) ? `<span class="bk-room">${esc(detVal(x, 'room') || '')}${LODGE.has(x.kind) ? hfBadgeHTML(hfOfBk(x), bkDay(x.end) || bkDay(x.start)) : ''}</span>` : ''}${x.note && !LODGE.has(x.kind) ? `<span class="pr-note">${rtHTML(x.note)}</span>` : ''}${x.id ? '</span><i class="tl-chev" aria-hidden="true"></i></button>' : '</span>'}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button>${LODGE.has(x.kind) && x.id ? `<button type="button" class="mini-b bk-rm" data-bk-rm="${esc(x.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}</div></div></li>`;
   }).join('')}</ul>${ccNoneHTML().replace('class="muted cc-none"', `class="muted cc-none"${order.some(([x]) => F.ok(ccBkItem(cfg, x))) ? ' hidden' : ''}`)}` : ''}
   <div class="btns itin-btns"><button type="button" class="btn primary" data-itin-add>+ ${t('Add a booking')}</button>${items.length ? `<button type="button" class="btn" data-itin-ics>${t('Add to calendar')}</button>` : ''}</div><div data-slot="itin-form"></div>${cfg.demoTrip ? '' : fwdSlot(cfg)}`;
 }
@@ -4787,8 +4908,8 @@ const CC_ALIAS = { restaurant: 'restaurants', food: 'restaurants', eat: 'restaur
   sight: 'sights', attractions: 'sights', todo: 'tours', 'things-to-do': 'tours', tour: 'tours', activities: 'tours', shop: 'shopping', shops: 'shopping', hotel: 'hotels', stay: 'hotels', stays: 'hotels',
   lodging: 'hotels', flights: 'transport', transit: 'transport' };
 const ccCatId = (s) => { s = String(s || '').trim().toLowerCase(); return CC_CATS.some(c => c[0] === s) ? s : CC_ALIAS[s] || ''; };
-const ccLabel = (k) => t((CC_CATS.find(c => c[0] === k) || [0, 'Other'])[1]);
-const ccColor = (k) => (CC_CATS.find(c => c[0] === k) || [0, 0, '#5C6370'])[2];
+const ccLabel = (k) => k === 'activities' ? t('Activities') : t((CC_CATS.find(c => c[0] === k) || [0, 'Other'])[1]);
+const ccColor = (k) => (CC_CATS.find(c => c[0] === (k === 'activities' ? 'tours' : k)) || [0, 0, '#5C6370'])[2];
 const CC_GLYPH = {
   restaurants: '<path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 21V3c-2.2 1.2-3.5 3.6-3.5 7v3H17"/>',
   cafes: '<path d="M4 9h12v4.5A5.5 5.5 0 0 1 10.5 19h-1A5.5 5.5 0 0 1 4 13.5zM16 10.5h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5c-.8 1 .8 2 0 3M12 3.5c-.8 1 .8 2 0 3"/>',
@@ -4807,7 +4928,7 @@ const CC_GLYPH = {
   all: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
   pin: '<path d="M12 21s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/>',
 };
-const ccGlyph = (k) => CC_GLYPH[k] || CC_GLYPH.pin;
+const ccGlyph = (k) => CC_GLYPH[k === "activities" ? "tours" : k] || CC_GLYPH.pin;
 const ccIcon = (k) => `<span class="cci" style="--cc:${k === 'all' ? 'var(--ink)' : ccColor(k)}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">${ccGlyph(k)}</svg></span>`;
 // map marker: white icon on the category's colored circle; a saved spot gets a gold star on its shoulder
 const ccPinMemo = new Map();
@@ -4946,10 +5067,15 @@ function ccCityOfBooking(cfg, x) {
 }
 // My trip's category chips (Dylan 11/25): Hotels, then Transport, then Restaurants, then the rest; several at once
 // (flights + trains + hotels together); Hotels until the guest picks (when they have one). st.cats: [] = All.
-const TRIP_CATS = ['hotels', 'transport', 'restaurants', 'cafes', 'bars', 'sights', 'tours', 'shopping'];
+// Activities (Dylan 11/25: "it might be nice to have activities as an option along with hotels, transportation, and
+// restaurants"): one chip for sights + things to do (tours, museums, temples, parks…); the four main chips always show.
+const TRIP_CATS = ['hotels', 'transport', 'restaurants', 'activities', 'cafes', 'bars', 'shopping'];
+const TRIP_CORE = ['hotels', 'transport', 'restaurants', 'activities'];
+const tripCat = (c) => c === 'sights' || c === 'tours' ? 'activities' : c;
 function ccTripCats(cfg, st) {
-  if (Array.isArray(st.cats)) return st.cats.map(ccCatId).filter(Boolean);
-  if (st.cat) return [ccCatId(st.cat)].filter(Boolean); // a choice from before multi-select / a ?cat= link
+  const ok = (xs) => [...new Set(xs.map(k => tripCat(k === 'activities' ? k : ccCatId(k))).filter(Boolean))];
+  if (Array.isArray(st.cats)) return ok(st.cats);
+  if (st.cat) return ok([st.cat]); // a choice from before multi-select / a ?cat= link
   return typeof itineraryEntries === 'function' && itineraryEntries(cfg).some(x => x.cc === 'hotels') ? ['hotels'] : [];
 }
 // the trip scope's filter: { on, ok(item) } for items { city, cat, sub, text, saved, booked, host }
@@ -4960,7 +5086,7 @@ function ccTrip(cfg) {
   const rest = (it) => (ci < 0 || it.city === ci) && (!q || lfMatch(q, it.text)) && (!show || (show === 'saved' ? it.saved : show === 'booked' ? it.booked : show === 'host' ? it.host : true));
   const subOk = (it) => it.cat !== 'transport' || !tsubs.length || tsubs.includes(it.sub || 'other');
   return { st, ci, cat, cats, tsubs, q, show, on: ci >= 0 || !!cats.length || !!q || !!show, sub: !!cats.length || !!q || !!show, rest, subOk,
-    ok: (it) => rest(it) && (!cats.length || cats.includes(it.cat)) && subOk(it) };
+    ok: (it) => rest(it) && (!cats.length || cats.includes(tripCat(it.cat))) && subOk(it) };
 }
 const ccBkItem = (cfg, x) => ({ city: ccCityOfBooking(cfg, x), cat: ccCatOfBooking(x), sub: tSub(x), text: [x.name, x.address, x.confNo, t(ITIN_KINDS[x.kind] || '')].filter(Boolean).join(' '), saved: false, booked: true });
 // the trip Itinerary gets the bar when there is something to narrow down: several cities, or a long list
@@ -5024,18 +5150,46 @@ function gpDetails(id, session) {
     LS.set(key, { t: Date.now(), d }); return d;
   });
 }
-function gpFilter(rows, f) {
-  const xs = rows.filter(r => (!f.open || r.open === true) && (!f.stars || r.rating >= f.stars) && (!f.price || r.price === f.price) && (!f.dist || r.d <= f.dist));
-  return f.sort === 'rating' ? lfSort(xs, 'rating') : xs;
+// Sights / Things to do by kind (Dylan 11/25: "for activities, is there a way to sort through them?"): each Google row
+// gets one kind from its own types (primary type first), else from its name; the chips show only kinds in the list.
+const ACT_CATS = new Set(['sights', 'tours']);
+const ACT_KINDS = [
+  ['tours', 'Tours', /^(tour_agency|travel_agency|tourist_information_center|sightseeing_tour_agency|adventure_sports_center|cooking_class|cultural_center)$/, /\b(tours?|experiences?|class(es)?|workshops?|cruises?|walks?)\b|ツアー|体験/i],
+  ['museums', 'Museums', /museum|gallery|planetarium/, /\b(museums?|galler(y|ies))\b|美術館|博物館|記念館/i],
+  ['landmarks', 'Temples & landmarks', /temple|shrine|church|mosque|synagogue|place_of_worship|landmark|historical|monument|castle|palace|observation_deck|viewpoint|sculpture|plaza|tower|bridge|memorial/, /\b(temples?|shrines?|castles?|palaces?|towers?|monuments?|cathedral|church|basilica|pagoda|gate)\b|寺|神社|城|塔|大社|宮/i],
+  ['outdoors', 'Parks & outdoors', /^(park|city_park|state_park|national_park|garden|botanical_garden|hiking_area|beach|marina|ski_resort|nature_preserve|scenic_spot|lake|island|mountain_peak|picnic_ground|dog_park|campground)$|_park$|garden/, /\b(parks?|gardens?|trails?|beach|grove|falls|lake|mountain|hike|forest)\b|公園|庭園|山/i],
+  ['family', 'Zoos & theme parks', /amusement|aquarium|zoo|water_park|wildlife|theme_park|bowling|arcade|go_karting|miniature_golf/, /\b(aquarium|zoo|teamlab|disney|universal|theme park|amusement|arcade)\b|水族館|動物園/i],
+  ['shows', 'Shows & nightlife', /theater|theatre|concert|night_club|karaoke|casino|comedy|live_music|movie|opera|stadium|arena|event_venue|philharmonic/, /\b(theat(er|re)|concerts?|karaoke|kabuki|show|club|live)\b|劇場/i],
+  ['wellness', 'Spas & baths', /spa|sauna|public_bath|massage|wellness|hot_spring/, /\b(spa|onsen|sauna|bath|sento)\b|温泉|銭湯/i],
+  ['shopping', 'Shopping', /shopping|market|store|mall|_shop$/, /\b(market|shopping|mall|arcade street)\b|市場|商店街/i]];
+const ACT_MATCH = ['tours', 'museums', 'family', 'landmarks', 'outdoors', 'shows', 'wellness', 'shopping'].map(k => ACT_KINDS.find(x => x[0] === k)); // amusement_park is a theme park, not a park
+function actKind(r) {
+  for (const ty of [r.ptype, ...(r.types || [])].filter(Boolean)) { const k = ACT_MATCH.find(x => x[2].test(ty)); if (k) return k[0]; }
+  const n = [r.name, r.type].join(' '); const k = ACT_MATCH.find(x => x[3].test(n)); return k ? k[0] : 'other';
+}
+const actOn = (f) => ACT_CATS.has(f.cat) && !f.q;
+const gpNameSort = (a, b) => String(a.name || '').localeCompare(String(b.name || ''), LANG, { sensitivity: 'base', numeric: true });
+function gpFilter(rows, f, noKinds) {
+  const ks = !noKinds && actOn(f) && Array.isArray(f.types) ? f.types : [];
+  const xs = rows.filter(r => (!f.open || r.open === true) && (!f.stars || r.rating >= f.stars) && (!f.price || r.price === f.price) && (!f.dist || r.d <= f.dist) && (!ks.length || ks.includes(actKind(r))));
+  return f.sort === 'rating' ? lfSort(xs, 'rating') : f.sort === 'name' ? xs.slice().sort(gpNameSort) : xs;
+}
+// the kind chips under the category row: each chip's number = the rows it lists with the other filters as they are
+function actChipsHTML(rows, f) {
+  if (!actOn(f) || !rows || !rows.length) return '';
+  const n = {}; gpFilter(rows, f, true).forEach(r => { const k = actKind(r); n[k] = (n[k] || 0) + 1; });
+  const ks = ACT_KINDS.map(x => x[0]).concat('other').filter(k => n[k] || (f.types || []).includes(k));
+  if (ks.length < 2 && !(f.types || []).length) return '';
+  return ccChips({ key: 'atype', aria: t('Kind'), values: f.types || [], cls: 'cc-subs', opts: ks.map(k => ({ v: k, l: k === 'other' ? t('Other') : t((ACT_KINDS.find(x => x[0] === k) || [0, k])[1]), n: n[k] || 0 })) });
 }
 // which icon a Google row gets: the place's own Google type (a Cafés search also returns museums and hotels that have a
 // café); the chosen category only when Google gives no usable type
 const gpRowCat = (f, r) => ccCatOfTypes([r.ptype, ...(r.types || [])], r.type) || (!f.q && f.cat) || '';
-const gpActive = (f) => (f.cuisine ? 1 : 0) + (f.diet ? 1 : 0) + (f.open ? 1 : 0) + (f.stars ? 1 : 0) + (f.price ? 1 : 0) + (f.dist ? 1 : 0) + (f.sort === 'rating' ? 1 : 0);
+const gpActive = (f) => (f.cuisine ? 1 : 0) + (f.diet ? 1 : 0) + (f.open ? 1 : 0) + (f.stars ? 1 : 0) + (f.price ? 1 : 0) + (f.dist ? 1 : 0) + (f.sort && f.sort !== 'dist' ? 1 : 0);
 function gpSheetHTML(cfg, f, n) {
   const food = GP_FOOD.has(f.cat) || (!!f.q && !f.cat); const priced = f.cat !== 'sights' && f.cat !== 'tours';
   const body = [
-    ccGroup(t('Sort by'), [['dist', t('Distance')], ['rating', t('Rating')]].map(([k, l]) => ccChip((f.sort || 'dist') === k, `data-gp-sort="${k}"`, esc(l))).join('')),
+    ccGroup(t('Sort by'), [['dist', t('Distance')], ['rating', t('Rating')], ['name', t('Name')]].map(([k, l]) => ccChip((f.sort || 'dist') === k, `data-gp-sort="${k}"`, esc(l))).join('')),
     ccGroup(t('Hours'), ccChip(f.open, 'data-gp-open', esc(t('Open now')))),
     ccGroup(t('Rating'), [4, 4.5].map(x => ccChip(f.stars === x, `data-gp-stars="${x}"`, `★ ${x.toFixed(1)}+`)).join('')),
     priced ? ccGroup(t('Price'), ['$', '$$', '$$$', '$$$$'].map(pr => ccChip(f.price === pr, `data-gp-price="${pr}"`, esc(priceSym(cfg, pr)))).join('')) : '',
@@ -5049,12 +5203,12 @@ function gpPills(cfg, f) {
   const ps = [];
   if (f.cuisine) ps.push(['cuisine', cuisineLabel(f.cuisine)]); if (f.diet) ps.push(['diet', t((GP_DIETS.find(x => x[0] === f.diet) || [0, f.diet])[1])]);
   if (f.open) ps.push(['open', t('Open now')]); if (f.stars) ps.push(['stars', `★ ${f.stars.toFixed(1)}+`]); if (f.price) ps.push(['price', priceSym(cfg, f.price)]);
-  if (f.dist) ps.push(['dist', t((DISTS.find(x => x[0] === f.dist) || [0, ''])[1])]); if (f.sort === 'rating') ps.push(['sort', t('Top rated')]);
+  if (f.dist) ps.push(['dist', t((DISTS.find(x => x[0] === f.dist) || [0, ''])[1])]); if (f.sort === 'rating') ps.push(['sort', t('Top rated')]); if (f.sort === 'name') ps.push(['sort', t('A–Z')]);
   return ccPills(ps, 'data-gp-clear');
 }
 function gpHTML(cfg, art, rows) {
   const v = cfg.venue; const f = art._gp; const list = gpFilter(rows || [], f);
-  const active = gpActive(f); const none = !f.cat && !f.q;
+  const active = gpActive(f) + (actOn(f) && (f.types || []).length ? 1 : 0); const none = !f.cat && !f.q;
   return `${none ? `<p class="muted gp-none">${t('Pick a category or search for a place.')}</p>` : rows == null ? `<div class="skel" role="status"><span></span><span></span><em>${t('Loading places…')}</em></div>` : `
   ${f.q ? `<p class="gp-q"><span>${esc(t('Results for “{q}”', { q: f.q }))}</span> <button type="button" class="link" data-gp-q-clear>${t('Clear search')}</button></p>` : ''}
   <p class="pf-count muted small" role="status" aria-live="polite">${esc(list.length === 1 ? t('1 place') : t('{n} places', { n: list.length }))}${active ? ` · <button type="button" class="link" data-gp-clear>${t('Clear filters')}</button>` : ''}</p>
@@ -5092,7 +5246,7 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
   const s = art.querySelector('[data-slot="food"]'); if (!s || !GKEY || gpBroken || !cfg.venue) return false;
   const bar = art.querySelector('[data-slot="near-cc"]') || s;
   const st0 = ccGet(cfg, 'nearby');
-  art._gp = art._gp || { cat: 'cat' in st0 ? ccCatId(st0.cat) : 'restaurants', cuisine: '', diet: '', open: false, stars: 0, price: '', dist: 0, sort: 'dist', q: '' };
+  art._gp = art._gp || { cat: 'cat' in st0 ? ccCatId(st0.cat) : 'restaurants', cuisine: '', diet: '', open: false, stars: 0, price: '', dist: 0, sort: 'dist', q: '', types: [] };
   if (art._gp.cat === 'transport') art._gp.cat = 'restaurants';
   let rows = null, seq = 0, started = false;
   const ss = stopsOf(cfg).length > 1 ? hotelStops(cfg) : []; const cities = ccCities(cfg);
@@ -5113,14 +5267,15 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
   placeAutocomplete(qIn, { bias: () => art._center || cfg.venue, onPick: pickPlace, onText: textSearch });
   const pins = () => { if (mapCtl) mapCtl.setPins(pinsOf()); };
   art._gpPins = () => { if (rows) { bodyEl.innerHTML = gpHTML(cfg, art, rows); pins(); } };
-  art._gpCat = (k) => { const f = art._gp; if (f.cat === k && !f.q) return; f.cat = k; f.cuisine = ''; f.price = ''; f.q = ''; qIn.value = ''; if (!GP_FOOD.has(k)) f.diet = ''; started = true; load(); save(true); };
+  art._gpCat = (k) => { const f = art._gp; if (f.cat === k && !f.q) return; f.cat = k; f.cuisine = ''; f.price = ''; f.q = ''; f.types = []; qIn.value = ''; if (!GP_FOOD.has(k)) f.diet = ''; started = true; load(); save(true); };
   const save = (url) => { const c = cities[art._stop]; ccSet(cfg, 'nearby', { city: c ? c.k : '', cat: art._gp.cat }, !!url); }; // the address bar follows the guest's own picks only
   const renderBar = () => {
     const f = art._gp; const n = rows && (f.cat || f.q) ? gpFilter(rows, f).length : null;
     qIn.placeholder = ph();
     ccFill(box, {
       row: (ss.length > 1 ? ccTabs({ key: 'city', aria: t('City'), value: String(art._stop || 0), ph: t('City'), cls: 'dd-city', opts: ss.map((x, i) => ({ v: String(i), l: x.name || x.city })) }) : '')
-        + ccChips({ key: 'cat', aria: t('Category'), value: f.q ? '' : f.cat, ph: t('Category'), cls: 'dd-cat', opts: CC_NEAR.map(([k, l]) => ({ v: k, l: t(l), ic: k })) }),
+        + ccChips({ key: 'cat', aria: t('Category'), value: f.q ? '' : f.cat, ph: t('Category'), cls: 'dd-cat', opts: CC_NEAR.map(([k, l]) => ({ v: k, l: t(l), ic: k })) })
+        + actChipsHTML(rows, f),
       filt: ccFiltersBtn(gpActive(f), !f.cat && !f.q),
       pills: gpPills(cfg, f), sheet: gpSheetHTML(cfg, f, n) });
   };
@@ -5162,7 +5317,7 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
     else if (d.gpPrice) f.price = f.price === d.gpPrice ? '' : d.gpPrice;
     else if (d.gpDist) f.dist = f.dist === +d.gpDist ? 0 : +d.gpDist;
     else if (d.gpSort) f.sort = d.gpSort;
-    else if (d.gpClear != null) { const refetch = f.cuisine || f.diet; Object.assign(f, { cuisine: '', diet: '', open: false, stars: 0, price: '', dist: 0, sort: 'dist' }); if (refetch) return load(); }
+    else if (d.gpClear != null) { const refetch = f.cuisine || f.diet; Object.assign(f, { cuisine: '', diet: '', open: false, stars: 0, price: '', dist: 0, sort: 'dist', types: [] }); if (refetch) return load(); }
     else return;
     render();
   };
@@ -5170,7 +5325,8 @@ function wireGPlaces(cfg, art, mapCtl, onFail) {
   bar.addEventListener('dd', (e) => {
     const { key, v } = e.detail; const f = art._gp;
     if (key === 'city') { if (+v !== (art._stop || 0)) art._nearCity(+v); return; }
-    if (key === 'cat') { f.cat = f.cat === v && !f.q ? '' : v; f.cuisine = ''; f.price = ''; f.q = ''; qIn.value = ''; if (!GP_FOOD.has(f.cat)) f.diet = ''; load(); save(true); }
+    if (key === 'cat') { f.cat = f.cat === v && !f.q ? '' : v; f.cuisine = ''; f.price = ''; f.q = ''; f.types = []; qIn.value = ''; if (!GP_FOOD.has(f.cat)) f.diet = ''; load(); save(true); }
+    if (key === 'atype') { const ts = f.types || []; f.types = ts.includes(v) ? ts.filter(k => k !== v) : ts.concat(v); render(); }
   });
   bar.addEventListener('change', debounce((e) => { const i = e.target; if (!i.dataset.gp) return; art._gp[i.dataset.gp] = i.value; if (i.dataset.gp === 'diet' && i.value) art._gp.cuisine = ''; load(); }, 250));
   go();
@@ -5249,14 +5405,16 @@ function planHTML(cfg) {
       : [view === 'type' && x.day ? dayLabel(cfg, x.day) : '', x.time ? fmtTime(x.time) : '', x.addr ? x.addr.split(',').slice(0, 2).join(',') : ''];
     const name = x.ent === 'book' ? `<b class="plan-t"><span>${esc(x.name)}</span>${bk && LODGE.has(bk.kind) ? hfBadgeHTML(hfOfBk(bk), bkDay(bk.end) || bkDay(bk.start)) : ''}</b>` : `<b class="plan-t"><span class="plan-name">${esc(x.name)}</span></b>`;
     const rm = bk && bk.id && LODGE.has(bk.kind) ? rmBtnHTML(bk.id, 'pr-rm') : '';
-    return `<li class="plan-row${x.ent === 'book' ? ' bk' : ''}${x.booked && x.ent !== 'book' ? ' booked' : ''}${rm ? ' has-rm' : ''}"${x.ent === 'book' ? '' : ` data-plan-id="${esc(x.id)}"`}><button type="button" class="pr-go"${ref ? ` data-ds="${esc(ref)}"` : ''}>${(o => thumbHTML(o, ccIk(x.cc, o)))(bk || planLoad(cfg).find(y => y.id === x.id) || x)}<span class="pr-tx">${name}<small>${esc(meta.filter(Boolean).join(' · '))}</small>${x.ent !== 'book' && (x.rating || x.booked || x.note) ? `<span class="pr-x">${x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}${x.booked ? `<em class="pr-bk">✓ ${t('Booked')}</em>` : ''}${x.note ? `<span class="pr-note">${esc(x.note)}</span>` : ''}</span>` : ''}</span><i class="tl-chev" aria-hidden="true"></i></button>${rm}</li>`; };
+    return `<li class="plan-row${x.ent === 'book' ? ' bk' : ''}${x.booked && x.ent !== 'book' ? ' booked' : ''}${rm ? ' has-rm' : ''}"${x.ent === 'book' ? '' : ` data-plan-id="${esc(x.id)}"`}><button type="button" class="pr-go"${ref ? ` data-ds="${esc(ref)}"` : ''}>${(o => thumbHTML(o, ccIk(x.cc, o)))(bk || planLoad(cfg).find(y => y.id === x.id) || x)}<span class="pr-tx">${name}<small>${esc(meta.filter(Boolean).join(' · '))}</small>${x.ent !== 'book' && (x.rating || x.booked || x.note) ? `<span class="pr-x">${x.rating ? `<span class="rt">${gRatingHTML(x)}</span>` : ''}${x.booked ? `<em class="pr-bk">✓ ${t('Booked')}</em>` : ''}${x.note ? `<span class="pr-note">${rtHTML(x.note)}</span>` : ''}</span>` : ''}</span><i class="tl-chev" aria-hidden="true"></i></button>${rm}</li>`; };
   let groups;
   if (view === 'type') {
-    groups = TRIP_CATS.concat(['']).map(k => [k ? ccLabel(k) : t('Other'), xs.filter(x => x.cc === k).sort((a, b) => (a.day || '9999').localeCompare(b.day || '9999') || byTime(a, b))]).filter(([, g]) => g.length);
+    groups = TRIP_CATS.concat(['']).map(k => [k ? ccLabel(k) : t('Other'), xs.filter(x => tripCat(x.cc) === k).sort((a, b) => (a.day || '9999').localeCompare(b.day || '9999') || byTime(a, b))]).filter(([, g]) => g.length);
   } else {
     const dated = [...new Set(xs.filter(x => x.day).map(x => x.day))].sort();
     groups = dated.map(d => [dayLabel(cfg, d), xs.filter(x => x.day === d).sort(byTime)]).concat([[t('Saved for later'), xs.filter(x => !x.day).sort(byTime)]]).filter(([, g]) => g.length);
   }
+  if (!groups.length && F.cats.length === 1 && F.cats[0] === 'activities' && !all.some(x => tripCat(x.cc) === 'activities')) // nothing saved yet: where to find some
+    return `<p class="muted cc-none">${t('No activities saved yet.')}${tabsFor(cfg).some(x => x[0] === 'nearby') ? ` <button type="button" class="link" data-trip-near="tours">${t('Find things to do')}</button>` : ''}</p>`;
   return groups.length ? groups.map(([h, g]) => `<h3 class="sub-h">${esc(h)}</h3><ul class="plan-list">${g.map(row).join('')}</ul>`).join('') : ccNoneHTML();
 }
 // My trip + the trip Itinerary: one City × Category selection for both (saved spots, bookings, plan, itinerary days)
@@ -5267,7 +5425,7 @@ function wireTripCC(cfg, art, opts) {
   // several chips at once: a chip's number is what that chip alone lists; Transport's follows its subtype filter (the rows
   // it shows), and each subtype chip counts its own rows. All = everything the other filters let through.
   const counts = (F) => { const n = { all: 0 }, sub = {}; itineraryEntries(cfg).map(ccItem).forEach(x => { if (!F.rest(x)) return; n.all++; if (!x.cat) return;
-    if (x.cat === 'transport') sub[x.sub || 'other'] = (sub[x.sub || 'other'] || 0) + 1; if (F.subOk(x)) n[x.cat] = (n[x.cat] || 0) + 1; }); n.sub = sub; return n; };
+    if (x.cat === 'transport') sub[x.sub || 'other'] = (sub[x.sub || 'other'] || 0) + 1; if (F.subOk(x)) n[tripCat(x.cat)] = (n[tripCat(x.cat)] || 0) + 1; }); n.sub = sub; return n; };
   const SHOW = [['', 'Everything'], ['saved', 'Saved only'], ['booked', 'Booked'], ['host', 'Event only']];
   const fill = (where, el) => {
     const F = ccTrip(cfg); const cities = ccCities(cfg); const n = counts(F);
@@ -5279,7 +5437,7 @@ function wireTripCC(cfg, art, opts) {
     const sl = (SHOW.find(x => x[0] === F.show) || [0, ''])[1];
     ccFill(box, {
       row: (cities.length ? ccTabs({ key: 'city', aria: t('City'), value: F.ci >= 0 ? String(F.ci) : '', ph: t('All cities'), cls: 'dd-city', opts: [{ v: '', l: t('All') }].concat(cities.map(c => ({ v: String(c.i), l: c.l }))) }) : '')
-        + (!TRIP_CATS.some(k => n[k] || F.cats.includes(k)) ? '' : ccChips({ key: 'cat', aria: t('Category'), values: F.cats.length ? F.cats : ['all'], cls: 'dd-cat', opts: [{ v: 'all', l: t('All'), ic: 'all', n: n.all }].concat(TRIP_CATS.filter(k => n[k] || F.cats.includes(k)).map(k => ({ v: k, l: ccLabel(k), ic: k, n: n[k] || 0 }))) }))
+        + (!TRIP_CATS.some(k => n[k] || F.cats.includes(k)) ? '' : ccChips({ key: 'cat', aria: t('Category'), values: F.cats.length ? F.cats : ['all'], cls: 'dd-cat', opts: [{ v: 'all', l: t('All'), ic: 'all', n: n.all }].concat(TRIP_CATS.filter(k => n[k] || F.cats.includes(k) || TRIP_CORE.includes(k)).map(k => ({ v: k, l: ccLabel(k), ic: k, n: n[k] || 0 }))) }))
         + (F.cats.includes('transport') && Object.keys(n.sub).length > 1 ? ccChips({ key: 'tsub', aria: t('Transport'), values: F.tsubs, cls: 'cc-subs', opts: TSUBS.filter(([k]) => n.sub[k]).map(([k, l]) => ({ v: k, l: t(l), ic: k === 'other' ? 'transport' : k, n: n.sub[k] })) }) : ''),
       filt: ccFiltersBtn(F.show ? 1 : 0),
       pills: F.show ? ccPills([['show', t(sl)]], '') : '', sheet: ccSheet(body, t('Done'), 'data-cct-sub') });
@@ -5305,6 +5463,7 @@ function wireTripCC(cfg, art, opts) {
   });
   art.addEventListener('input', debounce((e) => { if (!e.target.matches || !e.target.matches('[data-cct-q]')) return; ccSet(cfg, 'trip', { q: e.target.value.slice(0, 60) }, false); refresh(); }, 120));
   art.addEventListener('click', (e) => {
+    const nb = e.target.closest('[data-trip-near]'); if (nb) { showTab(art, 'nearby'); if (art._gpCat) art._gpCat(nb.dataset.tripNear); return; }
     const b = e.target.closest('[data-cct-show],[data-cct-group],[data-cct-clear],[data-cct-sub],[data-cc-pill]'); if (!b) return; const d = b.dataset;
     if (d.ccPill != null && !mine(b)) return;
     if (d.cctShow != null) ccSet(cfg, 'trip', { show: d.cctShow }, false);
@@ -5362,9 +5521,9 @@ function ovSummary(cfg, art, el) {
   if (id === 'weather') { const ws = el.querySelector('[data-slot="weather"]'); const w = ws && ws._wx; if (!w || !w.days || !w.days.length) return ''; const u = tempUnit();
     const r = (k) => { const v = w.days.map(d => fmtTemp(d[k], u)).filter(x => x !== '' && x != null).map(Number); if (!v.length) return ''; const a = Math.min(...v), b = Math.max(...v); return a === b ? `${a}°` : `${a}–${b}°`; };
     return [r('hi') && r('lo') ? `${r('hi')} / ${r('lo')}${u}` : '', el.querySelector('.wx-l') ? el.querySelector('.wx-l').textContent : ''].filter(Boolean).join(' · '); }
-  if (id === 'about' && (cfg.description || '').trim()) return one(cfg.description);
+  if (id === 'about' && (cfg.description || '').trim()) return one(rtPlain(cfg.description));
   const b = el.querySelector(':scope > .sec-b'); if (!b) return '';
-  const labs = [...new Set([...b.querySelectorAll('li b, li strong, .note > b, h3, h4')].map(x => x.textContent.trim()).filter(x => x && x.length <= 40))];
+  const labs = [...new Set([...b.querySelectorAll('li b, .note > b, h3, h4')].map(x => x.textContent.trim()).filter(x => x && x.length <= 40))];
   if (labs.length >= 2) return labs.slice(0, 5).join(' · ');
   const p = (b.querySelector('p, li, .rm-box') || b).cloneNode(true); p.querySelectorAll('br').forEach(x => x.replaceWith(' · '));
   let q = p; while (q.children.length === 1) q = q.children[0]; const kids = p.matches('li') ? [...q.children] : [];
@@ -5862,7 +6021,7 @@ const dsHead = (o) => `<header class="ds-h">
     <p class="ds-k">${o.icon || ''}<span>${esc(o.kicker || '')}</span></p><h2 class="ds-t" id="ds-title">${esc(o.title)}</h2>${o.sub ? `<p class="ds-sub">${o.sub}</p>` : ''}</header>`;
 // Notes: a short preview; a long note folds after a few lines with More / Less
 const dsNotesHTML = (note) => { note = String(note || '').trim(); if (!note) return ''; const long = note.length > 220 || note.split('\n').length > 4;
-  return `<section class="ds-sec ds-notes"><h3>${t('Notes')}</h3><p class="ds-note${long ? ' clamp' : ''}">${esc(note).replace(/\n/g, '<br>')}</p>${long ? `<button type="button" class="mini-b ds-nmore" data-ds-nmore aria-expanded="false">${t('More')}</button>` : ''}</section>`; };
+  return `<section class="ds-sec ds-notes"><h3>${t('Notes')}</h3><p class="ds-note${long ? ' clamp' : ''}">${rtBr(note)}</p>${long ? `<button type="button" class="mini-b ds-nmore" data-ds-nmore aria-expanded="false">${t('More')}</button>` : ''}</section>`; };
 document.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('[data-ds-nmore]'); if (!b) return; const p = b.previousElementSibling; const open = p.classList.toggle('clamp') === false; b.textContent = t(open ? 'Less' : 'More'); b.setAttribute('aria-expanded', String(open)); });
 const dsFacts = (fs) => { const h = fs.filter(Boolean).join(''); return h ? `<dl class="ds-facts">${h}</dl>` : ''; };
 const PERF = '<div class="ds-perf" aria-hidden="true"></div>';
@@ -5902,7 +6061,7 @@ function dsPlaceHTML(cfg, x, back) {
     <div class="ds-b">${dsFacts(fs)}${detAmen(x).length ? `<p class="ds-tags">${detAmen(x).map(a => `<span class="tag">${esc(a)}</span>`).join('')}</p>` : ''}${PERF}
     ${dsWhereHTML(x.name || '', x.addr || '', geo, x.src === 'g' ? x.ref : '', cat)}
     ${x.hours ? `<section class="ds-sec"><h3>${t('Hours')}</h3><p class="ds-note">${esc(prettyHours(x.hours))}</p></section>` : ''}
-    ${x.note ? `<section class="ds-sec"><h3>${t('Notes')}</h3><p class="ds-note">${esc(x.note)}</p></section>` : ''}
+    ${x.note ? `<section class="ds-sec"><h3>${t('Notes')}</h3><p class="ds-note">${rtBr(x.note)}</p></section>` : ''}
     ${dsPhotosHTML(x, 'pl:' + x.id)}
     <section class="ds-sec ds-plan" data-ds-plan="${esc(x.id)}"><h3>${t('Your plan')}</h3>
       <div class="two"><label class="field"><span>${t('Day')}</span><select data-dsp="day"><option value="">${t('Saved for later')}</option>${days.map(d => `<option value="${d}" ${x.day === d ? 'selected' : ''}>${esc(dayLabel(cfg, d))}</option>`).join('')}</select></label>
@@ -5953,7 +6112,7 @@ function dsEventHTML(cfg, si, back) {
     : x.title ? find([x.title, v && (v.city || v.region)].filter(Boolean).join(', ')) : '';
   return `${dsHead({ back, icon: ccIcon(ccIk(cat, x) || 'pin'), kicker: [x.kind && x.kind !== 'activity' ? t(PLAN_KINDS[x.kind] || '') : isTrip(cfg) ? t('Plan') : t(cfg.type || 'Event'), city ? city.name : ''].filter(Boolean).join(' · '), title: x.title, sub: p ? esc(p.name) : '' })}
     <div class="ds-b">${dsFacts([dsFact(t('Date'), d ? fmt(d, { weekday: 'long', month: 'long', day: 'numeric' }) : ''), dsFact(t('Time'), x.time ? fmtTime(x.time) : '')])}
-    ${x.note ? `<p class="ds-note ds-lead">${esc(x.note).replace(/\n/g, '<br>')}</p>` : ''}${PERF}
+    ${x.note ? `<p class="ds-note ds-lead">${rtBr(x.note)}</p>` : ''}${PERF}
     ${where}</div>`;
 }
 // a day: every plan, booking and stay on it, each tappable
@@ -5964,7 +6123,7 @@ function dsDayHTML(cfg, d, back) {
   const stays = itinLoad(cfg).filter(x => LODGE.has(x.kind) && bkDay(x.start) && bkDay(x.start) < d && bkDay(x.end) > d); // nights in the middle of a stay
   const row = (x) => { const cat = x._cc ? x._cc.cat : ''; const title = x.co ? t('Check out · {n}', { n: x.name || t('Hotel') }) : x.name || t(ITIN_KINDS[x.kind] || 'Booking');
     const sub = x.bk ? [t('Yours'), x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · ') : x.ev ? x.note || '' : x.pl ? t('Saved spot') : [t(ITIN_KINDS[x.kind] || ''), x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · ');
-    return `<li><button type="button" class="ds-row" ${x.ref ? `data-ds="${esc(x.ref)}"` : 'disabled'}><time>${esc(dsTm(x.start)) || '—'}</time>${ccIcon(x.co ? 'hotels' : ccIk(cat, x) || 'pin')}<span class="ds-row-t"><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${x.ref ? '<i class="ds-chev" aria-hidden="true"></i>' : ''}</button></li>`; };
+    return `<li><button type="button" class="ds-row" ${x.ref ? `data-ds="${esc(x.ref)}"` : 'disabled'}><time>${esc(dsTm(x.start)) || '—'}</time>${ccIcon(x.co ? 'hotels' : ccIk(cat, x) || 'pin')}<span class="ds-row-t"><b>${esc(title)}</b>${sub ? `<small>${!x.bk && x.ev ? rtHTML(sub) : esc(sub)}</small>` : ''}</span>${x.ref ? '<i class="ds-chev" aria-hidden="true"></i>' : ''}</button></li>`; };
   return `${dsHead({ back, icon: '', kicker: [n ? t('Day {n}', { n }) : '', st && stopsOf(cfg).length > 1 ? st.name : ''].filter(Boolean).join(' · '), title: fmt(d, { weekday: 'long', month: 'long', day: 'numeric' }) })}
     <div class="ds-b">${xs.length || stays.length ? `<ol class="ds-day">${xs.map(row).join('')}${stays.map(x => row({ ...x, ref: 'bk:' + x.id, start: '', name: x.name, _cc: { cat: 'hotels' }, confNo: '' }).replace('<b>', `<b>${esc(t('Staying at'))} `)).join('')}</ol>` : `<p class="muted">${t('Nothing planned yet.')}</p>`}
     ${nb ? `<div class="ds-acts"><button type="button" class="btn sm" data-ds-near="${ci}">${esc(t('Explore {c}', { c: st.city || st.name }))}</button></div>` : ''}</div>`;
@@ -6261,7 +6420,7 @@ function spotsHTML(cfg) {
   const rows = []; let any = false;
   gs0.forEach(g => { const ci = many ? cityI(g) : 0;
     g.spots.forEach(x => { const cat = ccCatOfPlan(x); if (cat === 'hotels' && isStay(x)) return; any = true;
-      const it = { city: ci, cat, text: [x.name, x.addr, x.note].join(' '), saved: true, booked: !!x.booked }; if (F.rest(it) && (!spCats.length || spCats.includes(cat))) rows.push({ x, cat, city: g.city }); }); });
+      const it = { city: ci, cat, text: [x.name, x.addr, x.note].join(' '), saved: true, booked: !!x.booked }; if (F.rest(it) && (!spCats.length || spCats.includes(tripCat(cat)))) rows.push({ x, cat, city: g.city }); }); });
   if (!any) return `<p class="muted">${t('Tap ☆ on a place in Nearby to save it here.')}</p>`;
   if (!rows.length) return ccNoneHTML();
   const showCity = many && F.ci < 0;
@@ -6452,20 +6611,23 @@ function aiReady() {
     .then(r => r.status === 200 || r.status === 401).catch(() => false).then(ok => { LS.set('aiReady', { t: Date.now(), ok }); return ok; }));
 }
 // translate only: a signed-in guest uses their session; anyone else the public key (the function caps that)
+// formatting markers travel to the translator as <b>/<i>/<mark> and come back as markers (see rtToTags)
+const trWrap = (body) => body && body.mode === 'translate' && body.fields ? { ...body, fields: Object.fromEntries(Object.entries(body.fields).map(([k, v]) => [k, typeof v === 'string' ? rtToTags(v) : v])) } : body;
+function trUnwrap(body, j) { if (body && body.mode === 'translate' && j && j.data && Array.isArray(j.data.translations)) j.data.translations.forEach(x => { if (typeof x.text === 'string') x.text = rtFromTags(x.text); }); return j; }
 async function aiTranslate(body) {
   let tok = ''; try { if (LS.get('signedIn')) { const c = await sb(); const { data } = await c.auth.getSession(); tok = data && data.session ? data.session.access_token : ''; } } catch { /* anon below */ }
-  const r = await fetchTimeout(`${SB.url}/functions/v1/ai-import`, { method: 'POST', headers: { Authorization: 'Bearer ' + (tok || SB.key), apikey: SB.key, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 90000);
+  const r = await fetchTimeout(`${SB.url}/functions/v1/ai-import`, { method: 'POST', headers: { Authorization: 'Bearer ' + (tok || SB.key), apikey: SB.key, 'Content-Type': 'application/json' }, body: JSON.stringify(trWrap(body)) }, 90000);
   let j = null; try { j = await r.json(); } catch { /* not JSON */ }
   if (!r.ok || !j || !j.ok) throw new Error((j && j.error) || 'Translate failed (' + r.status + ')');
-  return j;
+  return trUnwrap(body, j);
 }
 async function aiImport(body) {
   const c = await sb(); const { data } = await c.auth.getSession(); const tok = data && data.session && data.session.access_token;
   if (!tok) { const e = new Error('signin'); e.signin = true; throw e; }
-  const r = await fetchTimeout(`${SB.url}/functions/v1/ai-import`, { method: 'POST', headers: { Authorization: 'Bearer ' + tok, apikey: SB.key, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 90000);
+  const r = await fetchTimeout(`${SB.url}/functions/v1/ai-import`, { method: 'POST', headers: { Authorization: 'Bearer ' + tok, apikey: SB.key, 'Content-Type': 'application/json' }, body: JSON.stringify(trWrap(body)) }, 90000);
   let j = null; try { j = await r.json(); } catch { /* not JSON */ }
   if (!r.ok || !j || !j.ok) throw new Error((j && j.error) || 'Import failed (' + r.status + ')');
-  return j;
+  return trUnwrap(body, j);
 }
 const isoDay = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '') ? s : '';
 // A trip date that falls outside the trip (wrong year, or month and day swapped) is moved to the reading that fits;
@@ -8896,7 +9058,8 @@ function route() {
 }
 
 window.addEventListener('hashchange', route);
+rtWatch();
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtToggle, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
