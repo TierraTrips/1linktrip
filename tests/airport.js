@@ -92,7 +92,8 @@ const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m
   ok((await page.$$('#sec-itinerary .bookings li')).length === 0, 'edit → remove deletes it');
 
   // a flight added from the flights list sets the pick
-  await page.click('[data-tab-go="travel"]'); await page.click('[data-addtrip="flight"][data-iata="TQO"]'); await page.waitForTimeout(300);
+  // CUN is settled, so Flights is folded to it: Change opens the other airports (cb70fdc)
+  await page.click('[data-tab-go="travel"]'); await page.click('[data-slot="flights"] [data-ap-change]'); await page.click('[data-addtrip="flight"][data-iata="TQO"]'); await page.waitForTimeout(300);
   ok((await page.$eval('#it-kind', s => s.value)) === 'flight', 'flight card prefilled');
   ok((await kayak()).join() === 'TQO', 'adding a TQO flight sets Flying into TQO');
 

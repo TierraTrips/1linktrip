@@ -148,7 +148,8 @@ const guest = (page) => page.evaluate(() => ({
       await page.click('[data-tab-go="mytrip"]'); await page.waitForTimeout(300);
       ok(!(await page.$('[data-slot="ap-mine"] select')) && !(await page.isVisible('[data-slot="ap-mine"]').catch(() => false)), `@${w} My trip: no Flying into before the guest says they fly`);
       // a guest's own pick still wins on their device
-      await page.click('[data-tab-go="travel"]'); await page.click('[data-ap="CZM"]'); await page.waitForTimeout(300);
+      // the organizer's Fly into settles Flights (folded to TQO): Change opens the others, then the guest picks (cb70fdc)
+      await page.click('[data-tab-go="travel"]'); await page.click('[data-slot="flights"] [data-ap-change]'); await page.click('[data-ap="CZM"]'); await page.waitForTimeout(300);
       g = await guest(page);
       ok(g.kayak === 'CZM' && g.stub === 'CZM', `@${w} a guest's own pick (CZM) beats the organizer's on their device ${JSON.stringify(g)}`);
       await page.click('[data-tab-go="mytrip"]'); await page.waitForTimeout(300);
