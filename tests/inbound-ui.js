@@ -1,7 +1,8 @@
-// "Forward bookings" in the app (the inbound function + Resend Inbound). The row — personal address add-<token>@<domain>,
-// Copy, "Or send from <sign-in email> to trips@<domain>" — shows in My trip and My pages only when signed in AND the
-// inbound function says it's set up (GET → { enabled, domain }); dormant (not deployed / not configured / signed out) it's
-// not there at all. Forwarded bookings the function saved for this trip become bookings through the same add path as
+// "Forward bookings" in the app (the inbound function + Resend Inbound). Each event has its own address: My trip shows one
+// plain sentence, THIS event's add-<token>@<domain> (inbound_page_tokens: owner + page_key, made on first view) and Copy —
+// nothing else (no account address, no "Or send from … to trips@"), and My pages shows no address. Only when signed in AND
+// the inbound function says it's set up (GET → { enabled, domain }); dormant (not deployed / not configured / signed out)
+// it's not there at all. Forwarded bookings the function saved for this trip become bookings through the same add path as
 // Add a booking (dedupe/merge); Inbox ones show a one-tap "Add to this trip" in My trip, and an "Add to…" trip picker in My pages.
 //
 //   python3 -m http.server 18765 --bind 127.0.0.1 &  node tests/inbound-ui.js
@@ -13,12 +14,14 @@ const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m
 const overflow = (page) => page.evaluate(() => { const cw = document.documentElement.clientWidth; return [...document.querySelectorAll('body *')].filter(e => { for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) if (getComputedStyle(a).overflowX !== 'visible') return false; const r = e.getBoundingClientRect(); return r.width && r.right > cw + 1; }).map(e => e.tagName + '.' + e.className).slice(0, 5); });
 
 const USER = { id: 'aaaaaaaa-0000-4000-8000-0000000000d1', email: 'dylan@example.com' };
-const TOKEN = '0123456789abcdef01';
+const TOKEN = '0123456789abcdef01'; // the old per-account token: must never be shown
+const PTOKENS = ['aaaaaaaaaaaaaaaa01', 'bbbbbbbbbbbbbbbb02', 'cccccccccccccccc03'];
 const FX = JSON.parse(fs.readFileSync(__dirname + '/fixtures/inbound-hotel-email.json', 'utf8'));
 const CFG = { v: 2, type: 'Trip', title: 'Japan Trip', start: '2027-04-25', end: '2027-06-02', venue: { name: 'Kyoto', address: 'Kyoto, Japan', lat: 35.0116, lon: 135.7681, city: 'Kyoto', country: 'Japan', cc: 'jp' }, schedule: [],
   tools: { nearby: false, weather: false, travel: false, stay: false, tours: false, mytrip: true, packing: false, shopping: false } };
 const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ? c.venue.name : '')].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) | 0, 7)).toString(36);
 const K = keyOf(CFG);
+const CFG2 = { ...CFG, title: 'Tokyo Wedding', start: '2027-05-01', end: '2027-05-05' }; const K2 = keyOf(CFG2); // overlaps Japan Trip
 const fwdRow = (page_key, i = 0, ai = FX.ai_item) => ({ owner: USER.id, id: `em-8c1f7c3e2b7a4d7e-${i}`, page_key, kind: 'booking', source: 'email', item: { inbound: 1, ai, em: FX.webhook.data.email_id, subj: 'Fwd: Hyatt', at: '2026-11-24T18:02:12Z' } });
 
 // in-page supabase-js stand-in: an in-memory table store with the filters the app uses
@@ -30,7 +33,9 @@ function fakeSupabase(seed) {
     const run = () => {
       const hit = T().filter(r => fs.every(f => f(r)));
       if (op === 'insert' || op === 'upsert') {
-        const rows = (Array.isArray(payload) ? payload : [payload]).map(r => ({ ...(name === 'inbound_tokens' ? { token: seed.token } : {}), owner: window.__user && window.__user.id, ...r }));
+        if (name === 'inbound_page_tokens' && (Array.isArray(payload) ? payload : [payload]).some(r => 'token' in r)) return { data: null, error: { message: 'permission denied for column token' } };
+        const rows = (Array.isArray(payload) ? payload : [payload]).map(r => ({ ...(name === 'inbound_tokens' ? { token: seed.token } : name === 'inbound_page_tokens' ? { token: seed.ptokens[T().length % seed.ptokens.length] } : {}), owner: window.__user && window.__user.id, ...r }));
+        if (name === 'inbound_page_tokens' && rows.some(r => T().some(x => x.owner === r.owner && x.page_key === r.page_key))) return { data: null, error: { code: '23505', message: 'duplicate' } };
         rows.forEach(r => { const i = T().findIndex(x => x.owner === r.owner && x.id !== undefined && x.id === r.id); if (i >= 0) T()[i] = { ...T()[i], ...r }; else T().push(r); });
         const data = ret ? rows : null; return { data: one ? data && data[0] : data, error: null };
       }
@@ -60,8 +65,8 @@ async function setup(browser, { w = 390, inbound = { ok: true, enabled: true, do
   const ctx = await browser.newContext({ viewport: { width: w, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
   await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(BASE).origin });
   const page = await ctx.newPage(); const errors = []; page.on('pageerror', e => errors.push(String(e)));
-  const full = { inbound_tokens: [], trip_items: [], events, ...db };
-  await page.addInitScript(fakeSupabase, { db: full, user: signedIn ? USER : null, token: TOKEN });
+  const full = { inbound_tokens: [{ owner: USER.id, token: TOKEN }], inbound_page_tokens: [], trip_items: [], events, ...db };
+  await page.addInitScript(fakeSupabase, { db: full, user: signedIn ? USER : null, token: TOKEN, ptokens: PTOKENS });
   if (signedIn) await page.addInitScript(() => { if (!localStorage.getItem('ep:signedIn')) localStorage.setItem('ep:signedIn', 'true'); });
   const calls = { inbound: 0 };
   await page.route('**/*.supabase.co/**', (route) => {
@@ -74,7 +79,7 @@ async function setup(browser, { w = 390, inbound = { ok: true, enabled: true, do
   await page.goto(BASE); await page.waitForFunction(() => window.__ep);
   return { ctx, page, errors, calls };
 }
-const openTrip = async (page) => { await page.goto(BASE + '#e=' + await page.evaluate((c) => window.__ep.packEvent(c), CFG) + '&t=mytrip'); await page.waitForSelector('#sec-itinerary'); await page.waitForTimeout(900); };
+const openTrip = async (page, cfg = CFG) => { await page.goto(BASE + '#e=' + await page.evaluate((c) => window.__ep.packEvent(c), cfg) + '&t=mytrip'); await page.waitForSelector('#sec-itinerary'); await page.waitForTimeout(900); };
 const itin = (page) => page.evaluate((k) => JSON.parse(localStorage.getItem('ep:itin:' + k) || '[]'), K);
 const rows = (page, t) => page.evaluate((t) => window.__db[t] || [], t);
 
@@ -88,33 +93,53 @@ const rows = (page, t) => page.evaluate((t) => window.__db[t] || [], t);
       ok(!(await page.$('.fwd-row')), `${label}: no Forward bookings row in My trip`);
       ok(!/Forward bookings|in\.1linktrip/.test(await page.textContent('#sec-itinerary')), `${label}: no forwarding text in My trip`);
       if (signedIn) { await page.goto(BASE + '#mine'); await page.waitForSelector('.mine-h'); await page.waitForTimeout(500); ok(!(await page.$('.fwd-row')), `${label}: no row in My pages`); }
-      ok(!(await rows(page, 'inbound_tokens')).length, `${label}: no token made`);
+      ok(!(await rows(page, 'inbound_page_tokens')).length, `${label}: no token made`);
       ok(!errors.length, `${label}: no page errors ${errors.join(' | ')}`);
       await ctx.close();
     }
 
-    // ---------- enabled: the row, Copy, token made once ----------
+    // ---------- enabled: this event's address + Copy, nothing else; one address per event ----------
     for (const w of [390, 320]) {
       const { ctx, page, errors } = await setup(browser, { w });
       await openTrip(page);
       await page.waitForSelector('#sec-itinerary .fwd-row', { timeout: 5000 }).catch(() => {});
       const txt = await page.textContent('#sec-itinerary .fwd-row').catch(() => '');
-      ok(txt.includes('Forward bookings') && txt.includes(`add-${TOKEN}@in.1linktrip.com`), `@${w} My trip: Forward bookings + personal address (${txt.slice(0, 90)})`);
-      ok(txt.includes('Or send from dylan@example.com to trips@in.1linktrip.com'), `@${w} My trip: "Or send from <sign-in email>" line`);
-      ok(txt.includes('Forward any confirmation email to this address and it’s added to your trip.'), `@${w} My trip: one-sentence explainer`);
-      const stacked = await page.evaluate(() => { const r = (s) => document.querySelector('#sec-itinerary .fwd-row ' + s).getBoundingClientRect(); const h = r('.fwd-h'), p = r('.fwd-p'), a = r('.fwd-addr'), o = r('.fwd-or'); return h.bottom <= p.top + 1 && p.bottom <= a.top + 1 && a.bottom <= o.top + 1; });
-      ok(stacked, `@${w} My trip: title, sentence, address, alternate each on their own line`);
-      const toks = await rows(page, 'inbound_tokens'); ok(toks.length === 1 && toks[0].owner === USER.id, `@${w} token row made for this account (${toks.length})`);
+      const A1 = `add-${PTOKENS[0]}@in.1linktrip.com`;
+      ok(txt.includes(A1), `@${w} My trip: this event's address (${txt.slice(0, 120)})`);
+      ok(txt.includes('Forward any confirmation email to this address and it’s added to this trip.'), `@${w} My trip: one-sentence explainer`);
+      ok(txt.replace('Forward any confirmation email to this address and it’s added to this trip.', '').replace(A1, '').trim() === 'Copy', `@${w} My trip: nothing but sentence, address, Copy (${txt})`);
+      const all = await page.textContent('body');
+      ok(!all.includes(TOKEN) && !/trips@|Or send from|Forward bookings/.test(all), `@${w} no account address, no trips@ line, no title`);
+      const stacked = await page.evaluate(() => { const r = (s) => document.querySelector('#sec-itinerary .fwd-row ' + s).getBoundingClientRect(); const p = r('.fwd-p'), a = r('.fwd-addr'); return p.bottom <= a.top + 1; });
+      ok(stacked, `@${w} My trip: sentence above the address`);
+      let toks = await rows(page, 'inbound_page_tokens'); ok(toks.length === 1 && toks[0].owner === USER.id && toks[0].page_key === K, `@${w} token row made for this event (${JSON.stringify(toks)})`);
       await page.click('#sec-itinerary [data-fwd-copy]'); await page.waitForTimeout(200);
-      ok(await page.evaluate(() => navigator.clipboard.readText()) === `add-${TOKEN}@in.1linktrip.com`, `@${w} Copy puts the address on the clipboard`);
+      ok(await page.evaluate(() => navigator.clipboard.readText()) === A1, `@${w} Copy puts the address on the clipboard`);
       ok(/Copied/.test(await page.textContent('#sec-itinerary [data-fwd-copy]')), `@${w} Copy says Copied`);
       if (SHOTS) await page.locator('#sec-itinerary').screenshot({ path: `${SHOTS}/fwd-mytrip-${w}.png` });
       const ov = await overflow(page); ok(!ov.length, `@${w} My trip: no overflow ${ov}`);
-      await page.goto(BASE + '#mine'); await page.waitForSelector('.mine-h'); await page.waitForSelector('.mine .fwd-row', { timeout: 5000 }).catch(() => {});
-      ok((await page.textContent('.mine .fwd-row').catch(() => '')).includes(`add-${TOKEN}@in.1linktrip.com`), `@${w} My pages: the same row`);
-      ok((await rows(page, 'inbound_tokens')).length === 1, `@${w} existing token reused`);
+      // reload: the same address (reused, not a new one)
+      await page.reload(); await page.waitForSelector('#sec-itinerary .fwd-row', { timeout: 5000 }).catch(() => {});
+      ok((await page.textContent('#sec-itinerary .fwd-row').catch(() => '')).includes(A1) && (await rows(page, 'inbound_page_tokens')).length === 1, `@${w} reload: same address, no new token`);
+      // another event (dates overlap) → its own address
+      await openTrip(page, CFG2); await page.waitForSelector('#sec-itinerary .fwd-row', { timeout: 5000 }).catch(() => {});
+      const t2 = await page.textContent('#sec-itinerary .fwd-row').catch(() => '');
+      toks = await rows(page, 'inbound_page_tokens');
+      ok(t2.includes(`add-${PTOKENS[1]}@in.1linktrip.com`) && !t2.includes(PTOKENS[0]), `@${w} second event: its own address (${t2.slice(0, 120)})`);
+      ok(toks.length === 2 && toks[1].page_key === K2, `@${w} second token for the second event (${toks.map(x => x.page_key).join(',')})`);
+      await page.goto(BASE + '#mine'); await page.waitForSelector('.mine-h'); await page.waitForTimeout(800);
+      ok(!(await page.$('.fwd-row')) && !/in\.1linktrip\.com/.test(await page.textContent('.mine')), `@${w} My pages: no address`);
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/fwd-mine-${w}.png` });
       ok(!errors.length, `@${w} no page errors ${errors.join(' | ')}`);
+      await ctx.close();
+    }
+
+    // ---------- a token already on the account for this event is reused; the browser never picks the token ----------
+    {
+      const { ctx, page, errors } = await setup(browser, { db: { inbound_page_tokens: [{ owner: USER.id, page_key: K, token: 'dddddddddddddddd04' }] } });
+      await openTrip(page); await page.waitForSelector('#sec-itinerary .fwd-row', { timeout: 5000 }).catch(() => {});
+      ok((await page.textContent('#sec-itinerary .fwd-row').catch(() => '')).includes('add-dddddddddddddddd04@in.1linktrip.com') && (await rows(page, 'inbound_page_tokens')).length === 1, 'existing event token reused');
+      ok(!errors.length, `reuse: no page errors ${errors.join(' | ')}`);
       await ctx.close();
     }
 

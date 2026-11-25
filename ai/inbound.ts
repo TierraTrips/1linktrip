@@ -1,10 +1,13 @@
 // 1LinkTrip "inbound" Supabase Edge Function: "Forward a booking email to your itinerary" (Resend Inbound).
-// Someone forwards a confirmation to add-<token>@in.1linktrip.com (their personal address, table inbound_tokens) — or to
-// any address there from the email they sign in with — and Resend POSTs an `email.received` webhook here. We verify the
-// signature, find the person, fetch the body and attachments from Resend, read them with ai-import (same handler, in
-// process: text mode for the body, file mode for PDFs/photos) and save each booking as a trip_items row (source 'email')
-// for the trip whose dates it falls in, or page_key 'inbox' when none/several fit. The app turns those rows into real
-// bookings the next time that trip opens, through the same add path as Add a booking (dedupe, hotel replace).
+// Each event has its own address: add-<token>@in.1linktrip.com (table inbound_page_tokens: token → owner + page_key, made
+// when a signed-in person opens that event's My trip). Someone forwards a confirmation there and Resend POSTs an
+// `email.received` webhook here. We verify the signature, find the person and the event, fetch the body and attachments
+// from Resend, read them with ai-import (same handler, in process: text mode for the body, file mode for PDFs/photos) and
+// save each booking as a trip_items row (source 'email') under THAT event's page_key — no date guessing (Dylan 11/24:
+// events can overlap). Older addresses still work but are no longer shown: the per-account add-<token> (inbound_tokens)
+// and any address there sent from the email they sign in with → the trip whose dates the booking falls in, or page_key
+// 'inbox' when none/several fit. The app turns those rows into real bookings the next time that trip opens, through the
+// same add path as Add a booking (dedupe, hotel replace).
 //
 // Deploy: name `inbound`, files ai/inbound.ts + ai/inbound-env.ts + ai/ai-import.ts, Verify JWT OFF (Resend can't sign
 //         in; the webhook signature is checked here instead). Database: supabase/schema-inbound.sql.
@@ -39,6 +42,7 @@ export interface Store {
   claim(emailId: string): Promise<"new" | "dup">;
   release(emailId: string): Promise<void>;
   finish(emailId: string, patch: Record<string, unknown>): Promise<void>;
+  pageByToken(token: string): Promise<{ owner: string; page_key: string } | null>;
   userByToken(token: string): Promise<string | null>;
   userByEmail(addr: string): Promise<string | null>;
   trips(uid: string): Promise<Trip[]>;
@@ -84,7 +88,7 @@ export function addrOf(s: unknown): string {
   const t = String(s || "").trim(); const m = t.match(/<([^<>\s]+@[^<>\s]+)>/); const a = (m ? m[1] : t).toLowerCase();
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a) ? a : "";
 }
-// the personal token in any recipient: add-<18 hex>@<domain> (or the bare <token>@<domain> of the first design)
+// the token in any recipient (a per-event or the older per-account one): add-<18 hex>@<domain> (or the bare <token>@<domain> of the first design)
 export function tokenFrom(addrs: unknown[], domain: string): string | null {
   const d = domain.toLowerCase().replace(/[.]/g, "\\.");
   const re = new RegExp(`^(?:add-)?([a-f0-9]{18})@${d}$`);
@@ -179,7 +183,9 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
     const dom = domain || DEFAULT_DOMAIN;
     const rcpts = [].concat(d.to || [], d.cc || [], d.bcc || [], d.received_for || []);
     const token = tokenFrom(rcpts, dom);
-    let uid = token ? await deps.store.userByToken(token) : null; let email: ResendEmail | null = null; let via = token && uid ? "token" : "";
+    const page = token ? await deps.store.pageByToken(token) : null; // a per-event address: that event, whatever the dates
+    let uid = page ? page.owner : token ? await deps.store.userByToken(token) : null; let email: ResendEmail | null = null;
+    let via = page ? "page" : token && uid ? "token" : "";
     if (!uid) {
       const sender = addrOf(d.from);
       if (sender) { email = await deps.getEmail(emailId); if (senderTrusted(email.authentication)) { uid = await deps.store.userByEmail(sender); via = uid ? "sender" : ""; } }
@@ -202,7 +208,9 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
     if (text.length >= 20) jobs.push(deps.extract(uid, { text: `Subject: ${subject}\nFrom: ${String(email.from || d.from || "")}\n\n${text}`, kind: "confirmation" }));
     if (files.length) jobs.push(deps.extract(uid, { mode: "file", files }));
     const items = dedupeItems((await Promise.all(jobs)).flat());
-    const trips = items.length ? await deps.store.trips(uid) : []; const picks = items.map((x) => pickTrip(x, trips));
+    const trips = items.length ? await deps.store.trips(uid) : [];
+    const fixed: Trip | null = page ? (trips.find((t) => t.key === page.page_key) || { key: page.page_key, title: "your trip", start: "", end: "" }) : null;
+    const picks = items.map((x) => fixed || pickTrip(x, trips));
     const at = new Date(deps.now()).toISOString();
     const rows = items.map((x, i) => ({ id: rowId(emailId, i), owner: uid, page_key: picks[i] ? picks[i]!.key : "inbox", kind: "booking", source: "email", updated_at: at,
       item: { inbound: 1, ai: x, em: emailId, subj: subject.slice(0, 200), at } }));
@@ -227,6 +235,7 @@ export function makeStore(db: Any): Store {
     async claim(id) { const { error } = await db.from("inbound_messages").insert({ email_id: id, status: "processing" }); if (!error || missing(error)) return "new"; if (error.code === "23505") return "dup"; throw new Error(error.message); },
     async release(id) { await db.from("inbound_messages").delete().eq("email_id", id); },
     async finish(id, patch) { await db.from("inbound_messages").update(patch).eq("email_id", id); },
+    async pageByToken(t) { const { data, error } = await db.from("inbound_page_tokens").select("owner,page_key").eq("token", t).maybeSingle(); if (error) { if (missing(error)) return null; throw new Error(error.message); } return data ? { owner: data.owner, page_key: data.page_key } : null; },
     async userByToken(t) { const { data, error } = await db.from("inbound_tokens").select("owner").eq("token", t).maybeSingle(); if (error) throw new Error(error.message); return data ? data.owner : null; },
     async userByEmail(a) { const { data, error } = await db.rpc("inbound_user_by_email", { addr: a }); if (error) throw new Error(error.message); return data || null; },
     async trips(uid) {

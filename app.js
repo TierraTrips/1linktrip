@@ -1798,7 +1798,7 @@ function bookingsHTML(cfg) {
     const it = ccBkItem(cfg, x);
     return `<li data-cc-city="${it.city}" data-cc-cat="${it.cat}" data-cc-text="${esc(it.text)}"${F.ok(it) ? '' : ' hidden'}><div>${x.id ? `<button type="button" class="pr-go bk-go" data-ds="bk:${esc(x.id)}">${thumbHTML(x, it.cat)}<span class="pr-tx">` : '<span class="pr-tx">'}<b class="plan-t"><span>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</span></b><span>${esc([t(ITIN_KINDS[x.kind] || ''), when].filter(Boolean).join(' · '))}</span>${via && via.name || x.confNo ? `<span class="bk-via">${esc([via && via.name ? t('via {s}', { s: via.name }) : via && via.key === 'direct' ? t('booked direct') : '', x.confNo ? t('Conf. {n}', { n: x.confNo }) : ''].filter(Boolean).join(' · '))}</span>` : ''}${bkOffTrip(cfg, x) ? `<span class="bk-warn">${esc(t('Not on the trip dates'))}</span>` : ''}${detVal(x, 'room') || (LODGE.has(x.kind) && hfBadge(hfOfBk(x), bkDay(x.end) || bkDay(x.start))) ? `<span class="bk-room">${esc(detVal(x, 'room') || '')}${LODGE.has(x.kind) ? hfBadgeHTML(hfOfBk(x), bkDay(x.end) || bkDay(x.start)) : ''}</span>` : ''}${x.note && !LODGE.has(x.kind) ? `<span class="pr-note">${esc(x.note)}</span>` : ''}${x.id ? '</span><i class="tl-chev" aria-hidden="true"></i></button>' : '</span>'}<div class="mini">${links}<button type="button" class="mini-b" data-itin-edit="${i}">${t('Edit')}</button>${LODGE.has(x.kind) && x.id ? `<button type="button" class="mini-b bk-rm" data-bk-rm="${esc(x.id)}">${TRASH_IC}${t('Remove hotel')}</button>` : ''}</div></div></li>`;
   }).join('')}</ul>${ccNoneHTML().replace('class="muted cc-none"', `class="muted cc-none"${order.some(([x]) => F.ok(ccBkItem(cfg, x))) ? ' hidden' : ''}`)}` : ''}
-  <div class="btns itin-btns"><button type="button" class="btn primary" data-itin-add>+ ${t('Add a booking')}</button>${items.length ? `<button type="button" class="btn" data-itin-ics>${t('Add to calendar')}</button>` : ''}</div><div data-slot="itin-form"></div>${cfg.demoTrip ? '' : fwdSlot()}`;
+  <div class="btns itin-btns"><button type="button" class="btn primary" data-itin-add>+ ${t('Add a booking')}</button>${items.length ? `<button type="button" class="btn" data-itin-ics>${t('Add to calendar')}</button>` : ''}</div><div data-slot="itin-form"></div>${cfg.demoTrip ? '' : fwdSlot(cfg)}`;
 }
 function myTripTabHTML(cfg) {
   const T = cfg.tools; const out = [];
@@ -3773,9 +3773,9 @@ async function renderMine(id, notice) {
   const { data, error } = await c.from('events').select('id,slug,config,published,updated_at').eq('owner', user.id).order('updated_at', { ascending: false });
   if (error) return shell(`<h1>My pages</h1><p>Couldn’t load your pages. ${esc(error.message)}</p>`);
   shell(`<div class="mine-h"><h1>My pages</h1><span class="muted small">${esc(user.email || '')} · <button type="button" class="link" data-mine="signout">Sign out</button></span></div>
-    ${fwdSlot()}<section data-slot="mine-inbox"></section>
+    <section data-slot="mine-inbox"></section>
     ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · not shared'}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a>` : ''}</div><div class="btns"><a class="btn sm" href="${esc(shortURL(r.slug))}">View</a><button type="button" class="btn sm primary" data-mine-edit="${esc(r.id)}">Edit</button><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button>` : ''}<button type="button" class="btn sm ghost" data-mine-del="${esc(r.id)}" aria-label="Delete ${esc(cfg.title || 'Untitled')}">Delete</button></div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Share, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
-  fwdFill(); mineInbox(c, data).catch(() => {});
+  mineInbox(c, data).catch(() => {});
   if (data.length) msgReady().then(async ok => { // "2 new" next to pages with unanswered guest messages
     if (!ok) return; const { data: ms } = await c.from('event_messages').select('event_id,guest,from_host,created_at').in('event_id', data.map(x => x.id)).order('created_at', { ascending: true }).limit(5000);
     data.forEach(ev => { const seen = LS.get('inboxSeen:' + ev.id, {}) || {}; const last = new Map(); (ms || []).filter(x => x.event_id === ev.id).forEach(x => last.set(x.guest, x));
@@ -4967,7 +4967,7 @@ function wirePlan(cfg, art, mapCtl) {
   const openPlan = (x) => { if (x.src === 'g' && art._openGPlace) art._openGPlace(x.ref); else if (art._openPlace) art._openPlace(x.ref); };
   const render = () => { if (body) body.innerHTML = planHTML(cfg); art._renderSchedule && art._renderSchedule(); pins(); const sp = art.querySelector('#sec-spots .sec-b'); if (sp) sp.innerHTML = spotsHTML(cfg); art._hotelUI && art._hotelUI(); dsRefresh(art); };
   art._planChanged = render; pins();
-  if (LS.get('signedIn') && cfg.tools.mytrip) { syncPull(cfg, art).catch(() => {}); if (!cfg.demoTrip) fwdFill(art); }
+  if (LS.get('signedIn') && cfg.tools.mytrip) { syncPull(cfg, art).catch(() => {}); if (!cfg.demoTrip) fwdFill(art, cfg); }
   if (!body) return;
   body.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return; const li = b.closest('[data-plan-id]'); const xs = planLoad(cfg); const i = li ? xs.findIndex(x => x.id === li.dataset.planId) : -1;
@@ -6674,10 +6674,12 @@ async function syncPull(cfg, art) {
   }
 }
 
-// ================= "Forward bookings": email a confirmation to your personal address (inbound function + Resend) =================
+// ================= "Forward bookings": each event's own address (inbound function + Resend) =================
 // Hidden until the inbound function says it's set up (GET → { enabled, domain }), and only when signed in.
-// add-<token>@<domain> (inbound_tokens, made on first view), or any address there from the email you sign in with.
-var FWD = null, fwdP = null; // var: bookingsHTML may render before this line runs
+// add-<token>@<domain> per event (inbound_page_tokens: token → this person + the page_key My trip syncs under, made on
+// first view): mail to it lands in this event only (Dylan 11/24: events can overlap, so no date guessing). The older
+// per-account address and sender-matched trips@ still work on the server but aren't shown.
+var FWD = {}, fwdP = {}; // var: bookingsHTML may render before this line runs. page_key → address
 function fwdStatus() {
   if (!SB) return Promise.resolve(null);
   const c = LS.get('fwdCfg'); if (c && Date.now() - c.t < (c.on ? 3600e3 : 600e3)) return Promise.resolve(c.on ? c : null);
@@ -6685,23 +6687,25 @@ function fwdStatus() {
     const on = !!(j && j.enabled && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(j.domain || '')); const v = { t: Date.now(), on, domain: on ? String(j.domain).toLowerCase() : '' };
     LS.set('fwdCfg', v); return on ? v : null; });
 }
-function fwdLoad() {
-  if (!LS.get('signedIn')) return Promise.resolve(null);
-  return fwdP || (fwdP = (async () => {
+function fwdLoad(key) {
+  if (!LS.get('signedIn') || !key || key === 'inbox') return Promise.resolve(null);
+  fwdP = fwdP || {}; FWD = FWD || {};
+  return fwdP[key] || (fwdP[key] = (async () => {
     const st = await fwdStatus(); if (!st) return null;
     const u = await sbUser(); if (!u) return null; const c = await sb();
-    let { data } = await c.from('inbound_tokens').select('token').eq('owner', u.id).maybeSingle();
-    if (!data) ({ data } = await c.from('inbound_tokens').insert({ owner: u.id }).select('token').single());
+    const get = () => c.from('inbound_page_tokens').select('token').eq('owner', u.id).eq('page_key', key).maybeSingle();
+    let { data } = await get();
+    if (!data) { const r = await c.from('inbound_page_tokens').insert({ owner: u.id, page_key: key }).select('token').single(); data = r.data; if (!data) ({ data } = await get()); } // two tabs at once: the other one made it
     if (!data || !/^[a-f0-9]{18}$/.test(data.token || '')) return null;
-    return (FWD = { addr: `add-${data.token}@${st.domain}`, any: `trips@${st.domain}`, email: u.email || '' });
-  })().catch(() => null).then(v => { if (!v) fwdP = null; return v; }));
+    return (FWD[key] = `add-${data.token}@${st.domain}`);
+  })().catch(() => null).then(v => { if (!v) delete fwdP[key]; return v; }));
 }
-function fwdHTML() { return FWD && LS.get('signedIn') ? `<div class="fwd-row"><b class="fwd-h">${t('Forward bookings')}</b><p class="fwd-p">${t('Forward any confirmation email to this address and it’s added to your trip.')}</p><div class="fwd-a"><code class="fwd-addr">${esc(FWD.addr)}</code><button type="button" class="btn sm" data-fwd-copy>${t('Copy')}</button></div>${FWD.email ? `<p class="fwd-or muted small">${esc(t('Or send from {email} to {any}', { email: FWD.email, any: FWD.any }))}</p>` : ''}</div>` : ''; }
-function fwdSlot() { return `<div data-slot="fwd">${fwdHTML()}</div>`; }
-function fwdFill(root) { return fwdLoad().then(v => { if (v) $$('[data-slot="fwd"]', root || document).forEach(el => { if (!el.firstElementChild) el.innerHTML = fwdHTML(); }); }); }
+function fwdHTML(key) { const a = FWD && FWD[key]; return a && LS.get('signedIn') ? `<div class="fwd-row"><p class="fwd-p">${t('Forward any confirmation email to this address and it’s added to this trip.')}</p><div class="fwd-a"><code class="fwd-addr">${esc(a)}</code><button type="button" class="btn sm" data-fwd-copy="${esc(a)}">${t('Copy')}</button></div></div>` : ''; }
+function fwdSlot(cfg) { const k = eventKey(cfg).slice(6); return `<div data-slot="fwd" data-fwd-key="${esc(k)}">${fwdHTML(k)}</div>`; }
+function fwdFill(root, cfg) { const k = eventKey(cfg).slice(6); return fwdLoad(k).then(v => { if (v) $$('[data-slot="fwd"]', root || document).forEach(el => { if (el.dataset.fwdKey === k && !el.firstElementChild) el.innerHTML = fwdHTML(k); }); }); }
 document.addEventListener('click', async (e) => {
-  const b = e.target.closest && e.target.closest('[data-fwd-copy]'); if (!b || !FWD) return;
-  try { await navigator.clipboard.writeText(FWD.addr); } catch { const ta = document.createElement('textarea'); ta.value = FWD.addr; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch { /* shown anyway */ } ta.remove(); }
+  const b = e.target.closest && e.target.closest('[data-fwd-copy]'); const a = b && b.dataset.fwdCopy; if (!a) return;
+  try { await navigator.clipboard.writeText(a); } catch { const ta = document.createElement('textarea'); ta.value = a; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch { /* shown anyway */ } ta.remove(); }
   b.textContent = t('Copied'); setTimeout(() => { b.textContent = t('Copy'); }, 1500); toast(t('Address copied'));
 });
 // a forwarded row → the booking the app would have made from the same ai-import result (Add a booking → Read with AI)

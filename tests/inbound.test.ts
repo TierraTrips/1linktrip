@@ -19,7 +19,7 @@ const HOLIDAY = { slug: "holiday-ball-a7t8s", owner: "someone", config: { title:
 
 // deno-lint-ignore no-explicit-any
 type Any = any;
-function fakeStore(opts: { events?: Any[]; tripItems?: Any[]; users?: Record<string, string> } = {}) {
+function fakeStore(opts: { events?: Any[]; tripItems?: Any[]; users?: Record<string, string>; pages?: Record<string, { owner: string; page_key: string }> } = {}) {
   const ledger = new Map<string, Any>(); const rows: Any[] = (opts.tripItems || []).slice(); const users = opts.users || { [U]: "dylan@example.com" };
   const events = opts.events || [JAPAN, HOLIDAY];
   const store = {
@@ -27,6 +27,7 @@ function fakeStore(opts: { events?: Any[]; tripItems?: Any[]; users?: Record<str
     async claim(id: string) { if (ledger.has(id)) return "dup"; ledger.set(id, { status: "processing" }); return "new"; },
     async release(id: string) { ledger.delete(id); },
     async finish(id: string, p: Any) { ledger.set(id, { ...ledger.get(id), ...p }); },
+    async pageByToken(t: string) { return (opts.pages || {})[t] || null; },
     async userByToken(t: string) { return t === TOKEN ? U : null; },
     async userByEmail(a: string) { return Object.entries(users).find(([, e]) => e === a)?.[0] || null; },
     async trips(uid: string) { const keys = new Set(rows.filter((r) => r.owner === uid && r.page_key !== "inbox").map((r) => r.page_key)); return tripsFrom(events.filter((e) => e.owner === uid || keys.has(pageKeyOf(e.config))), uid); },
@@ -210,4 +211,25 @@ Deno.test("store-level: an owned trip and a guest trip with My trip items both o
   const store = fakeStore({ events: [JAPAN, SPRING], tripItems: [{ owner: U, id: "bk1", page_key: "i7z7z2", item: {} }] });
   const x = deps({ store, extract: async (_u: string, b: Any) => b.mode === "file" ? [] : [FX.ai_item] });
   assertEquals((await (await handle(await signedReq(hook({ email_id: "e-own", attachments: [] })), x.d)).json()).trips, ["xfr8ua"]);
+});
+
+// ---------- per-event addresses (Dylan 11/24: events can overlap, so each event has its own address) ----------
+Deno.test("per-event address: every booking goes to that event's page_key, whatever the dates; old addresses still route by date", async () => {
+  const PT = "fedcba9876543210ab", SPRING = { slug: "japan-in-spring-zsk99", owner: U, config: { title: "Japan in spring", ek: "modes:i7z7z2", start: "2027-04-26", end: "2027-06-04" } };
+  const items = [FX.ai_item, { ...FX.ai_item, name: "Way later", confirmation: "Z9", start: "2028-01-01", end: "" }, { ...FX.ai_item, name: "Ball dinner", confirmation: "Z8", start: "2026-12-11", end: "" }];
+  const mk = () => { const store = fakeStore({ events: [JAPAN, SPRING, HOLIDAY], pages: { [PT]: { owner: U, page_key: "i7z7z2" } } }); return { store, ...deps({ store, extract: async (_u: string, b: Any) => b.mode === "file" ? [] : items, env: { NOTIFY_FROM: "1LinkTrip <hello@1linktrip.com>" } }) }; };
+  // to the Japan in spring address (overlaps Japan Trip, both his): all three land there, none in Inbox
+  let x = mk(); let j = await (await handle(await signedReq(hook({ email_id: "e-page", from: "stranger@else.com", to: [`Trips <add-${PT}@in.1linktrip.com>`], attachments: [] })), x.d)).json();
+  assertEquals(j.trips, ["i7z7z2", "i7z7z2", "i7z7z2"]); assert(x.store.rows.every((r: Any) => r.page_key === "i7z7z2" && r.owner === U));
+  assertEquals(x.calls.getEmail, 1, "body fetched once; the sender doesn't matter"); assert(x.calls.logs.some((l: string) => / page /.test(l)));
+  assertEquals(x.calls.mail[0].s, "Added 3 bookings to Japan in spring");
+  // an event key with no page row (a guest's view they never opened since) still lands there
+  const s2 = fakeStore({ pages: { [PT]: { owner: U, page_key: "zz9" } } }); const y = deps({ store: s2, extract: async (_u: string, b: Any) => b.mode === "file" ? [] : [FX.ai_item] });
+  assertEquals((await (await handle(await signedReq(hook({ email_id: "e-page2", to: [`add-${PT}@in.1linktrip.com`], attachments: [] })), y.d)).json()).trips, ["zz9"]);
+  // the old account address: date routing (overlap of two owned → Inbox)
+  x = mk(); j = await (await handle(await signedReq(hook({ email_id: "e-acct", attachments: [] })), x.d)).json();
+  assertEquals(j.trips, ["inbox", "inbox", "inbox"]);
+  // sender-matched trips@ still works too
+  x = mk(); j = await (await handle(await signedReq(hook({ email_id: "e-snd", to: ["trips@in.1linktrip.com"], attachments: [] })), x.d)).json();
+  assertEquals(j.added, 3); assertEquals(x.store.rows[0].owner, U);
 });
