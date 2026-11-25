@@ -73,7 +73,7 @@ const hotelPins = (page) => page.evaluate(() => window.__markers.filter(m => m.o
 const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png` }); };
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   try {
     // 1 — Dylan's case: a PDF for hotel A, then a PDF for hotel B, same Tokyo nights → B is the hotel everywhere
     { const { ctx, page } = await setup(browser);

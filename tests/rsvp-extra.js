@@ -69,7 +69,7 @@ async function setup(browser, { w = 390, cfg = WED, user = null, db = {} } = {})
 const parse = (page, note) => page.evaluate((n) => window.__ep.rqParse(n), note);
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   try {
     for (const w of [390, 320]) {
       // ---------- builder → RSVP form: each question ----------

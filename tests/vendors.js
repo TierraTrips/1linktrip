@@ -51,7 +51,7 @@ function fakeSupabase() {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   let store = { events: '[]', event_private: '[]' }; // the "server", shared by devices
   const mk = async (w = 390) => {
     const ctx = await browser.newContext({ viewport: { width: w, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });

@@ -46,7 +46,7 @@ function fakeSupabase(user) {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   const mk = async (w, { user = null, answer = () => DOC } = {}) => {
     const ctx = await browser.newContext({ viewport: { width: w, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
     const page = await ctx.newPage(); const errors = []; page.on('pageerror', e => errors.push(String(e)));

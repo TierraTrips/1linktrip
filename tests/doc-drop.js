@@ -28,7 +28,7 @@ const drag = (page, sel, steps = ['dragenter', 'dragover', 'drop'], name = 'Japa
 }, { sel, steps, name });
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   const mk = async (w, mobile) => {
     const ctx = await browser.newContext({ viewport: { width: w, height: 900 }, deviceScaleFactor: 2, isMobile: !!mobile, hasTouch: !!mobile, serviceWorkers: 'block' });
     const page = await ctx.newPage(); const errors = []; page.on('pageerror', e => errors.push(String(e)));

@@ -25,7 +25,7 @@ function fakeSupabase(user) {
     auth: { getSession: async () => ({ data: { session: user ? { user, access_token: 'a.b.c' } : null } }), signInWithOtp: async () => ({ error: null }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) } }) };
 }
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
   const USER = { id: 'u0000000-0000-4000-8000-0000000000bb', email: 'host@example.com' };
   const mk = async ({ user = USER, answer = () => DOC, status = 200 } = {}) => {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });

@@ -89,7 +89,7 @@ const groups = [{ id: GV, event_id: EID, name: 'VIPs', self_pick: false, sort: 0
 const shot = async (loc, name) => { if (SHOTS) await loc.screenshot({ path: `${SHOTS}/${name}.png` }); };
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = require('./_open-settings')(await chromium.launch());
 
   // ---------- 1. tables missing: nothing shows, nothing throws ----------
   {
