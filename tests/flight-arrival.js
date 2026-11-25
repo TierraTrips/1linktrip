@@ -25,6 +25,26 @@ const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m
   ok(await fix({ start: '2027-06-10T23:10', end: '2027-06-10T07:30', note: 'SFO → JFK' }) === '2027-06-11T07:30', 'red-eye: +1');
   ok(await fix({ start: '2027-06-10T07:00', end: '2027-06-12T08:25', note: 'Somewhere' }) === '2027-06-12T08:25', 'unknown airports: unchanged');
   ok(await fix({ start: '2027-06-10T07:00', end: '2027-06-10T09:25', to: 'Los Angeles' }) === '2027-06-10T09:25', 'no departure airport: unchanged');
+  // the organizer's own schedule lines (Dylan's Japan Trip, 11/25): "Arrive New York JFK" was stored a day late
+  const sched = (lines) => page.evaluate((l) => window.__ep.schedFlightFix(JSON.parse(JSON.stringify(l))).map(x => x.date).join(), lines);
+  const DEP = { date: '2027-06-02', time: '22:45', title: 'Depart Tokyo Haneda (HND) on UA 7924 (operated by All Nippon Airways)', note: 'Nonstop, overnight' };
+  ok(await sched([DEP, { date: '2027-06-03', time: '22:55', title: 'Arrive New York JFK', note: 'Local times as shown; flight duration 13h 10m.' }]) === '2027-06-02,2027-06-02', 'schedule HND→JFK: stored Jun 3 arrival → Jun 2 (13h 10m)');
+  ok(await sched([DEP, { date: '2027-06-03', time: '22:55', title: 'Arrive New York JFK' }]) === '2027-06-02,2027-06-02', 'schedule HND→JFK without a duration: same day');
+  ok(await sched([{ date: '2027-06-02', time: '22:45', title: 'Depart Tokyo Haneda (HND)' }, { date: '2027-06-02', time: '22:55', title: 'Arrive New York JFK' }]) === '2027-06-02,2027-06-02', 'schedule HND→JFK correct date kept');
+  ok(await sched([{ date: '2027-06-02', time: '11:05', title: 'Fly NRT → JFK on JL 4' }, { date: '2027-06-03', time: '10:40', title: 'Arrive JFK' }]) === '2027-06-02,2027-06-02', 'schedule NRT→JFK: lands the same day, earlier clock');
+  ok(await sched([{ date: '2027-04-25', time: '11:00', title: 'Depart JFK on NH 9' }, { date: '2027-04-25', time: '14:25', title: 'Land at Tokyo Haneda (HND)' }]) === '2027-04-25,2027-04-26', 'schedule JFK→HND westbound: +1');
+  ok(await sched([{ date: '2027-04-25', time: '11:00', title: 'Depart JFK' }, { date: '2027-04-26', time: '14:25', title: 'Land at Haneda (HND)' }]) === '2027-04-25,2027-04-26', 'schedule JFK→HND correct +1 kept');
+  ok(await sched([{ date: '2027-04-25', time: '', title: 'Fly out to Japan' }, { date: '2027-04-26', time: '16:55', title: 'Land at Haneda Airport' }]) === '2027-04-25,2027-04-26', 'schedule: no codes / no times → unchanged');
+  ok(await page.evaluate(() => [window.__ep.schedZone({ title: 'Arrive New York JFK' }), window.__ep.schedZone(  { title: 'Depart Tokyo Haneda (HND) on UA 7924' }), window.__ep.schedZone({ title: 'Dinner at NEW place' })].join()) === 'America/New_York,Asia/Tokyo,', 'flight line zones');
+  { // the page itself: event tab day list and .ics (arrival at 22:55 New York time = 02:55Z next day)
+    const JC = { v: 2, type: 'Trip', title: 'Japan', start: '2027-05-28', end: '2027-06-02', tz: 'Asia/Tokyo', venue: { name: 'Tokyo', address: 'Tokyo', lat: 35.68, lon: 139.76, city: 'Tokyo', country: 'Japan', cc: 'jp' },
+      schedule: [DEP, { date: '2027-06-03', time: '22:55', title: 'Arrive New York JFK', note: 'flight duration 13h 10m' }] };
+    const ics = await page.evaluate((c) => window.__ep.icsText(window.__ep.normalize(c), 'x'), JC);
+    ok(/DTSTART:20270602T134500Z/.test(ics) && /DTSTART:20270603T025500Z/.test(ics), '.ics: departure in Tokyo time, arrival in New York time');
+    await page.goto(BASE + '#e=' + await page.evaluate((c) => window.__ep.packEvent(c), JC)); await page.waitForSelector('.ev-hero');
+    const t2 = await page.evaluate(() => document.body.innerText);
+    ok(!/Jun 3/.test(t2) && /Arrive New York JFK/.test(t2), 'event tab: JFK arrival listed under Jun 2, no Jun 3');
+  }
   // the guest's My trip card and timeline
   const CFG = { v: 2, type: 'Trip', title: 'Japan', start: '2027-05-25', end: '2027-06-02', venue: { name: 'Tokyo', address: 'Tokyo', lat: 35.68, lon: 139.76, city: 'Tokyo', country: 'Japan', cc: 'jp' }, tools: { mytrip: true, travel: true } };
   await page.evaluate(() => localStorage.clear());

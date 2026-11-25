@@ -449,7 +449,7 @@ function icsText(cfg, url) {
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//1LinkTrip//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', `X-WR-CALNAME:${escI(cfg.title)}`];
   lines.push(...ev('main', cfg.title, s, e, [cfg.tagline, url].filter(Boolean).join('\n\n')));
   cfg.schedule.filter(x => x.date && x.time && x.title).forEach((x, i) => {
-    const st = wallToUTC(`${x.date}T${x.time}`, cfg.tz);
+    const st = wallToUTC(`${x.date}T${x.time}`, schedZone(x) || cfg.tz); // a flight line's time is local at its airport
     lines.push(...ev('s' + i, `${x.title} · ${cfg.title}`, st, new Date(st.getTime() + 3600e3), [x.note, url].filter(Boolean).join('\n\n'), x.place ? [x.place.name, x.place.address !== x.place.name ? x.place.address : ''].filter(Boolean).join(', ') : ''));
   });
   lines.push('END:VCALENDAR');
@@ -660,6 +660,35 @@ function flightArriveFix(x) {
   } catch { return x; }
 }
 // "Arrives 10:55 PM", with (+1) / (−1) when it lands on another calendar day than it left
+// ---- the organizer's own flight lines ("Depart Tokyo Haneda (HND) on UA 7924" 22:45 · "Arrive New York JFK" 22:55): each
+// time is the local wall time at THAT airport, not at the event. An arrival line's day is checked against the departure line
+// before it the same way as a booking (stated "13h 10m" duration wins, else a 30 min – 20 h flight), so HND→JFK lands the
+// same calendar day and JFK→HND the next. Codes must be written in capitals ("JFK", "(HND)", "HND → JFK"). ----
+const SCHED_ARR = /^\s*(arrive|arrives|arrival|arriving|land|lands|landing)\b/i;
+const SCHED_DEP = /^\s*(depart|departs|departure|departing|fly|flying|flight|take[- ]?off)\b/i;
+const schedCodes = (x) => (String(x.title || '').match(/\b[A-Z]{3}\b/g) || []).filter(c => apZone(c));
+// the airport a flight line's time is local to: departure line → first code, arrival line → last code; else ''
+const schedAirport = (x) => { if (!x || !x.title) return ''; const cs = schedCodes(x); return !cs.length ? '' : SCHED_ARR.test(x.title) ? cs[cs.length - 1] : SCHED_DEP.test(x.title) ? cs[0] : ''; };
+const schedZone = (x) => apZone(schedAirport(x));
+const durHours = (s) => { const m = /(\d{1,2})\s*h(?:ours?|rs?)?\s*(?:(\d{1,2})\s*m)?/i.exec(String(s || '')); return m && /duration|flight time|nonstop|\d\s*h\s*\d+\s*m/i.test(s) ? +m[1] + (+m[2] || 0) / 60 : null; };
+function schedFlightFix(sch) {
+  const hhmm = /^\d{2}:\d{2}$/; const dated = (x) => x && isoDay(x.date) && hhmm.test(x.time || '');
+  sch.forEach(a => {
+    if (!dated(a) || !SCHED_ARR.test(a.title || '')) return; const ta = schedAirport(a), zt = apZone(ta); if (!zt) return;
+    const deps = sch.filter(d => d !== a && dated(d) && SCHED_DEP.test(d.title || '') && schedAirport(d) && schedAirport(d) !== ta && Math.abs(daysBetween(d.date, a.date)) <= 3)
+      .sort((p, q) => Math.abs(daysBetween(p.date, a.date)) - Math.abs(daysBetween(q.date, a.date)) || (q.date + q.time).localeCompare(p.date + p.time));
+    const d = deps[0]; if (!d) return;
+    try {
+      const dep = zonedMs(`${d.date}T${d.time}`, schedZone(d)); const dur = (day) => (zonedMs(`${day}T${a.time}`, zt) - dep) / 3600e3;
+      const want = durHours(a.note) ?? durHours(d.note) ?? durHours(d.title);
+      const fit = want != null ? (h) => Math.abs(h - want) <= 1.5 : (h) => h >= 0.5 && h <= 20;
+      if (fit(dur(a.date))) return;
+      const day = [-1, 0, 1, 2].map(k => addDays(d.date, k)).filter(x => fit(dur(x))).sort((p, q) => dur(p) - dur(q))[0];
+      if (day) a.date = day;
+    } catch { /* unknown zone: unchanged */ }
+  });
+  return sch;
+}
 const flightArrLabel = (x) => { if (!x.end || x.end.length < 16) return ''; const off = daysBetween(x.start, x.end); return `${t('Arrives')} ${fmtTime(x.end.slice(11, 16))}${off ? ` (${off > 0 ? '+' : '−'}${Math.abs(off)})` : ''}`; };
 // "Flying into": the guest's arrival airport, one of the airports near the venue. One saved value per event (ap:<key>).
 // Default: their saved pick → a flight in their bookings that lands at one of them → the organizer's "Fly into" (cfg.flyInto)
@@ -745,10 +774,12 @@ function itinICS(cfg) {
   items.forEach((x, i) => {
     const allDay = x.start.length === 10; const fLinks = x.kind === 'flight' ? flightLinks(x.flight) : {};
     let end = x.end || (allDay ? addDays(x.start, 1) : null);
+    // a flight with both airports known: departure local at the departure airport, arrival at the arrival airport (exact UTC times)
+    const fz = x.kind === 'flight' && !allDay ? (() => { const [fa, ta] = flightAirports(x); const zf = apZone(fa), zt = apZone(ta); return zf && zt ? [zf, zt] : []; })() : [];
     if (!allDay && (!end || end.length === 10)) end = new Date(asUTC(x.start).getTime() + 3600e3).toISOString().slice(0, 16);
     lines.push('BEGIN:VEVENT', `UID:itin-${i}-${x.start.replace(/\D/g, '')}@eventpages`, `DTSTAMP:${now}`,
-      allDay ? `DTSTART;VALUE=DATE:${x.start.replace(/-/g, '')}` : `DTSTART:${loc(x.start)}`,
-      allDay ? `DTEND;VALUE=DATE:${end.slice(0, 10).replace(/-/g, '')}` : `DTEND:${loc(end)}`,
+      allDay ? `DTSTART;VALUE=DATE:${x.start.replace(/-/g, '')}` : `DTSTART:${fz[0] ? icsStamp(wallToUTC(x.start, fz[0])) : loc(x.start)}`,
+      allDay ? `DTEND;VALUE=DATE:${end.slice(0, 10).replace(/-/g, '')}` : `DTEND:${fz[0] && end.length === 16 ? icsStamp(wallToUTC(end, x.end === end ? fz[1] : fz[0])) : loc(end)}`,
       `SUMMARY:${esc2(x.name || ITIN_KINDS[x.kind] || 'Reservation')}`, `LOCATION:${esc2(x.address)}`,
       `DESCRIPTION:${esc2([x.confNo ? 'Confirmation ' + x.confNo : '', x.note, fLinks.status, x.link].filter(Boolean).join('\n'))}`, 'END:VEVENT');
     // a hotel's free-cancellation deadline: its own event (timed when the time is known, else all day) with a reminder the day before
@@ -1564,6 +1595,7 @@ function normalize(c) {
   if (/^#1f3a2e$/i.test(c.theme.accent || '')) c.theme.accent = LAGOON; // pages saved with the old Forest default
   c.tools = { ...defaultTools(c.type), ...(c.tools || {}) };
   c.off = c.off || {}; c.notes = Array.isArray(c.notes) ? c.notes : []; c.schedule = Array.isArray(c.schedule) ? c.schedule.filter(x => x && typeof x === 'object') : [];
+  schedFlightFix(c.schedule); // a flight line's arrival day from both airports' time zones (HND→JFK lands the same day)
   c.schedule.forEach(x => { if (x.place === undefined) return; const p = normSchedPlace(x.place); if (p) x.place = p; else delete x.place; }); // an item at its own place
   c.x = c.x && typeof c.x === 'object' ? c.x : {}; c.bring = typeof c.bring === 'string' ? c.bring : '';
   c.custom = normCustom(c.custom);
@@ -8192,5 +8224,5 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
