@@ -5154,12 +5154,12 @@ function gpDetails(id, session) {
 // gets one kind from its own types (primary type first), else from its name; the chips show only kinds in the list.
 const ACT_CATS = new Set(['sights', 'tours']);
 const ACT_KINDS = [
-  ['tours', 'Tours', /^(tour_agency|travel_agency|tourist_information_center|sightseeing_tour_agency|adventure_sports_center|cooking_class|cultural_center)$/, /\b(tours?|experiences?|class(es)?|workshops?|cruises?|walks?)\b|ツアー|体験/i],
+  ['tours', 'Tours', /^(tour_agency|travel_agency|tourist_information_center|sightseeing_tour_agency|adventure_sports_center|cooking_class)$/, /\b(tours?|experiences?|class(es)?|workshops?|cruises?|walks?)\b|ツアー|体験/i],
   ['museums', 'Museums', /museum|gallery|planetarium/, /\b(museums?|galler(y|ies))\b|美術館|博物館|記念館/i],
   ['landmarks', 'Temples & landmarks', /temple|shrine|church|mosque|synagogue|place_of_worship|landmark|historical|monument|castle|palace|observation_deck|viewpoint|sculpture|plaza|tower|bridge|memorial/, /\b(temples?|shrines?|castles?|palaces?|towers?|monuments?|cathedral|church|basilica|pagoda|gate)\b|寺|神社|城|塔|大社|宮/i],
   ['outdoors', 'Parks & outdoors', /^(park|city_park|state_park|national_park|garden|botanical_garden|hiking_area|beach|marina|ski_resort|nature_preserve|scenic_spot|lake|island|mountain_peak|picnic_ground|dog_park|campground)$|_park$|garden/, /\b(parks?|gardens?|trails?|beach|grove|falls|lake|mountain|hike|forest)\b|公園|庭園|山/i],
   ['family', 'Zoos & theme parks', /amusement|aquarium|zoo|water_park|wildlife|theme_park|bowling|arcade|go_karting|miniature_golf/, /\b(aquarium|zoo|teamlab|disney|universal|theme park|amusement|arcade)\b|水族館|動物園/i],
-  ['shows', 'Shows & nightlife', /theater|theatre|concert|night_club|karaoke|casino|comedy|live_music|movie|opera|stadium|arena|event_venue|philharmonic/, /\b(theat(er|re)|concerts?|karaoke|kabuki|show|club|live)\b|劇場/i],
+  ['shows', 'Shows & nightlife', /theater|theatre|concert|night_club|karaoke|casino|comedy|live_music|movie|opera|stadium|arena|event_venue|philharmonic|cultural_center|convention_center|auditorium/, /\b(theat(er|re)|concerts?|karaoke|kabuki|show|club|live)\b|劇場/i],
   ['wellness', 'Spas & baths', /spa|sauna|public_bath|massage|wellness|hot_spring/, /\b(spa|onsen|sauna|bath|sento)\b|温泉|銭湯/i],
   ['shopping', 'Shopping', /shopping|market|store|mall|_shop$/, /\b(market|shopping|mall|arcade street)\b|市場|商店街/i]];
 const ACT_MATCH = ['tours', 'museums', 'family', 'landmarks', 'outdoors', 'shows', 'wellness', 'shopping'].map(k => ACT_KINDS.find(x => x[0] === k)); // amusement_park is a theme park, not a park
