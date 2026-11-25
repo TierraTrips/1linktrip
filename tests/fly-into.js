@@ -26,7 +26,7 @@ const pack = (page, c) => page.evaluate((c) => window.__ep.packEvent(window.__ep
 // everything on the guest page that names "the" airport
 const guest = (page) => page.evaluate(() => ({
   stub: (document.querySelector('.stub-side .code') || {}).textContent || '',
-  chip: [...document.querySelectorAll('[data-slot="flights"] .ap-pick.on')].map(b => b.dataset.ap).join(),
+  chip: [...document.querySelectorAll('[data-slot="flights"] .airports li.on .ap-code')].map(b => b.textContent).join(), // the chosen airport (a settled one is folded to it + Change)
   sel: [...document.querySelectorAll('[data-ap-sel]')].map(s => s.value),
   kayak: [...document.querySelectorAll('[data-slot="rental"] a[href*="kayak.com/cars"]')].map(a => (a.href.match(/cars\/(\w+)\//) || [])[1]).join(),
   rentalHead: [...document.querySelectorAll('[data-slot="rental"] a')].map(a => a.textContent).find(t => /Rental cars near/.test(t)) || '',

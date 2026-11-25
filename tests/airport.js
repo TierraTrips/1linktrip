@@ -46,7 +46,7 @@ const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m
   await page.evaluate(() => localStorage.clear());
   await page.goto(BASE + '?demo=wedding#t=travel'); await page.waitForSelector('[data-slot="rental"] a'); await page.waitForTimeout(800);
   const kayak = () => page.$$eval('[data-slot="rental"] a[href*="kayak.com/cars"]', as => as.map(a => a.href.match(/cars\/(\w+)\//)[1]));
-  const state = () => page.evaluate(() => ({ chip: [...document.querySelectorAll('.ap-pick.on')].map(b => b.dataset.ap), sel: [...document.querySelectorAll('[data-ap-sel]')].map(s => s.value),
+  const state = () => page.evaluate(() => ({ chip: [...document.querySelectorAll('[data-slot="flights"] .airports li.on .ap-code')].map(b => b.textContent) /* chosen airport (picked = folded to it + Change) */, sel: [...document.querySelectorAll('[data-ap-sel]')].map(s => s.value),
     stub: (document.querySelector('.stub-side .code') || {}).textContent, near: [...document.querySelectorAll('[data-slot="stay-links"] a')].some(a => /Hotels near/.test(a.textContent)),
     transfer: (document.querySelector('.ap-transfer a') || {}).href || '' }));
   let k = await kayak(); let s = await state();

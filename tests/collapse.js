@@ -1,8 +1,10 @@
 // Guest tabs stay tidy: a Travel part the guest already booked folds to one line ("✓ Flight · NH 105 · Apr 1",
 // "✓ Hotel · Park Hyatt Tokyo · Apr 1–4"), tap to open. ONE way to fold (Dylan's simplify review, item 4): tap the
-// section's title row — a single button with aria-expanded and one chevron; no Hide buttons, no second arrow, also for
+// section's title row — a single button with aria-expanded and one chevron; no second arrow, also for
 // the nested Travel parts (Getting there → Flights). Kept per guest per trip (localStorage; synced with My trip when
 // signed in); a section hidden with the old Hide button comes back folded. 40px tap targets; 390 + 320.
+// Since 11/25 (Dylan: "more hide buttons on the travel part") Travel's optional blocks have a separate Hide (.th-hide,
+// tests/travel-hide.js) — a different action from folding; it is not a second fold control.
 //
 //   python3 -m http.server 18765 --bind 127.0.0.1 &  node tests/collapse.js
 const { chromium } = require(process.env.PW || 'playwright');
@@ -40,19 +42,19 @@ const keyOf = (c) => Math.abs([...(c.title || '') + (c.start || '') + (c.venue ?
     const fly = await part('fly');
     ok(fly.col && !fly.vis && fly.sum === '✓ Flight · NH 105 · Apr 1', `@${w} booked flight folds to one line: ${JSON.stringify(fly)}`);
     const car = await part('rental'); ok(!car.col && car.vis, `@${w} rental car (not booked) stays open`);
-    const stay = await page.evaluate(() => { const s = document.querySelector('#sec-stay'); return { col: s.classList.contains('cx-col'), line: s.querySelector('.cx-sumline').textContent, body: s.querySelector('.sec-b').checkVisibility(), title: s.querySelector('.sec-h').textContent }; });
+    const stay = await page.evaluate(() => { const s = document.querySelector('#sec-stay'); return { col: s.classList.contains('cx-col'), line: s.querySelector('.cx-sumline').textContent, body: s.querySelector('.sec-b').checkVisibility(), title: s.querySelector('.sec-h .cx-tt').textContent }; });
     ok(stay.col && !stay.body && stay.line === '✓ Hotel · Park Hyatt Tokyo · Apr 1–4' && stay.title === 'Where to stay', `@${w} booked hotel folds Where to stay: ${JSON.stringify(stay)}`);
     // one control per header: the title row button, no Hide, no second arrow
     const ctl = await page.evaluate(() => [...document.querySelectorAll('.ev-sec[data-sec], .cx-part')].filter(x => x.checkVisibility()).map(x => {
-      const btns = [...x.querySelectorAll(':scope > .sec-h button, :scope > button, :scope > .cx > button')];
+      const btns = [...x.querySelectorAll(':scope > .sec-h button:not(.th-hide), :scope > button, :scope > .cx > button')];
       return { id: x.dataset.sec || x.textContent.trim().slice(0, 12), n: btns.length, exp: btns.map(b => b.getAttribute('aria-expanded')).join(), chev: x.querySelectorAll(':scope > .sec-h .cx-chev, :scope > button .cx-chev').length };
     }));
     ok(ctl.length >= 4 && ctl.every(c => c.n === 1 && /^(true|false)$/.test(c.exp) && c.chev === 1), `@${w} each section / part header = one button with aria-expanded and one chevron ${JSON.stringify(ctl)}`);
-    ok(!(await page.$('.cx-hide, [data-cx-hide], .cx-hidden')) && !(await page.$$eval('.ev button', bs => bs.some(b => b.checkVisibility() && /^(Hide|Ocultar)$/.test(b.textContent.trim())))), `@${w} no Hide buttons`);
+    ok(!(await page.$('.cx-hide, [data-cx-hide], .cx-hidden')) && !(await page.$$eval('.ev button', bs => bs.some(b => b.checkVisibility() && !b.matches('.th-hide') && /^(Hide|Ocultar)$/.test(b.textContent.trim())))), `@${w} no fold-style Hide buttons (Travel's .th-hide is its own action)`);
     const sizes = await page.$$eval('[data-panel="travel"] [data-cx-tog]', bs => bs.map(b => { const r = b.getBoundingClientRect(); return Math.min(r.width, r.height); }));
     ok(sizes.length && sizes.every(x => x >= 40), `@${w} 40px tap targets (${Math.min(...sizes)})`);
-    const fullRow = await page.$eval('#sec-stay .sec-h', h => { const b = h.querySelector('button').getBoundingClientRect(), r = h.getBoundingClientRect(); return b.right >= r.right - 1 && b.width > r.width * 0.8; });
-    ok(fullRow, `@${w} the button spans the title row`);
+    const fullRow = await page.$eval('#sec-stay .sec-h', h => { const b = h.querySelector('button').getBoundingClientRect(), r = h.getBoundingClientRect(); const x = h.querySelector('.th-hide'); const end = x ? x.getBoundingClientRect().left : r.right; return [b.left, b.right, r.left, r.right, end].map(Math.round); }); // fills the row up to Travel's Hide at its right end
+    ok(fullRow[1] >= fullRow[4] - 12 && fullRow[1] - fullRow[0] > (fullRow[4] - fullRow[2]) * 0.8, `@${w} the button spans the title row ${fullRow}`);
     if (SHOTS) await page.locator('[data-panel="travel"]').screenshot({ path: `${SHOTS}/collapse-travel-${w}.png` });
     // open the flight part; the choice is kept
     await page.click('[data-panel="travel"] .cx-part:has([data-cx-tog="m-fly"]) .cx-t'); ok((await part('fly')).vis, `@${w} tapping the Flights title opens the folded part`);

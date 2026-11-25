@@ -1567,3 +1567,14 @@ dialog.ds-sheet::backdrop { background: rgba(10, 12, 18, .45); }
 .vn-x { font-size: 1.3rem; padding: 0 6px; min-height: 44px; color: #A3272D; }
 /* desktop: the docked sheet sits beside the owner's page, never over it */
 @media (min-width: 980px) { #app:has(#sheet.onp[open]:not(:modal)) .builder[data-set="0"] .b-preview { margin-left: var(--onp-dock, 440px); } }
+/* Travel view state (personal, per device): settled airport / modes fold to the choice + Change; Hide on optional blocks */
+.mode-bar .chip.m-off { display: none; }
+.chip.m-chg, .chip.ap-chg { background: transparent; box-shadow: inset 0 0 0 1.3px var(--line); }
+.airports .chip.ap-chg { min-height: 36px; font-size: .84rem; }
+.th-row { display: flex; align-items: center; gap: 10px; margin: 18px 0 8px; }
+.th-row > .sub-h { flex: 1 1 auto; min-width: 0; margin: 0; }
+.th-hide { flex: none; border: 0; background: none; font-family: var(--sans, system-ui), sans-serif; letter-spacing: 0; text-transform: none; font-weight: 600; font-size: .8rem; line-height: 1; color: var(--muted); padding: 0 4px; min-height: 40px; min-width: 44px; cursor: pointer; border-radius: 8px; }
+.th-hide:hover { color: var(--ink, inherit); } .th-hide:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sec-h.th-sh { display: flex; align-items: center; gap: 6px; }
+.th-x-stay #sec-stay, .th-x-airlines .airline-pick, .th-x-counters .th-counters, .th-x-hotels .th-hotels { display: none; }
+.th-foot { display: flex; justify-content: center; margin: 4px 0 8px; } .th-foot:has(> [hidden]) { display: none; }
