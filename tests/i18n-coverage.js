@@ -116,7 +116,18 @@ async function screens(page, kind, url, cb) {
         { id: 's2', household_id: 'h2', invitation_id: 'i1', kind: 'invitation', channel: 'email', status: 'queued', queued_at: new Date().toISOString() }, { id: 's3', household_id: 'h3', invitation_id: 'i1', kind: 'invitation', channel: 'text', status: 'sent', sent_at: new Date().toISOString(), queued_at: new Date().toISOString() }];
       G.iv.st = { ok: true, left: 0, dailyCap: 100, next_at: new Date(Date.now() + 36e5).toISOString() }; G.iv.rf = 'all'; G.iv.sel = null; X.glPaint();`); await page.waitForTimeout(400); await grab('invitations: saved, sent, queued');
     await L('G.iv.kind = "save_the_date"; G.iv.rows[0].kind = "x"; X.glPaint();'); await page.waitForTimeout(300); await grab('invitations: save the date start');
-    await L('G.tab = "list"; G.iv.kind = "invitation"; G.iv.rows[0].kind = "invitation"; X.glPaint();'); await page.waitForTimeout(300); await grab('guest list with sends');
+    await L('G.tab = "list"; G.iv.kind = "invitation"; G.iv.rows[0].kind = "invitation"; X.glPaint();'); await page.waitForTimeout(300); await grab('guest list with sends'); 
+    // arrivals board: RSVP travel + one opted-in guest's own bookings, timeline / list / no info / departures / edit dialog
+    await L(`const d = (n) => { const x = new Date(G.cfg.start.slice(0, 10) + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+      G.tr = [{ household_id: 'h1', arr_date: d(-1), arr_time: '11:45', arr_place: 'CUN', arr_no: 'AA 1350', dep_date: d(2), dep_time: '18:20', dep_place: 'CUN', dep_no: 'AA 1351', stay: 'Hotel Esencia', updated_by: 'guest' }];
+      G.trips = [{ user_id: 'u3', household_id: 'h3', name: 'Jae Kim', items: [{ kind: 'flight', name: 'UA 990', flight: 'UA 990', start: d(-2) + 'T07:00', end: d(-2) + 'T14:05', from: 'SFO', to: 'TQO' }, { kind: 'hotel', name: 'Azulik', start: d(-2), end: d(2) }] }];
+      window.__fakeData.push('Hotel Esencia', 'Azulik', 'Jae Kim', 'CUN', 'TQO', 'AA 1350', 'AA 1351', 'UA 990', 'AA', 'UA');
+      G.tab = 'arr'; X.glPaint();`); await page.waitForTimeout(300); await grab('arrivals timeline');
+    await L('G.ar.view = "list"; X.glPaint();'); await grab('arrivals list');
+    await L('G.ar.none = true; X.glPaint();'); await grab('arrivals no info');
+    await L('G.ar.none = false; G.ar.dir = "dep"; G.ar.view = "time"; X.glPaint();'); await grab('departures');
+    await L('window.__ep.ar.arEditDlg("h2");'); await page.waitForTimeout(200); await grab('arrivals edit dialog'); await close();
+    await L('G.tab = "list"; X.glPaint();');
   } else {
     await grab('owner page');
     for (const ed of ['s:', 'st:', 'sec:details', 'hero', 'when']) {

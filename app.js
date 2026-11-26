@@ -2265,6 +2265,7 @@ function myTripTabHTML(cfg) {
   if (T.mytrip) out.push(sec('plan', t('Your itinerary'), planHTML(cfg)));
   if (T.mytrip && cfg.venue) out.push(sec('spots', t('Saved spots'), spotsHTML(cfg)));
   if (T.mytrip) out.push(sec('itinerary', t('Your bookings'), bookingsHTML(cfg)));
+  if (T.mytrip) out.push(`<div data-slot="arr-share"></div>`);
   if (T.shopping) out.push(shopSecHTML(cfg));
   if (T.packing) out.push(`<section class="ev-sec" id="sec-packing"><details class="pack-wrap"><summary><h2 class="sec-h">${t('Packing list')}</h2><span class="pack-sum" data-slot="pack-sum"></span></summary><div data-slot="pack-list"></div><div class="pack-add"><input placeholder="${t('Add an item')}" aria-label="${t('Add an item')}" maxlength="80"><button type="button" class="btn" data-pack-add>${t('Add')}</button></div></details>${docsHTML(cfg, ['bring'])}</section>`);
   return out.join('');
@@ -4105,7 +4106,7 @@ async function renderHosted(slug, tab) {
     const k = 'hho:' + row.id; let rec = true; try { rec = !sessionStorage.getItem(k); } catch { /* private mode */ }
     try { const [hh, seats, inv] = await Promise.all([hhRpc('household_get', { s: row.slug, tok: htok, record: rec }), hhRpc('household_seats', { s: row.slug, tok: htok }).catch(() => null), // seats: null unless the organizers show tables
         hhRpc('household_invitation', { s: row.slug, tok: htok }).catch(() => null)]); // the invitation it was sent, while the organizers show it
-      if (hh && hh.people) { hosted.hh = { tok: htok, ...hh, seats: Array.isArray(seats) ? seats : [], inv: inv && inv.path ? inv : null }; try { sessionStorage.setItem(k, '1'); } catch {} } else LS.del('hh:' + row.id); }
+      if (hh && hh.people) { hosted.hh = { tok: htok, ...hh, trOff: !('travel' in hh), seats: Array.isArray(seats) ? seats : [], inv: inv && inv.path ? inv : null }; try { sessionStorage.setItem(k, '1'); } catch {} } else LS.del('hh:' + row.id); }
     catch { /* offline: the page without the household form */ }
   } else if (!htok && !pagesAll().some(p => p.hosted && p.hosted.id === row.id)) pageOpenOnce(row);
   LANG = guestLangPick(cfg);
@@ -4130,6 +4131,7 @@ async function renderHosted(slug, tab) {
   requestAnimationFrame(pillInView);
   if (row.published === false) $('.viewer').insertAdjacentHTML('beforeend', `<div class="own-stale" role="status"><span>${t('Only you can see this page.')}</span></div>`);
   guestRender(cfg, $('#ev-root'), { tab, hosted, shareUrl: hosted.url });
+  if (row.published !== false) arShareMount(cfg, hosted);
   // '#' alone can't leave a ?e= page (the hash doesn't change), so home links point at the app itself
   $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase()));
   window.scrollTo(0, 0);
@@ -9782,11 +9784,12 @@ function hhFormHTML(cfg, src, hosted) {
   const people = hhOrder(H);
   if (!H.editing && people.length && people.every(p => reps.has(p.id))) {
     return `${hhSeatHTML(H)}<div class="rsvp-done hh-done"><p><b>${esc(t('Thanks, {n}.', { n: H.name }))}</b></p><ul class="hh-sum">${people.map(p => { const r = reps.get(p.id); return `<li><span>${esc(p.name)}</span><b class="${r.attending ? 'y' : 'n'}">${r.attending ? t('Coming') : t('Can’t make it')}</b></li>`; }).join('')}</ul>
-      <button type="button" class="btn sm" data-hh="edit">${t('Change replies')}</button></div>`;
+      ${H.trOff ? '' : hhTravelSum(H)}<button type="button" class="btn sm" data-hh="edit">${t('Change replies')}</button></div>`;
   }
   return `${hhSeatHTML(H)}<form class="rsvp hh-rsvp" novalidate onsubmit="return false"><p class="hh-for">${t('Replying for')} <b>${esc(H.name)}</b></p>
     <div class="hh-ps">${people.map(p => hhPersonHTML(cfg, src, H, p, reps.get(p.id))).join('')}</div>
     <div class="hh-adds">${hhAddersHTML(H)}</div>
+    ${H.trOff ? '' : hhTravelHTML(H)}
     <p class="rsvp-msg" role="status" aria-live="polite">${H.msg ? esc(H.msg) : ''}</p>
     <button type="button" class="btn primary" data-hh="send">${t('Send replies')}</button>
     <p class="muted small">${t('Only the host sees your reply.')}</p></form>`;
@@ -9832,8 +9835,12 @@ function wireHousehold(cfg, art, hosted, src) {
     if (r.bad) { msg.textContent = r.bad; return; }
     b.disabled = true; msg.textContent = t('Sending…');
     try {
+      const tv = H.trOff || !slot.querySelector('.hh-travel') ? null : arRead(slot, 'hht');
       const j = await hhRpc('household_rsvp', { s: hosted.slug, tok: H.tok, replies: rm.concat(r.replies) });
       if (!j) throw new Error('no answer');
+      if (tv && JSON.stringify(AR_KEYS.map(k => tv[k] || '')) !== JSON.stringify(AR_KEYS.map(k => String((H.travel || {})[k] || '')))) {
+        try { const k2 = await hhRpc('household_travel', { s: hosted.slug, tok: H.tok, t: tv }); if (k2) j.travel = k2.travel; } catch (er) { if (/function|schema cache|does not exist/i.test(String(er && er.message))) H.trOff = true; else throw er; }
+      }
       const clash = (j.conflicts || []).map(id => ((j.people || []).find(p => p.id === id) || {}).name).filter(Boolean);
       Object.assign(H, j, { editing: !!clash.length, msg: clash.length ? t('{n} changed since you opened this. Check and send again.', { n: clash.join(', ') }) : '' });
       LS.set('rsvp:' + hosted.id, { name: H.name, attending: (j.replies || []).some(x => x.attending), at: Date.now(), hh: true });
@@ -9947,7 +9954,8 @@ function glPaint() {
   if (G.stOff && G.tab === 'seat') G.tab = 'list'; const sb2 = $('[data-gl-seat]', m); if (sb2) sb2.hidden = !!G.stOff;
   if (G.ivOff && G.tab === 'inv') G.tab = 'list'; const ib = $('[data-gl-inv]', m); if (ib) ib.hidden = !!G.ivOff; m.closest('.gl-page').classList.toggle('iv-wide', G.tab === 'inv');
   m.closest('.gl-page').classList.toggle('st-wide', G.tab === 'seat');
-  $('[data-gl-body]', m).innerHTML = G.tab === 'diet' ? glDietHTML() : G.tab === 'groups' ? glGroupsHTML() : G.tab === 'seat' ? stHTML() : G.tab === 'inv' ? ivTabHTML() : glListHTML();
+  if (G.arrOff && G.tab === 'arr') G.tab = 'list'; const ab = $('[data-gl-arr]', m); if (ab) ab.hidden = !!G.arrOff; m.closest('.gl-page').classList.toggle('ar-wide', G.tab === 'arr');
+  $('[data-gl-body]', m).innerHTML = G.tab === 'diet' ? glDietHTML() : G.tab === 'groups' ? glGroupsHTML() : G.tab === 'seat' ? stHTML() : G.tab === 'inv' ? ivTabHTML() : G.tab === 'arr' ? arHTML() : glListHTML();
   stFit();
   const bar = $('[data-gl-bar]', m); const n = G.sel.size; bar.hidden = !n || G.tab !== 'list';
   if (n) bar.innerHTML = `<b>${esc(t('{n} selected', { n }))}</b><select data-gl-bulkgrp aria-label="${esc(t('Set group'))}"><option value="">${t('Set group…')}</option>${G.gs.map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}<option value="none">${t('No group')}</option></select><button type="button" class="btn sm" data-gl-bulkcopy>${t('Copy links')}</button><button type="button" class="btn sm" data-gl-bulkmail>${t(G.ivOff ? 'Email invitations' : 'Send invitation')}</button><button type="button" class="link" data-gl-clear>${t('Clear')}</button>`;
@@ -9965,6 +9973,7 @@ async function glLoad() {
   Object.assign(G, { hs: hs.data || [], ps: ps.data || [], rs: rs.data || [], gs: gs.data || [], hot: new Map((hot.data || []).map(x => [x.id, x.has_hotel])), opens: (op.data || []).reduce((n, x) => n + (x.n || 0), 0) });
   await stLoad().catch(() => { G.stOff = true; });
   if (!G.iv) G.iv = ivBlank(); await ivLoad().catch(() => { G.ivOff = true; });
+  await arLoad().catch(() => { G.arrOff = true; });
 }
 async function renderGuests(eid) {
   LANG = uiLang(); document.documentElement.lang = LANG; document.documentElement.dir = 'ltr'; document.title = t('Guest list') + ' · 1LinkTrip';
@@ -9975,7 +9984,7 @@ async function renderGuests(eid) {
   if (!user) { LS.del('signedIn'); LS.set('afterSignIn', '#guests/' + eid); return renderMine('', t('Sign in to see your guest list.')); }
   const c = await sb(); const { data: ev } = await c.from('events').select('id,slug,config,published,owner').eq('id', eid).maybeSingle();
   if (!ev) return shell(`<h1>${t('Guest list')}</h1><p>${t('Only the page’s organizers can see its guest list.')}</p><p><a href="#mine">${t('Back to My pages')}</a></p>`);
-  G = { eid, ev, cfg: normalize(ev.config), filter: 'all', grp: '', by: false, sel: new Set(), tab: /^seat/.test(location.hash.split('&t=')[1] || '') ? 'seat' : /^inv/.test(location.hash.split('&t=')[1] || '') ? 'inv' : 'list', iv: null, hs: [], ps: [], rs: [], gs: [], hot: new Map(), opens: 0,
+  G = { eid, ev, cfg: normalize(ev.config), filter: 'all', grp: '', by: false, sel: new Set(), tab: /^seat/.test(location.hash.split('&t=')[1] || '') ? 'seat' : /^inv/.test(location.hash.split('&t=')[1] || '') ? 'inv' : /^arr/.test(location.hash.split('&t=')[1] || '') ? 'arr' : 'list', iv: null, hs: [], ps: [], rs: [], gs: [], hot: new Map(), opens: 0,
     ts: [], seat: { show: false }, st: { pend: !!LS.get('stp:' + eid), grp: '', q: '', hh: false, fold: false, view: LS.get('stv:' + eid) || 'cards' } };
   try { await glLoad(); } catch (e) { return shell(`<h1>${t('Guest list')}</h1><p>${t('Couldn’t load it.')} ${esc(pubWhy(e))}</p>`); }
   // first visit: the usual groups for this kind of event (renameable, removable)
@@ -9997,12 +10006,12 @@ function glMount() {
     <section class="gl">
       <div class="gl-sum" data-gl-sum></div>
       ${G.ev.published ? '' : `<p class="b-note">${t('Share the page first: personal links open only once it’s shared.')}</p>`}
-      <div class="gl-head"><div class="seg2 gl-tabs" role="tablist"><button type="button" role="tab" data-gl-tab="list">${tCtx('tab', 'Guests')}</button><button type="button" role="tab" data-gl-tab="diet">${t('Dietary')}</button><button type="button" role="tab" data-gl-tab="groups">${t('Groups')}</button><button type="button" role="tab" data-gl-tab="seat" data-gl-seat>${t('Seating')}</button><button type="button" role="tab" data-gl-tab="inv" data-gl-inv>${t('Invitations')}</button></div>
+      <div class="gl-head"><div class="seg2 gl-tabs" role="tablist"><button type="button" role="tab" data-gl-tab="list">${tCtx('tab', 'Guests')}</button><button type="button" role="tab" data-gl-tab="diet">${t('Dietary')}</button><button type="button" role="tab" data-gl-tab="groups">${t('Groups')}</button><button type="button" role="tab" data-gl-tab="seat" data-gl-seat>${t('Seating')}</button><button type="button" role="tab" data-gl-tab="inv" data-gl-inv>${t('Invitations')}</button><button type="button" role="tab" data-gl-tab="arr" data-gl-arr>${t('Arrivals')}</button></div>
         <button type="button" class="btn sm primary" data-gl-add>${t('Add guests')}</button></div>
       <div data-gl-body></div>
       <div class="gl-bar" data-gl-bar hidden></div>
     </section>`);
-  glPaint(); glWire(); stWire(); { const m = $('.gl'); if (m && !m._iw) { m._iw = true; ivWire(m); } }
+  glPaint(); glWire(); stWire(); { const m = $('.gl'); if (m && !m._iw) { m._iw = true; ivWire(m); arWire(m); } }
 }
 function glCSV(rows, name) {
   const blob = new Blob(['﻿' + rows.map(l => l.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -10012,7 +10021,7 @@ function glWire() {
   const m = $('.gl'); if (!m || m._w) return; m._w = true;
   m.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset; const c = await sb();
-    if (d.glTab) { G.tab = d.glTab; glPaint(); if (G.tab === 'seat') { stPoll(); stSync(); } try { history.replaceState(history.state, '', '#guests/' + G.eid + (G.tab === 'seat' ? '&t=seat' : G.tab === 'inv' ? '&t=inv' : '')); } catch { /* fine */ } return; }
+    if (d.glTab) { G.tab = d.glTab; glPaint(); if (G.tab === 'seat') { stPoll(); stSync(); } try { history.replaceState(history.state, '', '#guests/' + G.eid + (['seat', 'inv', 'arr'].includes(G.tab) ? '&t=' + G.tab : '')); } catch { /* fine */ } return; }
     if (d.glF) { G.filter = d.glF; glPaint(); return; }
     if (d.glGrp != null) { G.grp = d.glGrp; glPaint(); return; }
     if (d.glCopy) { const h = G.hs.find(x => x.id === d.glCopy); if (h) copy(glLink(h)); return; }
@@ -11162,5 +11171,179 @@ window.addEventListener('hashchange', route);
 rtWatch();
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { iv: { ivRender, ivTexts, ivDefault, ivDate, ivPrepUpload, ivOpenBuilder, ivUploadDlg, ivTabHTML, ivLangs, ivTrailStep, IV_TPLS, ivPal }, lists: { B: () => B, G: () => G, setG: (g) => { G = g; }, ivBlank, buildForm, glMount, glPaint, conflictDlg, partName, glImportDlg, glEditDlg, stPickDlg, stEditDlg, stPrint, t, stLayout, stPlace, stAdd10, stFolded, FT: [FT_W, FT_H] }, cfgMerge3, cfgTakeTheirs, glParse, glGroupRows, joinFirst, rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtModel, rtSer, rtRead, rtEdToggle, rtSelect, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+// ================= arrivals board (schema-arrivals.sql) =================
+// Guest list → Arrivals: who lands / leaves when, where and on what, and where they stay — per household. Two sources:
+// the household's own RSVP travel fields (guest_travel) and, only for guests who switched on "Share my arrival with the
+// organizers", their own My trip flights / trains / hotel (arrivals_trips). RSVP answers win; bookings fill the blanks.
+const apName = (c) => { if (!window.AIRPORTS) return ''; if (!apName.m) apName.m = new Map(window.AIRPORTS.map(a => [a[0], a[2] || a[1]])); return apName.m.get(String(c || '').toUpperCase()) || ''; };
+const AR_MODES = ['flight', 'train', 'bus', 'ferry', 'car'];
+const arCode = (s) => String(s || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+const arKey = (s) => { const v = arCode(s); const m = v.toUpperCase().match(/\b[A-Z]{3}\b/); return m && apZone(m[0]) ? m[0] : v.toUpperCase(); }; // "lis" / "Lisbon LIS" → LIS
+const arFlight = (no) => { const c = String(no || '').replace(/\s+/g, '').toUpperCase(); return /^[A-Z0-9]{2}\d{1,4}$/.test(c) && AIRLINES[c.slice(0, 2)] ? c : ''; };
+const arStatusUrl = (no) => { const c = arFlight(no); return c ? `https://www.flightaware.com/live/flight/${c}` : ''; };
+const arDay = (s) => isoDay(String(s || '').slice(0, 10));
+const arHM = (s) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s || '') ? s.slice(11, 16) : '';
+// a guest's shared bookings → { arr, dep, stay } around the event dates
+function arFromTrips(items, cfg) {
+  const S = arDay(cfg.start) || '', E = arDay(cfg.end) || S; const tr = (items || []).filter(x => x && AR_MODES.includes(x.kind) && arDay(x.start));
+  const landDay = (x) => arDay(x.end) || arDay(x.start); const place = (x, end) => { if (x.kind === 'flight') { const [a, b] = flightAirports(x); return end ? b || arCode(x.to) : a || arCode(x.from); } return arCode(end ? x.to : x.from); };
+  const no = (x) => x.kind === 'flight' ? String(x.flight || '').toUpperCase() : arCode(x.name).slice(0, 24);
+  let ins = S ? tr.filter(x => landDay(x) <= S && daysBetween(landDay(x), S) <= 21) : []; if (!ins.length && S) ins = tr.filter(x => landDay(x) <= E && landDay(x) >= S);
+  const a = ins.sort((p, q) => (landDay(p) + arHM(p.end)).localeCompare(landDay(q) + arHM(q.end))).pop();
+  const outs = tr.filter(x => x !== a && arDay(x.start) >= (E || S) && (!E || daysBetween(E, arDay(x.start)) <= 21)).sort((p, q) => String(p.start).localeCompare(String(q.start)));
+  const d = outs[0];
+  const h = (items || []).find(x => x && (x.kind === 'hotel' || x.kind === 'stay') && (!S || ((arDay(x.start) || S) <= E && (arDay(x.end) || arDay(x.start) || E) >= S)));
+  return { arr: a ? { date: landDay(a), time: arDay(a.end) ? arHM(a.end) : '', place: place(a, true), no: no(a), mode: a.kind } : null,
+    dep: d ? { date: arDay(d.start), time: arHM(d.start), place: place(d, false), no: no(d), mode: d.kind } : null, stay: h ? arCode(h.name) : '' };
+}
+const arLeg = (r, k) => r && (r[k + '_date'] || r[k + '_time'] || r[k + '_place'] || r[k + '_no']) ? { date: r[k + '_date'] || '', time: r[k + '_time'] || '', place: arCode(r[k + '_place']), no: String(r[k + '_no'] || '').trim(), mode: arFlight(r[k + '_no']) ? 'flight' : '' } : null;
+const arFill = (a, b) => !a ? b : !b ? a : { date: a.date || b.date, time: a.time || (a.date === b.date ? b.time : ''), place: a.place || b.place, no: a.no || b.no, mode: a.mode || b.mode };
+// one row per household (and one per sharing guest who isn't on the guest list)
+function arRows() {
+  const tr = new Map((G.tr || []).map(r => [r.household_id, r])); const trips = G.trips || []; const out = [];
+  G.hs.forEach(h => {
+    const r = tr.get(h.id); const sh = trips.filter(x => x.household_id === h.id).map(x => arFromTrips(x.items, G.cfg));
+    const ps = glPeople(h.id); const coming = ps.filter(p => (G.rep.get(p.id) || {}).attending); const n = coming.length || ps.filter(p => !G.rep.has(p.id) || G.rep.get(p.id).attending).length;
+    let arr = arLeg(r, 'arr'), dep = arLeg(r, 'dep'), stay = arCode(r && r.stay);
+    sh.forEach(s => { arr = arFill(arr, s.arr); dep = arFill(dep, s.dep); stay = stay || s.stay; });
+    out.push({ id: h.id, h, name: h.name, n, arr, dep, stay, src: [r ? 'rsvp' : '', sh.length ? 'trip' : ''].filter(Boolean), declined: ps.length > 0 && ps.every(p => G.rep.has(p.id) && !G.rep.get(p.id).attending) });
+  });
+  trips.filter(x => !x.household_id || !G.hs.some(h => h.id === x.household_id)).forEach(x => { const s = arFromTrips(x.items, G.cfg); out.push({ id: 'u:' + x.user_id, h: null, name: x.name || t('Guest'), n: 1, ...s, src: ['trip'], declined: false }); });
+  return out;
+}
+const arFlapHTML = (p) => !p ? '<b class="ar-long">?</b>' : /^[A-Z0-9]{2,4}$/.test(p) ? `<b aria-label="${esc(p)}">${[...p].map(c => `<i class="ar-flap" aria-hidden="true">${esc(c)}</i>`).join('')}</b>` : `<b class="ar-long">${esc(p)}</b>`;
+const arHas = (r) => !!(r.arr || r.dep || r.stay);
+const arLegOf = (r) => G.ar.dir === 'dep' ? r.dep : r.arr;
+function arPass(r, skip) {
+  if (r.declined) return false; const f = G.ar;
+  if (f.none) return !arHas(r);
+  const L = arLegOf(r); if (skip !== 'place' && f.place && (!L || arKey(L.place) !== f.place)) return false;
+  if (skip !== 'day' && f.day && (!L || L.date !== f.day)) return false;
+  return true;
+}
+const arWhen = (L) => [L.date ? fmt(L.date, { weekday: 'short', month: 'short', day: 'numeric' }) : '', L.time ? fmtTime(L.time) : ''].filter(Boolean).join(' · ');
+function arNoHTML(L) {
+  if (!L || !L.no) return ''; const u = arStatusUrl(L.no);
+  return u ? `<a class="ar-no" href="${esc(u)}" target="_blank" rel="noopener" title="${esc(t('Flight status'))}">${esc(arFlight(L.no).replace(/^(..)/, '$1 '))}<span aria-hidden="true">↗</span></a>` : `<span class="ar-no">${esc(L.no)}</span>`;
+}
+const arSrcHTML = (r) => r.src.includes('trip') ? `<span class="ar-src" title="${esc(t('From their own bookings (they share their arrival with you)'))}">${t('Shared trip')}</span>` : '';
+const arPeople = (n) => t(n === 1 ? '1 guest' : '{n} guests', { n });
+function arTagHTML(r, L) {
+  return `<li class="ar-tag"><span class="ar-t">${L.time ? esc(fmtTime(L.time)) : '—'}</span><span class="ar-who"><b>${esc(r.name)}</b><small>${esc(arPeople(r.n))}${r.stay ? ' · ' + esc(r.stay) : ''}</small></span>${arNoHTML(L)}${arSrcHTML(r)}${r.h ? `<button type="button" class="link ar-ed" data-ar-edit="${esc(r.h.id)}" aria-label="${esc(t('Edit travel for {n}', { n: r.name }))}">${t('Edit')}</button>` : ''}</li>`;
+}
+function arTimelineHTML(rows) {
+  const dated = rows.filter(r => arLegOf(r) && arLegOf(r).date); const und = rows.filter(r => !arLegOf(r) || !arLegOf(r).date);
+  const days = [...new Set(dated.map(r => arLegOf(r).date))].sort();
+  const day = (d) => { const rs = dated.filter(r => arLegOf(r).date === d); const places = [...new Set(rs.map(r => arKey(arLegOf(r).place) || ''))].sort((a, b) => !a ? 1 : !b ? -1 : a.localeCompare(b));
+    return `<section class="ar-day"><h3 class="ar-dh"><span>${esc(fmt(d, { weekday: 'long', month: 'long', day: 'numeric' }))}</span><small>${esc(arPeople(rs.reduce((n, r) => n + r.n, 0)))}</small></h3>
+      ${places.map(p => { const ps = rs.filter(r => (arKey(arLegOf(r).place) || '') === p).sort((a, b) => (arLegOf(a).time || '99').localeCompare(arLegOf(b).time || '99'));
+        const hours = [...new Set(ps.map(r => (arLegOf(r).time || '').slice(0, 2)))];
+        return `<div class="ar-port"><div class="ar-code">${arFlapHTML(p)}<small>${esc(p ? (apName(p) || '') : t('Place not given'))}</small><em>${esc(arPeople(ps.reduce((n, r) => n + r.n, 0)))}</em></div>
+          <ol class="ar-hours">${hours.map(hh => `<li><span class="ar-h">${hh ? esc(fmtTime(hh + ':00')) : t('Time not given')}</span><ul class="ar-tags">${ps.filter(r => (arLegOf(r).time || '').slice(0, 2) === hh).map(r => arTagHTML(r, arLegOf(r))).join('')}</ul></li>`).join('')}</ol></div>`; }).join('')}
+    </section>`; };
+  return (days.map(day).join('') || `<p class="muted gl-empty">${t('Nobody has added travel details yet.')}</p>`)
+    + (und.length && !G.ar.place && !G.ar.day ? `<section class="ar-day ar-und"><h3 class="ar-dh"><span>${t(G.ar.dir === 'dep' ? 'No departure yet' : 'No arrival yet')}</span><small>${esc(arPeople(und.reduce((n, r) => n + r.n, 0)))}</small></h3><ul class="ar-plain">${und.map(r => `<li><b>${esc(r.name)}</b><span class="muted small">${esc(arPeople(r.n))}${r.stay ? ' · ' + esc(r.stay) : ''}</span>${r.h ? `<button type="button" class="link" data-ar-edit="${esc(r.h.id)}">${t('Add travel')}</button>` : ''}</li>`).join('')}</ul></section>` : '');
+}
+function arListHTML(rows) {
+  const leg = (L) => L ? `<span class="ar-when">${esc(arWhen(L)) || '—'}</span><span class="ar-pl">${esc(L.place || '')}</span>${arNoHTML(L)}` : '<span class="muted">—</span>';
+  return rows.length ? `<div class="ar-tbl" role="table" aria-label="${esc(t('Arrivals'))}"><div class="ar-tr ar-th" role="row"><span role="columnheader">${t('Household')}</span><span role="columnheader">${t('Arriving')}</span><span role="columnheader">${t('Departing')}</span><span role="columnheader">${t('Where they stay')}</span><span role="columnheader"></span></div>
+    ${rows.map(r => `<div class="ar-tr" role="row"><span role="cell" class="ar-hh"><b>${esc(r.name)}</b><small>${esc(arPeople(r.n))}</small>${arSrcHTML(r)}</span><span role="cell" class="ar-leg" data-l="${esc(t('Arriving'))}">${leg(r.arr)}</span><span role="cell" class="ar-leg" data-l="${esc(t('Departing'))}">${leg(r.dep)}</span><span role="cell" class="ar-st" data-l="${esc(t('Where they stay'))}">${esc(r.stay) || '<span class="muted">—</span>'}</span><span role="cell">${r.h ? `<button type="button" class="btn sm ghost" data-ar-edit="${esc(r.h.id)}">${t('Edit')}</button>` : ''}</span></div>`).join('')}</div>` : `<p class="muted gl-empty">${t('No households match.')}</p>`;
+}
+function arHTML() {
+  if (!G.ar) G.ar = { view: 'time', dir: 'arr', place: '', day: '', none: false };
+  const all = arRows().filter(r => !r.declined); const f = G.ar;
+  const legs = all.map(arLegOf).filter(Boolean);
+  const places = [...new Set(legs.map(L => arKey(L.place)).filter(Boolean))].sort(); const days = [...new Set(legs.map(L => L.date).filter(Boolean))].sort();
+  const cnt = (fn) => all.filter(fn).reduce((n, r) => n + r.n, 0);
+  const none = all.filter(r => !arHas(r)).length; const rows = all.filter(r => arPass(r));
+  const shared = (G.trips || []).length;
+  return `<div class="ar">
+    <div class="ar-bar"><div class="seg2" role="tablist" aria-label="${esc(t('Show'))}">${[['arr', 'Arrivals'], ['dep', 'Departures']].map(([k, l]) => `<button type="button" role="tab" data-ar-dir="${k}" class="${f.dir === k ? 'on' : ''}" aria-selected="${f.dir === k}">${t(l)}</button>`).join('')}</div>
+      <div class="seg2" role="tablist" aria-label="${esc(t('View'))}">${[['time', 'Timeline'], ['list', 'List']].map(([k, l]) => `<button type="button" role="tab" data-ar-view="${k}" class="${f.view === k ? 'on' : ''}" aria-selected="${f.view === k}">${t(l)}</button>`).join('')}</div>
+      <button type="button" class="btn sm" data-ar-csv>${t('Download CSV')}</button></div>
+    <div class="chips ar-f" role="group" aria-label="${esc(t('Where'))}"><button type="button" class="chip ${!f.place && !f.none ? 'on' : ''}" data-ar-place="">${t('All places')}</button>${places.map(p => `<button type="button" class="chip ar-chip ${f.place === p ? 'on' : ''}" data-ar-place="${esc(p)}">${esc(p)} <span>${cnt(r => arPass(r, 'place') && arLegOf(r) && arKey(arLegOf(r).place) === p)}</span></button>`).join('')}${none ? `<button type="button" class="chip ${f.none ? 'on' : ''}" data-ar-none>${t('No info yet')} <span>${none}</span></button>` : ''}</div>
+    ${days.length > 1 ? `<div class="chips ar-f" role="group" aria-label="${esc(t('When'))}"><button type="button" class="chip ${!f.day ? 'on' : ''}" data-ar-day="">${t('All days')}</button>${days.map(d => `<button type="button" class="chip ${f.day === d ? 'on' : ''}" data-ar-day="${d}">${esc(fmt(d, { weekday: 'short', month: 'short', day: 'numeric' }))} <span>${cnt(r => arPass(r, 'day') && arLegOf(r) && arLegOf(r).date === d)}</span></button>`).join('')}</div>` : ''}
+    <p class="muted small ar-note">${shared ? esc(t(shared === 1 ? '1 guest shares their own trip with you.' : '{n} guests share their own trips with you.', { n: shared })) + ' ' : ''}${t('Guests add travel on their RSVP, or share it from My trip.')}</p>
+    ${f.none ? `<ul class="ar-plain">${rows.map(r => `<li><b>${esc(r.name)}</b><span class="muted small">${esc(arPeople(r.n))}</span>${r.h ? `<button type="button" class="link" data-ar-edit="${esc(r.h.id)}">${t('Add travel')}</button>` : ''}</li>`).join('') || `<li class="muted">${t('Everyone has added something.')}</li>`}</ul>` : f.view === 'list' ? arListHTML(rows) : arTimelineHTML(rows)}
+  </div>`;
+}
+function arCSV() {
+  const rows = [['Household', 'Guests', 'Arriving date', 'Arriving time', 'Arriving at', 'Arriving flight or train', 'Departing date', 'Departing time', 'Departing from', 'Departing flight or train', 'Where they stay', 'Source'].map(x => t(x))];
+  arRows().filter(r => !r.declined).forEach(r => { const a = r.arr || {}, d = r.dep || {}; rows.push([r.name, r.n, a.date || '', a.time || '', a.place || '', a.no || '', d.date || '', d.time || '', d.place || '', d.no || '', r.stay || '', r.src.map(s => t(s === 'trip' ? 'Shared trip' : 'RSVP')).join(' + ')]); });
+  glCSV(rows, t('arrivals'));
+}
+// the travel fields (the household's RSVP and the organizers' edit dialog share them)
+function arFieldsHTML(v, pre) {
+  v = v || {}; const f = (k, label, attrs) => `<label class="ar-in"><span>${esc(t(label))}</span><input data-${pre}="${k}" value="${esc(v[k] || '')}" ${attrs}></label>`;
+  const leg = (k, title) => `<fieldset class="ar-leg-in"><legend>${t(title)}</legend><div class="ar-grid">${f(k + '_date', 'Date', 'type="date"')}${f(k + '_time', 'Time', 'type="time"')}${f(k + '_place', 'Airport or station', `maxlength="80" autocomplete="off" placeholder="${esc(t('e.g. LIS'))}"`)}${f(k + '_no', 'Flight or train number', `maxlength="24" autocomplete="off" placeholder="${esc(t('e.g. TP 1350'))}"`)}</div></fieldset>`;
+  return `${leg('arr', 'Arriving')}${leg('dep', 'Departing')}${f('stay', pre === 'hht' ? 'Where you’re staying' : 'Where they stay', `maxlength="160" placeholder="${esc(t('Hotel or address'))}"`)}`;
+}
+const AR_KEYS = ['arr_date', 'arr_time', 'arr_place', 'arr_no', 'dep_date', 'dep_time', 'dep_place', 'dep_no', 'stay'];
+const arRead = (root, pre) => Object.fromEntries(AR_KEYS.map(k => [k, ((root.querySelector(`[data-${pre}="${k}"]`) || {}).value || '').trim()]));
+function arEditDlg(hid) {
+  const h = G.hs.find(x => x.id === hid); if (!h) return; const r = (G.tr || []).find(x => x.household_id === hid) || {};
+  const d = glDlg(`<h2>${esc(t('Travel for {n}', { n: h.name }))}</h2>${arFieldsHTML(r, 'are')}
+    <p class="muted small">${esc(r.updated_by === 'guest' ? t('Added by the guest on their RSVP.') : t('Guests see and can change this on their RSVP.'))}</p>
+    <div class="btns cf-b"><button type="button" class="btn ghost" data-are-x>${t('Cancel')}</button><button type="button" class="btn primary" data-are-ok>${t('Save')}</button></div>`);
+  d.onclick = async (e) => {
+    if (e.target === d || e.target.closest('[data-are-x]')) { d.close(); return; }
+    if (!e.target.closest('[data-are-ok]')) return;
+    const v = arRead(d, 'are'); const c = await sb(); const row = Object.fromEntries(AR_KEYS.map(k => [k, v[k] || null]));
+    const empty = AR_KEYS.every(k => !v[k]);
+    const had = (G.tr || []).some(x => x.household_id === hid);
+    const { error } = empty ? await c.from('guest_travel').delete().eq('household_id', hid) : had ? await c.from('guest_travel').update(row).eq('household_id', hid) : await c.from('guest_travel').insert({ household_id: hid, event_id: G.eid, ...row });
+    if (error) { toast(error.message); return; }
+    G.tr = (G.tr || []).filter(x => x.household_id !== hid).concat(empty ? [] : [{ household_id: hid, event_id: G.eid, ...row, updated_by: 'planner' }]);
+    d.close(); toast(t('Saved')); glPaint();
+  };
+}
+async function arLoad() {
+  const c = await sb(); const [tr, trips] = await Promise.all([c.from('guest_travel').select('*').eq('event_id', G.eid).limit(2000), c.rpc('arrivals_trips', { eid: G.eid })]);
+  if (tr.error) throw tr.error; G.tr = tr.data || []; G.trips = trips.error ? [] : (trips.data || []);
+}
+function arWire(m) {
+  m.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b || !G || G.tab !== 'arr') return; const d = b.dataset;
+    if (d.arDir) { G.ar.dir = d.arDir; G.ar.place = ''; G.ar.day = ''; glPaint(); return; }
+    if (d.arView) { G.ar.view = d.arView; glPaint(); return; }
+    if (d.arPlace != null) { G.ar.place = d.arPlace; G.ar.none = false; glPaint(); return; }
+    if (d.arNone != null) { G.ar.none = !G.ar.none; G.ar.place = ''; G.ar.day = ''; glPaint(); return; }
+    if (d.arDay != null) { G.ar.day = d.arDay; G.ar.none = false; glPaint(); return; }
+    if (d.arCsv != null) { arCSV(); return; }
+    if (d.arEdit) { arEditDlg(d.arEdit); return; }
+  });
+}
+// ---- the guest's side: travel on the household RSVP, and "Share my arrival with the organizers" in My trip ----
+const hhTravelHas = (v) => !!v && AR_KEYS.some(k => v[k]);
+function hhTravelHTML(H) {
+  const v = H.travel || {};
+  return `<details class="hh-travel"${hhTravelHas(v) ? ' open' : ''}><summary><b>${t('Arriving and departing')}</b><span class="muted small">${t('Optional · helps the organizers plan pickups')}</span></summary>${arFieldsHTML(v, 'hht')}</details>`;
+}
+function hhTravelSum(H) {
+  const v = H.travel; if (!hhTravelHas(v)) return `<p class="hh-trs muted small">${t('Add when you arrive and leave so the organizers can plan pickups.')} <button type="button" class="link" data-hh="edit">${t('Add travel')}</button></p>`;
+  const leg = (k, l) => { const L = arLeg(v, k); return L ? `<li><small>${t(l)}</small><span>${esc([arWhen(L), L.place, L.no].filter(Boolean).join(' · '))}</span></li>` : ''; };
+  return `<ul class="hh-trs">${leg('arr', 'Arriving')}${leg('dep', 'Departing')}${v.stay ? `<li><small>${t('Where you’re staying')}</small><span>${esc(v.stay)}</span></li>` : ''}</ul>`;
+}
+async function arShareMount(cfg, hosted) {
+  const slot = document.querySelector('[data-slot="arr-share"]'); if (!slot || !SB || !hosted || !hosted.slug) return;
+  const key = 'arrShareGo:' + hosted.id; let on = false; let user = null;
+  try { user = LS.get('signedIn') ? await sbUser() : null; } catch { user = null; }
+  if (user) {
+    try { const c = await sb(); const { data, error } = await c.from('arrival_shares').select('event_id').eq('event_id', hosted.id); if (tableMissing(error)) return; on = !!(data && data.length); } catch { return; }
+    if (LS.get(key) && !on) { LS.del(key); try { on = !!(await hhRpc('arrival_share', { s: hosted.slug, tok: LS.get('hh:' + hosted.id) || null, share: true })); if (on) toast(t('The organizers can see your arrival now')); } catch { /* below */ } }
+  }
+  const paint = () => { slot.innerHTML = `<div class="arr-share"><label class="tool"><input type="checkbox" data-arr-share ${on ? 'checked' : ''}><span class="sw" aria-hidden="true"></span><b>${t('Share my arrival with the organizers')}</b></label>
+    <p class="muted small">${t('They see your flights or trains to and from the event and your hotel’s name, from Your bookings — not notes, prices or confirmation numbers. Turn it off any time.')}</p></div>`; };
+  paint();
+  slot.onchange = async (e) => {
+    const i = e.target.closest('[data-arr-share]'); if (!i) return; const want = i.checked;
+    if (!user) { i.checked = false; LS.set(key, 1); signInDlg(t('Sign in to share your arrival'), () => LS.set(key, 1)); return; }
+    i.disabled = true;
+    try { on = !!(await hhRpc('arrival_share', { s: hosted.slug, tok: LS.get('hh:' + hosted.id) || null, share: want })); syncPush(cfg); toast(on ? t('The organizers can see your arrival now') : t('Your arrival is private again')); }
+    catch (err) { toast(pubWhy(err)); }
+    paint();
+  };
+}
+
+window.__ep = { ar: { arRows, arFromTrips, arEditDlg, arCSV, hhTravelHTML, hhTravelSum, arShareMount }, iv: { ivRender, ivTexts, ivDefault, ivDate, ivPrepUpload, ivOpenBuilder, ivUploadDlg, ivTabHTML, ivLangs, ivTrailStep, IV_TPLS, ivPal }, lists: { B: () => B, G: () => G, setG: (g) => { G = g; }, ivBlank, buildForm, glMount, glPaint, conflictDlg, partName, glImportDlg, glEditDlg, stPickDlg, stEditDlg, stPrint, t, stLayout, stPlace, stAdd10, stFolded, FT: [FT_W, FT_H] }, cfgMerge3, cfgTakeTheirs, glParse, glGroupRows, joinFirst, rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtModel, rtSer, rtRead, rtEdToggle, rtSelect, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();
