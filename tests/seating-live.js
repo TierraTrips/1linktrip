@@ -131,9 +131,9 @@ const HH = [ // household, group, people [name, age], replies (y / n / -)
     ok(await o.page.evaluate((id) => document.activeElement && document.activeElement.dataset.stP === id, PID['Jae Kim']), 'keyboard: focus stays on Jae after the move');
     await o.page.keyboard.press('Delete'); ok(await until(async () => (await seatOf('Jae Kim')) === null), 'keyboard: Delete unseats Jae');
     // household "Seat all at…" (button path)
-    await o.page.click(`[data-st-hpick]:near(:text("The Abeles"))`).catch(async () => { await o.page.click(`.st-hh:has-text("The Abeles") [data-st-hpick]`); });
+    await o.page.click(`.st-hh:has-text("The Abeles") [data-st-hpick]`);
     await o.page.waitForSelector('#gldlg[open] .st-pk'); await o.page.click(`#gldlg [data-st-to="${TID['Table 4']}"]`);
-    ok(await until(async () => +(await sql(`select count(*) n from public.guest_people where table_id = '${TID['Table 4']}'`))[0].n === 3), 'Seat all at…: the Abeles (incl. the infant) → Table 4');
+    ok(await until(async () => (await sql(`select string_agg(name, ',' order by name) n from public.guest_people where table_id = '${TID['Table 4']}'`))[0].n === 'Ida Abele,Max Abele,Zoe Abele'), 'Seat all at…: the Abeles (incl. the infant) → Table 4');
     // capacity: Head table down to 1 seat with Ana on it, then a second guest → over
     await o.page.click(`[data-st-edit="${TID['Head table']}"]`); await o.page.waitForSelector('#ste-cap'); await o.page.fill('#ste-cap', '1'); await o.page.click('[data-ste-save]'); await o.page.waitForTimeout(800);
     await mouseDrag(o.page, `.st-un [data-st-p="${PID['Min Kim']}"]`, `[data-st-t="${TID['Head table']}"]`, async () => { ok(await o.page.$eval(`[data-st-t="${TID['Head table']}"]`, e => e.classList.contains('st-full')), 'dragging onto a full table shows it red'); });
