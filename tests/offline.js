@@ -54,8 +54,8 @@ const PDF = Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(2000, 32)]);
   const k = await page.evaluate(() => Object.keys(localStorage).find(x => x.startsWith('ep:modes:')) || '');
   await page.click('[data-tab-go="mytrip"]'); await page.waitForSelector('[data-offline]');
   ok(await page.$eval('[data-offline]', i => i.checked), 'Save for offline is on by default');
-  await page.waitForFunction(() => /Saved on this device · 1 files/.test(document.querySelector('[data-offline-st]').textContent), null, { timeout: 10000 }).catch(() => {});
-  ok(/Saved on this device · 1 files/.test(await page.textContent('[data-offline-st]')), `status: ${await page.textContent('[data-offline-st]')}`);
+  await page.waitForFunction(() => /Saved on this device · 1 file\b/.test(document.querySelector('[data-offline-st]').textContent), null, { timeout: 10000 }).catch(() => {});
+  ok(/Saved on this device · 1 file\b/.test(await page.textContent('[data-offline-st]')), `status: ${await page.textContent('[data-offline-st]')}`);
   await page.click('#sec-shop summary'); await page.fill('[data-shop-text]', 'Matcha'); await page.click('[data-shop-add]');
   await page.evaluate(() => { const key = Object.keys(localStorage).find(x => x.startsWith('ep:shop:')).replace('ep:shop:', ''); localStorage.setItem('ep:plan:' + key, JSON.stringify([{ id: 's1', src: 'osm', ref: 'n1', name: 'Tsukiji Outer Market', lat: 35.6655, lon: 139.7707, addr: '4 Chome Tsukiji', type: 'food', day: '' }])); });
 
