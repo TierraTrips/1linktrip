@@ -1,0 +1,66 @@
+<!-- ep-name-page: written by .github/names.mjs from index.html. Do not edit. -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Names test party mwwtbgk1 · 1LinkTrip</title>
+<meta name="description" content="A throwaway page for testing links — Feb 14, 2027 · Brooklyn Bowl">
+<meta property="og:title" content="Names test party mwwtbgk1">
+<meta property="og:description" content="A throwaway page for testing links — Feb 14, 2027 · Brooklyn Bowl">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="1LinkTrip">
+<meta property="og:url" content="https://1linktrip.com/ep-test-mwwtbgk1">
+<meta property="og:image" content="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Torii_path_with_lantern_at_Fushimi_Inari_Taisha_Shrine%2C_Kyoto%2C_Japan.jpg/1280px-Torii_path_with_lantern_at_Fushimi_Inari_Taisha_Shrine%2C_Kyoto%2C_Japan.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Names test party mwwtbgk1">
+<meta name="twitter:description" content="A throwaway page for testing links — Feb 14, 2027 · Brooklyn Bowl">
+<meta name="twitter:image" content="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Torii_path_with_lantern_at_Fushimi_Inari_Taisha_Shrine%2C_Kyoto%2C_Japan.jpg/1280px-Torii_path_with_lantern_at_Fushimi_Inari_Taisha_Shrine%2C_Kyoto%2C_Japan.jpg">
+<link rel="canonical" href="https://1linktrip.com/ep-test-mwwtbgk1">
+<meta name="ep-page" content="names-e2e-mwwtbgk1" data-name="ep-test2-mwwtbgk1" data-current="ep-test-mwwtbgk1">
+<meta name="theme-color" content="#EDF4F1">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="1LinkTrip">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="icon-192.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=Public+Sans:wght@400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="home.css">
+</head>
+<body>
+<div id="app" aria-live="polite"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="airports.js"></script>
+<script src="airlines.js"></script>
+<script src="examples.js"></script>
+<script src="osm-snapshots.js"></script>
+<script src="qrcode.js"></script>
+<script src="i18n.js"></script>
+<script src="supabase-config.js"></script>
+<script src="google-config.js"></script>
+<script src="app.js"></script>
+<script>
+// Service worker: offline shell. When a new version takes over an open page, offer a one-tap reload.
+if ('serviceWorker' in navigator) addEventListener('load', () => {
+  const had = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!had || document.querySelector('.upd')) return;
+    const b = document.createElement('button'); b.className = 'upd'; b.type = 'button'; b.textContent = 'Updated · tap to reload';
+    b.onclick = () => location.reload(); document.body.appendChild(b);
+  });
+  navigator.serviceWorker.register('sw.js', { scope: './', updateViaCache: 'none' }).then(reg => {
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+  }).catch(() => {});
+});
+</script>
+</body>
+</html>
