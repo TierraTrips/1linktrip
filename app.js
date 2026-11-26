@@ -1379,39 +1379,39 @@ async function shareEvent(cfg, opts) {
   copy(url);
 }
 async function copy(text) {
-  try { await navigator.clipboard.writeText(text); toast('Link copied'); }
-  catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); toast('Link copied'); } catch { toast('Copy failed. Select the link and copy it.'); } ta.remove(); }
+  try { await navigator.clipboard.writeText(text); toast(t('Link copied')); }
+  catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); toast(t('Link copied')); } catch { toast(t('Copy failed. Select the link and copy it.')); } ta.remove(); }
 }
 
 // ---------- landing ----------
 function renderLanding() {
-  LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
-  document.title = '1LinkTrip — one link for your guests’ whole trip';
+  LANG = uiLang(); document.documentElement.lang = LANG; document.documentElement.dir = 'ltr';
+  document.title = '1LinkTrip — ' + t('one link for your guests’ whole trip');
   const draft = LS.get('draft');
   $('#app').innerHTML = `
   <main class="land home">
-    <header class="land-top"><a class="brand" href="#">${BRAND}</a><span class="land-nav">${LS.get('signedIn') ? '<a class="link" href="#mine">My pages</a>' : '<a class="link" href="#mine">Sign in</a>'}<button type="button" class="btn sm" id="share-app" aria-label="Share"><svg class="share-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 15V3.5M7.5 8 12 3.5 16.5 8"/><path d="M8 11H6.5A1.5 1.5 0 0 0 5 12.5v7A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-7a1.5 1.5 0 0 0-1.5-1.5H16"/></svg><span class="share-lbl">Share</span></button><a class="btn primary top-cta" href="#setup" aria-hidden="true" tabindex="-1">Create a page</a></span></header>
+    <header class="land-top"><a class="brand" href="#">${BRAND}</a><span class="land-nav"><a class="link" href="#mine">${t(LS.get('signedIn') ? 'My pages' : 'Sign in')}</a><button type="button" class="btn sm" id="share-app" aria-label="${t('Share')}"><svg class="share-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 15V3.5M7.5 8 12 3.5 16.5 8"/><path d="M8 11H6.5A1.5 1.5 0 0 0 5 12.5v7A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-7a1.5 1.5 0 0 0-1.5-1.5H16"/></svg><span class="share-lbl">${t('Share')}</span></button><a class="btn primary top-cta" href="#setup" aria-hidden="true" tabindex="-1">${t('Create a page')}</a></span></header>
     <section class="land-hero">
       <div class="land-copy">
-        <h1>One link for your guests’ whole trip.</h1>
-        <p class="lede">Add your event and venue. Guests get your schedule, directions and places to stay.</p>
-        <div class="btns"><a class="btn primary big" id="hero-cta" href="#setup">Create a page</a></div>
-        <p class="muted small">Free, no account needed. <a class="link" href="#examples">See examples</a></p>
+        <h1>${t('One link for your guests’ whole trip.')}</h1>
+        <p class="lede">${t('Add your event and venue. Guests get your schedule, directions and places to stay.')}</p>
+        <div class="btns"><a class="btn primary big" id="hero-cta" href="#setup">${t('Create a page')}</a></div>
+        <p class="muted small">${t('Free, no account needed.')} <a class="link" href="#examples">${t('See examples')}</a></p>
       </div>
     </section>
     ${myPagesHTML()}
     <section class="land-what">
-      <h2>What your guests get</h2>
+      <h2>${t('What your guests get')}</h2>
       <dl>
-        <div><dt>Weather</dt><dd>The forecast for your dates.</dd></div>
-        <div><dt>Map</dt><dd>The venue and what’s around it.</dd></div>
-        <div><dt>Flights</dt><dd>The nearest airports and fares.</dd></div>
-        <div><dt>Getting around</dt><dd>Directions, transit, rideshare and rental cars.</dd></div>
-        <div><dt>Hotels</dt><dd>Places to stay near the venue.</dd></div>
-        <div><dt>Food</dt><dd>Restaurants and bars in the area.</dd></div>
-        <div><dt>Things to do</dt><dd>Tours, sights and activities.</dd></div>
-        <div><dt>Event details</dt><dd>RSVP, dress code, packet pickup and more.</dd></div>
-        <div><dt>Full itinerary</dt><dd>Their bookings and your schedule in one place.</dd></div>
+        <div><dt>${t('Weather')}</dt><dd>${t('The forecast for your dates.')}</dd></div>
+        <div><dt>${t('Map')}</dt><dd>${t('The venue and what’s around it.')}</dd></div>
+        <div><dt>${t('Flights')}</dt><dd>${t('The nearest airports and fares.')}</dd></div>
+        <div><dt>${t('Getting around')}</dt><dd>${t('Directions, transit, rideshare and rental cars.')}</dd></div>
+        <div><dt>${t('Hotels')}</dt><dd>${t('Places to stay near the venue.')}</dd></div>
+        <div><dt>${t('Food')}</dt><dd>${t('Restaurants and bars in the area.')}</dd></div>
+        <div><dt>${t('Things to do')}</dt><dd>${t('Tours, sights and activities.')}</dd></div>
+        <div><dt>${t('Event details')}</dt><dd>${t('RSVP, dress code, packet pickup and more.')}</dd></div>
+        <div><dt>${t('Full itinerary')}</dt><dd>${t('Their bookings and your schedule in one place.')}</dd></div>
       </dl>
     </section>
   </main>`;
@@ -1438,14 +1438,14 @@ function wireHomeHeader() {
 // ---------- viewer ----------
 // ---------- builder ----------
 async function pinPlace(k, btn) {
-  const c = B.cfg; const x = c.x[c.type] || {}; const p = x[k]; if (!p || !p.q || p.q.trim().length < 3) { toast('Type a place first'); return; }
-  btn.disabled = true; btn.textContent = 'Finding…';
+  const c = B.cfg; const x = c.x[c.type] || {}; const p = x[k]; if (!p || !p.q || p.q.trim().length < 3) { toast(t('Type a place first')); return; }
+  btn.disabled = true; btn.textContent = t('Finding…');
   try {
     const near = c.venue ? `${p.q}, ${c.venue.city || ''}` : p.q;
     let r = await geocode(near); if (!r.length && near !== p.q) r = await geocode(p.q);
-    if (!r.length) { toast('No match. Add a street or landmark.'); btn.textContent = 'Pin on map'; }
-    else { x[k] = { q: p.q, lat: r[0].lat, lon: r[0].lon }; btn.textContent = 'Pinned'; changed(); }
-  } catch { toast('Search is unavailable right now'); btn.textContent = 'Pin on map'; }
+    if (!r.length) { toast(t('No match. Add a street or landmark.')); btn.textContent = t('Pin on map'); }
+    else { x[k] = { q: p.q, lat: r[0].lat, lon: r[0].lon }; btn.textContent = t('Pinned'); changed(); }
+  } catch { toast(t('Search is unavailable right now')); btn.textContent = t('Pin on map'); }
   btn.disabled = false;
 }
 // ================= messages: guest ↔ host threads, guest groups, updates for chosen groups (schema-3; hidden until installed) =================
@@ -1633,13 +1633,15 @@ function inboxHTML(rows, seen) {
 
 // ---------- router ----------
 function renderBroken() {
-  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a></header><section class="broken"><h1>This link is incomplete.</h1><p class="lede">The event is stored inside the link, and part of it is missing. Ask whoever sent it to copy the whole link again.</p><a class="btn primary" href="#">Go to 1LinkTrip</a></section></main>`;
+  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a></header><section class="broken"><h1>${t('This link is incomplete.')}</h1><p class="lede">${t('The event is stored inside the link, and part of it is missing. Ask whoever sent it to copy the whole link again.')}</p><a class="btn primary" href="#">${t('Go to 1LinkTrip')}</a></section></main>`;
 }
 
 // ================= v2: defaults, guest tabs, editor gallery, setup flow =================
 // guest-interface strings go through t(); host content never does
 let LANG = 'en';
 const I18N = window.EP_I18N || {};
+// the organizer's own screens (landing, setup, editor, My pages) follow the phone/browser language when it's an interface language
+const uiLang = () => (navigator.languages || [navigator.language || 'en']).map(x => String(x).slice(0, 2).toLowerCase()).find(x => LOCALES[x]) || 'en';
 const t = (s, vars) => { let r = (I18N[LANG] && I18N[LANG][s]) || s; if (vars) r = r.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? ''); return r; };
 
 const TOOLS = [['weather', 'Weather'], ['travel', 'Travel'], ['stay', 'Stay'], ['nearby', 'Nearby'], ['tours', 'Things to do'], ['mytrip', 'My trip'], ['packing', 'Packing list'], ['shopping', 'Shopping list']];
@@ -1941,7 +1943,7 @@ function ticketHTML(cfg, air, opts = {}) {
       </div>
       <div class="stub-actions">
         ${rsvp ? (R.via === 'link' ? ext(R.url, t('RSVP'), 'btn primary') : `<button type="button" class="btn primary" data-act="rsvp">${t('RSVP')}</button>`) : ''}
-        ${cfg.start ? `<details class="menu"><summary class="btn ${rsvp ? '' : 'primary'}">${t('Add to calendar')}</summary><div class="menu-pop"><button type="button" data-act="ics">${t('Apple or Outlook (.ics)')}</button>${ext(L.gcal(cfg, location.href), 'Google Calendar', '')}</div></details>` : ''}
+        ${cfg.start ? `<details class="menu"><summary class="btn ${rsvp ? '' : 'primary'}">${t('Add to calendar')}</summary><div class="menu-pop"><button type="button" data-act="ics">${t('Apple or Outlook (.ics)')}</button>${ext(L.gcal(cfg, location.href), t('Google Calendar'), '')}</div></details>` : ''}
         ${v ? `<details class="menu"><summary class="btn">${t('Directions')}</summary><div class="menu-pop">${dirModes.map(([m, l]) => ext(L.dir(v, m), t(l), '')).join('')}${ext(L.uber(v, v.name), 'Uber', '')}${LYFT_CC.has(v.cc) ? ext(L.lyft(v), 'Lyft', '') : ''}</div></details>` : ''}
         <button class="btn" data-act="share">${t('Share')}</button>
       </div>
@@ -2372,7 +2374,7 @@ function wireEvent(cfg, art, seq, air, opts) {
   if (T.nearby || T.stay || T.travel || T.tours) {
     nearby(v.lat, v.lon).then(d => {
       if (!alive()) return; art._osm = d; art._useSrc(d.src === 'google' ? 'google' : 'osm');
-      const at = art.querySelector('.ev-foot [data-slot="attrib"]'); if (at && d.snapshot && !art.querySelector('.ev-foot [data-slot="snap"]')) at.insertAdjacentHTML('beforebegin', `<p data-slot="snap">${esc(t('Nearby places as mapped on {d}', { d: d.snapshot }))}</p>`);
+      const at = art.querySelector('.ev-foot [data-slot="attrib"]'); if (at && d.snapshot && !art.querySelector('.ev-foot [data-slot="snap"]')) at.insertAdjacentHTML('beforebegin', `<p data-slot="snap">${esc(t('Nearby places as mapped on {d}', { d: /^\d{4}-\d{2}-\d{2}$/.test(d.snapshot) ? fmt(d.snapshot, { month: 'short', day: 'numeric', year: 'numeric' }) : d.snapshot }))}</p>`);
       if (slot('hotels')) slot('hotels').innerHTML = hotelsHTML(cfg, withArt(d, art));
       if (slot('sights')) slot('sights').innerHTML = sightsHTML(cfg, withArt(d, art));
       if (slot('transit')) slot('transit').innerHTML = transitHTML(cfg, d);
@@ -2600,7 +2602,7 @@ function renderViewer(cfg, { exampleId, tab } = {}) {
 // ---------- editor ----------
 let B = null; // builder state
 function renderBuilder(cfg, source, hosted, pid) {
-  LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
+  LANG = uiLang(); document.documentElement.lang = LANG; document.documentElement.dir = 'ltr';
   B = { cfg: normalize(cfg), venueResults: [], card: null, hosted: hosted && hosted.id ? hosted : null, tab0: window.__ownTab || '' }; window.__ownTab = null;
   document.title = (B.cfg.title || 'Your page') + ' · 1LinkTrip'; delete B.cfg.demoTrip; // an example's sample My trip stays on the example
   { const f = spanFixed(B.cfg); if (f !== B.cfg) B.cfg = f; } // stored dates from an old import: fix them for good
@@ -2610,22 +2612,22 @@ function renderBuilder(cfg, source, hosted, pid) {
   <div class="builder" data-set="0">
     <header class="b-top">
       <a class="brand sm" href="#">${BRAND}</a>
-      <button type="button" class="btn sm ghost b-gear" data-act="settings" aria-expanded="false" aria-controls="b-set">${GEAR_IC}<span>Settings</span></button>
-      <button class="btn primary sm" data-act="publish">Share</button>
+      <button type="button" class="btn sm ghost b-gear" data-act="settings" aria-expanded="false" aria-controls="b-set">${GEAR_IC}<span>${t('Settings')}</span></button>
+      <button class="btn primary sm" data-act="publish">${t('Share')}</button>
       <div class="b-save" data-save role="status" aria-live="polite"></div>
     </header>
-    <div class="b-set" id="b-set"><div class="b-set-h"><b>Page settings</b><button type="button" class="btn sm" data-act="settings">Done</button></div><form class="b-form" autocomplete="off" onsubmit="return false">${source ? `<p class="b-note">${esc(source)}</p>` : ''}</form></div>
-    <div class="b-preview"><div class="onp-bar"><label class="tool onp-tg"><input type="checkbox" data-guest-tg><span class="sw" aria-hidden="true"></span>Preview as guest</label></div><div class="b-frame" id="preview"></div></div>
+    <div class="b-set" id="b-set"><div class="b-set-h"><b>${t('Page settings')}</b><button type="button" class="btn sm" data-act="settings">${t('Done')}</button></div><form class="b-form" autocomplete="off" onsubmit="return false">${source ? `<p class="b-note">${esc(source)}</p>` : ''}</form></div>
+    <div class="b-preview"><div class="onp-bar"><label class="tool onp-tg"><input type="checkbox" data-guest-tg><span class="sw" aria-hidden="true"></span>${t('Preview as guest')}</label></div><div class="b-frame" id="preview"></div></div>
   </div>
   <dialog id="sheet" class="sheet"><form class="sheet-in" autocomplete="off" onsubmit="return false"></form></dialog>
   <dialog id="pub"><form method="dialog" class="pub">
-    <h2>Your page is ready to share</h2>
+    <h2>${t('Your page is ready to share')}</h2>
     <div data-pub-seg hidden>${shrSegHTML('plan')}</div>
     <div data-shr-p="plan"><p class="shr-sub" data-pub-sub hidden>${esc(t(SHR_SUB.plan))}</p>
     <textarea id="pub-url" readonly rows="4"></textarea>
     <div id="pub-host"></div>
-    <div class="btns"><button type="button" class="btn primary" data-act="copy">Copy link</button><button type="button" class="btn" data-act="native-share" hidden>Share…</button><button type="button" class="btn" data-act="qr">QR code</button><a class="btn" id="pub-open" href="#" target="_blank" rel="noopener noreferrer">Open page</a><button class="btn ghost">Close</button></div></div>
-    <div data-shr-p="trip" hidden><div data-shr-box></div><div class="btns"><button class="btn ghost">Close</button></div></div>
+    <div class="btns"><button type="button" class="btn primary" data-act="copy">${t('Copy link')}</button><button type="button" class="btn" data-act="native-share" hidden>${t('Share…')}</button><button type="button" class="btn" data-act="qr">${t('QR code')}</button><a class="btn" id="pub-open" href="#" target="_blank" rel="noopener noreferrer">${t('Open page')}</a><button class="btn ghost">${t('Close')}</button></div></div>
+    <div data-shr-p="trip" hidden><div data-shr-box></div><div class="btns"><button class="btn ghost">${t('Close')}</button></div></div>
   </form></dialog>`;
   buildForm(); saveStatus('');
   if (locQ().get('e')) $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase())); // '#' can't leave a ?e= link
@@ -2673,15 +2675,15 @@ async function publishTranslated() {
   const c = B.cfg; const langs = (c.langs || []).filter(l => l !== srcLang(c));
   if (langs.length && canTranslate() && langs.some(l => Object.keys(staleFields(c, l)).length)) {
     toast(t('Translating for your guests…'));
-    try { await translateCfg(c); changed(); } catch { toast('Couldn’t translate right now; publishing in your language'); }
+    try { await translateCfg(c); changed(); } catch { toast(t('Couldn’t translate right now; publishing in your language')); }
   }
   publish();
 }
 function publish(opts = {}) {
   const c = B.cfg; const problems = [];
-  if (!c.title.trim()) problems.push('a title');
-  if (!c.start) problems.push('a date');
-  if (problems.length) { toast('Add ' + problems.join(' and ') + ' first'); return; }
+  if (!c.title.trim()) problems.push(t('a title'));
+  if (!c.start) problems.push(t('a date'));
+  if (problems.length) { toast(t('Add {x} first', { x: problems.join(t(' and ')) })); return; }
   if (!c.ek) c.ek = eventKey(c); // pin the page's key (same value guests' devices already use) so its old links stay recognisable
   if (!$('#pub').open) { $('#pub').showModal(); if (B.shrCtx || $('#pub [data-shr-tab]')) shrTab($('#pub'), 'plan', B.shrCtx || {}); }
   // Share gives the page's one short link (?e=), the same link forever; signed out → sign in first (or a one-time long link)
@@ -2699,7 +2701,7 @@ function pubLink(url, title, rows = 2) {
   const on = !!url; $('#pub-url').hidden = !on; $$('#pub [data-act="copy"], #pub [data-act="qr"], #pub-open').forEach(x => { x.hidden = !on; });
   $('[data-act="native-share"]').hidden = !on || !navigator.share;
   if (on) { $('#pub-url').value = url; $('#pub-url').rows = rows; $('#pub-open').href = url; }
-  if (title) $('#pub h2').textContent = title;
+  if (title) $('#pub h2').textContent = t(title);
 }
 // Builder top bar: "Saving…" → "Saved". Signed in, Saved means saved to the account, and the page's link (once shared)
 // shows it: there is nothing else to push.
@@ -2708,13 +2710,13 @@ const cfgHash = (c) => hashStr(JSON.stringify(c));
 const builderHash = (cfg) => { const c = spanFixed(normalize(clone(cfg))); delete c.demoTrip; delete c.osm; return cfgHash(c); };
 function saveStatus(st) {
   const el = $('[data-save]'); if (!el || !B) return;
-  const txt = st === 'saving' ? 'Saving…' : st === 'saved' ? 'Saved' : st === 'local' ? 'Saved on this device' : '';
+  const txt = t(st === 'saving' ? 'Saving…' : st === 'saved' ? 'Saved' : st === 'local' ? 'Saved on this device' : '');
   el.innerHTML = txt ? `<span>${esc(txt)}</span>` : ''; shSaveStatus(st);
 }
 // "Preview in: English | 日本語": the organizer sees the page as guests in each language do (on-page editing stays on the original)
 function pvLangHTML() { const c = B && B.cfg; const ls = c ? [srcLang(c), ...(c.langs || []).filter(l => l !== srcLang(c))] : []; if (ls.length < 2) { if (B) B.pvLang = ''; return ''; }
   if (!ls.includes(B.pvLang)) B.pvLang = ''; const cur = B.pvLang || srcLang(c);
-  return `<span class="pv-lang" role="group" aria-label="Preview in"><span class="muted small">Preview in:</span>${ls.map(l => `<button type="button" class="pv-l ${l === cur ? 'on' : ''}" aria-pressed="${l === cur}" data-pv-lang="${l}">${esc(langName(l))}</button>`).join('')}</span>`; }
+  return `<span class="pv-lang" role="group" aria-label="${t('Preview in')}"><span class="muted small">${t('Preview in:')}</span>${ls.map(l => `<button type="button" class="pv-l ${l === cur ? 'on' : ''}" aria-pressed="${l === cur}" data-pv-lang="${l}">${esc(langName(l))}</button>`).join('')}</span>`; }
 function paintPvLang() { const bar = $('.onp-bar'); if (!bar) return; let el = bar.querySelector('.pv-lang'); const h = pvLangHTML(); if (el) { if (h) el.outerHTML = h; else el.remove(); } else if (h) bar.insertAdjacentHTML('beforeend', h); }
 const preview = debounce(() => { const p = $('#preview'); if (!p) return; const sc = p.parentElement; const y = sc.scrollTop; const tab = p.querySelector('[data-tab-go][aria-selected="true"]')?.dataset.tabGo || (B && B.tab0) || undefined; paintPvLang();
   const pl = B.pvLang && B.pvLang !== srcLang(B.cfg) ? B.pvLang : '';
@@ -2723,7 +2725,8 @@ const preview = debounce(() => { const p = $('#preview'); if (!p) return; const 
   sc.scrollTop = y; }, 350);
 function changed(rebuild) { if (B) { B.touched = true; B.seq = (B.seq || 0) + 1; } saveStatus('saving'); savedraft(); preview(); if (B && (B.cfg.langs || []).length) autoTranslate(); if (rebuild) { if (B.card) renderSheet(); else buildForm(); } }
 
-const fieldWrap = (label, html, id) => `<div class="field"><label${id ? ` for="${id}"` : ''}>${esc(label)}</label>${html}</div>`;
+const fieldWrapRaw = (text, html, id) => `<div class="field"><label${id ? ` for="${id}"` : ''}>${esc(text)}</label>${html}</div>`; // text: already translated
+const fieldWrap = (label, html, id) => fieldWrapRaw(t(label), html, id);
 // shorter labels inside a card sheet, where the card title already gives context (the page keeps the full labels)
 const EDIT_LABEL = { rsvp: 'Link', rsvpBy: 'Reply by', blockHotel: 'Hotel', blockUrl: 'Booking link', blockCode: 'Code', blockBy: 'Book by',
   packet: 'Where', packetWhen: 'When', badge: 'Where', badgeWhen: 'When', checkin: 'Where', checkinWhen: 'When', closures: 'Details', closuresUrl: 'Link',
@@ -2731,17 +2734,17 @@ const EDIT_LABEL = { rsvp: 'Link', rsvpBy: 'Reply by', blockHotel: 'Hotel', bloc
   spectators: 'Info', pickup: 'Rideshare pickup' };
 function xFieldHTML(c, [k, label, kind, ph = ''], solo) {
   const d = typeData(c); const id = `x-${k}`; const val = d[k];
-  label = EDIT_LABEL[k] || label; if (ph === label) ph = '';
+  label = EDIT_LABEL[k] || label; if (ph === label) ph = ''; label = t(label); ph = ph && !/^https?:/.test(ph) ? t(ph) : ph;
   if (solo && kind !== 'links' && kind !== 'place') { // the sheet title is the label
     const type = { url: 'url', date: 'date', time: 'time', datetime: 'datetime-local' }[kind] || 'text'; const a = `aria-label="${esc(label)}" placeholder="${esc(ph || label)}"`;
     return `<div class="field">${kind === 'lines' ? `<textarea id="${id}" data-x="${k}" rows="4" ${a}>${esc(val || '')}</textarea>` : `<input id="${id}" type="${type}" data-x="${k}" value="${esc(val || '')}" ${a}>`}</div>`;
   }
-  if (solo && kind === 'links') return `<div class="field">${(val || []).map((l, i) => `<div class="rowed"><input data-xl="${k}" data-i="${i}" data-k="label" value="${esc(l.label)}" placeholder="Name" aria-label="${esc(label)} name"><input data-xl="${k}" data-i="${i}" data-k="url" type="url" value="${esc(l.url)}" placeholder="https://…" aria-label="${esc(label)} link"><button type="button" class="ic del" data-xdel="${k}" data-i="${i}" aria-label="Remove">Remove</button></div>`).join('')}<button type="button" class="btn sm" data-xadd="${k}">+ Add</button></div>`;
-  if (kind === 'links') return `<div class="field"><label>${esc(label)}</label>${(val || []).map((l, i) => `<div class="rowed"><input data-xl="${k}" data-i="${i}" data-k="label" value="${esc(l.label)}" placeholder="Name" aria-label="${esc(label)} name"><input data-xl="${k}" data-i="${i}" data-k="url" type="url" value="${esc(l.url)}" placeholder="https://…" aria-label="${esc(label)} link"><button type="button" class="ic del" data-xdel="${k}" data-i="${i}" aria-label="Remove">Remove</button></div>`).join('')}<button type="button" class="btn sm" data-xadd="${k}">+ Add</button></div>`;
-  if (kind === 'place') return `<div class="field"><label for="${id}">${esc(label)}</label><div class="search"><input id="${id}" data-xp="${k}" value="${esc(val ? val.q : '')}" placeholder="${esc(ph)}"><button type="button" class="btn" data-xfind="${k}">${val && val.lat != null ? 'Pinned' : 'Pin on map'}</button></div></div>`;
-  if (kind === 'lines') return fieldWrap(label, `<textarea id="${id}" data-x="${k}" rows="4" placeholder="${esc(ph)}">${esc(val || '')}</textarea>`, id);
+  if (solo && kind === 'links') return `<div class="field">${(val || []).map((l, i) => `<div class="rowed"><input data-xl="${k}" data-i="${i}" data-k="label" value="${esc(l.label)}" placeholder="${t('Name')}" aria-label="${esc(t('{s} name', { s: label }))}"><input data-xl="${k}" data-i="${i}" data-k="url" type="url" value="${esc(l.url)}" placeholder="https://…" aria-label="${esc(t('{s} link', { s: label }))}"><button type="button" class="ic del" data-xdel="${k}" data-i="${i}" aria-label="${t('Remove')}">${t('Remove')}</button></div>`).join('')}<button type="button" class="btn sm" data-xadd="${k}">${t('+ Add')}</button></div>`;
+  if (kind === 'links') return `<div class="field"><label>${esc(label)}</label>${(val || []).map((l, i) => `<div class="rowed"><input data-xl="${k}" data-i="${i}" data-k="label" value="${esc(l.label)}" placeholder="${t('Name')}" aria-label="${esc(t('{s} name', { s: label }))}"><input data-xl="${k}" data-i="${i}" data-k="url" type="url" value="${esc(l.url)}" placeholder="https://…" aria-label="${esc(t('{s} link', { s: label }))}"><button type="button" class="ic del" data-xdel="${k}" data-i="${i}" aria-label="${t('Remove')}">${t('Remove')}</button></div>`).join('')}<button type="button" class="btn sm" data-xadd="${k}">${t('+ Add')}</button></div>`;
+  if (kind === 'place') return `<div class="field"><label for="${id}">${esc(label)}</label><div class="search"><input id="${id}" data-xp="${k}" value="${esc(val ? val.q : '')}" placeholder="${esc(ph)}"><button type="button" class="btn" data-xfind="${k}">${t(val && val.lat != null ? 'Pinned' : 'Pin on map')}</button></div></div>`;
+  if (kind === 'lines') return fieldWrapRaw(label, `<textarea id="${id}" data-x="${k}" rows="4" placeholder="${esc(ph)}">${esc(val || '')}</textarea>`, id);
   const type = { url: 'url', date: 'date', time: 'time', datetime: 'datetime-local' }[kind] || 'text';
-  return fieldWrap(label, `<input id="${id}" type="${type}" data-x="${k}" value="${esc(val || '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}>`, id);
+  return fieldWrapRaw(label, `<input id="${id}" type="${type}" data-x="${k}" value="${esc(val || '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}>`, id);
 }
 function cardDone(c, id) {
   if (id === 'route') return stopsOf(c).length > 0;
@@ -2750,7 +2753,7 @@ function cardDone(c, id) {
   return { schedule: () => c.schedule.some(x => x.title), custom: () => c.custom.some(x => x.title.trim()), notes: () => c.notes.some(x => x.label), about: () => !!(c.description || c.host), look: () => !!c.cover, bring: () => !!c.bring.trim(),
     access: () => !!(c.access && Object.values(c.access).some(Boolean)), stays: () => presetsOf(c).length > 0, rsvp: () => rsvpOf(c).on, msgs: () => !!c.guestMessages, langs: () => (c.langs || []).length > 0 }[id]?.() || false;
 }
-const cardBtn = (c, [id, title, sub]) => { const done = cardDone(c, id); return `<button type="button" class="acard ${done ? 'on' : ''}" data-card="${id}"><span class="aic">${cardIcon(id)}</span><b>${esc(title)}</b><span>${esc(sub)}</span><i class="plus" aria-hidden="true">${done ? '✓' : '+'}</i></button>`; };
+const cardBtn = (c, [id, title, sub]) => { const done = cardDone(c, id); return `<button type="button" class="acard ${done ? 'on' : ''}" data-card="${id}"><span class="aic">${cardIcon(id)}</span><b>${esc(t(title))}</b><span>${esc(t(sub))}</span><i class="plus" aria-hidden="true">${done ? '✓' : '+'}</i></button>`; };
 function allCards(c) {
   const cc0 = COMMON_CARDS.filter(x => (x[0] !== 'langs' || canTranslate() || (c.langs || []).length) && (x[0] !== 'msgs' || msgReadyNow()));
   if (isTrip(c)) return { type: TYPE_CARDS[c.type] || [], common: cc0.filter(x => x[0] !== 'rsvp').map(x => x[0] === 'schedule' ? ['schedule', 'Day by day', 'Plans, bookings'] : x) };
@@ -2764,33 +2767,33 @@ function buildForm() {
   const basicsOk = !!c.title.trim(); const whenOk = !!(c.start && c.venue);
   const cards = allCards(c);
   f.innerHTML = `${keepNote ? keepNote.outerHTML : ''}
-  <details class="acc" data-acc="basics" ${open.has('basics') ? 'open' : ''}><summary><span class="st ${basicsOk ? 'ok' : ''}" aria-hidden="true"></span><b>Basics</b><small>${esc([c.type, c.title].filter(Boolean).join(' · '))}</small></summary><div class="acc-b">
-    ${fieldWrap('Event type', `<select id="f-type" data-f="type">${TYPES.map(x => `<option value="${x}" ${x === c.type ? 'selected' : ''}>${TYPE_LABEL[x] || x}</option>`).join('')}</select>`, 'f-type')}
+  <details class="acc" data-acc="basics" ${open.has('basics') ? 'open' : ''}><summary><span class="st ${basicsOk ? 'ok' : ''}" aria-hidden="true"></span><b>${t('Basics')}</b><small>${esc([c.type && t(TYPE_LABEL[c.type] || c.type), c.title].filter(Boolean).join(' · '))}</small></summary><div class="acc-b">
+    ${fieldWrap('Event type', `<select id="f-type" data-f="type">${TYPES.map(x => `<option value="${x}" ${x === c.type ? 'selected' : ''}>${esc(t(TYPE_LABEL[x] || x))}</option>`).join('')}</select>`, 'f-type')}
     ${fieldWrap('Title', `<input id="f-title" data-f="title" value="${esc(c.title)}" maxlength="80">`, 'f-title')}
-    ${fieldWrap('Tagline', `<input id="f-tagline" data-f="tagline" value="${esc(c.tagline)}" maxlength="140" placeholder="Optional">`, 'f-tagline')}
+    ${fieldWrap('Tagline', `<input id="f-tagline" data-f="tagline" value="${esc(c.tagline)}" maxlength="140" placeholder="${t('Optional')}">`, 'f-tagline')}
   </div></details>
-  <details class="acc" data-acc="when" ${open.has('when') ? 'open' : ''}><summary><span class="st ${whenOk ? 'ok' : ''}" aria-hidden="true"></span><b>When and where</b><small>${esc([c.start ? fmt(c.start.slice(0, 10), { month: 'short', day: 'numeric', year: 'numeric' }) : '', c.venue ? c.venue.name : ''].filter(Boolean).join(' · '))}</small></summary><div class="acc-b">
+  <details class="acc" data-acc="when" ${open.has('when') ? 'open' : ''}><summary><span class="st ${whenOk ? 'ok' : ''}" aria-hidden="true"></span><b>${t('When and where')}</b><small>${esc([c.start ? fmt(c.start.slice(0, 10), { month: 'short', day: 'numeric', year: 'numeric' }) : '', c.venue ? c.venue.name : ''].filter(Boolean).join(' · '))}</small></summary><div class="acc-b">
     ${whenFieldsHTML(c, 'f')}
     ${venueFieldHTML(c)}
     ${flyIntoFieldHTML(c)}
   </div></details>
-  <details class="acc" data-acc="design" ${open.has('design') ? 'open' : ''}><summary><span class="st ok" aria-hidden="true" style="background:${esc(c.theme.accent)};border-color:${esc(c.theme.accent)}"></span><b>Design</b><small>${esc([FONTS[c.theme.font]?.label, c.theme.mode === 'dark' ? 'Dark' : 'Light', c.cover ? 'Cover photo' : ''].filter(Boolean).join(' · '))}</small></summary><div class="acc-b">
+  <details class="acc" data-acc="design" ${open.has('design') ? 'open' : ''}><summary><span class="st ok" aria-hidden="true" style="background:${esc(c.theme.accent)};border-color:${esc(c.theme.accent)}"></span><b>${t('Design')}</b><small>${esc([FONTS[c.theme.font]?.label, c.theme.mode === 'dark' ? 'Dark' : 'Light', c.cover ? 'Cover photo' : ''].filter(Boolean).map(x => t(x)).join(' · '))}</small></summary><div class="acc-b">
     ${designHTML(c)}
   </div></details>
-  <details class="acc" data-acc="sections" ${open.has('sections') ? 'open' : ''}><summary><span class="st ok" aria-hidden="true"></span><b>Sections</b><small>${esc(sectionsSum(c))}</small></summary><div class="acc-b">
+  <details class="acc" data-acc="sections" ${open.has('sections') ? 'open' : ''}><summary><span class="st ok" aria-hidden="true"></span><b>${t('Sections')}</b><small>${esc(sectionsSum(c))}</small></summary><div class="acc-b">
     ${sectionsHTML(c)}
   </div></details>
   ${vnAccHTML(c, open.has('vendors'))}
   ${docBlockHTML('main')}
-  <h2 class="b-h">Add to your page</h2>
-  ${cards.type.length ? `<p class="grp">${TYPE_GROUP[c.type]}</p><div class="cards">${cards.type.map(x => cardBtn(c, x)).join('')}</div>` : ''}
-  <p class="grp">For any event</p><div class="cards">${cards.common.map(x => cardBtn(c, x)).join('')}</div>
-  <div class="b-end"><button type="button" class="btn primary" data-act="publish">Share</button><button type="button" class="btn ghost" data-b="reset">Start over</button></div>`;
+  <h2 class="b-h">${t('Add to your page')}</h2>
+  ${cards.type.length ? `<p class="grp">${esc(t(TYPE_GROUP[c.type]))}</p><div class="cards">${cards.type.map(x => cardBtn(c, x)).join('')}</div>` : ''}
+  <p class="grp">${t('For any event')}</p><div class="cards">${cards.common.map(x => cardBtn(c, x)).join('')}</div>
+  <div class="b-end"><button type="button" class="btn primary" data-act="publish">${t('Share')}</button><button type="button" class="btn ghost" data-b="reset">${t('Start over')}</button></div>`;
   wireInputs(f);
   if (typeof renderHostNote === 'function') renderHostNote();
   // the AI edit box survives form rebuilds (its preview and Undo live in it)
   if (keepAI) f.insertBefore(keepAI, f.firstChild); else if (SB && LS.get('signedIn')) { f.insertAdjacentHTML('afterbegin', aiEditHTML()); wireAIEdit(); }
-  placeAutocomplete($('#vq', f), { bias: () => null, onPick: (id, tok) => gpVenue(id, tok).then(r => { B.vq = ''; B.venueResults = []; pickVenue(r); }).catch(() => toast('Couldn’t load that place')) });
+  placeAutocomplete($('#vq', f), { bias: () => null, onPick: (id, tok) => gpVenue(id, tok).then(r => { B.vq = ''; B.venueResults = []; pickVenue(r); }).catch(() => toast(t('Couldn’t load that place'))) });
 }
 // "Fly into": the airport guests are pointed to (ticket, Travel → flights, rental cars). Automatic unless the organizer picks one.
 function flyIntoFieldHTML(c, p = 'f') {
@@ -2798,58 +2801,58 @@ function flyIntoFieldHTML(c, p = 'f') {
   const { list, auto } = airportChoices(v.lat, v.lon); if (!list.length) return '';
   const pin = c.flyInto && !list.some(a => a.iata === c.flyInto) && airportByCode(c.flyInto) ? [apRow(airportByCode(c.flyInto), v.lat, v.lon)] : [];
   const lab = (a) => `${a.iata} · ${a.city || a.name} · ${fmtDist(a.d, v.cc)}`; const au = list.find(a => a.iata === auto);
-  return fieldWrap('Fly into', `<select id="${p}-fly" data-f="flyInto"><option value="">${esc(au ? `Automatic (${au.iata} · ${au.city || au.name})` : 'Automatic')}</option><option value="none"${c.flyInto === 'none' ? ' selected' : ''}>No airport (don't show flying info)</option>${list.concat(pin).map(a => `<option value="${esc(a.iata)}"${a.iata === c.flyInto ? ' selected' : ''}>${esc(lab(a))}</option>`).join('')}</select>${p === 'sh' ? '' : '<p class="hint">The airport guests see on the ticket, flight searches and rental cars. Change it, or pick No airport if guests won\'t fly.</p>'}`, p + '-fly');
+  return fieldWrap('Fly into', `<select id="${p}-fly" data-f="flyInto"><option value="">${esc(au ? `${t('Automatic')} (${au.iata} · ${au.city || au.name})` : t('Automatic'))}</option><option value="none"${c.flyInto === 'none' ? ' selected' : ''}>${t('No airport (don\'t show flying info)')}</option>${list.concat(pin).map(a => `<option value="${esc(a.iata)}"${a.iata === c.flyInto ? ' selected' : ''}>${esc(lab(a))}</option>`).join('')}</select>${p === 'sh' ? '' : `<p class="hint">${t('The airport guests see on the ticket, flight searches and rental cars. Change it, or pick No airport if guests won’t fly.')}</p>`}`, p + '-fly');
 }
 function venueFieldHTML(c) {
-  return c.venue ? `<div class="venue-sel"><div><b>${esc(c.venue.name)}</b><span>${esc(c.venue.address || '')}</span></div><button type="button" class="btn sm" data-b="clear-venue">Change</button></div>
+  return c.venue ? `<div class="venue-sel"><div><b>${esc(c.venue.name)}</b><span>${esc(c.venue.address || '')}</span></div><button type="button" class="btn sm" data-b="clear-venue">${t('Change')}</button></div>
       ${fieldWrap('Venue name on the page', `<input id="f-vname" data-v="name" value="${esc(c.venue.name)}">`, 'f-vname')}`
-    : `<div class="field"><label for="vq">${isTrip(c) ? 'Destination' : 'Venue'}</label><div class="search"><input id="vq" placeholder="${isTrip(c) ? 'City or region' : 'Venue name or address'}" value="${esc(B.vq || '')}"><button type="button" class="btn" data-b="search">Search</button></div></div>
+    : `<div class="field"><label for="vq">${t(isTrip(c) ? 'Destination' : 'Venue')}</label><div class="search"><input id="vq" placeholder="${t(isTrip(c) ? 'City or region' : 'Venue name or address')}" value="${esc(B.vq || '')}"><button type="button" class="btn" data-b="search">${t('Search')}</button></div></div>
       <ul class="vres">${B.venueResults.map((r, i) => `<li><button type="button" data-pick="${i}"><b>${esc(r.name)}</b><span>${esc(r.display)}</span></button></li>`).join('')}</ul>${B.vmsg ? `<p class="hint">${esc(B.vmsg)}</p>` : ''}`;
 }
 function openCard(id) { if (B.onp) { onpCleanup(); B.focus = null; B.onpSec = null; } B.shDirty = false; B.shSave = ''; if (id === 'custom' && !B.cfg.custom.length) B.cfg.custom.push(blankCustom()); if (DU && DU.key !== 'main') DU = null; B.card = id; B.spEdit = null; renderSheet(); const sh = $('#sheet'); if (!sh.open) sh.showModal(); esAutogrow(sh); }
 function renderSheet() {
   const c = B.cfg; const id = B.card; const form = $('#sheet .sheet-in'); if (!form || !id) return;
   const tc = (TYPE_CARDS[c.type] || []).find(x => x[0] === id); const cc = allCards(c).common.find(x => x[0] === id) || COMMON_CARDS.find(x => x[0] === id);
-  const title = tc ? tc[1] : cc ? cc[1] : id === 'vendor' ? (vnCur() || {}).name || 'Vendor' : ''; let body = '';
+  const title = tc ? t(tc[1]) : cc ? t(cc[1]) : id === 'vendor' ? (vnCur() || {}).name || t('Vendor') : ''; let body = '';
   const op = B.onp ? onpSheet(c, id) : null; const F = B.onp && B.focus || null; const fi = F ? onpIdx(c) : -1;
   const only = (k, i) => !F || F.k !== k || i === fi; const one = (k) => !!F && F.k === k;
   if (op) body = op.body;
   else if (id === 'route') body = one('st') && fi >= 0 ? stopCardHTML(c, fi) : routeHTML(c, one('st') ? fi : null);
   else if (tc) { const sp = typeSpec(c); body = tc[3].map(k => xFieldHTML(c, sp.fields.find(f => f[0] === k), tc[3].length === 1)).join('');
     const bd = typeData(c); if (id === 'block') body += hfFormHTML(hfOfBlock(bd), 'hf-block', { en: true, note: true, attr: 'data-hf-block' });
-    if (id === 'block' && BLOCK_KEYS.some(k => bd[k])) body += `<div class="btns"><button type="button" class="btn sm bk-rm hb-rm" data-b="rm-block">${TRASH_IC}Remove ${esc(bd.blockHotel || 'room block')}</button></div>`; }
+    if (id === 'block' && BLOCK_KEYS.some(k => bd[k])) body += `<div class="btns"><button type="button" class="btn sm bk-rm hb-rm" data-b="rm-block">${TRASH_IC}${esc(t('Remove {n}', { n: bd.blockHotel || t('room block') }))}</button></div>`; }
   else if (id === 'schedule' && one('s') && fi >= 0) body = itemCardHTML(c, fi);
   else if (id === 'schedule' && isTrip(c)) body = tripPlanHTML(c, F && F.k === 'day' ? { day: F.d } : one('s') ? { item: fi } : null);
-  else if (id === 'schedule') body = `${c.schedule.map((x, i) => !only('s', i) ? '' : `<div class="rowed"><div class="two"><input type="date" data-s="${i}" data-k="date" value="${esc(x.date)}" aria-label="Date"><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time"></div><input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="What's happening" aria-label="Title">${schedPlaceHTML(x, i)}${hotelCiLine(x) ? schedHotelHF(x, i) : `<input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Note (optional)" aria-label="Note">`}${hotelCiLine(x) ? `<button type="button" class="ic del bk-rm" data-sdel="${i}" data-sdel-hotel aria-label="Remove hotel ${esc(hostHotelName(x.title))}">${TRASH_IC}Remove hotel</button>` : `<button type="button" class="ic del" data-sdel="${i}" aria-label="Remove item">Remove</button>`}</div>`).join('')}
-    ${one('s') ? '' : `<div class="btns"><button type="button" class="btn sm" data-b="add-sched">+ Add item</button>${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`}`;
-  else if (id === 'notes' && one('n') && fi >= 0) { const x = c.notes[fi]; body = `<div class="rowed es-card"><input class="es-title" data-n="${fi}" data-k="label" value="${esc(x.label)}" placeholder="Title" aria-label="Title">
-    <label class="es-line es-note">${esIc('pencil')}<input data-n="${fi}" data-k="text" value="${esc(x.text || '')}" placeholder="Add text" aria-label="Text"></label>
-    <label class="es-line es-note">${esIc('link')}<input data-n="${fi}" data-k="url" type="url" value="${esc(x.url || '')}" placeholder="Add a link" aria-label="Link"></label></div>`; }
-  else if (id === 'notes') body = `${c.notes.map((x, i) => !only('n', i) ? '' : `<div class="rowed"><input data-n="${i}" data-k="label" value="${esc(x.label)}" placeholder="Title" aria-label="Title"><input data-n="${i}" data-k="text" value="${esc(x.text || '')}" placeholder="Text" aria-label="Text"><input data-n="${i}" data-k="url" type="url" value="${esc(x.url || '')}" placeholder="Link (optional)" aria-label="Link">${F ? '' : B.onp ? `<div class="plan-ctl"><span class="mv"><button type="button" data-onp-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-onp-mv="${i}" data-dir="1" ${i === c.notes.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button></span><button type="button" class="ic del" data-ndel="${i}" aria-label="Remove">Remove</button></div>` : `<button type="button" class="ic del" data-ndel="${i}" aria-label="Remove">Remove</button>`}</div>`).join('')}
-    ${one('n') ? '' : '<button type="button" class="btn sm" data-b="add-note">+ Add note</button>'}`;
-  else if (id === 'custom') body = `${c.custom.map((x, i) => !only('cs', i) ? '' : `<div class="rowed cs-row"><input data-cs="${i}" data-k="title" value="${esc(x.title)}" placeholder="Title" aria-label="Title" maxlength="80" required>
-    <textarea data-cs="${i}" data-k="text" rows="4" placeholder="Text" aria-label="Text" maxlength="3000">${esc(x.text)}</textarea>
-    <div class="two"><input data-cs="${i}" data-k="label" value="${esc(x.label)}" placeholder="Link name" aria-label="Link name" maxlength="80"><input data-cs="${i}" data-k="url" type="url" value="${esc(x.url)}" placeholder="Link, https://…" aria-label="Link"></div>
-    ${SB ? photoCtlHTML('cs:' + i, x.img, `<input data-cs="${i}" data-k="img" type="url" value="${esc(x.img)}" placeholder="or a photo link, https://…" aria-label="Photo link">`) : `<div class="cover-row">${httpsUrl(x.img) ? `<img src="${esc(x.img)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<input data-cs="${i}" data-k="img" type="url" value="${esc(x.img)}" placeholder="Photo link, https://…" aria-label="Photo link"></div>`}
+  else if (id === 'schedule') body = `${c.schedule.map((x, i) => !only('s', i) ? '' : `<div class="rowed"><div class="two"><input type="date" data-s="${i}" data-k="date" value="${esc(x.date)}" aria-label="${t('Date')}"><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="${t('Time')}"></div><input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="${t('What\'s happening')}" aria-label="${t('Title')}">${schedPlaceHTML(x, i)}${hotelCiLine(x) ? schedHotelHF(x, i) : `<input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="${t('Note (optional)')}" aria-label="${t('Note')}">`}${hotelCiLine(x) ? `<button type="button" class="ic del bk-rm" data-sdel="${i}" data-sdel-hotel aria-label="${esc(t('Remove hotel'))} ${esc(hostHotelName(x.title))}">${TRASH_IC}${t('Remove hotel')}</button>` : `<button type="button" class="ic del" data-sdel="${i}" aria-label="${t('Remove item')}">${t('Remove')}</button>`}</div>`).join('')}
+    ${one('s') ? '' : `<div class="btns"><button type="button" class="btn sm" data-b="add-sched">${t('+ Add item')}</button>${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`}`;
+  else if (id === 'notes' && one('n') && fi >= 0) { const x = c.notes[fi]; body = `<div class="rowed es-card"><input class="es-title" data-n="${fi}" data-k="label" value="${esc(x.label)}" placeholder="${t('Title')}" aria-label="${t('Title')}">
+    <label class="es-line es-note">${esIc('pencil')}<input data-n="${fi}" data-k="text" value="${esc(x.text || '')}" placeholder="${t('Add text')}" aria-label="${t('Text')}"></label>
+    <label class="es-line es-note">${esIc('link')}<input data-n="${fi}" data-k="url" type="url" value="${esc(x.url || '')}" placeholder="${t('Add a link')}" aria-label="${t('Link')}"></label></div>`; }
+  else if (id === 'notes') body = `${c.notes.map((x, i) => !only('n', i) ? '' : `<div class="rowed"><input data-n="${i}" data-k="label" value="${esc(x.label)}" placeholder="${t('Title')}" aria-label="${t('Title')}"><input data-n="${i}" data-k="text" value="${esc(x.text || '')}" placeholder="${t('Text')}" aria-label="${t('Text')}"><input data-n="${i}" data-k="url" type="url" value="${esc(x.url || '')}" placeholder="${t('Link (optional)')}" aria-label="${t('Link')}">${F ? '' : B.onp ? `<div class="plan-ctl"><span class="mv"><button type="button" data-onp-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="${t('Move up')}">↑</button><button type="button" data-onp-mv="${i}" data-dir="1" ${i === c.notes.length - 1 ? 'disabled' : ''} aria-label="${t('Move down')}">↓</button></span><button type="button" class="ic del" data-ndel="${i}" aria-label="${t('Remove')}">${t('Remove')}</button></div>` : `<button type="button" class="ic del" data-ndel="${i}" aria-label="${t('Remove')}">${t('Remove')}</button>`}</div>`).join('')}
+    ${one('n') ? '' : `<button type="button" class="btn sm" data-b="add-note">+ ${t('Add note')}</button>`}`;
+  else if (id === 'custom') body = `${c.custom.map((x, i) => !only('cs', i) ? '' : `<div class="rowed cs-row"><input data-cs="${i}" data-k="title" value="${esc(x.title)}" placeholder="${t('Title')}" aria-label="${t('Title')}" maxlength="80" required>
+    <textarea data-cs="${i}" data-k="text" rows="4" placeholder="${t('Text')}" aria-label="${t('Text')}" maxlength="3000">${esc(x.text)}</textarea>
+    <div class="two"><input data-cs="${i}" data-k="label" value="${esc(x.label)}" placeholder="${t('Link name')}" aria-label="${t('Link name')}" maxlength="80"><input data-cs="${i}" data-k="url" type="url" value="${esc(x.url)}" placeholder="${t('Link, https://…')}" aria-label="${t('Link')}"></div>
+    ${SB ? photoCtlHTML('cs:' + i, x.img, `<input data-cs="${i}" data-k="img" type="url" value="${esc(x.img)}" placeholder="${t('or a photo link, https://…')}" aria-label="${t('Photo link')}">`) : `<div class="cover-row">${httpsUrl(x.img) ? `<img src="${esc(x.img)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<input data-cs="${i}" data-k="img" type="url" value="${esc(x.img)}" placeholder="${t('Photo link, https://…')}" aria-label="${t('Photo link')}"></div>`}
     ${docBlockHTML(customSid(x))}
-    ${F ? '' : `<button type="button" class="ic del" data-cdel="${i}" aria-label="Delete ${esc(x.title || 'section')}">Delete</button>`}</div>`).join('')}
-    ${one('cs') ? '' : '<button type="button" class="btn sm" data-b="add-custom">+ Add section</button>'}`;
+    ${F ? '' : `<button type="button" class="ic del" data-cdel="${i}" aria-label="${esc(t('Delete {n}', { n: x.title || t('section') }))}">${t('Delete')}</button>`}</div>`).join('')}
+    ${one('cs') ? '' : `<button type="button" class="btn sm" data-b="add-custom">+ ${t('Add section')}</button>`}`;
   else if (id === 'langs') body = langsCardHTML(c);
   else if (id === 'about') body = `${aboutSiteHTML(c)}${fieldWrap('Hosted by', `<input id="f-host" data-f="host" value="${esc(c.host)}">`, 'f-host')}${fieldWrap('About', `<textarea id="f-desc" data-f="description" rows="6">${esc(c.description)}</textarea>`, 'f-desc')}`;
   else if (id === 'look') body = `${coverFieldHTML(c)}
-    <div class="field"><label>Color</label><div class="swatches">${SWATCHES.map(s => `<button type="button" class="sw ${s.toLowerCase() === c.theme.accent.toLowerCase() ? 'on' : ''}" style="background:${s}" data-sw="${s}" aria-label="Color ${s}"></button>`).join('')}<input type="color" data-t="accent" value="${esc(c.theme.accent)}" aria-label="Custom color"></div></div>
-    <div class="field"><label>Title font</label><div class="fonts">${Object.entries(FONTS).map(([k, x]) => `<button type="button" class="fontb ${k === c.theme.font ? 'on' : ''}" data-font="${k}" style="font-family:${esc(x.css)}">${x.label}</button>`).join('')}</div></div>
-    <div class="field"><label>Background</label><div class="seg2"><button type="button" data-theme-mode="light" class="${c.theme.mode !== 'dark' ? 'on' : ''}">Light</button><button type="button" data-theme-mode="dark" class="${c.theme.mode === 'dark' ? 'on' : ''}">Dark</button></div></div>`;
-  else if (id === 'bring') body = fieldWrap('Guests must bring', `<textarea id="f-bring" data-f="bring" rows="5" placeholder="One per line">${esc(c.bring)}</textarea>`, 'f-bring');
+    <div class="field"><label>${t('Color')}</label><div class="swatches">${SWATCHES.map(s => `<button type="button" class="sw ${s.toLowerCase() === c.theme.accent.toLowerCase() ? 'on' : ''}" style="background:${s}" data-sw="${s}" aria-label="${esc(t('Color'))} ${s}"></button>`).join('')}<input type="color" data-t="accent" value="${esc(c.theme.accent)}" aria-label="${t('Custom color')}"></div></div>
+    <div class="field"><label>${t('Title font')}</label><div class="fonts">${Object.entries(FONTS).map(([k, x]) => `<button type="button" class="fontb ${k === c.theme.font ? 'on' : ''}" data-font="${k}" style="font-family:${esc(x.css)}">${esc(t(x.label))}</button>`).join('')}</div></div>
+    <div class="field"><label>${t('Background')}</label><div class="seg2"><button type="button" data-theme-mode="light" class="${c.theme.mode !== 'dark' ? 'on' : ''}">${t('Light')}</button><button type="button" data-theme-mode="dark" class="${c.theme.mode === 'dark' ? 'on' : ''}">${t('Dark')}</button></div></div>`;
+  else if (id === 'bring') body = fieldWrap('Guests must bring', `<textarea id="f-bring" data-f="bring" rows="5" placeholder="${t('One per line')}">${esc(c.bring)}</textarea>`, 'f-bring');
   else if (id === 'stays') body = presetsCardHTML(c);
   else if (typeof extraCardBody === 'function') body = extraCardBody(id, c);
-  const head = (op && op.title) || (F && onpTitle(c, id)) || title;
+  const head = (op && t(op.title)) || (F && onpTitle(c, id)) || title;
   if (id !== 'custom' && !F && docCardOk(c, id)) body += docBlockHTML(id);
   const foot = B.onp ? onpFoot(c) : ''; const menu = shMenu(c, id, F, fi);
-  setTimeout(() => { if (id === 'stays') wirePresetAC(); if (id === 'schedule') wireSchedPlaceAC(); if (id === 'route') wireRouteAC(c); if (id === 'msgs') loadCardGroups(); if (id === 'when') { const q = $('#sheet #vq-sh'); if (q) placeAutocomplete(q, { bias: () => null, onPick: (pid, tok) => gpVenue(pid, tok).then(r => { B.vq = ''; B.venueResults = []; pickVenue(r); }).catch(() => toast('Couldn’t load that place')) }); } }, 0);
+  setTimeout(() => { if (id === 'stays') wirePresetAC(); if (id === 'schedule') wireSchedPlaceAC(); if (id === 'route') wireRouteAC(c); if (id === 'msgs') loadCardGroups(); if (id === 'when') { const q = $('#sheet #vq-sh'); if (q) placeAutocomplete(q, { bias: () => null, onPick: (pid, tok) => gpVenue(pid, tok).then(r => { B.vq = ''; B.venueResults = []; pickVenue(r); }).catch(() => toast(t('Couldn’t load that place'))) }); } }, 0);
   const lbl = F && (F.k === 's' || F.k === 'st') ? shEyebrow(c, F, fi) || head : head;
-  form.innerHTML = `<div class="grab" aria-hidden="true"></div><div class="sh-top"><h2><span class="sh-lbl" tabindex="-1" autofocus>${esc(lbl)}</span><button type="button" class="x sh-round" data-b="close" aria-label="Close">×</button></h2>${shSavedHTML()}${menu}</div>
-    <div class="sheet-b${F ? ' es-one' : ''}">${body}</div><div class="sh-foot">${foot}<button type="button" class="btn primary big" data-b="close">Done</button></div><p class="vh" role="status" aria-live="polite" data-sh-live></p>`;
+  form.innerHTML = `<div class="grab" aria-hidden="true"></div><div class="sh-top"><h2><span class="sh-lbl" tabindex="-1" autofocus>${esc(lbl)}</span><button type="button" class="x sh-round" data-b="close" aria-label="${t('Close')}">×</button></h2>${shSavedHTML()}${menu}</div>
+    <div class="sheet-b${F ? ' es-one' : ''}">${body}</div><div class="sh-foot">${foot}<button type="button" class="btn primary big" data-b="close">${t('Done')}</button></div><p class="vh" role="status" aria-live="polite" data-sh-live></p>`;
   esAutogrow(form);
 }
 // one input handler for the form and the card sheet
@@ -2867,7 +2870,7 @@ function wireInputs(root) {
     if (d.when) { whenInput(cfg, d.when, i.value); changed(); }
     else if (d.x) { xd()[d.x] = i.value; changed(); }
     else if (d.xl) { xd()[d.xl][+d.i][d.k] = i.value; changed(); }
-    else if (d.xp) { xd()[d.xp] = i.value ? { q: i.value } : null; const fb = root.querySelector(`[data-xfind="${d.xp}"]`); if (fb) fb.textContent = 'Pin on map'; changed(); }
+    else if (d.xp) { xd()[d.xp] = i.value ? { q: i.value } : null; const fb = root.querySelector(`[data-xfind="${d.xp}"]`); if (fb) fb.textContent = t('Pin on map'); changed(); }
     else if (d.f) { cfg[d.f] = i.value; if (d.f === 'start' && cfg.end && cfg.end < cfg.start) { cfg.end = ''; const en = root.querySelector('[data-f="end"]'); if (en) en.value = ''; } changed(d.f === 'type'); }
     else if (d.v) { cfg.venue[d.v] = i.value; changed(); }
     else if (d.t) { cfg.theme[d.t] = i.value; $$('.sw', root).forEach(s => s.classList.remove('on')); changed(); }
@@ -2920,12 +2923,12 @@ function wireInputs(root) {
       const x = cfg.custom[+d.cdel]; if (!x) return;
       const drop = () => { const sid = customSid(x); const i = cfg.custom.indexOf(x); if (i < 0) return; cfg.custom.splice(i, 1); delete cfg.off[sid]; if (Array.isArray(cfg.order)) cfg.order = cfg.order.filter(k => k !== sid); changed(true); };
       if (![x.title, x.text, x.label, x.url, x.img].join('').trim()) drop();
-      else confirmDlg({ title: `Delete “${x.title.trim() || 'Custom section'}”?`, ok: 'Delete' }).then(yes => { if (yes) drop(); });
+      else confirmDlg({ title: t('Delete “{n}”?', { n: x.title.trim() || t('Custom section') }), ok: t('Delete') }).then(yes => { if (yes) drop(); });
     }
     else if (d.xadd) { const x = (cfg.x[cfg.type] = cfg.x[cfg.type] || {}); (x[d.xadd] = x[d.xadd] || []).push({ label: '', url: '' }); changed(true); }
     else if (d.xdel) { cfg.x[cfg.type][d.xdel].splice(+d.i, 1); changed(true); }
     else if (d.xfind) pinPlace(d.xfind, b);
-    else if (d.b === 'reset') { if (confirm('Clear this draft and start over?')) { LS.del('draft'); renderSetup(); } }
+    else if (d.b === 'reset') { if (confirm(t('Clear this draft and start over?'))) { LS.del('draft'); renderSetup(); } }
     else if (typeof extraClick === 'function') extraClick(b, cfg);
   };
 }
@@ -2941,7 +2944,7 @@ const GEAR_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy=
 function onpDecorate(cfg, art) {
   art.classList.add('onp');
   const mark = `<i class="onp-mk" aria-hidden="true">${ONP_PEN}</i>`;
-  const target = (el, ed, label) => { el.dataset.ed = ed; if (!/^(BUTTON|A)$/.test(el.tagName)) { el.tabIndex = 0; el.setAttribute('role', 'button'); } if (label) el.setAttribute('aria-label', label); };
+  const target = (el, ed, label) => { el.dataset.ed = ed; if (!/^(BUTTON|A)$/.test(el.tagName)) { el.tabIndex = 0; el.setAttribute('role', 'button'); } if (label) el.setAttribute('aria-label', t(label)); };
   const hero = art.querySelector('.ev-hero');
   if (hero && !hero.dataset.ed) { target(hero, 'hero', 'Edit title and photo'); hero.insertAdjacentHTML('beforeend', mark); }
   const sm = art.querySelector('.stub-main');
@@ -2955,18 +2958,18 @@ function onpDecorate(cfg, art) {
   $$('[data-sec]', body).forEach(s => {
     const id = s.dataset.sec; if (s.dataset.ed || !(ONP_SEC[id] || /^c-/.test(id))) return;
     s.dataset.ed = 'sec:' + id; s.classList.add('onp-sec');
-    const h = s.querySelector('.sec-h'); if (h) { h.insertAdjacentHTML('beforeend', mark); h.tabIndex = 0; h.setAttribute('role', 'button'); h.setAttribute('aria-label', 'Edit ' + h.textContent); }
+    const h = s.querySelector('.sec-h'); if (h) { h.insertAdjacentHTML('beforeend', mark); h.tabIndex = 0; h.setAttribute('role', 'button'); h.setAttribute('aria-label', t('Edit {s}', { s: h.textContent })); }
     const sb = s.querySelector('.sec-b') || s;
-    const add = (ed, label, where = sb) => where.insertAdjacentHTML('beforeend', `<button type="button" class="onp-add" data-ed="${esc(ed)}">+ ${esc(label)}</button>`);
+    const add = (ed, label, where = sb) => where.insertAdjacentHTML('beforeend', `<button type="button" class="onp-add" data-ed="${esc(ed)}">+ ${esc(t(label))}</button>`);
     if (id === 'schedule') {
-      $$('.day[data-day]', s).forEach(dd => { const d = dd.dataset.day; const ol = dd.querySelector('ol.tl'); if (d && ol) ol.insertAdjacentHTML('beforeend', `<li class="onp-li"><button type="button" class="onp-add" data-ed="add:s:${esc(d)}">+ ${isTrip(cfg) ? 'Add to this day' : 'Add item'}</button></li>`); });
+      $$('.day[data-day]', s).forEach(dd => { const d = dd.dataset.day; const ol = dd.querySelector('ol.tl'); if (d && ol) ol.insertAdjacentHTML('beforeend', `<li class="onp-li"><button type="button" class="onp-add" data-ed="add:s:${esc(d)}">+ ${t(isTrip(cfg) ? 'Add to this day' : 'Add item')}</button></li>`); });
       const row = document.createElement('div'); row.className = 'onp-adds'; sb.appendChild(row);
       add('add:s', isTrip(cfg) ? 'Add to itinerary' : 'Add item', row); if (routeInItin(cfg)) add('add:st', 'Add a stop', row);
     }
     if (id === 'route') add('add:st', 'Add a stop');
     if (id === 'details') add('add:n', 'Add note');
   });
-  if (!body.querySelector('[data-ed="gallery"]')) body.insertAdjacentHTML('beforeend', '<button type="button" class="onp-add onp-more" data-ed="gallery">+ Add section</button>');
+  if (!body.querySelector('[data-ed="gallery"]')) body.insertAdjacentHTML('beforeend', `<button type="button" class="onp-add onp-more" data-ed="gallery">+ ${t('Add section')}</button>`);
   // sections filled in later (access, the RSVP slot) get theirs when they arrive
   if (!art._onpMo && typeof MutationObserver === 'function') { art._onpMo = new MutationObserver(() => { if (document.body.contains(art) && body.querySelector('[data-sec]:not([data-ed])')) onpDecorate(cfg, art); }); art._onpMo.observe(body, { childList: true, subtree: true }); }
 }
@@ -3026,39 +3029,39 @@ function onpOpen(id, focus = null, secId = null) {
 }
 // sheet body for the on-page parts that have no card of their own, or null
 function onpSheet(c, id) {
-  if (id === 'hero') return { title: 'Title and photo', body: `<div class="es-card es-hero"><input id="sh-title" class="es-title" data-f="title" value="${esc(c.title)}" maxlength="80" placeholder="Title" aria-label="Title">
-    <label class="es-line es-note">${esIc('pencil')}<input id="sh-tagline" data-f="tagline" value="${esc(c.tagline)}" maxlength="140" placeholder="Add a tagline" aria-label="Tagline"></label></div>${coverFieldHTML(c)}` };
+  if (id === 'hero') return { title: 'Title and photo', body: `<div class="es-card es-hero"><input id="sh-title" class="es-title" data-f="title" value="${esc(c.title)}" maxlength="80" placeholder="${t('Title')}" aria-label="${t('Title')}">
+    <label class="es-line es-note">${esIc('pencil')}<input id="sh-tagline" data-f="tagline" value="${esc(c.tagline)}" maxlength="140" placeholder="${t('Add a tagline')}" aria-label="${t('Tagline')}"></label></div>${coverFieldHTML(c)}` };
   if (id === 'when') {
     const v = c.venue;
-    const venue = v ? `${esMapBand(+v.lat, +v.lon, !v.city && !v.region && v.country ? 4 : !v.city && v.region ? 7 : isTrip(c) ? 11 : 15)}<input id="sh-vname" class="es-title" data-v="name" value="${esc(v.name)}" aria-label="${isTrip(c) ? 'Destination name on the page' : 'Venue name on the page'}">
-      <p class="es-sub"><span>${esc(v.address || '')}</span>${v.address ? ' · ' : ''}<button type="button" class="es-chg" data-b="clear-venue">Change</button></p>`
-      : `<div class="es-line es-placeq search">${esIc('search')}<input id="vq-sh" placeholder="${isTrip(c) ? 'City or region' : 'Venue name or address'}" aria-label="${isTrip(c) ? 'Destination' : 'Venue'}" value="${esc(B.vq || '')}" enterkeyhint="search"><button type="button" class="es-find" data-b="search">Search</button></div>
+    const venue = v ? `${esMapBand(+v.lat, +v.lon, !v.city && !v.region && v.country ? 4 : !v.city && v.region ? 7 : isTrip(c) ? 11 : 15)}<input id="sh-vname" class="es-title" data-v="name" value="${esc(v.name)}" aria-label="${t(isTrip(c) ? 'Destination name on the page' : 'Venue name on the page')}">
+      <p class="es-sub"><span>${esc(v.address || '')}</span>${v.address ? ' · ' : ''}<button type="button" class="es-chg" data-b="clear-venue">${t('Change')}</button></p>`
+      : `<div class="es-line es-placeq search">${esIc('search')}<input id="vq-sh" placeholder="${t(isTrip(c) ? 'City or region' : 'Venue name or address')}" aria-label="${t(isTrip(c) ? 'Destination' : 'Venue')}" value="${esc(B.vq || '')}" enterkeyhint="search"><button type="button" class="es-find" data-b="search">${t('Search')}</button></div>
       <ul class="vres">${B.venueResults.map((r, i) => `<li><button type="button" data-pick="${i}"><b>${esc(r.name)}</b><span>${esc(r.display)}</span></button></li>`).join('')}</ul>${B.vmsg ? `<p class="hint">${esc(B.vmsg)}</p>` : ''}`;
     return { title: isTrip(c) ? 'Dates and destination' : 'Date and place', body: `<div class="es-card es-when">${venue}${whenFieldsHTML(c, 'sh')}</div>${flyIntoFieldHTML(c, 'sh')}` };
   }
-  if (id === 'fly') return { title: 'Fly into', body: flyIntoFieldHTML(c, 'sh') || '<p class="hint">Pick a venue first.</p>' };
+  if (id === 'fly') return { title: 'Fly into', body: flyIntoFieldHTML(c, 'sh') || `<p class="hint">${t('Pick a venue first.')}</p>` };
   if (id === 'details') {
     const cs = (TYPE_CARDS[c.type] || []).filter(x => x[0] !== 'route' && x[0] !== 'companions').concat([COMMON_CARDS.find(x => x[0] === 'notes'), COMMON_CARDS.find(x => x[0] === 'bring')]);
     return { title: 'Need to know', body: `<div class="cards">${cs.map(x => cardBtn(c, x)).join('')}</div>` };
   }
-  if (id === 'gallery') { const cards = allCards(c); return { title: 'Add to your page', body: `${cards.type.length ? `<p class="grp">${TYPE_GROUP[c.type]}</p><div class="cards">${cards.type.map(x => cardBtn(c, x)).join('')}</div>` : ''}<p class="grp">For any event</p><div class="cards">${cards.common.map(x => cardBtn(c, x)).join('')}</div>` }; }
+  if (id === 'gallery') { const cards = allCards(c); return { title: 'Add to your page', body: `${cards.type.length ? `<p class="grp">${esc(t(TYPE_GROUP[c.type]))}</p><div class="cards">${cards.type.map(x => cardBtn(c, x)).join('')}</div>` : ''}<p class="grp">${t('For any event')}</p><div class="cards">${cards.common.map(x => cardBtn(c, x)).join('')}</div>` }; }
   return null;
 }
 // sheet title for one focused item
 function onpTitle(c, id) {
   const F = B.focus; if (!F) return '';
-  if (F.k === 'day') return isTrip(c) && c.start && F.d >= c.start.slice(0, 10) ? `Day ${daysBetween(c.start, F.d) + 1} · ${fmt(F.d, { weekday: 'short', month: 'short', day: 'numeric' })}` : friendlyDate(F.d);
+  if (F.k === 'day') return isTrip(c) && c.start && F.d >= c.start.slice(0, 10) ? `${t('Day {n}', { n: daysBetween(c.start, F.d) + 1 })} · ${fmt(F.d, { weekday: 'short', month: 'short', day: 'numeric' })}` : friendlyDate(F.d);
   const x = F.o || {};
-  if (F.k === 's') return x.date ? (isTrip(c) && c.start && x.date >= c.start.slice(0, 10) ? `Day ${daysBetween(c.start, x.date) + 1} · ${fmt(x.date, { weekday: 'short', month: 'short', day: 'numeric' })}` : friendlyDate(x.date)) : schedTitle(c);
-  if (F.k === 'st') return x.name || 'Stop';
-  if (F.k === 'n') return x.label || 'Note';
-  if (F.k === 'cs') return x.title || 'Custom section';
+  if (F.k === 's') return x.date ? (isTrip(c) && c.start && x.date >= c.start.slice(0, 10) ? `${t('Day {n}', { n: daysBetween(c.start, x.date) + 1 })} · ${fmt(x.date, { weekday: 'short', month: 'short', day: 'numeric' })}` : friendlyDate(x.date)) : t(schedTitle(c));
+  if (F.k === 'st') return x.name || t('Stop');
+  if (F.k === 'n') return x.label || t('Note');
+  if (F.k === 'cs') return x.title || t('Custom section');
   return '';
 }
 // the bottom of an on-page sheet: Show all (one item) and the section's place on the page
 function onpFoot(c) {
   const F = B.focus;
-  return F && F.k !== 'cs' ? `<button type="button" class="link strong sh-all" data-onp-all>${esIc('eye')}Show all</button>` : '';
+  return F && F.k !== 'cs' ? `<button type="button" class="link strong sh-all" data-onp-all>${esIc('eye')}${t('Show all')}</button>` : '';
 }
 // clicks in an on-page sheet; true when handled
 function onpClick(b, cfg) {
@@ -3084,13 +3087,13 @@ function onpDelete(cfg, k, i) {
     if (wasFocus) { B.focus = null; changed(); sh.close(); } else changed(true);
     if (!empty) undoToast(name ? `Deleted “${name}”` : 'Deleted', () => { B.cfg = snap; B.focus = null; changed(true); });
   };
-  if (empty) go(); else confirmDlg({ title: `Delete “${name || 'this item'}”?`, ok: 'Delete' }).then(yes => { if (yes) go(); });
+  if (empty) go(); else confirmDlg({ title: name ? t('Delete “{n}”?', { n: name }) : t('Delete this item?'), ok: t('Delete') }).then(yes => { if (yes) go(); });
 }
 // a short "Deleted · Undo" bar; inside the open sheet when there is one (a modal makes the rest of the page inert)
 function undoToast(msg, fn) {
   $('#undo')?.remove(); const sh = $('#sheet');
   const el = document.createElement('div'); el.id = 'undo'; el.setAttribute('role', 'status');
-  el.innerHTML = `<span>${esc(msg)}</span><button type="button" class="btn sm">Undo</button>`;
+  el.innerHTML = `<span>${esc(msg)}</span><button type="button" class="btn sm">${t('Undo')}</button>`;
   (sh && sh.open ? sh : document.body).appendChild(el);
   el.querySelector('button').onclick = () => { el.remove(); fn(); };
   requestAnimationFrame(() => el.classList.add('show'));
@@ -3123,16 +3126,16 @@ const esIc = (k, cls = '') => `<svg class="es-ic${cls ? ' ' + cls : ''}" viewBox
 const esDay = (d) => d ? fmt(d, { weekday: 'short', month: 'short', day: 'numeric' }) : '';
 // the small label at the top of a one-item sheet
 function shEyebrow(c, F, fi) {
-  if (F.k === 'st') { const ss = c.stops || []; return ss.length > 1 && fi >= 0 ? `Stop ${fi + 1} of ${ss.length}` : 'Stop'; }
-  const x = c.schedule[fi]; if (!x || !x.date) return schedTitle(c);
+  if (F.k === 'st') { const ss = c.stops || []; return ss.length > 1 && fi >= 0 ? t('Stop {i} of {n}', { i: fi + 1, n: ss.length }) : t('Stop'); }
+  const x = c.schedule[fi]; if (!x || !x.date) return t(schedTitle(c));
   if (!isTrip(c)) return friendlyDate(x.date);
-  const day = c.start && x.date >= c.start.slice(0, 10) ? `Day ${daysBetween(c.start, x.date) + 1}` : esDay(x.date);
+  const day = c.start && x.date >= c.start.slice(0, 10) ? t('Day {n}', { n: daysBetween(c.start, x.date) + 1 }) : esDay(x.date);
   const ss = stopsOf(c); const st = ss.length ? ss[legOf(ss, x.date)] : null;
   return st ? `${day} · ${st.city || st.name}` : `${day} · ${esDay(x.date)}`;
 }
 // Saved: shows once an edit made in this sheet is saved (the header keeps the page-wide status)
 const shSavedHTML = () => `<span class="sh-saved" data-sh-saved>${B && B.shSave ? shSavedTxt(B.shSave) : ''}</span>`;
-const shSavedTxt = (st) => st === 'saving' ? '<span class="sh-sv">Saving…</span>' : st ? `${esIc('check')}<span>Saved</span>` : '';
+const shSavedTxt = (st) => st === 'saving' ? `<span class="sh-sv">${t('Saving…')}</span>` : st ? `${esIc('check')}<span>${t('Saved')}</span>` : '';
 function shSaveStatus(st) { const sh = $('#sheet'); if (!B || !sh || !sh.open) return; if (st === 'saving') B.shDirty = true; if (!B.shDirty) return;
   B.shSave = st === 'saving' ? 'saving' : st ? 'saved' : ''; const el = sh.querySelector('[data-sh-saved]'); if (el) el.innerHTML = shSavedTxt(B.shSave); }
 // … : the sheet's rarer actions. Each entry: [data attributes, icon, label, { dis, del }] or '-' (a rule)
@@ -3149,8 +3152,8 @@ function shMenu(c, id, F, fi) {
   else if (F && F.k === 'cs' && fi >= 0) { sec(); if (it.length) it.push('-'); it.push([`data-cdel="${fi}"`, 'trash', 'Delete section', { del: true }]); }
   else if (!F) sec();
   if (!it.length) return '';
-  return `<button type="button" class="sh-round sh-more" data-sh-more aria-label="More" aria-haspopup="menu" aria-expanded="false" aria-controls="sh-menu">${esIc('more')}</button>
-    <div class="sh-menu" id="sh-menu" role="menu" hidden>${it.map(x => x === '-' ? '<hr>' : `<button type="button" role="menuitem" ${x[0]}${x[3] && x[3].dis ? ' disabled' : ''} class="${x[3] && x[3].del ? 'del' : ''}">${esIc(x[1])}<span>${esc(x[2])}</span></button>`).join('')}</div>`;
+  return `<button type="button" class="sh-round sh-more" data-sh-more aria-label="${t('More')}" aria-haspopup="menu" aria-expanded="false" aria-controls="sh-menu">${esIc('more')}</button>
+    <div class="sh-menu" id="sh-menu" role="menu" hidden>${it.map(x => x === '-' ? '<hr>' : `<button type="button" role="menuitem" ${x[0]}${x[3] && x[3].dis ? ' disabled' : ''} class="${x[3] && x[3].del ? 'del' : ''}">${esIc(x[1])}<span>${esc(t(x[2]))}</span></button>`).join('')}</div>`;
 }
 function shMenuOpen(on) {
   const m = $('#sheet .sh-menu'), b = $('#sheet [data-sh-more]'); if (!m || !b) return;
@@ -3170,26 +3173,26 @@ const esMapBand = (lat, lon, z) => isFinite(lat) && isFinite(lon) ? `<div class=
 // ---- the itinerary item ----
 function itemCardHTML(c, i) {
   const x = c.schedule[i]; const trip = isTrip(c); const k = trip ? (PLAN_KINDS[x.kind] ? x.kind : 'activity') : 'activity'; const hotel = hotelCiLine(x);
-  const ph = !trip ? 'What’s happening' : k === 'reservation' ? 'Dinner at…, tour, tickets' : k === 'note' ? 'Something to remember' : 'What you’re doing';
+  const ph = t(!trip ? 'What’s happening' : k === 'reservation' ? 'Dinner at…, tour, tickets' : k === 'note' ? 'Something to remember' : 'What you’re doing');
   const chip = (kind, ic, txt, inp, set) => `<span class="es-chip${set ? '' : ' ghost'}" data-chip="${kind}">${esIc(ic)}<span data-chip-t>${esc(txt)}</span>${inp}</span>`;
   return `<div class="rowed plan-item es-card it-card k-${k}" data-it="${i}">
     <span class="es-kind" aria-hidden="true">${esIc(hotel ? 'bed' : k)}</span>
-    <textarea class="es-title" data-s="${i}" data-k="title" rows="1" maxlength="200" placeholder="${ph}" aria-label="Title">${esc(x.title)}</textarea>
-    <div class="es-chips">${chip('date', 'cal', x.date ? esDay(x.date) : 'Add a day', `<input id="tp-date" type="date" data-s="${i}" data-k="date" value="${esc(x.date || '')}" aria-label="Day">`, !!x.date)}${chip('time', 'clock', x.time ? fmtTime(x.time) : 'Add a time', `<input type="time" data-s="${i}" data-k="time" value="${esc(x.time || '')}" aria-label="Time">${x.time ? `<button type="button" class="es-chip-x" data-tp-notime="${i}" aria-label="Remove the time">${esIc('x')}</button>` : ''}`, !!x.time)}</div>
+    <textarea class="es-title" data-s="${i}" data-k="title" rows="1" maxlength="200" placeholder="${ph}" aria-label="${t('Title')}">${esc(x.title)}</textarea>
+    <div class="es-chips">${chip('date', 'cal', x.date ? esDay(x.date) : t('Add a day'), `<input id="tp-date" type="date" data-s="${i}" data-k="date" value="${esc(x.date || '')}" aria-label="${t('Day')}">`, !!x.date)}${chip('time', 'clock', x.time ? fmtTime(x.time) : t('Add a time'), `<input type="time" data-s="${i}" data-k="time" value="${esc(x.time || '')}" aria-label="${t('Time')}">${x.time ? `<button type="button" class="es-chip-x" data-tp-notime="${i}" aria-label="${t('Remove the time')}">${esIc('x')}</button>` : ''}`, !!x.time)}</div>
     ${trip && k === 'note' ? '' : itemPlaceHTML(x, i)}
     ${hotel ? `<div class="es-line es-hf">${esIc('bed')}<div class="es-tx">${hfFoldHTML(hfOfEv(x), 'hf-s' + i, { en: true, attr: `data-hf-s="${i}"` })}</div></div>
-      <label class="es-line es-note">${esIc('pencil')}<textarea data-s="${i}" data-k="note" rows="1" maxlength="1000" placeholder="Notes: confirmation, late check-in, requests" aria-label="Notes">${esc(x.note || '')}</textarea></label>`
-      : `<label class="es-line es-note">${esIc('pencil')}<textarea data-s="${i}" data-k="note" rows="1" maxlength="1000" placeholder="${trip ? 'Confirmation or a note' : 'Add a note'}" aria-label="Note">${esc(x.note || '')}</textarea></label>`}
+      <label class="es-line es-note">${esIc('pencil')}<textarea data-s="${i}" data-k="note" rows="1" maxlength="1000" placeholder="${t('Notes: confirmation, late check-in, requests')}" aria-label="${t('Notes')}">${esc(x.note || '')}</textarea></label>`
+      : `<label class="es-line es-note">${esIc('pencil')}<textarea data-s="${i}" data-k="note" rows="1" maxlength="1000" placeholder="${t(trip ? 'Confirmation or a note' : 'Add a note')}" aria-label="${t('Note')}">${esc(x.note || '')}</textarea></label>`}
   </div>
-  ${trip ? `<div class="es-kinds" role="radiogroup" aria-label="Type">${Object.entries(PLAN_KINDS).map(([v, l]) => `<button type="button" role="radio" aria-checked="${k === v}" tabindex="${k === v ? 0 : -1}" class="es-kt${k === v ? ' on' : ''}" data-tp-kind="${v}" data-tp-i="${i}">${esIc(v)}<span>${l}</span></button>`).join('')}</div>${roListHTML(c, i)}` : ''}`;
+  ${trip ? `<div class="es-kinds" role="radiogroup" aria-label="${t('Type')}">${Object.entries(PLAN_KINDS).map(([v, l]) => `<button type="button" role="radio" aria-checked="${k === v}" tabindex="${k === v ? 0 : -1}" class="es-kt${k === v ? ' on' : ''}" data-tp-kind="${v}" data-tp-i="${i}">${esIc(v)}<span>${esc(t(l))}</span></button>`).join('')}</div>${roListHTML(c, i)}` : ''}`;
 }
 // the item's place: Add a place (search as you type; Enter or Find for a plain search), or the place with a map crop
 function itemPlaceHTML(x, i) {
   const p = x.place;
   if (p && B.spEdit !== i) { const sub = p.address && p.address !== p.name ? p.address : '';
     const dir = p.lat != null ? `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}` : `https://www.google.com/maps/dir/?api=1&destination=${enc([p.name, p.address].filter(Boolean).join(', '))}`;
-    return `<div class="es-line es-place s-place">${p.lat != null ? `<span class="es-thumb" title="Map © OpenStreetMap">${osmCrop(p.lat, p.lon, 15, 64, 48)}</span>` : esIc('search')}<div class="es-tx"><button type="button" class="es-pl" data-sp-chg="${i}" aria-label="Change place: ${esc(p.name)}"><b>${esc(p.name)}</b></button><small>${sub ? `${esc(sub)} · ` : ''}<a href="${esc(dir)}" target="_blank" rel="noopener noreferrer">Directions</a></small></div><button type="button" class="es-x" data-sp-del="${i}" aria-label="Remove place">${esIc('x')}</button></div>`; }
-  return `<div class="es-line es-placeq s-place-q search">${esIc('search')}<input id="sp-q-${i}" data-sp-q="${i}" value="${p ? esc(p.name) : ''}" placeholder="Add a place" aria-label="Place" autocomplete="off" enterkeyhint="search"><button type="button" class="es-find" data-sp-find="${i}">Find</button></div>`;
+    return `<div class="es-line es-place s-place">${p.lat != null ? `<span class="es-thumb" title="Map © OpenStreetMap">${osmCrop(p.lat, p.lon, 15, 64, 48)}</span>` : esIc('search')}<div class="es-tx"><button type="button" class="es-pl" data-sp-chg="${i}" aria-label="${esc(t('Change place: {n}', { n: p.name }))}"><b>${esc(p.name)}</b></button><small>${sub ? `${esc(sub)} · ` : ''}<a href="${esc(dir)}" target="_blank" rel="noopener noreferrer">${t('Directions')}</a></small></div><button type="button" class="es-x" data-sp-del="${i}" aria-label="${t('Remove place')}">${esIc('x')}</button></div>`; }
+  return `<div class="es-line es-placeq s-place-q search">${esIc('search')}<input id="sp-q-${i}" data-sp-q="${i}" value="${p ? esc(p.name) : ''}" placeholder="${t('Add a place')}" aria-label="${t('Place')}" autocomplete="off" enterkeyhint="search"><button type="button" class="es-find" data-sp-find="${i}">${t('Find')}</button></div>`;
 }
 // page order of some schedule items: by day, then time; an item with no time follows the one before it in the list
 function schedOrder(c, idx) {
@@ -3200,14 +3203,14 @@ function schedOrder(c, idx) {
 function itemGroup(c, i) {
   const x = c.schedule[i]; if (!x || !x.date) return null; const ss = stopsOf(c); const li = ss.length ? legOf(ss, x.date) : -1;
   const s = li >= 0 ? ss[li] : null; const inG = s ? (y) => !!y.date && legOf(ss, y.date) === li : (y) => y.date === x.date;
-  return { label: s ? `In ${s.city || s.name}` : esDay(x.date), order: schedOrder(c, c.schedule.map((_, j) => j).filter(j => inG(c.schedule[j]))) };
+  return { label: s ? t('In {c}', { c: s.city || s.name }) : esDay(x.date), order: schedOrder(c, c.schedule.map((_, j) => j).filter(j => inG(c.schedule[j]))) };
 }
 function roListHTML(c, i) {
   const g = itemGroup(c, i); if (!g || g.order.length < 2) return '';
   const pos = g.order.indexOf(i); const a = Math.max(0, Math.min(pos - 3, g.order.length - 7)); const rows = g.order.slice(a, a + 7);
-  return `<div class="es-ro"><p class="es-lbl" id="ro-l">${esc(g.label)} · hold to reorder</p><span class="vh" id="ro-help">Up and down arrow keys move it</span>
-    <ol class="ro-ol" data-ro-off="${a}" aria-labelledby="ro-l">${rows.map(j => { const y = c.schedule[j]; const nm = y.title || 'Untitled';
-      return `<li class="ro-it${j === i ? ' me' : ''}" data-ro="${j}"><button type="button" class="ro-grip" data-ro-grip="${j}" aria-label="Move ${esc(nm)}, ${esc(esDay(y.date))}" aria-describedby="ro-help">${esIc('grip')}</button><time>${esc(fmt(y.date, { weekday: 'short' }).toUpperCase())} ${+y.date.slice(8, 10)}</time><span class="ro-t${y.title ? '' : ' ph'}">${esc(nm)}</span>${y.time ? `<small>${esc(fmtTime(y.time))}</small>` : ''}</li>`; }).join('')}</ol></div>`;
+  return `<div class="es-ro"><p class="es-lbl" id="ro-l">${esc(g.label)} · ${t('hold to reorder')}</p><span class="vh" id="ro-help">${t('Up and down arrow keys move it')}</span>
+    <ol class="ro-ol" data-ro-off="${a}" aria-labelledby="ro-l">${rows.map(j => { const y = c.schedule[j]; const nm = y.title || t('Untitled');
+      return `<li class="ro-it${j === i ? ' me' : ''}" data-ro="${j}"><button type="button" class="ro-grip" data-ro-grip="${j}" aria-label="${esc(t('Move {n}', { n: nm }))}, ${esc(esDay(y.date))}" aria-describedby="ro-help">${esIc('grip')}</button><time>${esc(fmt(y.date, { weekday: 'short' }).toUpperCase())} ${+y.date.slice(8, 10)}</time><span class="ro-t${y.title ? '' : ' ph'}">${esc(nm)}</span>${y.time ? `<small>${esc(fmtTime(y.time))}</small>` : ''}</li>`; }).join('')}</ol></div>`;
 }
 // move item j to position `to` in its group's page order. It takes the day of the item it moved past.
 function itemMove(c, j, to) {
@@ -3221,16 +3224,16 @@ function itemMove(c, j, to) {
 }
 function itemMoved(c, x, kb) {
   changed(true); const k = c.schedule.indexOf(x); const g = itemGroup(c, k); const live = $('#sheet [data-sh-live]');
-  if (live && g) live.textContent = `${x.title || 'Item'}: ${esDay(x.date)}, ${g.order.indexOf(k) + 1} of ${g.order.length}`;
+  if (live && g) live.textContent = `${x.title || t('Item')}: ${esDay(x.date)}, ${t('{i} of {n}', { i: g.order.indexOf(k) + 1, n: g.order.length })}`;
   if (kb) $(`#sheet [data-ro-grip="${k}"]`)?.focus();
 }
 // date / time typed or picked: the chips, the label and the list follow without redrawing the fields
 function itemRefresh(i) {
   const c = B.cfg; const x = c.schedule[i]; const card = $(`#sheet .it-card[data-it="${i}"]`); if (!x || !card) return;
   const set = (k, txt, on) => { const ch = card.querySelector(`[data-chip="${k}"]`); if (!ch) return; ch.querySelector('[data-chip-t]').textContent = txt; ch.classList.toggle('ghost', !on); };
-  set('date', x.date ? esDay(x.date) : 'Add a day', !!x.date); set('time', x.time ? fmtTime(x.time) : 'Add a time', !!x.time);
+  set('date', x.date ? esDay(x.date) : t('Add a day'), !!x.date); set('time', x.time ? fmtTime(x.time) : t('Add a time'), !!x.time);
   const ch = card.querySelector('[data-chip="time"]'); const xb = ch && ch.querySelector('.es-chip-x');
-  if (ch && x.time && !xb) ch.insertAdjacentHTML('beforeend', `<button type="button" class="es-chip-x" data-tp-notime="${i}" aria-label="Remove the time">${esIc('x')}</button>`); else if (xb && !x.time) xb.remove();
+  if (ch && x.time && !xb) ch.insertAdjacentHTML('beforeend', `<button type="button" class="es-chip-x" data-tp-notime="${i}" aria-label="${t('Remove the time')}">${esIc('x')}</button>`); else if (xb && !x.time) xb.remove();
   const l = $('#sheet .sh-lbl'); if (l && B.focus) l.textContent = shEyebrow(c, B.focus, i);
   const ro = $('#sheet .es-ro'); const h = isTrip(c) ? roListHTML(c, i) : '';
   if (ro) { if (h) ro.outerHTML = h; else ro.remove(); } else if (h) $('#sheet .es-kinds')?.insertAdjacentHTML('afterend', h);
@@ -3302,25 +3305,25 @@ function esWire(sh) {
 function stopCardHTML(c, i) {
   const ss = c.stops || []; const s = ss[i]; if (!s) return ''; const n = nightsOf(s); const named = stopsOf(c); const li = named.indexOf(s);
   const dt = (k, lbl) => { const v = k === 'from' ? (s.from || '').slice(0, 10) : (s.to || '').slice(0, 10);
-    return `<label class="es-d${k === 'to' ? ' r' : ''}${v ? '' : ' ph'}"><small>${lbl}</small><b>${esc(v ? esDay(v) : 'Add a date')}</b><input id="st-${k}-${i}" type="date" data-st="${i}" data-k="${k}" value="${esc(v)}"${k === 'to' && s.from ? ` min="${esc(s.from.slice(0, 10))}"` : ''} aria-label="${lbl}"></label>`; };
+    return `<label class="es-d${k === 'to' ? ' r' : ''}${v ? '' : ' ph'}"><small>${esc(t(lbl))}</small><b>${esc(v ? esDay(v) : t('Add a date'))}</b><input id="st-${k}-${i}" type="date" data-st="${i}" data-k="${k}" value="${esc(v)}"${k === 'to' && s.from ? ` min="${esc(s.from.slice(0, 10))}"` : ''} aria-label="${esc(t(lbl))}"></label>`; };
   const hotels = li < 0 ? [] : c.schedule.map((x, j) => [x, j]).filter(([x]) => hotelStayLine(x) && legOf(named, x.date) === li);
   return `<div class="rowed st-row es-card es-stop" data-st-row="${i}">
     ${s.name ? esMapBand(+s.lat, +s.lon, s.cc && !s.city && !s.region && s.country === s.name ? 4 : 11) : ''}
-    ${s.name ? `<h3 class="es-title es-city">${esc(s.name)}</h3><p class="es-sub"><span>${esc([s.region, s.country].filter(Boolean).join(', '))}</span>${s.region || s.country ? ' · ' : ''}<button type="button" class="es-chg" data-st-clear="${i}">Change</button></p>`
-      : `<div class="es-line es-placeq search">${esIc('search')}<input id="st-q-${i}" data-st-q="${i}" placeholder="City or place" aria-label="City or place" autocomplete="off" enterkeyhint="search"><button type="button" class="es-find" data-st-find="${i}">Find</button></div>`}
+    ${s.name ? `<h3 class="es-title es-city">${esc(s.name)}</h3><p class="es-sub"><span>${esc([s.region, s.country].filter(Boolean).join(', '))}</span>${s.region || s.country ? ' · ' : ''}<button type="button" class="es-chg" data-st-clear="${i}">${t('Change')}</button></p>`
+      : `<div class="es-line es-placeq search">${esIc('search')}<input id="st-q-${i}" data-st-q="${i}" placeholder="${t('City or place')}" aria-label="${t('City or place')}" autocomplete="off" enterkeyhint="search"><button type="button" class="es-find" data-st-find="${i}">${t('Find')}</button></div>`}
     <div class="es-stay">${dt('from', 'Arrive')}${dt('to', 'Leave')}
-      ${stopDated(s) ? `<div class="es-nights st-nights" role="group" aria-label="Nights"><button type="button" data-st-n="${i}" data-dir="-1" ${n ? '' : 'disabled'} aria-label="One night fewer">${esIc('minus')}</button><span>${n == null ? 'Set the leave date' : n === 0 ? 'Day trip' : nightsTxt(n)}</span><button type="button" data-st-n="${i}" data-dir="1" aria-label="One more night">${esIc('plus')}</button></div>` : ''}</div>
+      ${stopDated(s) ? `<div class="es-nights st-nights" role="group" aria-label="${t('Nights')}"><button type="button" data-st-n="${i}" data-dir="-1" ${n ? '' : 'disabled'} aria-label="${t('One night fewer')}">${esIc('minus')}</button><span>${n == null ? t('Set the leave date') : n === 0 ? t('Day trip') : nightsTxt(n)}</span><button type="button" data-st-n="${i}" data-dir="1" aria-label="${t('One more night')}">${esIc('plus')}</button></div>` : ''}</div>
     ${stopNoteHTML(c, i)}
-    ${hotels.map(([x, j]) => `<button type="button" class="es-line es-go" data-onp-go="s:${j}">${esIc('bed')}<span class="es-tx"><b>${esc(hostHotelName(x.title) || x.title)}</b><small>Check in ${esc(esDay(x.date))}</small></span>${esIc('chev')}</button>`).join('')}
+    ${hotels.map(([x, j]) => `<button type="button" class="es-line es-go" data-onp-go="s:${j}">${esIc('bed')}<span class="es-tx"><b>${esc(hostHotelName(x.title) || x.title)}</b><small>${esc(t('Check in {d}', { d: esDay(x.date) }))}</small></span>${esIc('chev')}</button>`).join('')}
   </div>`;
 }
 async function venueSearch() {
   const inSheet = !!$('#sheet #vq-sh'); const q = ($(inSheet ? '#sheet #vq-sh' : '#vq')?.value || '').trim(); B.vq = q;
   const repaint = () => { buildForm(); if (inSheet && B.card) { renderSheet(); $('#sheet #vq-sh')?.focus(); } };
-  if (q.length < 3) { B.vmsg = 'Type at least 3 characters.'; repaint(); return; }
-  const btn = $(inSheet ? '#sheet [data-b="search"]' : '[data-b="search"]'); if (btn) { btn.disabled = true; btn.textContent = 'Searching…'; }
-  try { B.venueResults = await geocode(q); B.vmsg = B.venueResults.length ? '' : 'No matches. Try adding the city or street.'; }
-  catch { B.venueResults = []; B.vmsg = 'Search is unavailable right now. Try again in a moment.'; }
+  if (q.length < 3) { B.vmsg = t('Type at least 3 characters.'); repaint(); return; }
+  const btn = $(inSheet ? '#sheet [data-b="search"]' : '[data-b="search"]'); if (btn) { btn.disabled = true; btn.textContent = t('Searching…'); }
+  try { B.venueResults = await geocode(q); B.vmsg = B.venueResults.length ? '' : t('No matches. Try adding the city or street.'); }
+  catch { B.venueResults = []; B.vmsg = t('Search is unavailable right now. Try again in a moment.'); }
   if (inSheet) { repaint(); return; }
   buildForm(); const d = $('details[data-acc="when"]'); if (d) d.open = true; $('#vq')?.focus();
 }
@@ -3333,48 +3336,48 @@ async function pickVenue(r) {
 // ---------- guided setup: type → name and date → venue → done ----------
 let SU = null;
 function renderSetup() {
-  LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
-  document.title = 'Create a page · 1LinkTrip';
+  LANG = uiLang(); document.documentElement.lang = LANG; document.documentElement.dir = 'ltr';
+  document.title = t('Create a page') + ' · 1LinkTrip';
   SU = { step: 0, cfg: freshEvent('Party'), results: [], q: '', msg: '' }; LS.del('draftHosted'); LS.set('draftId', newPid());
   B = { cfg: SU.cfg, venueResults: [] };
-  $('#app').innerHTML = `<div class="setup"><div class="su-main"></div><div class="su-preview"><div class="su-tag">Preview</div><div class="b-frame" id="su-frame"></div></div></div>`;
+  $('#app').innerHTML = `<div class="setup"><div class="su-main"></div><div class="su-preview"><div class="su-tag">${t('Preview')}</div><div class="b-frame" id="su-frame"></div></div></div>`;
   suRender();
 }
 const suPreview = debounce(() => { const p = $('#su-frame'); if (p && getComputedStyle(p.parentElement).display !== 'none') renderEvent(SU.cfg, p, { preview: true }); }, 250);
 function suTicket(c) {
   const g = (v, ph) => v ? esc(v) : `<span class="ghost">${ph}</span>`;
   const air = c.venue ? pickAirport(airFor(c), null, []) : null;
-  return `<div class="su-ticket" style="--acc:${c.theme.accent}"><div><span class="lbl">${esc(c.type)}${c.venue && c.venue.city ? ' · ' + esc(c.venue.city) : ''}</span><b>${g(c.title, 'Your event')}</b><span>${c.start && SU.dated ? esc(dateRange(c.start, c.end)) + (c.start.length > 10 ? ' · ' + esc(fmtTime(c.start.slice(11, 16))) : '') : '<span class="ghost">Date</span>'}</span><span>${g(c.venue && c.venue.name, 'Venue')}</span></div><div class="r"><span class="lbl">Fly into</span><b>${air ? esc(air.iata) : '<span class="ghost">···</span>'}</b></div></div>`;
+  return `<div class="su-ticket" style="--acc:${c.theme.accent}"><div><span class="lbl">${esc(t(TYPE_LABEL[c.type] || c.type))}${c.venue && c.venue.city ? ' · ' + esc(c.venue.city) : ''}</span><b>${g(c.title, t('Your event'))}</b><span>${c.start && SU.dated ? esc(dateRange(c.start, c.end)) + (c.start.length > 10 ? ' · ' + esc(fmtTime(c.start.slice(11, 16))) : '') : `<span class="ghost">${t('Date')}</span>`}</span><span>${g(c.venue && c.venue.name, t('Venue'))}</span></div><div class="r"><span class="lbl">${t('Fly into')}</span><b>${air ? esc(air.iata) : '<span class="ghost">···</span>'}</b></div></div>`;
 }
 function suRender() {
   const c = SU.cfg; const n = SU.step; const m = $('.su-main'); if (!m) return;
   const prog = `<div class="prog" aria-hidden="true">${[0, 1, 2, 3].map(i => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</div>`;
-  const top = `<div class="su-top">${n > 0 && n < 3 ? '<button type="button" class="link" data-su="back">← Back</button>' : '<a class="brand sm" href="#">' + BRAND + '</a>'}${n === 2 ? '<button type="button" class="link strong" data-su="skip">Skip</button>' : ''}</div>`;
+  const top = `<div class="su-top">${n > 0 && n < 3 ? `<button type="button" class="link" data-su="back">← ${t('Back')}</button>` : '<a class="brand sm" href="#">' + BRAND + '</a>'}${n === 2 ? `<button type="button" class="link strong" data-su="skip">${t('Skip')}</button>` : ''}</div>`;
   let h = '', body = '', cta = '';
   if (n === 0) {
-    h = 'What are you planning?';
-    body = `${suAIHTML()}<div class="su-types">${SETUP_TYPES.map(([type, label, sub, col]) => `<button type="button" class="su-type ${SU.pick === type ? 'on' : ''}" aria-pressed="${SU.pick === type}" data-su-type="${esc(type)}"><i class="ti" aria-hidden="true"><svg viewBox="0 0 24 24">${TYPE_ICONS[type] || TYPE_ICONS.Party}</svg></i><b>${esc(label)}</b><span>${esc(sub)}</span></button>`).join('')}</div>`;
-    cta = `<button type="button" class="btn primary big" data-su="next0" ${SU.pick ? '' : 'disabled'}>Next</button>`;
+    h = t('What are you planning?');
+    body = `${suAIHTML()}<div class="su-types">${SETUP_TYPES.map(([type, label, sub, col]) => `<button type="button" class="su-type ${SU.pick === type ? 'on' : ''}" aria-pressed="${SU.pick === type}" data-su-type="${esc(type)}"><i class="ti" aria-hidden="true"><svg viewBox="0 0 24 24">${TYPE_ICONS[type] || TYPE_ICONS.Party}</svg></i><b>${esc(t(label))}</b><span>${esc(t(sub))}</span></button>`).join('')}</div>`;
+    cta = `<button type="button" class="btn primary big" data-su="next0" ${SU.pick ? '' : 'disabled'}>${t('Next')}</button>`;
   } else if (n === 1) {
-    h = 'What’s it called, and when?';
-    body = `<div class="field"><label for="su-title">Name</label><input id="su-title" data-su-f="title" value="${esc(c.title)}" maxlength="80" autocomplete="off"></div>
+    h = t('What’s it called, and when?');
+    body = `<div class="field"><label for="su-title">${t('Name')}</label><input id="su-title" data-su-f="title" value="${esc(c.title)}" maxlength="80" autocomplete="off"></div>
       ${whenFieldsHTML(c, 'su', !SU.dated, true)}`;
-    cta = `<button type="button" class="btn primary big" data-su="next" ${c.title.trim() && SU.dated ? '' : 'disabled'}>Continue</button>`;
+    cta = `<button type="button" class="btn primary big" data-su="next" ${c.title.trim() && SU.dated ? '' : 'disabled'}>${t('Continue')}</button>`;
   } else if (n === 2) {
-    h = isTrip(c) ? 'Where are you going?' : 'Where is it?';
-    body = `<div class="search"><input id="su-q" placeholder="${isTrip(c) ? 'City or region' : 'Venue name or address'}" value="${esc(SU.q)}" autocomplete="off"><button type="button" class="btn" data-su="search">Search</button></div>
+    h = t(isTrip(c) ? 'Where are you going?' : 'Where is it?');
+    body = `<div class="search"><input id="su-q" placeholder="${t(isTrip(c) ? 'City or region' : 'Venue name or address')}" value="${esc(SU.q)}" autocomplete="off"><button type="button" class="btn" data-su="search">${t('Search')}</button></div>
       ${SU.results.length ? `<div class="su-res">${SU.results.map((r, i) => `<button type="button" data-su-pick="${i}" class="${c.venue && c.venue.lat === r.lat && c.venue.lon === r.lon ? 'on' : ''}"><b>${esc(r.name)}</b><span>${esc(r.display)}</span></button>`).join('')}</div>` : ''}${SU.msg ? `<p class="hint">${esc(SU.msg)}</p>` : ''}`;
-    cta = `<button type="button" class="btn primary big" data-su="next" ${c.venue ? '' : 'disabled'}>Continue</button>`;
+    cta = `<button type="button" class="btn primary big" data-su="next" ${c.venue ? '' : 'disabled'}>${t('Continue')}</button>`;
   } else {
-    h = 'Your page is ready';
+    h = t('Your page is ready');
     if (acctOn()) setTimeout(() => { const pid = LS.get('draftId'); if (pid) acctSave(pid).catch(() => {}); }, 0); // signed in: on the account (not shared yet)
     const url = shareURL(c); const sugg = (TYPE_CARDS[c.type] || []).slice(0, 2).concat([COMMON_CARDS[0]]);
     body = `<div class="su-done" aria-hidden="true">✓</div>
-      <p class="hint">${acctOn() ? 'Saved to My pages.' : 'Saved on this device.'}</p>
-      <div class="two su-share"><button type="button" class="btn primary" data-su="share">Share</button><a class="btn" href="${esc(url)}">View page</a></div>
+      <p class="hint">${t(acctOn() ? 'Saved to My pages.' : 'Saved on this device.')}</p>
+      <div class="two su-share"><button type="button" class="btn primary" data-su="share">${t('Share')}</button><a class="btn" href="${esc(url)}">${t('View page')}</a></div>
       ${typeof qrButtonHTML === 'function' ? qrButtonHTML() : ''}
-      <p class="grp">Add to your page</p>
-      <div class="su-later">${sugg.map(([id, title]) => `<button type="button" data-su-card="${id}"><span>${esc(title)}</span><b>+ Add</b></button>`).join('')}<button type="button" data-su-card=""><span>See all</span><b>→</b></button></div>`;
+      <p class="grp">${t('Add to your page')}</p>
+      <div class="su-later">${sugg.map(([id, title]) => `<button type="button" data-su-card="${id}"><span>${esc(t(title))}</span><b>${t('+ Add')}</b></button>`).join('')}<button type="button" data-su-card=""><span>${t('See all')}</span><b>→</b></button></div>`;
   }
   m.innerHTML = `${prog}${top}<h1>${h}</h1><div class="su-body">${body}</div><div class="grow"></div>${n === 1 || n === 2 ? suTicket(c) : ''}${cta}`;
   LS.set('draft', c); pageSave(LS.get('draftId'), { cfg: c }); suPreview();
@@ -3385,11 +3388,11 @@ function suRender() {
     dz.addEventListener('drop', (e) => { e.preventDefault(); dz.classList.remove('over'); const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) suDocGo(f); });
   } }
   if (n === 0) aiReady().then(ok => { const el = $('[data-su-ai]'); if (el && ok) el.hidden = false;
-    const pd = LS.get('pendingAiDoc'); if (ok && pd && el) { LS.del('pendingAiDoc'); el.querySelector('.su-doc-form').hidden = false; SU.pick = SU.aiType = pd === '-' ? '' : pd; $$('.su-type').forEach(x => x.classList.toggle('on', x.dataset.suType === SU.aiType)); const nb = $('[data-su="next0"]'); if (nb) nb.disabled = !SU.pick; suAIHint(); $('[data-su-doc-msg]').textContent = 'Signed in. Choose your document again.'; } const pend = LS.get('pendingAiUrl'); if (ok && pend && el) { LS.del('pendingAiUrl'); sbUser().then(u => { if (!u) return; el.querySelector('.su-ai-form').hidden = false; $('#su-ai-url').value = pend; SU.pick = SU.aiType = LS.get('pendingAiType') || ''; LS.del('pendingAiType'); $$('.su-type').forEach(x => x.classList.toggle('on', x.dataset.suType === SU.aiType)); const nb = $('[data-su="next0"]'); if (nb) nb.disabled = !SU.pick; suAIHint(); suAIGo(); }).catch(() => {}); } });
+    const pd = LS.get('pendingAiDoc'); if (ok && pd && el) { LS.del('pendingAiDoc'); el.querySelector('.su-doc-form').hidden = false; SU.pick = SU.aiType = pd === '-' ? '' : pd; $$('.su-type').forEach(x => x.classList.toggle('on', x.dataset.suType === SU.aiType)); const nb = $('[data-su="next0"]'); if (nb) nb.disabled = !SU.pick; suAIHint(); $('[data-su-doc-msg]').textContent = t('Signed in. Choose your document again.'); } const pend = LS.get('pendingAiUrl'); if (ok && pend && el) { LS.del('pendingAiUrl'); sbUser().then(u => { if (!u) return; el.querySelector('.su-ai-form').hidden = false; $('#su-ai-url').value = pend; SU.pick = SU.aiType = LS.get('pendingAiType') || ''; LS.del('pendingAiType'); $$('.su-type').forEach(x => x.classList.toggle('on', x.dataset.suType === SU.aiType)); const nb = $('[data-su="next0"]'); if (nb) nb.disabled = !SU.pick; suAIHint(); suAIGo(); }).catch(() => {}); } });
   placeAutocomplete($('#su-q'), { bias: () => null, onPick: (id, tok) => gpVenue(id, tok).then(r => {
     if (!SU) return; const cc = SU.cfg; cc.venue = { name: r.name, address: r.address, lat: r.lat, lon: r.lon, city: r.city, region: r.region, country: r.country, cc: r.cc }; SU.q = r.name; SU.results = []; SU.msg = '';
     suRender(); lookupTZ(r.lat, r.lon).then(tz => { cc.tz = tz; LS.set('draft', cc); }).catch(() => {});
-  }).catch(() => { SU.msg = 'Couldn’t load that place. Try the Search button.'; suRender(); }) });
+  }).catch(() => { SU.msg = t('Couldn’t load that place. Try the Search button.'); suRender(); }) });
   const first = m.querySelector('#su-title, #su-q'); if (first && !first.value) setTimeout(() => first.focus(), 30);
 }
 document.addEventListener('click', (e) => {
@@ -3443,10 +3446,10 @@ document.addEventListener('keydown', (e) => {
   else if (SU.step === 1) { const nb = $('[data-su="next"]'); if (nb && !nb.disabled) nb.click(); }
 });
 async function suSearch() {
-  const q = SU.q.trim(); if (q.length < 3) { SU.msg = 'Type at least 3 characters.'; suRender(); return; }
-  const btn = $('[data-su="search"]'); if (btn) { btn.disabled = true; btn.textContent = 'Searching…'; }
-  try { SU.results = await geocode(q); SU.msg = SU.results.length ? '' : 'No matches. Try adding the city or street.'; }
-  catch { SU.results = []; SU.msg = 'Search is unavailable right now. Try again in a moment.'; }
+  const q = SU.q.trim(); if (q.length < 3) { SU.msg = t('Type at least 3 characters.'); suRender(); return; }
+  const btn = $('[data-su="search"]'); if (btn) { btn.disabled = true; btn.textContent = t('Searching…'); }
+  try { SU.results = await geocode(q); SU.msg = SU.results.length ? '' : t('No matches. Try adding the city or street.'); }
+  catch { SU.results = []; SU.msg = t('Search is unavailable right now. Try again in a moment.'); }
   suRender();
 }
 
@@ -3466,14 +3469,14 @@ function qrSVG(text, cell = 4) {
   }
   return null;
 }
-const qrButtonHTML = () => `<button type="button" class="btn" data-su="qr">QR code</button>`;
+const qrButtonHTML = () => `<button type="button" class="btn" data-su="qr">${t('QR code')}</button>`;
 function openQR(cfg, url) {
   url = url || shareURL(cfg); const q = qrSVG(url);
-  if (!q) { toast('This page has too much text for a QR code. Shorten the description or notes.'); return; }
+  if (!q) { toast(t('This page has too much text for a QR code. Shorten the description or notes.')); return; }
   let d = $('#qrdlg');
   if (!d) { d = document.createElement('dialog'); d.id = 'qrdlg'; document.body.appendChild(d); d.addEventListener('click', (e) => { if (e.target === d) d.close(); }); }
   d.innerHTML = `<div class="pub qr-dlg"><h2>${esc(cfg.title || 'Your page')}</h2><div class="qr-box">${q.svg}</div>
-    <div class="btns"><button type="button" class="btn primary" data-qr="print">Print card</button><button type="button" class="btn" data-qr="svg">Download</button><button type="button" class="btn ghost" data-qr="close">Close</button></div></div>`;
+    <div class="btns"><button type="button" class="btn primary" data-qr="print">${t('Print card')}</button><button type="button" class="btn" data-qr="svg">${t('Download')}</button><button type="button" class="btn ghost" data-qr="close">${t('Close')}</button></div></div>`;
   d.onclick = (e) => {
     const b = e.target.closest('[data-qr]'); if (!b) { if (e.target === d) d.close(); return; }
     if (b.dataset.qr === 'close') d.close();
@@ -3488,12 +3491,12 @@ function printCard(cfg, svg) {
   c.setAttribute('style', themeStyle(cfg.theme));
   c.innerHTML = `<div class="pc-in"><p class="pc-k">${esc(cfg.type)}${v && v.city ? ' · ' + esc(v.city) : ''}</p><h1>${esc(cfg.title)}</h1>
     <p class="pc-when">${esc(dateRange(cfg.start, cfg.end))}${cfg.start && cfg.start.length > 10 ? ' · ' + esc(fmtTime(cfg.start.slice(11, 16))) : ''}</p>${v ? `<p class="pc-where">${esc(v.name)}</p>` : ''}
-    <div class="pc-qr">${svg}</div><p class="pc-cta">Scan for the schedule, travel and more</p></div>`;
+    <div class="pc-qr">${svg}</div><p class="pc-cta">${t('Scan for the schedule, travel and more')}</p></div>`;
   setTimeout(() => window.print(), 300);
 }
 
 // ---- import a schedule from .ics or CSV ----
-const importButtonHTML = () => `<label class="btn sm file-btn">Import .ics or CSV<input type="file" data-import accept=".ics,.csv,text/calendar,text/csv"></label>`;
+const importButtonHTML = () => `<label class="btn sm file-btn">${t('Import .ics or CSV')}<input type="file" data-import accept=".ics,.csv,text/calendar,text/csv"></label>`;
 function utcToWall(date, tz) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date).map(p => [p.type, p.value]));
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
@@ -3548,10 +3551,10 @@ function extraInput(i, cfg) {
     const f = i.files[0];
     f.text().then(text => {
       const items = /\.ics$/i.test(f.name) || /BEGIN:VCALENDAR/.test(text) ? parseICS(text, cfg.tz) : parseCSV(text);
-      if (!items.length) { toast('No schedule items found in that file'); return; }
+      if (!items.length) { toast(t('No schedule items found in that file')); return; }
       cfg.schedule = cfg.schedule.filter(x => x.title).concat(items.map(x => ({ date: x.date || cfg.start.slice(0, 10), time: x.time || '', title: x.title, note: x.note || '' })))
         .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
-      changed(true); toast(`Added ${items.length} item${items.length > 1 ? 's' : ''}`);
+      changed(true); toast(items.length > 1 ? t('Added {n} items', { n: items.length }) : t('Added 1 item'));
     });
     return;
   }
@@ -3593,8 +3596,8 @@ function extraCardBody(id, c) {
 // builder → RSVP: one card — collect replies here (the form) or use my own link, a reply-by date for both, or no RSVP
 function rsvpCardHTML(c) {
   const r = rsvpOf(c); const d = typeData(c); const mode = c.off.rsvp ? 'off' : r.via;
-  const opt = (v, l) => `<label class="chk"><input type="radio" name="rsvp-via" data-rsvp-via="${v}"${mode === v ? ' checked' : ''}> ${l}</label>`;
-  return `<div class="rsvp-via" role="radiogroup" aria-label="RSVP">${opt('form', 'Collect replies here')}${opt('link', 'Use my own link')}${opt('off', 'No RSVP')}</div>
+  const opt = (v, l) => `<label class="chk"><input type="radio" name="rsvp-via" data-rsvp-via="${v}"${mode === v ? ' checked' : ''}> ${esc(t(l))}</label>`;
+  return `<div class="rsvp-via" role="radiogroup" aria-label="${esc(t('RSVP'))}">${opt('form', 'Collect replies here')}${opt('link', 'Use my own link')}${opt('off', 'No RSVP')}</div>
     <div data-rsvp-part="link"${mode === 'link' ? '' : ' hidden'}>${fieldWrap('Link', `<input id="x-rsvp" type="url" data-x="rsvp" value="${esc(d.rsvp || '')}" placeholder="https://…">`, 'x-rsvp')}</div>
     <div data-rsvp-part="by"${mode === 'off' ? ' hidden' : ''}>${fieldWrap('Reply by', `<input id="x-rsvpBy" type="date" data-x="rsvpBy" value="${esc(d.rsvpBy || '')}">`, 'x-rsvpBy')}</div>
     ${rqCardHTML(c, mode !== 'form')}`;
@@ -3603,14 +3606,14 @@ const rqNear = (el, sel) => { for (let a = el.parentElement; a; a = a.parentElem
 // builder → RSVP form: the extra questions (all optional for guests, asked only of guests who are coming)
 function rqCardHTML(c, hide) {
   const q = normRsvpq(c.rsvpq); const evs = [...new Set((c.schedule || []).map(x => String(x.title || '').trim()).filter(Boolean))]; const off = new Set(q.evOff);
-  const tg = (k, l) => `<label class="chk"><input type="checkbox" data-rq="${k}"${q[k] ? ' checked' : ''}> ${l}</label>`;
+  const tg = (k, l) => `<label class="chk"><input type="checkbox" data-rq="${k}"${q[k] ? ' checked' : ''}> ${esc(t(l))}</label>`;
   const sub = (k, html) => `<div class="rq-sub" data-rq-sub="${k}"${q[k] ? '' : ' hidden'}>${html}</div>`;
-  return `<div class="rq-ed"${hide ? ' hidden' : ''}><h3 class="sub-h">Questions on the form</h3><p class="hint">All optional for guests, and only asked of guests who are coming.</p>
-    ${tg('meal', 'Meal choice')}${sub('meal', fieldWrap('Meal options, one per line', `<textarea id="rq-meals" data-rq-meals rows="3" placeholder="Chicken&#10;Fish&#10;Vegetarian">${esc(q.meals.join('\n'))}</textarea>`, 'rq-meals'))}
+  return `<div class="rq-ed"${hide ? ' hidden' : ''}><h3 class="sub-h">${t('Questions on the form')}</h3><p class="hint">${t('All optional for guests, and only asked of guests who are coming.')}</p>
+    ${tg('meal', 'Meal choice')}${sub('meal', fieldWrap('Meal options, one per line', `<textarea id="rq-meals" data-rq-meals rows="3" placeholder="${esc(t('Chicken\nFish\nVegetarian'))}">${esc(q.meals.join('\n'))}</textarea>`, 'rq-meals'))}
     ${tg('diet', 'Dietary needs')}
     ${tg('plus', 'Names of everyone in their party')}
-    ${tg('events', 'Which events they’ll attend')}${sub('events', evs.length ? `<p class="hint">Ask about:</p>${evs.map(x => `<label class="chk"><input type="checkbox" data-rq-ev="${esc(x)}"${off.has(x) ? '' : ' checked'}> ${esc(x)}</label>`).join('')}` : '<p class="hint">Add titled items to your Schedule first.</p>')}
-    ${tg('qs', 'Your own questions')}${sub('qs', [0, 1].map(i => fieldWrap(`Question ${i + 1}`, `<input id="rq-q${i}" data-rq-q="${i}" maxlength="120" value="${esc(q.q[i])}" placeholder="${i ? 'A song that gets you dancing?' : 'Need a ride from the hotel?'}">`, 'rq-q' + i)).join(''))}
+    ${tg('events', 'Which events they’ll attend')}${sub('events', evs.length ? `<p class="hint">${t('Ask about:')}</p>${evs.map(x => `<label class="chk"><input type="checkbox" data-rq-ev="${esc(x)}"${off.has(x) ? '' : ' checked'}> ${esc(x)}</label>`).join('')}` : `<p class="hint">${t('Add titled items to your Schedule first.')}</p>`)}
+    ${tg('qs', 'Your own questions')}${sub('qs', [0, 1].map(i => fieldWrapRaw(t('Question {n}', { n: i + 1 }), `<input id="rq-q${i}" data-rq-q="${i}" maxlength="120" value="${esc(q.q[i])}" placeholder="${esc(t(i ? 'A song that gets you dancing?' : 'Need a ride from the hotel?'))}">`, 'rq-q' + i)).join(''))}
   </div>`;
 }
 function accessHTML(cfg, osm) {
@@ -3664,20 +3667,20 @@ async function readSite(url) {
   }
   return null;
 }
-const aboutSiteHTML = (c) => `<div class="field"><label for="f-site">Website</label><div class="search"><input id="f-site" type="url" inputmode="url" placeholder="yourwedding.com" value="${esc(B.site || '')}" autocomplete="off"><button type="button" class="btn" data-b="site-fill" ${B.siteBusy ? 'disabled' : ''}>${B.siteBusy ? 'Reading…' : 'Fill in'}</button></div><p class="hint" id="site-msg" role="status" aria-live="polite">${esc(B.siteMsg || 'Copies the description and photo.')}</p></div>`;
+const aboutSiteHTML = (c) => `<div class="field"><label for="f-site">${t('Website')}</label><div class="search"><input id="f-site" type="url" inputmode="url" placeholder="yourwedding.com" value="${esc(B.site || '')}" autocomplete="off"><button type="button" class="btn" data-b="site-fill" ${B.siteBusy ? 'disabled' : ''}>${t(B.siteBusy ? 'Reading…' : 'Fill in')}</button></div><p class="hint" id="site-msg" role="status" aria-live="polite">${esc(B.siteMsg || t('Copies the description and photo.'))}</p></div>`;
 async function aboutFill() {
   const c = B.cfg; const url = normSite(B.site);
-  if (!url) { B.siteMsg = 'That doesn’t look like a website link.'; renderSheet(); return; }
-  B.siteBusy = true; B.siteMsg = 'Reading that site…'; renderSheet();
+  if (!url) { B.siteMsg = t('That doesn’t look like a website link.'); renderSheet(); return; }
+  B.siteBusy = true; B.siteMsg = t('Reading that site…'); renderSheet();
   const m = await readSite(url);
   B.siteBusy = false;
-  if (!m) { B.siteMsg = 'Couldn’t read that site. Type it in below.'; renderSheet(); setTimeout(() => $('#f-desc')?.focus(), 0); return; }
+  if (!m) { B.siteMsg = t('Couldn’t read that site. Type it in below.'); renderSheet(); setTimeout(() => $('#f-desc')?.focus(), 0); return; }
   const got = [];
   if (m.description) { c.description = m.description; got.push('description'); } else if (m.title && !c.description) { c.description = m.title; got.push('title'); }
   if (!c.title.trim() && m.title) { c.title = m.title.slice(0, 80); got.push('title'); }
   if (!c.host.trim() && m.publisher && m.publisher.replace(/^www\./, '') !== hostOf(url)) { c.host = m.publisher; got.push('host'); }
   if (m.image && !c.cover) { c.cover = m.image; got.push('photo'); }
-  B.siteMsg = got.length ? `Filled in from ${hostOf(url)}. Edit anything below.` : 'That site had nothing to copy. Type it in below.';
+  B.siteMsg = got.length ? t('Filled in from {s}. Edit anything below.', { s: hostOf(url) }) : t('That site had nothing to copy. Type it in below.');
   changed(true);
 }
 
@@ -4039,20 +4042,20 @@ function oauthSignIn(provider, before) {
   try { if (before) before(); } catch { /* storage full: sign-in still works, the draft stays saved locally */ }
   LS.set('afterSignIn', location.hash || '#mine');
 }
-const signInFormHTML = (msg, email = '') => `<div class="signin">${oauthOn().length ? `<div class="oauth">${oauthOn().map(([k, l]) => `<a class="btn oauth-${k}" data-si-oauth="${k}" href="${esc(oauthURL(k))}">${esc(l)}</a>`).join('')}</div><p class="or muted small">or get a link by email</p>` : ''}
-    <div class="field"><label for="si-email">Your email</label><div class="search"><input id="si-email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" value="${esc(email)}"><button type="button" class="btn primary" data-si="send">Send link</button></div></div>
-    <p class="hint" role="status" aria-live="polite">${esc(msg || 'We’ll email you a one-time sign-in link. No password.')}</p></div>`;
+const signInFormHTML = (msg, email = '') => `<div class="signin">${oauthOn().length ? `<div class="oauth">${oauthOn().map(([k, l]) => `<a class="btn oauth-${k}" data-si-oauth="${k}" href="${esc(oauthURL(k))}">${esc(t(l))}</a>`).join('')}</div><p class="or muted small">${t('or get a link by email')}</p>` : ''}
+    <div class="field"><label for="si-email">${t('Your email')}</label><div class="search"><input id="si-email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" value="${esc(email)}"><button type="button" class="btn primary" data-si="send">${t('Send link')}</button></div></div>
+    <p class="hint" role="status" aria-live="polite">${esc(msg || t('We’ll email you a one-time sign-in link. No password.'))}</p></div>`;
 async function signInSubmit(root, after) {
   const inp = root.querySelector('#si-email'); const hint = root.querySelector('.signin .hint'); const btn = root.querySelector('[data-si="send"]');
   const email = (inp.value || '').trim();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { hint.textContent = 'Enter the email address you want to sign in with.'; inp.focus(); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { hint.textContent = t('Enter the email address you want to sign in with.'); inp.focus(); return; }
   if (navigator.onLine === false) { hint.textContent = t('Offline') + ' · ' + t('Sign in when you’re back online.'); return; }
-  btn.disabled = true; hint.textContent = 'Sending…';
-  try { if (after) after(); await sendMagicLink(email); LS.set('signinEmail', email); root.querySelector('.signin').outerHTML = `<div class="signin sent"><p><b>Check your email.</b> We sent a sign-in link to ${esc(email)}. Open it on this device to finish.</p><button type="button" class="link" data-si="retry">Use a different email</button></div>`; }
-  catch (e) { btn.disabled = false; hint.textContent = /rate|too many|seconds/i.test(e.message || '') ? 'Sign-in email limit reached for now. Use Continue with Google, or try the email link again in an hour.' : 'Couldn’t send the link. ' + (e.message || 'Try again.'); }
+  btn.disabled = true; hint.textContent = t('Sending…');
+  try { if (after) after(); await sendMagicLink(email); LS.set('signinEmail', email); root.querySelector('.signin').outerHTML = `<div class="signin sent"><p><b>${t('Check your email.')}</b> ${esc(t('We sent a sign-in link to {e}. Open it on this device to finish.', { e: email }))}</p><button type="button" class="link" data-si="retry">${t('Use a different email')}</button></div>`; }
+  catch (e) { btn.disabled = false; hint.textContent = /rate|too many|seconds/i.test(e.message || '') ? t('Sign-in email limit reached for now. Use Continue with Google, or try the email link again in an hour.') : t('Couldn’t send the link.') + ' ' + (e.message || t('Try again.')); }
 }
 async function authReturn() {
-  $('#app').innerHTML = `<main class="land"><section class="broken"><h1>Signing you in…</h1></section></main>`;
+  $('#app').innerHTML = `<main class="land"><section class="broken"><h1>${t('Signing you in…')}</h1></section></main>`;
   let session = null;
   try { const c = await sb(); const r = await c.auth.getSession(); session = r.data && r.data.session; } catch { /* below */ }
   history.replaceState(null, '', siteBase());
@@ -4207,12 +4210,12 @@ async function saveLongToMine(packed, btn) {
     const h = await acctSave(pid, { publish: !!own });
     if (!h) throw new Error('Couldn’t save this page.');
     location.href = shortURL(h.slug);
-  } catch (e) { if (btn) btn.disabled = false; toast('Couldn’t save: ' + pubWhy(e)); }
+  } catch (e) { if (btn) btn.disabled = false; toast(t('Couldn’t save:') + ' ' + pubWhy(e)); }
 }
 function signInDlg(title, before) {
   let d = $('#sidlg');
   if (!d) { d = document.createElement('dialog'); d.id = 'sidlg'; d.className = 'confirm-dlg'; document.body.appendChild(d); }
-  d.innerHTML = `<form class="cf-in" onsubmit="return false"><h2>${esc(title)}</h2>${signInFormHTML('', LS.get('signinEmail') || '')}<div class="btns cf-b"><button type="button" class="btn ghost" data-si-close>Close</button></div></form>`;
+  d.innerHTML = `<form class="cf-in" onsubmit="return false"><h2>${esc(title)}</h2>${signInFormHTML('', LS.get('signinEmail') || '')}<div class="btns cf-b"><button type="button" class="btn ghost" data-si-close>${t('Close')}</button></div></form>`;
   d.onclick = (e) => {
     if (e.target === d || e.target.closest('[data-si-close]')) { d.close(); return; }
     const b = e.target.closest('[data-si],[data-si-oauth]'); if (!b) return;
@@ -4223,27 +4226,27 @@ function signInDlg(title, before) {
   d.onkeydown = (e) => { if (e.target.id === 'si-email' && e.key === 'Enter') { e.preventDefault(); signInSubmit(d, before); } };
   if (!d.open) d.showModal();
 }
-const LONG_BTN = `<button type="button" class="link" data-ph="long">Share without signing in</button>`;
+const longBtn = () => `<button type="button" class="link" data-ph="long">${t('Share without signing in')}</button>`;
 // The long link has no RSVP form, guest messages or live updates (they go through the account, so only the short link
 // has them): when the page has any of them on, say so before that link is shared, with the way to the short link.
 function longGaps() {
   const c = B.cfg; if (!SB || (B.hosted && B.hosted.pub && B.hosted.slug)) return ''; // no hosting, or a short link exists
-  const g = []; if (rsvpOf(c).on && rsvpOf(c).via === 'form') g.push('RSVP form'); if (c.guestMessages) g.push('guest messages'); if (!g.length) return '';
-  return g.join(', ') + ' or live updates';
+  const g = []; if (rsvpOf(c).on && rsvpOf(c).via === 'form') g.push(t('RSVP form')); if (c.guestMessages) g.push(t('guest messages')); if (!g.length) return '';
+  return t('{g} or live updates', { g: g.join(', ') });
 }
 function longNoteHTML(full) {
   const g = longGaps(); if (!g) return '';
-  if (!full) return `<small class="long-note muted" data-long-note>That link has no ${g}, and won’t show later edits.</small>`;
-  return `<div class="long-note" data-long-note role="note"><p><b>This link has no ${g}.</b> Replies and updates go through your account, so only the short link has them.</p><button type="button" class="btn primary sm" data-ph="go">Sign in for the short link</button></div>`;
+  if (!full) return `<small class="long-note muted" data-long-note>${esc(t('That link has no {g}, and won’t show later edits.', { g }))}</small>`;
+  return `<div class="long-note" data-long-note role="note"><p><b>${esc(t('This link has no {g}.', { g }))}</b> ${t('Replies and updates go through your account, so only the short link has them.')}</p><button type="button" class="btn primary sm" data-ph="go">${t('Sign in for the short link')}</button></div>`;
 }
 function pubHostHTML() {
   const P = B.pub || {};
   if (!SB) return '';
-  if (P.state === 'busy') return `<div class="pub-host" role="status"><p><b>Getting your link…</b></p></div>`;
-  if (P.state === 'done') return `<div class="pub-host ok"><p>Your edits show up on this link automatically. <a href="#mine">Replies in My pages</a></p>${B.hosted ? pnEditHTML(B.hosted, !pnName(B.hosted.slug) && !!B.pnSug) : ''}</div>`;
-  if (P.state === 'signin') return `<div class="pub-host"><p><b>Sign in to share</b></p>${signInFormHTML(P.msg, LS.get('signinEmail') || '')}<p class="pub-alt">${LONG_BTN}<br>${longNoteHTML(false) || '<small class="muted">That link won’t show later edits.</small>'}</p></div>`;
-  if (P.state === 'long') return `<div class="pub-host">${longNoteHTML(true)}<p class="muted small">This link won’t show later edits.</p></div>`;
-  return `<div class="pub-host" role="alert"><p><b>Couldn’t share.</b> ${esc(P.msg || '')}</p><button type="button" class="btn primary" data-ph="go">Try again</button><p class="pub-alt">${LONG_BTN}${longNoteHTML(false) ? '<br>' + longNoteHTML(false) : ''}</p></div>`;
+  if (P.state === 'busy') return `<div class="pub-host" role="status"><p><b>${t('Getting your link…')}</b></p></div>`;
+  if (P.state === 'done') return `<div class="pub-host ok"><p>${t('Your edits show up on this link automatically.')} <a href="#mine">${t('Replies in My pages')}</a></p>${B.hosted ? pnEditHTML(B.hosted, !pnName(B.hosted.slug) && !!B.pnSug) : ''}</div>`;
+  if (P.state === 'signin') return `<div class="pub-host"><p><b>${t('Sign in to share')}</b></p>${signInFormHTML(P.msg, LS.get('signinEmail') || '')}<p class="pub-alt">${longBtn()}<br>${longNoteHTML(false) || `<small class="muted">${t('That link won’t show later edits.')}</small>`}</p></div>`;
+  if (P.state === 'long') return `<div class="pub-host">${longNoteHTML(true)}<p class="muted small">${t('This link won’t show later edits.')}</p></div>`;
+  return `<div class="pub-host" role="alert"><p><b>${t('Couldn’t share.')}</b> ${esc(P.msg || '')}</p><button type="button" class="btn primary" data-ph="go">${t('Try again')}</button><p class="pub-alt">${longBtn()}${longNoteHTML(false) ? '<br>' + longNoteHTML(false) : ''}</p></div>`;
 }
 // ---------- the page's name: https://1linktrip.com/<name> (publish dialog + Settings) ----------
 // Sharing a page for the first time gives it a name made from its title (japan-trip, else japan-trip-2026, -2, -3); a page
@@ -4327,23 +4330,23 @@ function pnWire() {
   });
 }
 function renderPubHost() { const box = $('#pub-host'); if (box) box.innerHTML = pubHostHTML(); }
-const pubWhy = (e) => navigator.onLine === false ? 'You’re offline.' : (e && (e.message || e.error_description || e.details)) || 'Try again.';
+const pubWhy = (e) => navigator.onLine === false ? t('You’re offline.') : (e && (e.message || e.error_description || e.details)) || t('Try again.');
 async function hostNow() {
   if (!$('#pub').open) $('#pub').showModal();
   pubLink(null, 'Getting your link'); B.pub = { state: 'busy' }; renderPubHost();
   let user = null;
-  try { user = await sbUser(); } catch (e) { const msg = pubWhy(e); toast('Couldn’t share: ' + msg); B.pub = { state: 'error', msg }; renderPubHost(); return; }
+  try { user = await sbUser(); } catch (e) { const msg = pubWhy(e); toast(t('Couldn’t share:') + ' ' + msg); B.pub = { state: 'error', msg }; renderPubHost(); return; }
   if (!user) { LS.del('signedIn'); pubLink(null, 'Share your page'); B.pub = { state: 'signin' }; renderPubHost(); setTimeout(() => $('#si-email')?.focus(), 0); return; }
   LS.set('signedIn', true); clearTimeout(B.pushT); B.pushT = null; LS.set('draft', B.cfg); pageSave(B.pid, { cfg: B.cfg });
   const first = !(B.hosted && B.hosted.pub); // sharing for the first time: the page gets a name made from its title
   try {
     const h = await acctSave(B.pid, { publish: true, fetchOsm: true });
-    if (!h) throw new Error('This page belongs to another account. Edit a copy to share it.');
+    if (!h) throw new Error(t('This page belongs to another account. Edit a copy to share it.'));
     await pnAfterPublish(h, first);
     const url = shortURL(h.slug); pubLink(url, 'Your link');
     B.pub = { state: 'done' }; renderPubHost(); renderHostNote(); saveStatus('saved'); pnFill($('#pub [data-pn].open'));
     { const sg = $('#pub [data-pub-seg]'), sb2 = $('#pub [data-pub-sub]'); if (sg) sg.hidden = false; if (sb2) sb2.hidden = false; } // Invite guests | Share my trip
-  } catch (e) { const msg = pubWhy(e); toast('Couldn’t share: ' + msg); pubLink(null, 'Share your page'); B.pub = { state: 'error', msg }; renderPubHost(); }
+  } catch (e) { const msg = pubWhy(e); toast(t('Couldn’t share:') + ' ' + msg); pubLink(null, 'Share your page'); B.pub = { state: 'error', msg }; renderPubHost(); }
 }
 function wirePubHost() {
   const dlg = $('#pub'); if (!dlg || dlg._host) return; dlg._host = true;
@@ -4361,21 +4364,21 @@ function wirePubHost() {
 function renderHostNote() {
   const f = $('.b-form'); if (!f || !B) return; let n = $('.b-host', f);
   if (!B.hosted || !B.hosted.pub) { if (n) n.remove(); return; }
-  const html = `<div class="b-note b-host"><p>Your link: <a href="${esc(shortURL(B.hosted.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(B.hosted.slug))}</a> · <a href="#mine">My pages</a></p>${SB ? pnEditHTML(B.hosted, false) : ''}</div>`;
+  const html = `<div class="b-note b-host"><p>${t('Your link:')} <a href="${esc(shortURL(B.hosted.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(B.hosted.slug))}</a> · <a href="#mine">${t('My pages')}</a></p>${SB ? pnEditHTML(B.hosted, false) : ''}</div>`;
   if (n) { if (n.querySelector('[data-pn].open') && n.contains(document.activeElement)) return; n.outerHTML = html; } else f.insertAdjacentHTML('afterbegin', html);
 }
 
 // ---------- organizer: My pages, replies, updates ----------
 async function renderMine(id, notice) {
-  LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr'; document.title = 'My pages · 1LinkTrip';
-  const shell = (inner) => { $('#app').innerHTML = `<main class="mine"><header class="land-top"><a class="brand" href="#">${BRAND}</a><nav class="mine-nav"><a href="#mine">My pages</a><a class="btn sm primary" href="#setup">New page</a></nav></header><div class="mine-in">${notice ? `<p class="b-note">${esc(notice)}</p>` : ''}${inner}</div></main>`; };
+  LANG = uiLang(); document.documentElement.lang = LANG; document.documentElement.dir = 'ltr'; document.title = t('My pages') + ' · 1LinkTrip';
+  const shell = (inner) => { $('#app').innerHTML = `<main class="mine"><header class="land-top"><a class="brand" href="#">${BRAND}</a><nav class="mine-nav"><a href="#mine">${t('My pages')}</a><a class="btn sm primary" href="#setup">${t('New page')}</a></nav></header><div class="mine-in">${notice ? `<p class="b-note">${esc(notice)}</p>` : ''}${inner}</div></main>`; };
   if (!SB) return shell('<h1>Hosting isn’t set up</h1>');
   shell('<p class="muted">Loading…</p>');
   let user = null;
-  try { user = await sbUser(); } catch (e) { return shell(`<h1>My pages</h1><p>${esc(e.message)}</p>`); }
+  try { user = await sbUser(); } catch (e) { return shell(`<h1>${t('My pages')}</h1><p>${esc(e.message)}</p>`); }
   if (!user) {
     LS.del('signedIn');
-    shell(`<h1>My pages</h1><p class="lede">Sign in to see your short links, RSVPs and updates.</p>${signInFormHTML('', LS.get('signinEmail') || '')}`);
+    shell(`<h1>${t('My pages')}</h1><p class="lede">${t('Sign in to see your short links, RSVPs and updates.')}</p>${signInFormHTML('', LS.get('signinEmail') || '')}`);
     const m = $('.mine'); m.addEventListener('click', (e) => { const b = e.target.closest('[data-si],[data-si-oauth]'); if (!b) return; if (b.dataset.siOauth) { oauthSignIn(b.dataset.siOauth); return; } if (b.dataset.si === 'send') signInSubmit(m); if (b.dataset.si === 'retry') renderMine(id); });
     m.addEventListener('keydown', (e) => { if (e.target.id === 'si-email' && e.key === 'Enter') { e.preventDefault(); signInSubmit(m); } });
     return;
@@ -4385,10 +4388,10 @@ async function renderMine(id, notice) {
   if (id) return renderMineEvent(id, shell, c, user);
   await acctSyncAll(); // pages made on this device (or before signing in) are on the account before the list loads
   const { data, error } = await c.from('events').select('id,slug,config,published,updated_at').eq('owner', user.id).order('updated_at', { ascending: false });
-  if (error) return shell(`<h1>My pages</h1><p>Couldn’t load your pages. ${esc(error.message)}</p>`);
-  shell(`<div class="mine-h"><h1>My pages</h1><span class="muted small">${esc(user.email || '')} · <button type="button" class="link" data-mine="signout">Sign out</button></span></div>
+  if (error) return shell(`<h1>${t('My pages')}</h1><p>${t('Couldn’t load your pages.')} ${esc(error.message)}</p>`);
+  shell(`<div class="mine-h"><h1>${t('My pages')}</h1><span class="muted small">${esc(user.email || '')} · <button type="button" class="link" data-mine="signout">${t('Sign out')}</button></span></div>
     <section data-slot="mine-inbox"></section>
-    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · not shared'}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(r.slug))}</a>` : ''}</div><div class="btns"><button type="button" class="btn sm primary" data-mine-edit="${esc(r.id)}">Open</button><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button>` : ''}<button type="button" class="btn sm ghost" data-mine-del="${esc(r.id)}" aria-label="Delete ${esc(cfg.title || 'Untitled')}">Delete</button></div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Share, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
+    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · not shared'}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(r.slug))}</a>` : ''}</div><div class="btns"><button type="button" class="btn sm primary" data-mine-edit="${esc(r.id)}">${t('Open')}</button><a class="btn sm" href="#mine/${esc(r.id)}">${t('Replies and updates')}</a>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">${t('Copy link')}</button>` : ''}<button type="button" class="btn sm ghost" data-mine-del="${esc(r.id)}" aria-label="Delete ${esc(cfg.title || 'Untitled')}">${t('Delete')}</button></div></li>`; }).join('')}</ul>` : `<p class="lede">${t('No short links yet. Make a page, tap Share, then Get a short link.')}</p><a class="btn primary" href="#setup">${t('Make a page')}</a>`}`);
   mineInbox(c, data).catch(() => {});
   if (data.length) msgReady().then(async ok => { // "2 new" next to pages with unanswered guest messages
     if (!ok) return; const { data: ms } = await c.from('event_messages').select('event_id,guest,from_host,created_at').in('event_id', data.map(x => x.id)).order('created_at', { ascending: true }).limit(5000);
@@ -4402,10 +4405,10 @@ async function renderMine(id, notice) {
     if (b.dataset.mineCopy) copy(shortURL(b.dataset.mineCopy));
     if (b.dataset.mineDel) {
       const r = data.find(x => x.id === b.dataset.mineDel); if (!r) return; const name = normalize(r.config).title || 'Untitled';
-      if (!await confirmDlg({ title: `Delete “${name}”?`, body: `It’s removed from your account on every device${r.published ? ', its link stops working,' : ''} and its replies and updates are deleted too.`, ok: 'Delete' })) return;
+      if (!await confirmDlg({ title: t('Delete “{n}”?', { n: name }), body: t(r.published ? 'It’s removed from your account on every device, its link stops working, and its replies and updates are deleted too.' : 'It’s removed from your account on every device and its replies and updates are deleted too.'), ok: t('Delete') })) return;
       b.disabled = true;
-      try { await pageDelete({ id: r.id }); } catch (err) { b.disabled = false; toast('Couldn’t delete: ' + pubWhy(err)); return; }
-      await renderMine(''); toast(`Deleted “${name}”`);
+      try { await pageDelete({ id: r.id }); } catch (err) { b.disabled = false; toast(t('Couldn’t delete:') + ' ' + pubWhy(err)); return; }
+      await renderMine(''); toast(t('Deleted “{n}”', { n: name }));
     }
     if (b.dataset.mineEdit) { const r = data.find(x => x.id === b.dataset.mineEdit); const cfg = normalize(r.config); const ex = pagesAll().find(x => x.hosted && x.hosted.id === r.id); LS.set('draft', cfg); LS.set('draftHosted', { id: r.id, slug: r.slug, owner: user.id, pub: !!r.published }); LS.set('draftId', ex ? ex.pid : newPid()); location.hash = '#new'; }
   });
@@ -4445,7 +4448,7 @@ function rqSummary(yes) {
 const csvCell = (v) => { const s = String(v ?? ''); return /[",\n;]/.test(s) || /^[=+\-@]/.test(s) ? '"' + (/^[=+\-@]/.test(s) ? "'" : '') + s.replace(/"/g, '""') + '"' : s; };
 async function renderMineEvent(id, shell, c, user) {
   const ev = await c.from('events').select('id,slug,config,published').eq('id', id).maybeSingle();
-  if (ev.error || !ev.data) return shell(`<h1>Page not found</h1><p><a href="#mine">Back to My pages</a></p>`);
+  if (ev.error || !ev.data) return shell(`<h1>${t('Page not found')}</h1><p><a href="#mine">${t('Back to My pages')}</a></p>`);
   const r = ev.data; const cfg = normalize(r.config);
   const ready = await msgReady(); // messages and groups (schema-3): sections stay out until it is installed
   const [rs, an, ms, grp] = await Promise.all([c.from('rsvps').select('id,name,email,attending,guests,note,created_at' + (ready ? ',group_id' : '')).eq('event_id', id).order('created_at', { ascending: true }),
@@ -4459,21 +4462,21 @@ async function renderMineEvent(id, shell, c, user) {
   const replies = [...latest.values()].reverse().map(x => { const p = rqParse(x.note); return { ...x, note: p.text, x: p.x || {} }; }); const yes = replies.filter(x => x.attending); const no = replies.filter(x => !x.attending);
   const RQ = rqReplyCols(cfg, replies); const rqSum = rqSummary(yes);
   const guests = LS.get(guestListKey(id), []) || []; const waiting = notReplied(guests, replies);
-  shell(`<p><a href="#mine">← My pages</a></p><div class="mine-h"><h1>${esc(cfg.title || 'Untitled')}</h1><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(r.slug))}</a></div>
+  shell(`<p><a href="#mine">${t('← My pages')}</a></p><div class="mine-h"><h1>${esc(cfg.title || 'Untitled')}</h1><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(r.slug))}</a></div>
     ${msgs ? `<section class="mine-sec" id="mine-msgs"><h2>${t('Messages')}</h2><label class="tool gm-on"><input type="checkbox" data-gm-on ${cfg.guestMessages ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${t('Let guests message you')}</label>${inboxHTML(msgs, seen)}</section>` : ''}
-    <section class="mine-sec"><h2>Updates</h2><p class="muted small">Guests see these at the top of your page.</p>
-      <form class="ann-form" onsubmit="return false"><textarea id="an-body" rows="3" maxlength="2000" placeholder="Shuttle leaves the hotel at 4:30. Bring a jacket."></textarea>${msgs ? sendToHTML(groups) : ''}<div class="btns"><button type="button" class="btn primary" data-an="post">Post update</button></div><p class="hint" role="status" aria-live="polite"></p></form>
-      <ul class="ann-list own">${(an.data || []).map(a => `<li><time>${esc(fmtStamp(a.created_at))}${(a.group_ids || []).length ? ' · ' + esc(t('Send to')) + ': ' + esc(a.group_ids.map(gName).filter(Boolean).join(', ')) : ''}</time><p>${esc(a.body)}</p><button type="button" class="link" data-an-del="${esc(a.id)}">Delete</button></li>`).join('')}</ul></section>
-    <section class="mine-sec"><h2>Replies</h2>
-      <p class="rs-sum"><b>${yes.reduce((n, x) => n + (x.guests || 1), 0)}</b> coming <span class="muted">(${yes.length} ${yes.length === 1 ? 'reply' : 'replies'})</span> · <b>${no.length}</b> can’t make it${guests.length ? ` · <b>${waiting.length}</b> of ${guests.length} on your list haven’t replied` : ''}</p>${rqSum}
-      ${replies.length ? `<div class="tbl-wrap"><table class="rs-tbl"><thead><tr><th>Name</th><th>Reply</th><th>Party</th>${groups.length ? `<th>${t('Group')}</th>` : ''}${RQ.map(c => `<th data-rq-col="${c[0]}">${esc(c[1])}</th>`).join('')}<th>Email</th><th>Note</th></tr></thead><tbody>${replies.map(x => `<tr><td>${esc(x.name)}</td><td>${x.attending ? 'Coming' : 'Can’t make it'}</td><td>${x.attending ? esc(x.guests) : '–'}</td>${groups.length ? `<td>${esc(gName(x.group_id))}</td>` : ''}${RQ.map(c => `<td data-rq-col="${c[0]}">${esc(c[2](x))}</td>`).join('')}<td>${esc(x.email || '')}</td><td data-note-id="${esc(x.id)}">${esc(x.note || '')}</td></tr>`).join('')}</tbody></table></div><div class="btns"><button type="button" class="btn sm" data-rs="csv">Download CSV</button></div>` : '<p class="muted">No replies yet. Share your short link and they’ll show up here.</p>'}
-      <h3 class="sub-h">Guest list</h3><p class="muted small">Import a CSV or paste names (one per line, optional email) to see who hasn’t replied. Your list stays on this device.</p>
-      <div class="btns"><label class="btn sm file-btn">Import CSV<input type="file" data-gl-file accept=".csv,.txt,text/csv,text/plain"></label>${guests.length ? '<button type="button" class="btn sm ghost" data-gl="clear">Clear list</button>' : ''}</div>
-      <textarea id="gl-paste" rows="3" placeholder="Ana Ruiz, ana@example.com&#10;Ben Okafor"></textarea><div class="btns"><button type="button" class="btn sm" data-gl="add">Add to list</button></div>
-      ${guests.length ? `<h3 class="sub-h">Haven’t replied (${waiting.length})</h3>${waiting.length ? `<ul class="gl-list">${waiting.map(g => `<li>${esc(g.name || g.email)}${g.name && g.email ? ` <span class="muted small">${esc(g.email)}</span>` : ''}</li>`).join('')}</ul>` : '<p class="muted">Everyone on your list has replied.</p>'}` : ''}
+    <section class="mine-sec"><h2>${t('Updates')}</h2><p class="muted small">${t('Guests see these at the top of your page.')}</p>
+      <form class="ann-form" onsubmit="return false"><textarea id="an-body" rows="3" maxlength="2000" placeholder="${t('Shuttle leaves the hotel at 4:30. Bring a jacket.')}"></textarea>${msgs ? sendToHTML(groups) : ''}<div class="btns"><button type="button" class="btn primary" data-an="post">${t('Post update')}</button></div><p class="hint" role="status" aria-live="polite"></p></form>
+      <ul class="ann-list own">${(an.data || []).map(a => `<li><time>${esc(fmtStamp(a.created_at))}${(a.group_ids || []).length ? ' · ' + esc(t('Send to')) + ': ' + esc(a.group_ids.map(gName).filter(Boolean).join(', ')) : ''}</time><p>${esc(a.body)}</p><button type="button" class="link" data-an-del="${esc(a.id)}">${t('Delete')}</button></li>`).join('')}</ul></section>
+    <section class="mine-sec"><h2>${t('Replies')}</h2>
+      <p class="rs-sum"><b>${yes.reduce((n, x) => n + (x.guests || 1), 0)}</b> ${t('coming')} <span class="muted">(${esc(t(yes.length === 1 ? '1 reply' : '{n} replies', { n: yes.length }))})</span> · <b>${no.length}</b> ${t('can’t make it')}${guests.length ? ` · ${esc(t('{w} of {n} on your list haven’t replied', { w: waiting.length, n: guests.length }))}` : ''}</p>${rqSum}
+      ${replies.length ? `<div class="tbl-wrap"><table class="rs-tbl"><thead><tr><th>${t('Name')}</th><th>${t('Reply')}</th><th>${t('Party')}</th>${groups.length ? `<th>${t('Group')}</th>` : ''}${RQ.map(c => `<th data-rq-col="${c[0]}">${esc(c[1])}</th>`).join('')}<th>${t('Email')}</th><th>${t('Note')}</th></tr></thead><tbody>${replies.map(x => `<tr><td>${esc(x.name)}</td><td>${x.attending ? 'Coming' : 'Can’t make it'}</td><td>${x.attending ? esc(x.guests) : '–'}</td>${groups.length ? `<td>${esc(gName(x.group_id))}</td>` : ''}${RQ.map(c => `<td data-rq-col="${c[0]}">${esc(c[2](x))}</td>`).join('')}<td>${esc(x.email || '')}</td><td data-note-id="${esc(x.id)}">${esc(x.note || '')}</td></tr>`).join('')}</tbody></table></div><div class="btns"><button type="button" class="btn sm" data-rs="csv">${t('Download CSV')}</button></div>` : '<p class="muted">No replies yet. Share your short link and they’ll show up here.</p>'}
+      <h3 class="sub-h">${t('Guest list')}</h3><p class="muted small">${t('Import a CSV or paste names (one per line, optional email) to see who hasn’t replied. Your list stays on this device.')}</p>
+      <div class="btns"><label class="btn sm file-btn">${t('Import CSV')}<input type="file" data-gl-file accept=".csv,.txt,text/csv,text/plain"></label>${guests.length ? '<button type="button" class="btn sm ghost" data-gl="clear">Clear list</button>' : ''}</div>
+      <textarea id="gl-paste" rows="3" placeholder="Ana Ruiz, ana@example.com&#10;Ben Okafor"></textarea><div class="btns"><button type="button" class="btn sm" data-gl="add">${t('Add to list')}</button></div>
+      ${guests.length ? `<h3 class="sub-h">${t('Haven’t replied')} (${waiting.length})</h3>${waiting.length ? `<ul class="gl-list">${waiting.map(g => `<li>${esc(g.name || g.email)}${g.name && g.email ? ` <span class="muted small">${esc(g.email)}</span>` : ''}</li>`).join('')}</ul>` : `<p class="muted">${t('Everyone on your list has replied.')}</p>`}` : ''}
     </section>
     ${msgs ? `<section class="mine-sec" id="mine-groups"><h2>${t('Groups')}</h2><div data-grp-root>${groupsEdHTML(groups)}</div></section>` : ''}
-    <section class="mine-sec"><h2>Page</h2><div class="btns"><button type="button" class="btn sm" data-pg="edit">Open page</button><button type="button" class="btn sm ghost" data-pg="vis">${r.published ? 'Hide page' : 'Show page'}</button></div><p class="muted small">${r.published ? 'Anyone with the link can see it.' : 'Only you can see it.'}</p></section>`);
+    <section class="mine-sec"><h2>${t('Page')}</h2><div class="btns"><button type="button" class="btn sm" data-pg="edit">${t('Open page')}</button><button type="button" class="btn sm ghost" data-pg="vis">${r.published ? 'Hide page' : 'Show page'}</button></div><p class="muted small">${r.published ? 'Anyone with the link can see it.' : 'Only you can see it.'}</p></section>`);
   const m = $('.mine'); const again = () => { mineOpenThr = [...$$('details.thr[open]', m)].map(d => d.dataset.thr); return renderMine(id); };
   if (msgs) {
     $$('details.thr', m).forEach(d => { if (mineOpenThr.includes(d.dataset.thr)) d.open = true; d.addEventListener('toggle', () => { if (!d.open) return; const xs = msgs.filter(x => x.guest === d.dataset.thr); const last = xs[xs.length - 1]; if (last) { seen[d.dataset.thr] = last.created_at; LS.set(seenKey, seen); d.querySelector('.dot')?.remove(); } }); });
@@ -4497,29 +4500,29 @@ async function renderMineEvent(id, shell, c, user) {
   }
   const notes = Object.fromEntries(replies.filter(x => x.note && x.note.trim().length > 1).map(x => [x.id, x.note]));
   if (Object.keys(notes).length && canTranslate()) translateForHost(notes).then(tr => { for (const [k, v] of Object.entries(tr)) { const td = m.querySelector(`[data-note-id="${CSS.escape(k)}"]`); if (td && v && v.trim() !== notes[k].trim()) td.insertAdjacentHTML('beforeend', `<div class="tr-note">↳ ${esc(v)}</div>`); } }).catch(() => {});
-  const addGuests = (list) => { if (!list.length) { toast('No names found'); return; } const cur = LS.get(guestListKey(id), []) || []; const seen = new Set(cur.map(g => g.email || normName(g.name))); list.forEach(g => { const k = g.email || normName(g.name); if (!seen.has(k)) { seen.add(k); cur.push(g); } }); LS.set(guestListKey(id), cur); toast(`${cur.length} on your guest list`); again(); };
+  const addGuests = (list) => { if (!list.length) { toast(t('No names found')); return; } const cur = LS.get(guestListKey(id), []) || []; const seen = new Set(cur.map(g => g.email || normName(g.name))); list.forEach(g => { const k = g.email || normName(g.name); if (!seen.has(k)) { seen.add(k); cur.push(g); } }); LS.set(guestListKey(id), cur); toast(t('{n} on your guest list', { n: cur.length })); again(); };
   m.addEventListener('change', (e) => { const i = e.target; if (i.dataset.glFile != null && i.files && i.files[0]) i.files[0].text().then(tx => addGuests(parseGuestList(tx))); });
   m.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
     if (d.an === 'post') {
-      const body = $('#an-body').value.trim().slice(0, 2000); const hint = $('.ann-form .hint'); if (!body) { hint.textContent = 'Write something first.'; return; }
+      const body = $('#an-body').value.trim().slice(0, 2000); const hint = $('.ann-form .hint'); if (!body) { hint.textContent = t('Write something first.'); return; }
       const gids = msgs ? sendToIds(m) : []; // updates for chosen groups are never copied into the public page config (no stored translations)
-      b.disabled = true; const { data: an0, error } = await c.from('announcements').insert({ event_id: id, body, ...(gids.length ? { group_ids: gids } : {}) }).select('id').single(); if (error) { b.disabled = false; hint.textContent = 'Couldn’t post: ' + error.message; return; }
+      b.disabled = true; const { data: an0, error } = await c.from('announcements').insert({ event_id: id, body, ...(gids.length ? { group_ids: gids } : {}) }).select('id').single(); if (error) { b.disabled = false; hint.textContent = t('Couldn’t post:') + ' ' + error.message; return; }
       if (msgs && an0) notifyEmail('announcement', an0.id);
       const langs = (cfg.langs || []).filter(l => l !== srcLang(cfg));
-      if (langs.length && canTranslate() && an0 && !gids.length) { hint.textContent = 'Translating for your guests…'; const raw = clone(r.config); raw.tr = raw.tr || {};
+      if (langs.length && canTranslate() && an0 && !gids.length) { hint.textContent = t('Translating for your guests…'); const raw = clone(r.config); raw.tr = raw.tr || {};
         for (const l of langs) { try { const j = await aiImport({ mode: 'translate', fields: { ['ann.' + an0.id]: body }, target: l, source: srcLang(cfg) }); const x = ((j.data && j.data.translations) || [])[0]; if (x) { raw.tr[l] = raw.tr[l] || {}; raw.tr[l]['ann.' + an0.id] = { h: hashStr(body), t: x.text }; } } catch { /* post stays in the original language */ } }
         await c.from('events').update({ config: raw }).eq('id', id); devPatchHosted(id, { tr: raw.tr }); }
       again();
     }
-    if (d.anDel && confirm('Delete this update?')) { await c.from('announcements').delete().eq('id', d.anDel); again(); }
+    if (d.anDel && confirm(t('Delete this update?'))) { await c.from('announcements').delete().eq('id', d.anDel); again(); }
     if (d.rs === 'csv') {
       const lines = [['Name', 'Reply', 'Party', ...RQ.map(c => c[1]), 'Email', 'Note', 'Sent']].concat(replies.map(x => [x.name, x.attending ? 'Coming' : 'Can’t make it', x.attending ? x.guests : 0, ...RQ.map(c => c[2](x)), x.email || '', x.note || '', x.created_at]));
       const blob = new Blob(['﻿' + lines.map(l => l.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (cfg.title || 'event').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() + '-replies.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     }
     if (d.gl === 'add') addGuests(parseGuestList($('#gl-paste').value));
-    if (d.gl === 'clear' && confirm('Clear your guest list on this device?')) { LS.del(guestListKey(id)); again(); }
+    if (d.gl === 'clear' && confirm(t('Clear your guest list on this device?'))) { LS.del(guestListKey(id)); again(); }
     if (d.pg === 'edit') { const ex = pagesAll().find(x => x.hosted && x.hosted.id === r.id); LS.set('draft', cfg); LS.set('draftHosted', { id: r.id, slug: r.slug, owner: user.id, pub: !!r.published }); LS.set('draftId', ex ? ex.pid : newPid()); location.hash = '#new'; }
     if (d.pg === 'vis') { await c.from('events').update({ published: !r.published }).eq('id', id); const ex = pagesAll().find(x => x.hosted && x.hosted.id === id); if (ex) pageSave(ex.pid, { hosted: { ...ex.hosted, pub: !r.published } }); again(); }
   });
@@ -4788,7 +4791,7 @@ function loadGoogleMaps() {
     // Google calls this when the key is refused (it can happen after the map is drawn): switch every map to Leaflet
     window.gm_authFailure = () => { gmapsBroken = true; gmapsFails.forEach(f => { try { f(); } catch {} }); };
     const s = document.createElement('script'); s.async = true;
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${enc(GKEY)}&v=weekly&loading=async&callback=__epGmaps`;
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${enc(GKEY)}&v=weekly&loading=async&language=${enc(LANG)}&callback=__epGmaps`;
     s.onerror = () => { gmapsP = null; gmapsBroken = true; rej(new Error('Google Maps did not load')); };
     document.head.appendChild(s);
     setTimeout(() => rej(new Error('Google Maps timed out')), 15000);
@@ -4843,7 +4846,7 @@ function googleAdapter(g, el, c) {
 function leafletAdapter(el, c) {
   const Lf = window.L; el.innerHTML = ''; delete el._leaflet_id;
   const map = Lf.map(el, { scrollWheelZoom: false, zoomControl: false, attributionControl: true }).setView([c.lat, c.lon], c.zoom || 15);
-  Lf.control.zoom({ position: 'topright' }).addTo(map); el._leafletMap = map;
+  Lf.control.zoom({ position: 'topright', zoomInTitle: t('Zoom in'), zoomOutTitle: t('Zoom out') }).addTo(map); el._leafletMap = map; try { map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener noreferrer">Leaflet</a>'); } catch { }
   const zb = () => { const z = map.getZoom(); el.dataset.zb = z >= 15 ? '' : z >= 13 ? 'mid' : 'far'; }; map.on('zoomend', zb); zb();
   const lTip = (m, text, cls) => (text && mapHover() ? m.bindTooltip(esc(text), { direction: 'bottom', className: 'map-tip' + cls }) : m); // name on hover only (a tap opens the popup)
   const ccMk = (x, sv, zi) => Lf.marker([x.lat, x.lon], { icon: Lf.divIcon({ className: 'ccpin' + (sv ? ' sv' : ''), html: `<img src="${ccPinURL(x.ic, sv)}" alt="">`, iconSize: [36, 36], iconAnchor: [18, 18] }), title: x.title, zIndexOffset: zi });
@@ -5040,23 +5043,23 @@ function duplicateCfg(cfg) { const c = spanFixed(normalize(clone(cfg))); delete 
 function myPagesHTML() {
   const xs = pagesAll().slice().sort((a, b) => (b.edited || b.updated || 0) - (a.edited || a.updated || 0)); if (!xs.length) return '';
   const cur = LS.get('draftId');
-  return `<section class="land-mine" id="my-pages"><h2>My pages${acctOn() ? '' : ' <small class="muted">on this device</small>'}</h2><ul class="mp-list">${xs.slice(0, 30).map(x => { const c = spanFixed(normalize(clone(x.cfg))); const open = x.hosted ? (x.hosted.pub ? shortURL(x.hosted.slug) : '') : x.url;
-    return `<li style="${themeStyle(c.theme)}"><i class="mp-dot" aria-hidden="true"></i><div class="mp-t"><b>${esc(c.title || 'Untitled')}</b><span>${esc([TYPE_LABEL[c.type] || c.type, c.start ? dateRange(c.start, c.end) : '', open ? 'shared' : '', x.pid === cur ? 'last opened' : ''].filter(Boolean).join(' · '))}</span></div>
-      <div class="mp-b"><a class="btn sm primary" href="#page=${esc(x.pid)}" aria-label="Open ${esc(c.title || 'Untitled')}">Open</a><a class="btn sm ghost" href="#dup=${esc(x.pid)}">Duplicate</a><button type="button" class="btn sm ghost" data-mp-del="${esc(x.pid)}" aria-label="Delete ${esc(c.title || 'Untitled')}">Delete</button></div></li>`; }).join('')}</ul></section>`;
+  return `<section class="land-mine" id="my-pages"><h2>${t('My pages')}${acctOn() ? '' : ` <small class="muted">${t('on this device')}</small>`}</h2><ul class="mp-list">${xs.slice(0, 30).map(x => { const c = spanFixed(normalize(clone(x.cfg))); const open = x.hosted ? (x.hosted.pub ? shortURL(x.hosted.slug) : '') : x.url;
+    return `<li style="${themeStyle(c.theme)}"><i class="mp-dot" aria-hidden="true"></i><div class="mp-t"><b>${esc(c.title || t('Untitled'))}</b><span>${esc([t(TYPE_LABEL[c.type] || c.type), c.start ? dateRange(c.start, c.end) : '', open ? t('shared') : '', x.pid === cur ? t('last opened') : ''].filter(Boolean).join(' · '))}</span></div>
+      <div class="mp-b"><a class="btn sm primary" href="#page=${esc(x.pid)}" aria-label="${esc(t('Open {n}', { n: c.title || t('Untitled') }))}">${t('Open')}</a><a class="btn sm ghost" href="#dup=${esc(x.pid)}">${t('Duplicate')}</a><button type="button" class="btn sm ghost" data-mp-del="${esc(x.pid)}" aria-label="${esc(t('Delete {n}', { n: c.title || t('Untitled') }))}">${t('Delete')}</button></div></li>`; }).join('')}</ul></section>`;
 }
 function renderExamples() {
-  document.title = 'Example pages · 1LinkTrip'; scrollTo(0, 0);
-  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a><span class="land-nav"><a class="btn primary" href="#setup">Create a page</a></span></header>${samplesHTML()}</main>`;
+  document.title = t('Example pages') + ' · 1LinkTrip'; scrollTo(0, 0);
+  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a><span class="land-nav"><a class="btn primary" href="#setup">${t('Create a page')}</a></span></header>${samplesHTML()}</main>`;
 }
 function samplesHTML() {
   const ex = window.EXAMPLES; const order = ['japan-trip', 'tulum-wedding', 'chicago-10k', 'redrocks-concert', 'nyc-conference', 'sf-festival'].filter(id => ex[id]);
   const demoOf = (id) => Object.keys(DEMOS).find(k => DEMOS[k] === id);
-  return `<section class="land-ex" id="samples"><h2>Example pages</h2>
+  return `<section class="land-ex" id="samples"><h2>${t('Example pages')}</h2>
     <div class="ex-grid">${order.map(id => { const e = normalize(clone(ex[id])); const v = e.venue;
-      return `<div class="ex-card" style="${themeStyle(e.theme)}"><a class="ex-hit" href="?demo=${demoOf(id)}" aria-label="Open ${esc(e.title)}"></a>
+      return `<div class="ex-card" style="${themeStyle(e.theme)}"><a class="ex-hit" href="?demo=${demoOf(id)}" aria-label="${esc(t('Open {n}', { n: e.title }))}"></a>
         <span class="ex-img" style="background-image:url('${esc(e.cover)}')"></span>
-        <span class="ex-body"><span class="lbl">${esc(TYPE_LABEL[e.type] || e.type)}${v ? ' · ' + esc(v.city) : ''}</span><b>${esc(e.title)}</b><span>${esc(dateRange(e.start, e.end))}</span></span>
-        <span class="ex-acts"><a class="btn sm" href="?demo=${demoOf(id)}">Open</a><a class="btn sm ghost" href="#edit-ex=${id}">Make a copy</a></span></div>`; }).join('')}</div></section>`;
+        <span class="ex-body"><span class="lbl">${esc(t(TYPE_LABEL[e.type] || e.type))}${v ? ' · ' + esc(v.city) : ''}</span><b>${esc(e.title)}</b><span>${esc(dateRange(e.start, e.end))}</span></span>
+        <span class="ex-acts"><a class="btn sm" href="?demo=${demoOf(id)}">${t('Open')}</a><a class="btn sm ghost" href="#edit-ex=${id}">${t('Make a copy')}</a></span></div>`; }).join('')}</div></section>`;
 }
 function wireLanding() {
   const m = $('.land'); if (!m) return;
@@ -5065,10 +5068,10 @@ function wireLanding() {
     const name = (x.cfg && x.cfg.title) || 'Untitled';
     const body = x.hosted && x.hosted.id ? (acctOn() ? `It’s removed from your account on every device${x.hosted.pub ? ' and its link stops working' : ''}.` : 'It’s also removed from your account the next time you sign in.')
       : x.url ? 'Links you already shared keep working.' : 'It’s only saved on this device.';
-    if (!await confirmDlg({ title: `Delete “${name}”?`, body, ok: 'Delete' })) return;
-    let r; try { b.disabled = true; r = await pageDelete({ pid: x.pid }); } catch (err) { b.disabled = false; toast('Couldn’t delete: ' + pubWhy(err)); return; }
+    if (!await confirmDlg({ title: t('Delete “{n}”?', { n: name }), body, ok: t('Delete') })) return;
+    let r; try { b.disabled = true; r = await pageDelete({ pid: x.pid }); } catch (err) { b.disabled = false; toast(t('Couldn’t delete:') + ' ' + pubWhy(err)); return; }
     renderLanding();
-    if (r.undo) toastAction("Page deleted.", 'Undo', () => { r.undo(); renderLanding(); }); else toast(`Deleted “${name}”`);
+    if (r.undo) toastAction("Page deleted.", 'Undo', () => { r.undo(); renderLanding(); }); else toast(t('Deleted “{n}”', { n: name }));
   });
 }
 // the account's pages arrived or changed (sync on open / sign-in): refresh whatever list is on screen
@@ -6018,7 +6021,7 @@ function hfRead(box) {
   return out;
 }
 // a fold for a compact row (builder rows, Make it mine): summary = what is set, else the label
-const tEn = (s, vars) => vars ? s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '') : s; // the builder's strings stay English
+const tEn = (s, vars) => t(s, vars); // the builder's strings follow the organizer's interface language (uiLang)
 const hfSumText = (h, L = t) => [h.room, h.beds, h.nonRef ? L('Non-refundable') : h.cancelBy ? L('Cancel by {d}', { d: fmt(h.cancelBy.slice(0, 10), { month: 'short', day: 'numeric' }) }) : ''].filter(Boolean).join(' · ');
 const hfFoldHTML = (h, id, opts = {}) => { const L = opts.en ? tEn : t; const s = hfSumText(h, L);
   return `<details class="hf-fold"${opts.open ? ' open' : ''}><summary><span>${esc(L('Room details'))}</span>${s ? `<small>${esc(s)}</small>` : ''}</summary>${hfFormHTML(h, id, opts)}</details>`; };
@@ -6934,13 +6937,13 @@ async function startFromWebsite(url, msgEl, type) {
   renderBuilder(cfg, `Filled in from ${hostOf(url)}${bp ? ', in its colors' : ''}. Check every detail before you publish.`, null, pid);
 }
 function suAIHTML() {
-  return `<div class="su-ai" data-su-ai hidden><div class="su-ai-starts"><button type="button" class="link strong" data-su="ai-open">✦ Start from a website</button><button type="button" class="link strong" data-su="doc-open">✦ Start from a document</button></div>
+  return `<div class="su-ai" data-su-ai hidden><div class="su-ai-starts"><button type="button" class="link strong" data-su="ai-open">${t('✦ Start from a website')}</button><button type="button" class="link strong" data-su="doc-open">${t('✦ Start from a document')}</button></div>
     <div class="su-ai-form" hidden><p class="hint" data-su-ai-type></p>
-      <div class="search"><input id="su-ai-url" type="url" inputmode="url" placeholder="https://yourwedding.com" autocomplete="off"><button type="button" class="btn primary" data-su="ai-go">Fill in</button></div>
-      <label class="chk su-ai-brand"><input type="checkbox" data-su-brand ${LS.get('aiBrand') === false ? '' : 'checked'}> Use the site’s colors and logo</label>
+      <div class="search"><input id="su-ai-url" type="url" inputmode="url" placeholder="https://yourwedding.com" autocomplete="off"><button type="button" class="btn primary" data-su="ai-go">${t('Fill in')}</button></div>
+      <label class="chk su-ai-brand"><input type="checkbox" data-su-brand ${LS.get('aiBrand') === false ? '' : 'checked'}> ${t('Use the site’s colors and logo')}</label>
       <p class="hint" data-su-ai-msg role="status" aria-live="polite"></p><div data-su-ai-signin></div></div>
     <div class="su-doc-form" hidden><p class="hint" data-su-ai-type></p>
-      <label class="su-doc-drop" data-su-doc-drop><input type="file" id="su-doc-file" accept="application/pdf,.pdf,image/*" hidden><b>Choose a PDF or photo</b><span>or drop it here · an itinerary, invitation or booking confirmation</span></label>
+      <label class="su-doc-drop" data-su-doc-drop><input type="file" id="su-doc-file" accept="application/pdf,.pdf,image/*" hidden><b>${t('Choose a PDF or photo')}</b><span>${t('or drop it here · an itinerary, invitation or booking confirmation')}</span></label>
       <p class="hint" data-su-doc-msg role="status" aria-live="polite"></p><div data-su-doc-signin></div></div></div>`;
 }
 // "Start from a document": the same reader as Upload a document in the builder (ai-import mode doc), filling a new page
@@ -6971,8 +6974,8 @@ async function suDocGo(file) {
   try { await startFromDocument(file, msg, SU && SU.aiType); }
   catch (e) {
     if (drop) drop.classList.remove('busy');
-    if (e.signin) { LS.set('pendingAiDoc', (SU && SU.aiType) || '-'); LS.set('afterSignIn', '#setup'); msg.textContent = 'Sign in first, so imports stay yours. Then choose the file again.'; $('[data-su-doc-signin]').innerHTML = signInFormHTML(''); return; }
-    msg.textContent = e.message || 'Couldn’t read that file.'; toast('Couldn’t read that file: ' + (e.message || 'try again'));
+    if (e.signin) { LS.set('pendingAiDoc', (SU && SU.aiType) || '-'); LS.set('afterSignIn', '#setup'); msg.textContent = t('Sign in first, so imports stay yours. Then choose the file again.'); $('[data-su-doc-signin]').innerHTML = signInFormHTML(''); return; }
+    msg.textContent = e.message || t('Couldn’t read that file.'); toast(t('Couldn’t read that file:') + ' ' + (e.message || t('try again')));
   }
 }
 function suAIHint() {
@@ -6981,13 +6984,13 @@ function suAIHint() {
 }
 async function suAIGo() {
   const inp = $('#su-ai-url'); const msg = $('[data-su-ai-msg]'); const url = normSite(inp ? inp.value : '');
-  if (!url) { msg.textContent = 'That doesn’t look like a website link.'; return; }
+  if (!url) { msg.textContent = t('That doesn’t look like a website link.'); return; }
   const btn = $('[data-su="ai-go"]'); btn.disabled = true;
   try { await startFromWebsite(url, msg, SU && SU.aiType); }
   catch (e) {
     btn.disabled = false;
-    if (e.signin) { LS.set('pendingAiUrl', url); LS.set('pendingAiType', (SU && SU.aiType) || ''); LS.set('afterSignIn', '#setup'); msg.textContent = 'Sign in first, so imports stay yours.'; $('[data-su-ai-signin]').innerHTML = signInFormHTML(''); return; }
-    msg.textContent = e.message || 'Couldn’t read that site.';
+    if (e.signin) { LS.set('pendingAiUrl', url); LS.set('pendingAiType', (SU && SU.aiType) || ''); LS.set('afterSignIn', '#setup'); msg.textContent = t('Sign in first, so imports stay yours.'); $('[data-su-ai-signin]').innerHTML = signInFormHTML(''); return; }
+    msg.textContent = e.message || t('Couldn’t read that site.');
   }
 }
 // "Read with AI" in the guest booking form: every reservation in a pasted confirmation becomes a booking
@@ -7030,7 +7033,7 @@ const stopDated = (s) => !!(s && isoDay(String(s.from || '').slice(0, 10)));
 const newStopId = () => 'st' + Date.now().toString(36).slice(-5) + Math.random().toString(36).slice(2, 6);
 const shiftDay = (d, n) => d && isoDay(String(d).slice(0, 10)) ? addDays(d.slice(0, 10), n) + d.slice(10) : d;
 const nightsOf = (s) => stopDated(s) && isoDay(s.to || '') ? daysBetween(s.from, s.to) : null;
-const nightsTxt = (n) => n === 1 ? '1 night' : `${n} nights`;
+const nightsTxt = (n) => n === 1 ? t('1 night') : t('{n} nights', { n });
 function sortStops(cfg) {
   const ss = Array.isArray(cfg.stops) ? cfg.stops : []; const slots = ss.map((s, i) => stopDated(s) ? i : -1).filter(i => i >= 0);
   const dated = slots.map(i => ss[i]).map((s, k) => [s, k]).sort((a, b) => a[0].from.localeCompare(b[0].from) || String(a[0].to || '').localeCompare(String(b[0].to || '')) || a[1] - b[1]).map(x => x[0]);
@@ -7081,38 +7084,38 @@ function shiftPanelHTML(c) {
   const sim = n ? (() => { const x = clone(c); (x.stops || []).forEach(s => { if (stopDated(s)) { s.from = shiftDay(s.from, n); if (s.to) s.to = shiftDay(s.to, n); } }); x.start = shiftDay(x.start, n); if (x.end) x.end = shiftDay(x.end, n); return x; })() : null;
   const items = (c.schedule || []).filter(x => isoDay(x.date || '')).length;
   const bks = n ? itinLoad(c).filter(x => bkDay(x.start)).filter(x => bkOffTrip(sim, x)) : [];
-  return `<div class="sh-panel" data-sh-panel><div class="field"><label for="sh-start">New first day</label><input id="sh-start" type="date" data-sh-start value="${esc(to || '')}"></div>
-    ${n ? `<p class="sh-sum">${arrow(tripSpanTxt(c), tripSpanTxt(sim))} <small>${Math.abs(n)} day${Math.abs(n) === 1 ? '' : 's'} ${n > 0 ? 'later' : 'earlier'}</small></p>
+  return `<div class="sh-panel" data-sh-panel><div class="field"><label for="sh-start">${t('New first day')}</label><input id="sh-start" type="date" data-sh-start value="${esc(to || '')}"></div>
+    ${n ? `<p class="sh-sum">${arrow(tripSpanTxt(c), tripSpanTxt(sim))} <small>${esc(t(Math.abs(n) === 1 ? (n > 0 ? '1 day later' : '1 day earlier') : (n > 0 ? '{n} days later' : '{n} days earlier'), { n: Math.abs(n) }))}</small></p>
       <ul class="sh-list">${stopsOf(c).filter(stopDated).map(s => { const y = sim.stops[c.stops.indexOf(s)]; return `<li>${esc(s.name)}: ${arrow(stopRange(s), stopRange(y))}</li>`; }).join('')}
-        ${items ? `<li>${items} itinerary item${items === 1 ? '' : 's'} move with their days</li>` : ''}<li>Places guests saved to a day move with it</li></ul>
-      ${bks.length ? `<p class="sh-warn"><b>Bookings keep their dates.</b> Flights and hotels already booked don’t move — change them with the airline or hotel. These will show “Not on the trip dates”: ${bks.map(x => esc(`${x.name || t(ITIN_KINDS[x.kind] || 'Booking')} (${dateRange(bkDay(x.start), bkDay(x.end) || bkDay(x.start)).replace(/, \d{4}$/, '')})`)).join(', ')}.</p>` : `<p class="hint">Guests’ own flight and hotel bookings keep their dates and are flagged if they no longer match.</p>`}`
+        ${items ? `<li>${esc(t(items === 1 ? '1 itinerary item moves with its day' : '{n} itinerary items move with their days', { n: items }))}</li>` : ''}<li>${t('Places guests saved to a day move with it')}</li></ul>
+      ${bks.length ? `<p class="sh-warn"><b>${t('Bookings keep their dates.')}</b> ${t('Flights and hotels already booked don’t move — change them with the airline or hotel. These will show “Not on the trip dates”:')} ${bks.map(x => esc(`${x.name || t(ITIN_KINDS[x.kind] || 'Booking')} (${dateRange(bkDay(x.start), bkDay(x.end) || bkDay(x.start)).replace(/, \d{4}$/, '')})`)).join(', ')}.</p>` : `<p class="hint">${t('Guests’ own flight and hotel bookings keep their dates and are flagged if they no longer match.')}</p>`}`
       : to ? '<p class="hint">That’s already the first day.</p>' : '<p class="hint">Pick the trip’s new first day. Every stop and itinerary day moves by the same number of days.</p>'}
-    <div class="btns"><button type="button" class="btn primary" data-sh="apply"${n ? '' : ' disabled'}>Move trip</button><button type="button" class="btn ghost" data-sh="cancel">Cancel</button></div></div>`;
+    <div class="btns"><button type="button" class="btn primary" data-sh="apply"${n ? '' : ' disabled'}>${t('Move trip')}</button><button type="button" class="btn ghost" data-sh="cancel">${t('Cancel')}</button></div></div>`;
 }
 function routeHTML(c, only = null) {
   const ss = Array.isArray(c.stops) ? c.stops : []; const note = (s, i) => stopNoteHTML(c, i);
   const row = (s, i) => { const n = nightsOf(s);
     return `<li class="rowed st-row${B && B.flashStop === s ? ' flash' : ''}" data-st-row="${i}">
-      ${s.name ? `<div class="venue-sel"><div><b>${esc(s.name)}</b><span>${esc([s.region, s.country].filter(Boolean).join(', '))}</span></div><button type="button" class="btn sm" data-st-clear="${i}">Change</button></div>`
-        : `<div class="field"><label for="st-q-${i}">City or place</label><div class="search"><input id="st-q-${i}" data-st-q="${i}" placeholder="Kyoto" autocomplete="off"><button type="button" class="btn" data-st-find="${i}">Find</button></div></div>`}
-      <div class="st-dates"><div class="two"><div class="field"><label for="st-from-${i}">Arrive</label><input id="st-from-${i}" type="date" data-st="${i}" data-k="from" value="${esc(s.from || '')}"></div><div class="field"><label for="st-to-${i}">Leave</label><input id="st-to-${i}" type="date" data-st="${i}" data-k="to" value="${esc(s.to || '')}" min="${esc(s.from || '')}"></div></div>
+      ${s.name ? `<div class="venue-sel"><div><b>${esc(s.name)}</b><span>${esc([s.region, s.country].filter(Boolean).join(', '))}</span></div><button type="button" class="btn sm" data-st-clear="${i}">${t('Change')}</button></div>`
+        : `<div class="field"><label for="st-q-${i}">${t('City or place')}</label><div class="search"><input id="st-q-${i}" data-st-q="${i}" placeholder="Kyoto" autocomplete="off"><button type="button" class="btn" data-st-find="${i}">${t('Find')}</button></div></div>`}
+      <div class="st-dates"><div class="two"><div class="field"><label for="st-from-${i}">${t('Arrive')}</label><input id="st-from-${i}" type="date" data-st="${i}" data-k="from" value="${esc(s.from || '')}"></div><div class="field"><label for="st-to-${i}">${t('Leave')}</label><input id="st-to-${i}" type="date" data-st="${i}" data-k="to" value="${esc(s.to || '')}" min="${esc(s.from || '')}"></div></div>
 </div>
       ${note(s, i)}
-      <div class="plan-ctl st-foot">${stopDated(s) ? `<div class="st-nights" role="group" aria-label="Nights"><button type="button" data-st-n="${i}" data-dir="-1" ${n ? '' : 'disabled'} aria-label="One night fewer">−</button><span>${n == null ? 'Set the leave date' : n === 0 ? 'Day trip' : nightsTxt(n)}</span><button type="button" data-st-n="${i}" data-dir="1" aria-label="One more night">+</button></div>` : ''}<span class="mv"><button type="button" data-st-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-st-mv="${i}" data-dir="1" ${i === ss.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button></span><button type="button" class="link" data-st-del="${i}">Remove</button></div>
+      <div class="plan-ctl st-foot">${stopDated(s) ? `<div class="st-nights" role="group" aria-label="${t('Nights')}"><button type="button" data-st-n="${i}" data-dir="-1" ${n ? '' : 'disabled'} aria-label="${t('One night fewer')}">−</button><span>${n == null ? t('Set the leave date') : n === 0 ? t('Day trip') : nightsTxt(n)}</span><button type="button" data-st-n="${i}" data-dir="1" aria-label="${t('One more night')}">+</button></div>` : ''}<span class="mv"><button type="button" data-st-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="${t('Move up')}">↑</button><button type="button" data-st-mv="${i}" data-dir="1" ${i === ss.length - 1 ? 'disabled' : ''} aria-label="${t('Move down')}">↓</button></span><button type="button" class="link" data-st-del="${i}">${t('Remove')}</button></div>
     </li>`; };
   if (only != null) return `<ol class="route-ed">${ss[only] ? row(ss[only], only) : ''}</ol>`;
   const nd = ss.filter(stopDated).length;
-  return `${c.start && isTrip(c) ? `<div class="rt-sum"><div><span class="lbl-s">Trip dates</span><b>${esc(tripSpanTxt(c))}</b>${nd ? `<small>${ss.filter(x => x.name).length} stop${ss.filter(x => x.name).length === 1 ? '' : 's'} · in date order</small>` : ''}</div>${B && B.shift ? '' : `<div class="rt-acts">${B && B.shiftUndo ? '<button type="button" class="btn sm ghost" data-sh="undo">Undo move</button>' : ''}<button type="button" class="btn sm" data-sh="open">Move trip dates</button></div>`}</div>${B && B.shift ? shiftPanelHTML(c) : ''}` : ''}
-    <ol class="route-ed">${ss.map((s, i) => row(s, i) + (i < ss.length - 1 ? `<li class="st-ins"><button type="button" data-st-ins="${i}" aria-label="Insert a stop after ${esc(s.name || 'this stop')}">+ Insert a stop</button></li>` : '')).join('')}</ol>
-    <button type="button" class="btn sm" data-st-add>+ Add a stop</button>`;
+  return `${c.start && isTrip(c) ? `<div class="rt-sum"><div><span class="lbl-s">${t('Trip dates')}</span><b>${esc(tripSpanTxt(c))}</b>${nd ? `<small>${esc(t(ss.filter(x => x.name).length === 1 ? '1 stop' : '{n} stops', { n: ss.filter(x => x.name).length }))} · ${t('in date order')}</small>` : ''}</div>${B && B.shift ? '' : `<div class="rt-acts">${B && B.shiftUndo ? `<button type="button" class="btn sm ghost" data-sh="undo">${t('Undo move')}</button>` : ''}<button type="button" class="btn sm" data-sh="open">${t('Move trip dates')}</button></div>`}</div>${B && B.shift ? shiftPanelHTML(c) : ''}` : ''}
+    <ol class="route-ed">${ss.map((s, i) => row(s, i) + (i < ss.length - 1 ? `<li class="st-ins"><button type="button" data-st-ins="${i}" aria-label="Insert a stop after ${esc(s.name || 'this stop')}">${t('+ Insert a stop')}</button></li>` : '')).join('')}</ol>
+    <button type="button" class="btn sm" data-st-add>${t('+ Add a stop')}</button>`;
 }
 // gentle notes between stops: an overlap (with Make room) or a gap (with Insert a stop here)
 function stopNoteHTML(c, i) {
   const ss = Array.isArray(c.stops) ? c.stops : []; const s = ss[i]; let p = null; for (let j = i - 1; j >= 0 && !p; j--) if (stopDated(ss[j])) p = ss[j];
   if (!p || !stopDated(s) || !isoDay(p.to || '')) return '';
   const d = daysBetween(p.to, s.from.slice(0, 10)); const pn = p.name || 'the stop before';
-  if (d < 0) return `<p class="st-note warn">Overlaps ${esc(pn)} by ${nightsTxt(-d)}. <button type="button" class="link" data-st-push="${i}" data-n="${-d}">Move ${esc(s.name || 'this stop')} and later stops ${-d} day${-d === 1 ? '' : 's'} later</button></p>`;
-  if (d > 0) return `<p class="st-note">${nightsTxt(d)} with no stop after ${esc(pn)}. <button type="button" class="link" data-st-ins="${ss.indexOf(p)}">Insert a stop here</button></p>`;
+  if (d < 0) return `<p class="st-note warn">${esc(t('Overlaps {p} by {n}.', { p: pn, n: nightsTxt(-d) }))} <button type="button" class="link" data-st-push="${i}" data-n="${-d}">${esc(t(-d === 1 ? 'Move {s} and later stops 1 day later' : 'Move {s} and later stops {n} days later', { s: s.name || t('this stop'), n: -d }))}</button></p>`;
+  if (d > 0) return `<p class="st-note">${esc(t('{n} with no stop after {p}.', { n: nightsTxt(d), p: pn }))} <button type="button" class="link" data-st-ins="${ss.indexOf(p)}">${t('Insert a stop here')}</button></p>`;
   return '';
 }
 function setStop(cfg, i, v) {
@@ -7127,7 +7130,7 @@ const onpIdxFix = (a, b) => { if (B && B.focus && B.focus.o === a) B.focus.o = b
 // after a stop's dates or place changed: date order, the trip's dates cover the route; the moved stop flashes once
 function routeSettle(cfg, s) {
   const moved = sortStops(cfg); fitTripToStops(cfg);
-  if (moved && s && s.name) { B.flashStop = s; toast(`${s.name} moved to its place in the route`); setTimeout(() => { if (B && B.flashStop === s) B.flashStop = null; }, 2500); }
+  if (moved && s && s.name) { B.flashStop = s; toast(t('{n} moved to its place in the route', { n: s.name })); setTimeout(() => { if (B && B.flashStop === s) B.flashStop = null; }, 2500); }
   return moved;
 }
 function routeClick(b, cfg) {
@@ -7141,15 +7144,15 @@ function routeClick(b, cfg) {
     const to = from ? (nx && nx.from.slice(0, 10) > from ? nx.from.slice(0, 10) : addDays(from, 1)) : '';
     const x = { id: newStopId(), name: '', from, to }; cfg.stops.splice(i + 1, 0, x); B.flashStop = x; changed(true); focusNew(x); }
   if (d.stN != null) { const s = cfg.stops[+d.stN]; if (s && stopDated(s)) { const n = Math.max(0, (nightsOf(s) ?? 0) + +d.dir); s.to = addDays(s.from.slice(0, 10), n); routeSettle(cfg, s); changed(true); } }
-  if (d.stPush != null) { const s = cfg.stops[+d.stPush]; const n = +d.n; if (s && stopDated(s) && n > 0) { shiftDates(cfg, addDays(s.from.slice(0, 10), n), n, s); /* the overlapped stop keeps its own days */ toast(`Moved ${s.name || 'the stop'} and later stops ${n} day${n === 1 ? '' : 's'} later`); changed(true); } }
+  if (d.stPush != null) { const s = cfg.stops[+d.stPush]; const n = +d.n; if (s && stopDated(s) && n > 0) { shiftDates(cfg, addDays(s.from.slice(0, 10), n), n, s); /* the overlapped stop keeps its own days */ toast(t(n === 1 ? 'Moved {s} and later stops 1 day later' : 'Moved {s} and later stops {n} days later', { s: s.name || t('the stop'), n })); changed(true); } }
   if (d.stDel) { cfg.stops.splice(+d.stDel, 1); changed(true); }
   if (d.stMv) { const i = +d.stMv, j = i + +d.dir; if (j >= 0 && j < cfg.stops.length) { [cfg.stops[i], cfg.stops[j]] = [cfg.stops[j], cfg.stops[i]]; changed(true); } }
   if (d.stClear) { const s = cfg.stops[+d.stClear]; const x = { id: s.id || newStopId(), name: '', from: s.from, to: s.to }; onpIdxFix(s, x); cfg.stops[+d.stClear] = x; changed(true); }
   if (d.stFind) { const i = +d.stFind; const q = ($(`#st-q-${i}`) || {}).value || ''; if (q.trim().length < 2) return true;
-    geocode(q.trim()).then(rs => { const cc = tripCC(cfg); const ok = rs.filter(x => !(x.types || []).some(ty => ty === 'country' || ty === 'continent')); const r = ok.find(x => !cc || !x.cc || x.cc === cc) || ok[0] || rs[0]; if (!r) { toast('No match. Try adding the country.'); return; } setStop(cfg, i, r); }).catch(() => toast('Search is unavailable right now')); }
+    geocode(q.trim()).then(rs => { const cc = tripCC(cfg); const ok = rs.filter(x => !(x.types || []).some(ty => ty === 'country' || ty === 'continent')); const r = ok.find(x => !cc || !x.cc || x.cc === cc) || ok[0] || rs[0]; if (!r) { toast(t('No match. Try adding the country.')); return; } setStop(cfg, i, r); }).catch(() => toast(t('Search is unavailable right now'))); }
   if (d.sh === 'open') { B.shiftUndo = null; B.shift = { start: '' }; renderSheet(); setTimeout(() => $('#sh-start')?.focus(), 40); }
   if (d.sh === 'cancel') { B.shift = null; renderSheet(); }
-  if (d.sh === 'undo' && B.shiftUndo) { B.shiftUndo(); toast('Trip dates put back'); }
+  if (d.sh === 'undo' && B.shiftUndo) { B.shiftUndo(); toast(t('Trip dates put back')); }
   if (d.sh === 'apply' && B.shift && B.shift.start && cfg.start) {
     const n = daysBetween(cfg.start.slice(0, 10), B.shift.start); if (!n) return true;
     const snap = clone(cfg); const pk = planKey(cfg), plan0 = LS.get(pk, null), sk = 'shifted:' + syncKey(cfg), done0 = LS.get(sk, null);
@@ -7175,7 +7178,7 @@ function routeChange(i, cfg) {
   routeSettle(cfg, s); changed(true); return true;
 }
 function wireRouteAC(cfg) {
-  $$('#sheet [data-st-q]').forEach(inp => placeAutocomplete(inp, { bias: () => cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(v => setStop(cfg, +inp.dataset.stQ, v)).catch(() => toast('Couldn’t load that place')) }));
+  $$('#sheet [data-st-q]').forEach(inp => placeAutocomplete(inp, { bias: () => cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(v => setStop(cfg, +inp.dataset.stQ, v)).catch(() => toast(t('Couldn’t load that place'))) }));
 }
 // guest page: the route
 function routeGuestHTML(cfg) {
@@ -7355,12 +7358,12 @@ function presetHotelChoices(c) {
 function presetsCardHTML(c) {
   const ps = c.presets || []; const hs = presetHotelChoices(c);
   return `${ps.map((p, i) => `<div class="rowed pr-row">
-    <div class="two"><div class="field"><label for="pr-a-${i}">Arrive</label><input id="pr-a-${i}" type="date" data-pr="${i}" data-k="a" value="${esc(p.a || '')}"></div><div class="field"><label for="pr-l-${i}">Leave</label><input id="pr-l-${i}" type="date" data-pr="${i}" data-k="l" value="${esc(p.l || '')}" min="${esc(p.a || '')}"></div></div>
+    <div class="two"><div class="field"><label for="pr-a-${i}">${t('Arrive')}</label><input id="pr-a-${i}" type="date" data-pr="${i}" data-k="a" value="${esc(p.a || '')}"></div><div class="field"><label for="pr-l-${i}">${t('Leave')}</label><input id="pr-l-${i}" type="date" data-pr="${i}" data-k="l" value="${esc(p.l || '')}" min="${esc(p.a || '')}"></div></div>
     ${hs.length ? `<div class="chips pr-hs">${hs.map((x, j) => `<button type="button" class="chip${p.h && nameLike(p.h.name, x.name) ? ' on' : ''}" data-pr-hotel="${i}" data-h="${j}">${esc(x.name)}</button>`).join('')}</div>` : ''}
-    <input data-pr="${i}" data-k="h" value="${esc(p.h ? p.h.name : '')}" placeholder="Hotel (optional)" aria-label="Hotel" maxlength="120" autocomplete="off">
+    <input data-pr="${i}" data-k="h" value="${esc(p.h ? p.h.name : '')}" placeholder="${t('Hotel (optional)')}" aria-label="${t('Hotel')}" maxlength="120" autocomplete="off">
     ${p.h ? hfFoldHTML(hfOfEv(p.h), 'hf-pr' + i, { en: true, note: true, attr: `data-hf-pr="${i}"` }) : ''}
-    <button type="button" class="ic del" data-pr-del="${i}" aria-label="Remove">Remove</button></div>`).join('')}
-    <button type="button" class="btn sm" data-b="add-preset">+ Add option</button>`;
+    <button type="button" class="ic del" data-pr-del="${i}" aria-label="${t('Remove')}">${t('Remove')}</button></div>`).join('')}
+    <button type="button" class="btn sm" data-b="add-preset">${t('+ Add option')}</button>`;
 }
 function presetAdd(c) {
   const ps = (c.presets = Array.isArray(c.presets) ? c.presets : []); if (ps.length >= 8) return;
@@ -7373,7 +7376,7 @@ function presetInput(c, i, k, v) {
   else if (k === 'h') { const n = String(v || '').trim().slice(0, 120); if (n) p.h = { name: n, ...(p.h ? hfPlain(hfOfEv(p.h)) : {}) }; else delete p.h; }
 }
 function wirePresetAC() {
-  $$('#sheet [data-pr][data-k="h"]').forEach(inp => placeAutocomplete(inp, { bias: () => B.cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(r => { const p = (B.cfg.presets || [])[+inp.dataset.pr]; if (!p) return; p.h = { name: r.name, ...(r.address ? { address: r.address } : {}), ...(r.lat != null ? { lat: r.lat, lon: r.lon } : {}), ...(p.h ? hfPlain(hfOfEv(p.h)) : {}) }; changed(true); }).catch(() => toast('Couldn’t load that place')) }));
+  $$('#sheet [data-pr][data-k="h"]').forEach(inp => placeAutocomplete(inp, { bias: () => B.cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(r => { const p = (B.cfg.presets || [])[+inp.dataset.pr]; if (!p) return; p.h = { name: r.name, ...(r.address ? { address: r.address } : {}), ...(r.lat != null ? { lat: r.lat, lon: r.lon } : {}), ...(p.h ? hfPlain(hfOfEv(p.h)) : {}) }; changed(true); }).catch(() => toast(t('Couldn’t load that place'))) }));
 }
 
 // ================= personal itinerary ↔ account (trip_items; quiet no-op until schema-2 is installed) =================
@@ -7981,8 +7984,8 @@ function planEdits(cfg, changes) {
   return { next: normalize(next), rows, rejected };
 }
 function aiEditHTML() {
-  return `<div class="ai-edit" data-ai-edit hidden><label for="ai-edit-q">✦ Ask AI to edit</label>
-    <div class="search"><textarea id="ai-edit-q" rows="2" maxlength="1000" placeholder="e.g. move the ceremony to 5pm"></textarea><button type="button" class="btn primary" data-ai-edit-go>Preview</button></div>
+  return `<div class="ai-edit" data-ai-edit hidden><label for="ai-edit-q">${t('✦ Ask AI to edit')}</label>
+    <div class="search"><textarea id="ai-edit-q" rows="2" maxlength="1000" placeholder="${t('e.g. move the ceremony to 5pm')}"></textarea><button type="button" class="btn primary" data-ai-edit-go>${t('Preview')}</button></div>
     <p class="hint" data-ai-edit-msg role="status" aria-live="polite"></p><div data-ai-edit-preview></div></div>`;
 }
 function wireAIEdit() {
@@ -7992,24 +7995,24 @@ function wireAIEdit() {
   box.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return;
     if ('aiEditGo' in b.dataset) {
-      const q = box.querySelector('#ai-edit-q').value.trim(); if (!q) { msg.textContent = 'Say what to change.'; return; }
-      b.disabled = true; msg.textContent = 'Working out the changes…'; prev.innerHTML = '';
+      const q = box.querySelector('#ai-edit-q').value.trim(); if (!q) { msg.textContent = t('Say what to change.'); return; }
+      b.disabled = true; msg.textContent = t('Working out the changes…'); prev.innerHTML = '';
       try {
         const j = await aiImport({ mode: 'edit', page: B.cfg, instruction: q });
         const plan = planEdits(B.cfg, j.data && j.data.changes); pending = plan;
-        if (!plan.rows.length) { msg.textContent = plan.rejected.length ? 'Those changes aren’t something the editor can apply. Try rephrasing.' : 'Nothing to change.'; return; }
-        msg.textContent = (j.data.summary ? cleanText(j.data.summary, 200) + ' ' : '') + (plan.rejected.length ? `(${plan.rejected.length} change${plan.rejected.length > 1 ? 's' : ''} skipped)` : '');
-        prev.innerHTML = `<ul class="ai-diff">${plan.rows.map(r => r.rm ? `<li class="rm"><b>${esc(r.label.split(' · ')[0])}</b><s class="was">${esc(r.before)}</s><span class="now rm-t">Removed</span></li>` : `<li><b>${esc(r.label)}</b><span class="was">${esc(r.before)}</span><span class="arr">→</span><span class="now">${esc(r.after)}</span></li>`).join('')}</ul><div class="btns"><button type="button" class="btn primary" data-ai-edit-apply>Apply</button><button type="button" class="btn ghost" data-ai-edit-cancel>Cancel</button></div>`;
-      } catch (err) { msg.textContent = err.signin ? 'Sign in (My pages) to use AI edits.' : (err.message || 'Couldn’t do that.'); }
+        if (!plan.rows.length) { msg.textContent = plan.rejected.length ? t('Those changes aren’t something the editor can apply. Try rephrasing.') : t('Nothing to change.'); return; }
+        msg.textContent = (j.data.summary ? cleanText(j.data.summary, 200) + ' ' : '') + (plan.rejected.length ? '(' + t(plan.rejected.length > 1 ? '{n} changes skipped' : '1 change skipped', { n: plan.rejected.length }) + ')' : '');
+        prev.innerHTML = `<ul class="ai-diff">${plan.rows.map(r => r.rm ? `<li class="rm"><b>${esc(r.label.split(' · ')[0])}</b><s class="was">${esc(r.before)}</s><span class="now rm-t">${t('Removed')}</span></li>` : `<li><b>${esc(r.label)}</b><span class="was">${esc(r.before)}</span><span class="arr">→</span><span class="now">${esc(r.after)}</span></li>`).join('')}</ul><div class="btns"><button type="button" class="btn primary" data-ai-edit-apply>${t('Apply')}</button><button type="button" class="btn ghost" data-ai-edit-cancel>${t('Cancel')}</button></div>`;
+      } catch (err) { msg.textContent = err.signin ? t('Sign in (My pages) to use AI edits.') : (err.message || t('Couldn’t do that.')); }
       finally { b.disabled = false; }
     }
     if ('aiEditCancel' in b.dataset) { pending = null; prev.innerHTML = ''; msg.textContent = ''; }
     if ('aiEditApply' in b.dataset && pending) {
       const before = clone(B.cfg); B.cfg = pending.next; pending = null; changed(true); renderHostNote();
-      box.querySelector('#ai-edit-q').value = ''; msg.textContent = 'Applied.'; prev.innerHTML = '<button type="button" class="btn sm" data-ai-edit-undo>Undo</button>';
+      box.querySelector('#ai-edit-q').value = ''; msg.textContent = t('Applied.'); prev.innerHTML = '<button type="button" class="btn sm" data-ai-edit-undo>Undo</button>';
       box._undo = before;
     }
-    if ('aiEditUndo' in b.dataset && box._undo) { B.cfg = box._undo; box._undo = null; changed(true); msg.textContent = 'Undone.'; prev.innerHTML = ''; }
+    if ('aiEditUndo' in b.dataset && box._undo) { B.cfg = box._undo; box._undo = null; changed(true); msg.textContent = t('Undone.'); prev.innerHTML = ''; }
   });
 }
 
@@ -8082,9 +8085,9 @@ let PH = null; // { key, phase: 'busy'|'signin', msg }
 function photoCtlHTML(key, url, linkInput) {
   const st = PH && PH.key === key ? PH : null;
   return `<div class="ph-up" data-ph-key="${esc(key)}">${httpsUrl(url) ? `<img class="ph-img" src="${esc(url)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
-    <div class="ph-drop" data-ph-drop><label class="btn sm file-pick${st && st.phase === 'busy' ? ' busy' : ''}">${httpsUrl(url) ? 'Replace photo' : 'Upload photo'}<input type="file" accept="image/*" data-ph-file hidden></label><span class="ph-or muted small">or drop a photo here</span>${httpsUrl(url) ? '<button type="button" class="link" data-ph-clear>Remove photo</button>' : ''}</div>
+    <div class="ph-drop" data-ph-drop><label class="btn sm file-pick${st && st.phase === 'busy' ? ' busy' : ''}">${t(httpsUrl(url) ? 'Replace photo' : 'Upload photo')}<input type="file" accept="image/*" data-ph-file hidden></label><span class="ph-or muted small">${t('or drop a photo here')}</span>${httpsUrl(url) ? `<button type="button" class="link" data-ph-clear>${t('Remove photo')}</button>` : ''}</div>
     ${linkInput}
-    <p class="hint" data-ph-msg role="status" aria-live="polite">${esc(st && st.msg || '')}</p>${st && st.phase === 'signin' ? `<div class="bk-signin"><p><b>Sign in to upload photos.</b></p>${signInFormHTML('')}</div>` : ''}</div>`;
+    <p class="hint" data-ph-msg role="status" aria-live="polite">${esc(st && st.msg || '')}</p>${st && st.phase === 'signin' ? `<div class="bk-signin"><p><b>${t('Sign in to upload photos.')}</b></p>${signInFormHTML('')}</div>` : ''}</div>`;
 }
 function phSet(key, url) { const c = B.cfg; if (key === 'cover') c.cover = url; else { const x = c.custom[+key.slice(3)]; if (x) x.img = url; } }
 function phPaint(key) { const el = document.querySelector(`[data-ph-key="${CSS.escape(key)}"]`); if (!el) return; if (B.card) renderSheet(); else buildForm(); }
@@ -8177,7 +8180,7 @@ function docTidy(cfg, xs) {
   Object.values(byDay).forEach(g => {
     if (g.length < 2) return; const titles = g.map(x => x.title || String(x.text || '').split('\n')[0]).filter(Boolean); const all = titles.join(' · ');
     const h = g[0]; const notes = g.map(x => x.title && x.text ? `${x.title}: ${x.text}` : '');
-    h.title = all.length <= 110 ? all : `${titles.slice(0, 2).join(' · ')} + ${titles.length - 2} more`;
+    h.title = all.length <= 110 ? all : `${titles.slice(0, 2).join(' · ')} + ${t('{n} more', { n: titles.length - 2 })}`;
     h.text = [all.length > 110 ? all : '', ...notes].filter(Boolean).join('\n');
     h.kind = g.some(x => x.kind === 'activity') ? 'activity' : ''; g.slice(1).forEach(x => gone.add(x));
   });
@@ -8254,20 +8257,20 @@ function docReviewHTML(c, items, st = {}) {
     return `<div class="field${kind === 'text' || kind === 'url' ? ' wide' : ''}">${lab}<input id="${id}" type="${ty}" data-dr="${i}" data-dk="${k}" value="${esc(v)}"${label ? '' : ` aria-label="${esc(docSecLabel(c, it.sec, it))}"`}></div>`;
   };
   const editHTML = (i) => { const it = items[i]; const tg = it.sec === 'basics' ? [] : docMoveTargets(c, it, it.home);
-    return `<li class="dr-item" data-dr-at="${i}"><div class="dr-top">${tg.length ? `<select data-dr-sec="${i}" aria-label="Put it in">${tg.map(s => `<option value="${esc(s)}" ${s === it.sec ? 'selected' : ''}>${esc(docSecLabel(c, s, s === 'custom' && s === it.sec ? it : null))}</option>`).join('')}</select>` : `<span class="dr-k">${esc(drKeyLabel(c, it))}</span>`}<button type="button" class="ic del dr-x" data-dr-del="${i}" aria-label="Remove">×</button></div>
-      <div class="dr-f">${docFields(it).map(f => fld(it, i, f)).join('')}</div><button type="button" class="link dr-done" data-dr-edit="-1">Done</button></li>`; };
-  const dates = di < 0 ? '' : ed === di ? `<div class="dr-dates"><ul class="dr-lines">${editHTML(di)}</ul></div>` : `<div class="dr-dates"><span><b>Trip dates</b> ${esc(dateRange(items[di].date, items[di].end))}</span><button type="button" class="link" data-dr-edit="${di}">Edit</button></div>`;
-  return `<div class="dr" data-sheet="doc-review"><p class="dr-lead">Found in your document. Untick anything you don't want, or tap a row to see it.</p>${dates}
+    return `<li class="dr-item" data-dr-at="${i}"><div class="dr-top">${tg.length ? `<select data-dr-sec="${i}" aria-label="${t('Put it in')}">${tg.map(s => `<option value="${esc(s)}" ${s === it.sec ? 'selected' : ''}>${esc(docSecLabel(c, s, s === 'custom' && s === it.sec ? it : null))}</option>`).join('')}</select>` : `<span class="dr-k">${esc(drKeyLabel(c, it))}</span>`}<button type="button" class="ic del dr-x" data-dr-del="${i}" aria-label="${t('Remove')}">×</button></div>
+      <div class="dr-f">${docFields(it).map(f => fld(it, i, f)).join('')}</div><button type="button" class="link dr-done" data-dr-edit="-1">${t('Done')}</button></li>`; };
+  const dates = di < 0 ? '' : ed === di ? `<div class="dr-dates"><ul class="dr-lines">${editHTML(di)}</ul></div>` : `<div class="dr-dates"><span><b>${t('Trip dates')}</b> ${esc(dateRange(items[di].date, items[di].end))}</span><button type="button" class="link" data-dr-edit="${di}">${t('Edit')}</button></div>`;
+  return `<div class="dr" data-sheet="doc-review"><p class="dr-lead">${t('Found in your document. Untick anything you don\'t want, or tap a row to see it.')}</p>${dates}
     <div class="dr-gs">${groups.map(G => { const on = !off[G.g], op = !!open[G.g]; const name = drGroupName(c, G, items);
       return `<div class="dr-g${on ? '' : ' off'}${op ? ' open' : ''}" data-dr-g="${esc(G.g)}"><div class="dr-gh"><input type="checkbox" class="dr-on" data-dr-gon="${esc(G.g)}" ${on ? 'checked' : ''} aria-label="Add ${esc(name)}"><button type="button" class="dr-gt" data-dr-open="${esc(G.g)}" aria-expanded="${op}"><span class="dr-gn"><b>${esc(name)}</b> · ${esc(drGroupCount(c, G, items))}${G.sec === 'route' && stopsOf(c).length ? '<small class="muted">Replaces the current route</small>' : ''}${G.sec === 'schedule' && on ? docHotelSwapHTML(c, G.idx.map(i => items[i]).filter(x => !x.gone)) : ''}</span><i class="dr-chev" aria-hidden="true"></i></button></div>
         ${op ? `<ul class="dr-lines">${G.idx.map(i => i === ed ? editHTML(i) : `<li><button type="button" class="dr-line" data-dr-edit="${i}">${esc(drLine(c, items[i]))}</button></li>`).join('')}</ul>` : ''}</div>`; }).join('')}</div>
-    <div class="btns"><button type="button" class="btn primary" data-doc-apply ${n ? '' : 'disabled'}>${st.key && st.key !== 'main' ? 'Add' : 'Add to page'}</button><button type="button" class="btn ghost" data-doc-cancel>Cancel</button></div></div>`;
+    <div class="btns"><button type="button" class="btn primary" data-doc-apply ${n ? '' : 'disabled'}>${st.key && st.key !== 'main' ? 'Add' : 'Add to page'}</button><button type="button" class="btn ghost" data-doc-cancel>${t('Cancel')}</button></div></div>`;
 }
 // the review says which of the organizer's hotels a document's hotel will replace (hostHotelReplace, on a copy)
 function docHotelSwapHTML(c, its) {
   const news = its.map(x => ({ date: isoDay(x.date), time: isoTime(x.time), title: cleanText(x.title, 120), kind: x.kind || '' })).filter(x => x.date && x.title);
   const gone = hostHotelReplace({ ...c, schedule: (c.schedule || []).concat(news) }, news).filter(hotelStayLine).map(x => hotelCiLine(x) ? hostHotelName(x.title) : x.title);
-  return gone.length ? `<small class="muted dr-swap">Replaces ${esc([...new Set(gone)].join(', '))}</small>` : '';
+  return gone.length ? `<small class="muted dr-swap">${esc(t('Replaces {x}', { x: [...new Set(gone)].join(', ') }))}</small>` : '';
 }
 // apply the reviewed items to a copy of the page (async: route stops and the venue are looked up on the map)
 async function docApply(cfg, items) {
@@ -8336,7 +8339,7 @@ function docAIKnown() {
 function docIntoOptions(c) {
   const cards = allCards(c);
   const opts = [...cards.type, ...cards.common].filter(x => docCardOk(c, x[0]));
-  return `<option value="auto">Sort automatically</option>${opts.map(x => `<option value="${x[0]}">${esc(x[1])}</option>`).join('')}${c.custom.filter(x => x.title.trim()).map(x => `<option value="${customSid(x)}">${esc(x.title)}</option>`).join('')}<option value="new-custom">New custom section</option>`;
+  return `<option value="auto">${t('Sort automatically')}</option>${opts.map(x => `<option value="${x[0]}">${esc(x[1])}</option>`).join('')}${c.custom.filter(x => x.title.trim()).map(x => `<option value="${customSid(x)}">${esc(x.title)}</option>`).join('')}<option value="new-custom">${t('New custom section')}</option>`;
 }
 function docBlockHTML(key) {
   const c = B.cfg; const main = key === 'main'; const st = DU && DU.key === key ? DU : null;
@@ -8344,18 +8347,18 @@ function docBlockHTML(key) {
   const files = main ? [] : (c.files || []).filter(f => f.sec === key);
   let inner = '';
   if (st && st.phase === 'review') inner = docReviewHTML(c, st.items, st);
-  else if (st && st.phase === 'signin') inner = `<div class="bk-signin"><p><b>Sign in to upload documents.</b></p>${signInFormHTML('')}</div>`;
+  else if (st && st.phase === 'signin') inner = `<div class="bk-signin"><p><b>${t('Sign in to upload documents.')}</b></p>${signInFormHTML('')}</div>`;
   else if (main && st && (st.phase === 'pick' || st.phase === 'busy')) inner = `<p class="doc-name"><b>${esc(st.file.name || 'Document')}</b> <small class="muted">${esc(fmtSize(st.file.size))}</small></p>
-      <div class="field"><label for="doc-into">Put it in</label><select id="doc-into" data-doc-into>${docIntoOptions(c)}</select></div>
-      <div class="btns"><button type="button" class="btn primary" data-doc-go="fill" data-doc-fillbtn ${DOC_AI ? '' : 'hidden'} ${st.phase === 'busy' ? 'disabled' : ''}>Fill from document</button><button type="button" class="btn" data-doc-go="attach" ${st.phase === 'busy' ? 'disabled' : ''}>Attach for guests</button><button type="button" class="btn ghost" data-doc-cancel>Cancel</button></div>`;
+      <div class="field"><label for="doc-into">${t('Put it in')}</label><select id="doc-into" data-doc-into>${docIntoOptions(c)}</select></div>
+      <div class="btns"><button type="button" class="btn primary" data-doc-go="fill" data-doc-fillbtn ${DOC_AI ? '' : 'hidden'} ${st.phase === 'busy' ? 'disabled' : ''}>${t('Fill from document')}</button><button type="button" class="btn" data-doc-go="attach" ${st.phase === 'busy' ? 'disabled' : ''}>${t('Attach for guests')}</button><button type="button" class="btn ghost" data-doc-cancel>${t('Cancel')}</button></div>`;
   else if (!main && st && st.phase === 'pick') inner = `<p class="doc-name"><b>${esc(st.file.name || 'Document')}</b> <small class="muted">${esc(fmtSize(st.file.size))}</small></p>
-      <div class="btns"><button type="button" class="btn sm primary" data-doc-go="fill" data-doc-fillbtn ${DOC_AI ? '' : 'hidden'}>Fill from document</button><button type="button" class="btn sm" data-doc-go="attach">Attach for guests</button><button type="button" class="btn sm ghost" data-doc-cancel>Cancel</button></div>`;
+      <div class="btns"><button type="button" class="btn sm primary" data-doc-go="fill" data-doc-fillbtn ${DOC_AI ? '' : 'hidden'}>${t('Fill from document')}</button><button type="button" class="btn sm" data-doc-go="attach">${t('Attach for guests')}</button><button type="button" class="btn sm ghost" data-doc-cancel>${t('Cancel')}</button></div>`;
   const msg = st && st.msg ? st.msg : '';
   const undo = st && st.phase === 'done' && st.undo ? ' <button type="button" class="btn sm" data-doc-undo>Undo</button>' : '';
   const pickers = main
-    ? (!st || st.phase === 'done' ? `<div class="doc-drop" data-doc-drop><label class="btn file-pick doc-pick">✦ Upload a document<input type="file" accept="${DOC_ACCEPT}" data-doc-pick hidden></label><span class="doc-or muted small">or drop a file here</span></div>` : '')
-    : (!st || st.phase === 'done' || st.phase === 'busy' ? `<p class="doc-h">Upload a document</p><div class="doc-drop" data-doc-drop><div class="doc-btns"><label class="btn sm file-pick${st && st.phase === 'busy' ? ' busy' : ''}" data-doc-fillbtn ${DOC_AI ? '' : 'hidden'}>Fill from document<input type="file" accept="${DOC_ACCEPT}" data-doc-fill hidden></label><label class="btn sm file-pick">Attach for guests<input type="file" accept="${DOC_ACCEPT}" data-doc-attach hidden></label></div><span class="doc-or muted small">or drop a file here</span></div>` : '');
-  const list = files.length ? `<ul class="doc-files">${files.map(f => `<li><span class="doc-ic" aria-hidden="true">${f.type === 'pdf' ? 'PDF' : 'IMG'}</span><a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${esc(f.name)}</a><button type="button" class="link" data-doc-del="${f.id}" aria-label="Remove ${esc(f.name)}">Remove</button></li>`).join('')}</ul>` : '';
+    ? (!st || st.phase === 'done' ? `<div class="doc-drop" data-doc-drop><label class="btn file-pick doc-pick">${t('✦ Upload a document')}<input type="file" accept="${DOC_ACCEPT}" data-doc-pick hidden></label><span class="doc-or muted small">${t('or drop a file here')}</span></div>` : '')
+    : (!st || st.phase === 'done' || st.phase === 'busy' ? `<p class="doc-h">${t('Upload a document')}</p><div class="doc-drop" data-doc-drop><div class="doc-btns"><label class="btn sm file-pick${st && st.phase === 'busy' ? ' busy' : ''}" data-doc-fillbtn ${DOC_AI ? '' : 'hidden'}>${t('Fill from document')}<input type="file" accept="${DOC_ACCEPT}" data-doc-fill hidden></label><label class="btn sm file-pick">${t('Attach for guests')}<input type="file" accept="${DOC_ACCEPT}" data-doc-attach hidden></label></div><span class="doc-or muted small">${t('or drop a file here')}</span></div>` : '');
+  const list = files.length ? `<ul class="doc-files">${files.map(f => `<li><span class="doc-ic" aria-hidden="true">${f.type === 'pdf' ? 'PDF' : 'IMG'}</span><a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${esc(f.name)}</a><button type="button" class="link" data-doc-del="${f.id}" aria-label="Remove ${esc(f.name)}">${t('Remove')}</button></li>`).join('')}</ul>` : '';
   return `<div class="doc-up${main ? ' doc-main-up' : ''}" data-doc-key="${esc(key)}">${pickers}${list}${inner}<p class="hint" data-doc-msg role="status" aria-live="polite">${esc(msg)}${undo}</p></div>`;
 }
 // a file dropped anywhere else on the builder goes to the main "Upload a document"
@@ -8447,19 +8450,19 @@ function wireDocs(root) {
     if (d.drOpen != null && DU && DU.items) { const o = DU.open = DU.open || {}; o[d.drOpen] = !o[d.drOpen]; if (!o[d.drOpen] && DU.edit >= 0 && drGroupKey(B.cfg, DU.items[DU.edit]) === d.drOpen) DU.edit = -1; docPaint(key); return; }
     if (d.drEdit != null && DU && DU.items) { DU.edit = +d.drEdit; docPaint(key); if (DU.edit >= 0) { const f = document.querySelector(`[data-doc-key="${CSS.escape(key)}"] [data-dr-at="${DU.edit}"] :is(input,textarea)`); if (f) f.focus({ preventScroll: true }); } return; }
     if ('docApply' in d && DU && DU.items) {
-      const st = DU; const use = drLive(B.cfg, st); if (!use.length) return; b.disabled = true; const m = box.querySelector('[data-doc-msg]'); if (m) m.textContent = use.some(x => x.sec === 'route' || x.key === 'venue') ? 'Finding places…' : 'Adding…';
+      const st = DU; const use = drLive(B.cfg, st); if (!use.length) return; b.disabled = true; const m = box.querySelector('[data-doc-msg]'); if (m) m.textContent = use.some(x => x.sec === 'route' || x.key === 'venue') ? t('Finding places…') : t('Adding…');
       (async () => {
         const undo = clone(B.cfg); let next = await docApply(B.cfg, use);
         if (st.attachNew) { const made = use.find(x => x.made); if (made) { try { const f = await docUpload(st.file); next.files = (next.files || []).concat(fileEntry(f, made.made)); } catch { /* the section is still made */ } } }
         if (DU !== st) return;
-        B.cfg = next; DU = { key, phase: 'done', msg: 'Added. Everything stays editable in its section.', undo }; changed(true); toast('Added to the page'); if (typeof renderHostNote === 'function') renderHostNote();
-      })().catch(err => { b.disabled = false; if (m) m.textContent = err.message || 'Couldn’t apply that.'; });
+        B.cfg = next; DU = { key, phase: 'done', msg: 'Added. Everything stays editable in its section.', undo }; changed(true); toast(t('Added to the page')); if (typeof renderHostNote === 'function') renderHostNote();
+      })().catch(err => { b.disabled = false; if (m) m.textContent = err.message || t('Couldn’t apply that.'); });
       return;
     }
     if ('docUndo' in d && DU && DU.undo) { B.cfg = DU.undo; DU = { key, phase: 'done', msg: 'Undone.' }; changed(true); return; }
     if (d.docDel) {
       const cfg = B.cfg; const f = (cfg.files || []).find(x => x.id === d.docDel); if (!f) return;
-      confirmDlg({ title: `Remove “${f.name}”?`, ok: 'Remove' }).then(yes => { if (!yes) return; cfg.files = cfg.files.filter(x => x !== f); if (!cfg.files.length) delete cfg.files; changed(true); docRemoteDelete(f); });
+      confirmDlg({ title: t('Remove “{n}”?', { n: f.name }), ok: t('Remove') }).then(yes => { if (!yes) return; cfg.files = cfg.files.filter(x => x !== f); if (!cfg.files.length) delete cfg.files; changed(true); docRemoteDelete(f); });
     }
   });
 }
@@ -8555,10 +8558,10 @@ function guestLangPick(cfg) {
 const vbarEditHTML = (href, label, attrs = '') => `<a class="btn sm vbar-edit" href="${href}" aria-label="${esc(label)}"${attrs}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg><span>${esc(label)}</span></a>`;
 // the host's own languages as a switch at the top of the page ("English · 日本語"); other languages stay in the picker
 const langPillsHTML = (cfg) => { const ls = [srcLang(cfg), ...(cfg.langs || []).filter(l => l !== srcLang(cfg))]; if (ls.length < 2) return '';
-  return `<span class="lang-pills" role="group" aria-label="Language">${ls.map(l => `<button type="button" class="lang-pill ${l === LANG ? 'on' : ''}" aria-pressed="${l === LANG}" data-lang-pill="${l}" lang="${l}">${esc(langName(l))}</button>`).join('')}</span>`; };
+  return `<span class="lang-pills" role="group" aria-label="${t('Language')}">${ls.map(l => `<button type="button" class="lang-pill ${l === LANG ? 'on' : ''}" aria-pressed="${l === LANG}" data-lang-pill="${l}" lang="${l}">${esc(langName(l))}</button>`).join('')}</span>`; };
 const pillInView = () => { const on = document.querySelector('.vbar .lang-pill.on'); const box = on && on.parentElement; if (box && box.scrollWidth > box.clientWidth) box.scrollLeft = on.offsetLeft - (box.clientWidth - on.offsetWidth) / 2; };
 document.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.vbar [data-lang-pill]'); if (b && b.dataset.langPill !== LANG) setGuestLang(b.dataset.langPill); });
-const langSelectHTML = (cfg) => `<select class="lang-sel" data-lang aria-label="Language">${pageLangs(cfg).map(k => `<option value="${k}" ${k === LANG ? 'selected' : ''}>${esc(langName(k))}${(cfg.langs || []).includes(k) || k === srcLang(cfg) ? '' : ' ·'}</option>`).join('')}</select>`;
+const langSelectHTML = (cfg) => `<select class="lang-sel" data-lang aria-label="${t('Language')}">${pageLangs(cfg).map(k => `<option value="${k}" ${k === LANG ? 'selected' : ''}>${esc(langName(k))}${(cfg.langs || []).includes(k) || k === srcLang(cfg) ? '' : ' ·'}</option>`).join('')}</select>`;
 // choosing a language also rewrites a ?lang= in the address, so the choice wins over the link it came from
 function setGuestLang(v) { LS.set('lang', v); const q = new URLSearchParams(location.search); if (q.has('lang')) { q.set('lang', v); history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash); } route(); }
 document.addEventListener('change', (e) => { const s0 = e.target.closest && e.target.closest('.vbar [data-lang]'); if (!s0) return; setGuestLang(s0.value); });
@@ -8567,19 +8570,19 @@ const TRB = {}; // lang → true while its translation runs (this tab)
 function langStatusHTML(c, l) {
   const missing = Object.keys(staleFields(c, l)).length;
   const st = TRB[l] ? `<span class="tr-st busy">${esc(t('Translating…'))}</span>`
-    : !missing ? `<span class="tr-st ok">Ready ✓</span>`
-    : !canTranslate() ? `<span class="tr-st">${missing} to translate · <a href="#mine">Sign in</a> to translate</span>`
-    : `<span class="tr-st">${missing} to translate</span><button type="button" class="btn sm" data-tr-go="${l}">Translate</button>`;
-  return `<div class="tr-lang" data-tr-status="${l}"><b>${esc(langName(l))}</b>${st}${TRB[l] ? '' : `<button type="button" class="link" data-tr-edit="${l}">Edit translation</button>`}</div>`;
+    : !missing ? `<span class="tr-st ok">${t('Ready ✓')}</span>`
+    : !canTranslate() ? `<span class="tr-st">${esc(t('{n} to translate', { n: missing }))} · <a href="#mine">${t('Sign in')}</a> ${t('to translate')}</span>`
+    : `<span class="tr-st">${esc(t('{n} to translate', { n: missing }))}</span><button type="button" class="btn sm" data-tr-go="${l}">${t('Translate')}</button>`;
+  return `<div class="tr-lang" data-tr-status="${l}"><b>${esc(langName(l))}</b>${st}${TRB[l] ? '' : `<button type="button" class="link" data-tr-edit="${l}">${t('Edit translation')}</button>`}</div>`;
 }
 function langsCardHTML(c) {
   const src = srcLang(c); const sel = new Set(c.langs || []); const on = [...sel].filter(l => l !== src);
   const reviews = on.map(l => { const tr = (c.tr && c.tr[l]) || {}; const f = textFields(c);
     const rows = Object.entries(f).map(([k, v]) => { const e = tr[k]; const fresh = e && e.h === hashStr(v); return `<div class="tr-row"><span class="tr-src">${esc(v.length > 140 ? v.slice(0, 140) + '…' : v)}</span><textarea data-tr-lang="${l}" data-tr-key="${esc(k)}" rows="${v.length > 80 ? 3 : 1}" placeholder="${fresh ? '' : 'Not translated yet'}">${esc(fresh ? e.t : '')}</textarea></div>`; }).join('');
-    return `<details class="tr-review" data-tr-lang="${l}"><summary><b>${esc(langName(l))}</b> <small class="muted">edit any line</small></summary>${rows || '<p class="hint">Nothing to translate yet.</p>'}</details>`; }).join('');
-  return `<p class="hint">Guests see your page in these languages: a switch at the top of the page, and their phone’s language is picked for them. Translated as soon as you add a language; edit any line.</p>
-    <div class="field"><label for="f-lang">You write in</label><select id="f-lang" data-src-lang>${GUEST_LANGS.map(([k, n]) => `<option value="${k}" ${k === src ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
-    <div class="field"><label>Guest languages</label><div class="chips tr-langs">${GUEST_LANGS.filter(([k]) => k !== src).map(([k, n]) => `<label class="chip ${sel.has(k) ? 'on' : ''}"><input type="checkbox" data-guest-lang="${k}" ${sel.has(k) ? 'checked' : ''} hidden>${esc(n)}</label>`).join('')}</div></div>
+    return `<details class="tr-review" data-tr-lang="${l}"><summary><b>${esc(langName(l))}</b> <small class="muted">${t('edit any line')}</small></summary>${rows || '<p class="hint">Nothing to translate yet.</p>'}</details>`; }).join('');
+  return `<p class="hint">${t('Guests see your page in these languages: a switch at the top of the page, and their phone’s language is picked for them. Translated as soon as you add a language; edit any line.')}</p>
+    <div class="field"><label for="f-lang">${t('You write in')}</label><select id="f-lang" data-src-lang>${GUEST_LANGS.map(([k, n]) => `<option value="${k}" ${k === src ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
+    <div class="field"><label>${t('Guest languages')}</label><div class="chips tr-langs">${GUEST_LANGS.filter(([k]) => k !== src).map(([k, n]) => `<label class="chip ${sel.has(k) ? 'on' : ''}"><input type="checkbox" data-guest-lang="${k}" ${sel.has(k) ? 'checked' : ''} hidden>${esc(n)}</label>`).join('')}</div></div>
     <div class="tr-status" data-tr-box>${on.map(l => langStatusHTML(c, l)).join('')}</div><p class="hint" data-tr-msg role="status" aria-live="polite"></p>
     ${reviews}`;
 }
@@ -8599,7 +8602,7 @@ async function translateLang(l) {
     c.tr = c.tr && typeof c.tr === 'object' ? c.tr : {}; const tr = (c.tr[l] = c.tr[l] || {});
     Object.entries(got).forEach(([k, e]) => { if (now[k] != null && hashStr(now[k]) === e.h && !(tr[k] && tr[k].o && tr[k].h === e.h)) tr[k] = e; });
     TRB[l] = false; changed(); if (B.card === 'langs' && !(document.activeElement && document.activeElement.matches('#sheet textarea'))) renderSheet(); else paintLangStatus();
-  } catch (e) { TRB[l] = false; paintLangStatus(); const m = $('[data-tr-msg]'); const why = e.signin ? 'Sign in (My pages) to translate.' : (e.message || 'Translation failed'); if (m) m.textContent = why; toast('Couldn’t translate: ' + why); }
+  } catch (e) { TRB[l] = false; paintLangStatus(); const m = $('[data-tr-msg]'); const why = e.signin ? t('Sign in (My pages) to translate.') : (e.message || t('Translation failed')); if (m) m.textContent = why; toast(t('Couldn’t translate:') + ' ' + why); }
 }
 // after edits: re-translate changed lines of every guest language (quietly, a few seconds after typing stops)
 const autoTranslate = debounce(() => { if (!B || !canTranslate()) return; (B.cfg.langs || []).filter(l => l !== srcLang(B.cfg) && Object.keys(staleFields(B.cfg, l)).length).forEach(l => translateLang(l)); }, 2500);
@@ -8637,10 +8640,10 @@ function tripPlanHTML(c, opt = null) {
   const it = opt && opt.item != null ? c.schedule[opt.item] : null; const days = it ? [it.date] : opt && opt.day ? [opt.day] : tripDays(c);
   return `${days.map((d, di) => {
     const same = c.schedule.map((x, i) => [x, i]).filter(([x]) => x.date === d).map(([, i]) => i); const items = c.schedule.map((x, i) => [x, i]).filter(([x, i]) => it ? i === opt.item : x.date === d);
-    return `<div class="plan-day">${it ? fieldWrap('Day', `<input id="tp-date" type="date" data-s="${opt.item}" data-k="date" value="${esc(it.date || '')}">`, 'tp-date') : opt && opt.day ? '' : `<h3>${d >= c.start.slice(0, 10) ? `<span class="dayn">Day ${daysBetween(c.start, d) + 1}</span> ` : ''}${esc(friendlyDate(d))}</h3>`}
-      ${items.map(([x, i], k) => `<div class="rowed plan-item"><div class="plan-top"><select data-s="${i}" data-k="kind" aria-label="Kind">${Object.entries(PLAN_KINDS).map(([v, l]) => `<option value="${v}" ${(x.kind || 'activity') === v ? 'selected' : ''}>${l}</option>`).join('')}</select><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="Time (optional)"><span class="mv"><button type="button" data-tp-mv="${i}" data-dir="-1" ${same.indexOf(i) <= 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-tp-mv="${i}" data-dir="1" ${same.indexOf(i) === same.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button></span></div>
-        <input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="${(x.kind || 'activity') === 'reservation' ? 'Dinner at…, tour, tickets' : (x.kind === 'note' ? 'Something to remember' : 'What you’re doing')}" aria-label="Title">${(x.kind || 'activity') === 'note' ? '' : schedPlaceHTML(x, i)}${hotelCiLine(x) ? schedHotelHF(x, i) : `<input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="Confirmation or a note" aria-label="Note">`}${hotelCiLine(x) ? `<button type="button" class="ic del bk-rm" data-sdel="${i}" data-sdel-hotel aria-label="Remove hotel ${esc(hostHotelName(x.title))}">${TRASH_IC}Remove hotel</button>` : `<button type="button" class="ic del" data-sdel="${i}" aria-label="Remove">Remove</button>`}</div>`).join('')}
-      ${it ? '' : `<button type="button" class="btn sm" data-tp-add="${d}">+ Add to this day</button>`}</div>`;
+    return `<div class="plan-day">${it ? fieldWrap('Day', `<input id="tp-date" type="date" data-s="${opt.item}" data-k="date" value="${esc(it.date || '')}">`, 'tp-date') : opt && opt.day ? '' : `<h3>${d >= c.start.slice(0, 10) ? `<span class="dayn">${t('Day {n}', { n: daysBetween(c.start, d) + 1 })}</span> ` : ''}${esc(friendlyDate(d))}</h3>`}
+      ${items.map(([x, i], k) => `<div class="rowed plan-item"><div class="plan-top"><select data-s="${i}" data-k="kind" aria-label="${t('Kind')}">${Object.entries(PLAN_KINDS).map(([v, l]) => `<option value="${v}" ${(x.kind || 'activity') === v ? 'selected' : ''}>${esc(t(l))}</option>`).join('')}</select><input type="time" data-s="${i}" data-k="time" value="${esc(x.time)}" aria-label="${t('Time (optional)')}"><span class="mv"><button type="button" data-tp-mv="${i}" data-dir="-1" ${same.indexOf(i) <= 0 ? 'disabled' : ''} aria-label="${t('Move up')}">↑</button><button type="button" data-tp-mv="${i}" data-dir="1" ${same.indexOf(i) === same.length - 1 ? 'disabled' : ''} aria-label="${t('Move down')}">↓</button></span></div>
+        <input data-s="${i}" data-k="title" value="${esc(x.title)}" placeholder="${t((x.kind || 'activity') === 'reservation' ? 'Dinner at…, tour, tickets' : (x.kind === 'note' ? 'Something to remember' : 'What you’re doing'))}" aria-label="${t('Title')}">${(x.kind || 'activity') === 'note' ? '' : schedPlaceHTML(x, i)}${hotelCiLine(x) ? schedHotelHF(x, i) : `<input data-s="${i}" data-k="note" value="${esc(x.note)}" placeholder="${t('Confirmation or a note')}" aria-label="${t('Note')}">`}${hotelCiLine(x) ? `<button type="button" class="ic del bk-rm" data-sdel="${i}" data-sdel-hotel aria-label="${esc(t('Remove hotel'))} ${esc(hostHotelName(x.title))}">${TRASH_IC}${t('Remove hotel')}</button>` : `<button type="button" class="ic del" data-sdel="${i}" aria-label="${t('Remove')}">${t('Remove')}</button>`}</div>`).join('')}
+      ${it ? '' : `<button type="button" class="btn sm" data-tp-add="${d}">${t('+ Add to this day')}</button>`}</div>`;
   }).join('')}${opt ? '' : `<div class="btns">${typeof importButtonHTML === 'function' ? importButtonHTML() : ''}</div>`}`;
 }
 function tripClick(b, cfg) {
@@ -8655,23 +8658,23 @@ function tripClick(b, cfg) {
 }
 
 // builder: a hotel's check-in row — room category + free cancellation (a fold) and multi-line notes
-const schedHotelHF = (x, i) => `${hfFoldHTML(hfOfEv(x), 'hf-s' + i, { en: true, attr: `data-hf-s="${i}"` })}<textarea data-s="${i}" data-k="note" rows="2" maxlength="1000" placeholder="Notes: confirmation, late check-in, requests" aria-label="Notes">${esc(x.note || '')}</textarea>`;
+const schedHotelHF = (x, i) => `${hfFoldHTML(hfOfEv(x), 'hf-s' + i, { en: true, attr: `data-hf-s="${i}"` })}<textarea data-s="${i}" data-k="note" rows="2" maxlength="1000" placeholder="${t('Notes: confirmation, late check-in, requests')}" aria-label="${t('Notes')}">${esc(x.note || '')}</textarea>`;
 // builder: a schedule item's own place — the chosen place (name + address, Change / Remove), or an optional Places search
 function schedPlaceHTML(x, i) {
   const p = x.place;
-  if (p && B.spEdit !== i) return `<div class="venue-sel s-place"><div><b>${esc(p.name)}</b>${p.address && p.address !== p.name ? `<span>${esc(p.address)}</span>` : ''}</div><span class="s-place-b"><button type="button" class="btn sm" data-sp-chg="${i}">Change</button><button type="button" class="btn sm ghost" data-sp-del="${i}" aria-label="Remove place">Remove</button></span></div>`;
-  return `<div class="search s-place-q"><input id="sp-q-${i}" data-sp-q="${i}" value="${p ? esc(p.name) : ''}" placeholder="Place (optional), e.g. a restaurant or beach club" aria-label="Place (optional)" autocomplete="off"><button type="button" class="btn sm" data-sp-find="${i}">Find</button></div>`;
+  if (p && B.spEdit !== i) return `<div class="venue-sel s-place"><div><b>${esc(p.name)}</b>${p.address && p.address !== p.name ? `<span>${esc(p.address)}</span>` : ''}</div><span class="s-place-b"><button type="button" class="btn sm" data-sp-chg="${i}">${t('Change')}</button><button type="button" class="btn sm ghost" data-sp-del="${i}" aria-label="${t('Remove place')}">${t('Remove')}</button></span></div>`;
+  return `<div class="search s-place-q"><input id="sp-q-${i}" data-sp-q="${i}" value="${p ? esc(p.name) : ''}" placeholder="${t('Place (optional), e.g. a restaurant or beach club')}" aria-label="${t('Place (optional)')}" autocomplete="off"><button type="button" class="btn sm" data-sp-find="${i}">${t('Find')}</button></div>`;
 }
 function setSchedPlace(i, v) { const x = B && B.cfg.schedule[i]; const p = normSchedPlace(v); if (!x || !p) return; x.place = p; B.spEdit = null; changed(true); }
 function wireSchedPlaceAC() {
   $$('#sheet [data-sp-q]').forEach(inp => { if (inp._ac) return;
     inp.addEventListener('keydown', (e) => { const ul = inp.parentElement.querySelector('.gp-sugg'); if (e.key === 'Enter' && (!ul || ul.hidden)) { e.preventDefault(); schedPlaceFind(+inp.dataset.spQ, inp.value); } }); // no suggestion showing: text search
-    placeAutocomplete(inp, { bias: () => B.cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(v => setSchedPlace(+inp.dataset.spQ, v)).catch(() => toast('Couldn’t load that place')) }); });
+    placeAutocomplete(inp, { bias: () => B.cfg.venue, onPick: (id, tok) => gpVenue(id, tok).then(v => setSchedPlace(+inp.dataset.spQ, v)).catch(() => toast(t('Couldn’t load that place'))) }); });
 }
 // Find / Enter without a suggestion: the best text-search match (Google, else OpenStreetMap)
 function schedPlaceFind(i, q) {
   q = String(q || '').trim(); if (q.length < 2) return;
-  geocode(q).then(rs => { const r = (rs || []).find(x => x.lat != null && !(x.types || []).some(ty => ty === 'country' || ty === 'continent')) || (rs || [])[0]; if (!r) { toast('No match. Try adding the city.'); return; } setSchedPlace(i, r); }).catch(() => toast('Search is unavailable right now'));
+  geocode(q).then(rs => { const r = (rs || []).find(x => x.lat != null && !(x.types || []).some(ty => ty === 'country' || ty === 'continent')) || (rs || [])[0]; if (!r) { toast(t('No match. Try adding the city.')); return; } setSchedPlace(i, r); }).catch(() => toast(t('Search is unavailable right now')));
 }
 
 // ================= customization: Design section, section order, type defaults =================
@@ -8697,39 +8700,39 @@ const PRESET_LABEL = { Classic: 'Classic', Garden: 'Natural', Romance: 'Romantic
 const COLOR_NAME = { '#0f4a50': 'Dark teal', '#0b7a75': 'Teal', '#ff6b35': 'Orange', '#c2185b': 'Rose', '#6d28d9': 'Purple', '#b8860b': 'Gold', '#1f2937': 'Charcoal', '#2e7d32': 'Green' };
 const colorName = (hex) => COLOR_NAME[String(hex || '').toLowerCase()] || 'Custom';
 function coverFieldHTML(c) {
-  const link = `<input id="f-cover" data-f="cover" type="url" value="${esc(c.cover)}" placeholder="${SB ? 'or a photo link, https://…' : 'Photo link, https://…'}" aria-label="Cover photo link">`;
-  return `<div class="field"><label for="f-cover">Cover photo</label>${SB ? photoCtlHTML('cover', c.cover, link) : `<div class="cover-row">${c.cover ? `<img src="${esc(c.cover)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${link}</div>${c.cover ? '<button type="button" class="link" data-b="cover-clear">Remove photo</button>' : ''}`}</div>`;
+  const link = `<input id="f-cover" data-f="cover" type="url" value="${esc(c.cover)}" placeholder="${t(SB ? 'or a photo link, https://…' : 'Photo link, https://…')}" aria-label="${t('Cover photo link')}">`;
+  return `<div class="field"><label for="f-cover">${t('Cover photo')}</label>${SB ? photoCtlHTML('cover', c.cover, link) : `<div class="cover-row">${c.cover ? `<img src="${esc(c.cover)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${link}</div>${c.cover ? `<button type="button" class="link" data-b="cover-clear">${t('Remove photo')}</button>` : ''}`}</div>`;
 }
 function designHTML(c) {
   const th = c.theme; const order = sectionOrder(c);
   const lab = Object.fromEntries(EVENT_SECTIONS);
-  lab.schedule = schedTitle(c); if (isTrip(c)) lab.route = 'Route (shown in Itinerary)'; (c.custom || []).forEach(x => { lab[customSid(x)] = x.title; });
+  Object.keys(lab).forEach(k => { lab[k] = t(lab[k]); }); lab.schedule = t(schedTitle(c)); if (isTrip(c)) lab.route = t('Route (shown in Itinerary)'); (c.custom || []).forEach(x => { lab[customSid(x)] = x.title; });
   const pre = THEME_PRESETS.find(([, p]) => sameTheme(th, p)); const known = !!COLOR_NAME[th.accent.toLowerCase()]; const custom = !known || (B && B.customColor);
   const sel = (id, key, prev, opts) => `<div class="dsel">${prev}<select id="${id}" data-d="${key}">${opts}</select></div>`;
   return `${brandHTML(c)}<div class="dgrid">
-    <div class="field"><label for="d-style">Style</label>${sel('d-style', 'preset', `<span class="dprev${th.mode === 'dark' ? ' dark' : ''}" style="--pa:${esc(th.accent)};--pc:#fff;font-family:${esc(FONTS[th.font].css)}" aria-hidden="true">Aa</span>`, `${pre ? '' : '<option value="" selected>Custom</option>'}${THEME_PRESETS.map(([n]) => `<option value="${esc(n)}" ${pre && pre[0] === n ? 'selected' : ''}>${esc(PRESET_LABEL[n] || n)}</option>`).join('')}`)}</div>
-    <div class="field"><label for="d-color">Color</label>${sel('d-color', 'color', `<span class="ddot" style="background:${esc(th.accent)}" aria-hidden="true"></span>`, `${SWATCHES.map(x => `<option value="${x}" ${!custom && x.toLowerCase() === th.accent.toLowerCase() ? 'selected' : ''}>${esc(colorName(x))}</option>`).join('')}<option value="custom" ${custom ? 'selected' : ''}>Custom…</option>`)}</div>
-    <div class="field"><label for="d-font">Title font</label>${sel('d-font', 'font', `<span class="dprev" style="font-family:${esc(FONTS[th.font].css)}" aria-hidden="true">Aa</span>`, Object.entries(FONTS).map(([k, x]) => `<option value="${k}" ${k === th.font ? 'selected' : ''}>${esc(x.label)}</option>`).join(''))}</div>
-    <div class="field"><label for="d-mode">Background</label>${sel('d-mode', 'mode', `<span class="ddot${th.mode === 'dark' ? ' dk' : ' lt'}" aria-hidden="true"></span>`, `<option value="light" ${th.mode !== 'dark' ? 'selected' : ''}>Light</option><option value="dark" ${th.mode === 'dark' ? 'selected' : ''}>Dark</option>`)}</div>
+    <div class="field"><label for="d-style">${t('Style')}</label>${sel('d-style', 'preset', `<span class="dprev${th.mode === 'dark' ? ' dark' : ''}" style="--pa:${esc(th.accent)};--pc:#fff;font-family:${esc(FONTS[th.font].css)}" aria-hidden="true">Aa</span>`, `${pre ? '' : `<option value="" selected>${t('Custom')}</option>`}${THEME_PRESETS.map(([n]) => `<option value="${esc(n)}" ${pre && pre[0] === n ? 'selected' : ''}>${esc(t(PRESET_LABEL[n] || n))}</option>`).join('')}`)}</div>
+    <div class="field"><label for="d-color">${t('Color')}</label>${sel('d-color', 'color', `<span class="ddot" style="background:${esc(th.accent)}" aria-hidden="true"></span>`, `${SWATCHES.map(x => `<option value="${x}" ${!custom && x.toLowerCase() === th.accent.toLowerCase() ? 'selected' : ''}>${esc(t(colorName(x)))}</option>`).join('')}<option value="custom" ${custom ? 'selected' : ''}>${t('Custom…')}</option>`)}</div>
+    <div class="field"><label for="d-font">${t('Title font')}</label>${sel('d-font', 'font', `<span class="dprev" style="font-family:${esc(FONTS[th.font].css)}" aria-hidden="true">Aa</span>`, Object.entries(FONTS).map(([k, x]) => `<option value="${k}" ${k === th.font ? 'selected' : ''}>${esc(t(x.label))}</option>`).join(''))}</div>
+    <div class="field"><label for="d-mode">${t('Background')}</label>${sel('d-mode', 'mode', `<span class="ddot${th.mode === 'dark' ? ' dk' : ' lt'}" aria-hidden="true"></span>`, `<option value="light" ${th.mode !== 'dark' ? 'selected' : ''}>${t('Light')}</option><option value="dark" ${th.mode === 'dark' ? 'selected' : ''}>${t('Dark')}</option>`)}</div>
   </div>
-  ${custom ? `<div class="field"><div class="swatches custom-row"><label class="custom-c"><input type="color" data-t="accent" value="${esc(th.accent)}" aria-label="Pick any color"><span>Pick</span></label><input id="f-accent-hex" class="hex" data-hex value="${esc(th.accent)}" maxlength="7" spellcheck="false" aria-label="Color code"></div></div>` : ''}
+  ${custom ? `<div class="field"><div class="swatches custom-row"><label class="custom-c"><input type="color" data-t="accent" value="${esc(th.accent)}" aria-label="${t('Pick any color')}"><span>${t('Pick')}</span></label><input id="f-accent-hex" class="hex" data-hex value="${esc(th.accent)}" maxlength="7" spellcheck="false" aria-label="${t('Color code')}"></div></div>` : ''}
     ${coverFieldHTML(c)}
-    ${httpsUrl(c.logo) ? `<div class="field"><label>Logo</label><div class="logo-row"><img src="${esc(c.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()"><button type="button" class="link" data-b="logo-clear">Remove logo</button></div></div>` : ''}
+    ${httpsUrl(c.logo) ? `<div class="field"><label>${t('Logo')}</label><div class="logo-row"><img src="${esc(c.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()"><button type="button" class="link" data-b="logo-clear">${t('Remove logo')}</button></div></div>` : ''}
 `;
 }
 // Builder → Sections: every part of the guest page with one on/off switch (Event sections also move up/down)
 const SEC_LABEL = { mine: 'Make it mine' };
 function sectionsHTML(c) {
   const order = sectionOrder(c); const lab = { ...Object.fromEntries(EVENT_SECTIONS), ...SEC_LABEL };
-  lab.schedule = schedTitle(c); if (isTrip(c)) lab.route = 'Route (shown in Itinerary)'; (c.custom || []).forEach(x => { lab[customSid(x)] = x.title; });
+  Object.keys(lab).forEach(k => { lab[k] = t(lab[k]); }); lab.schedule = t(schedTitle(c)); if (isTrip(c)) lab.route = t('Route (shown in Itinerary)'); (c.custom || []).forEach(x => { lab[customSid(x)] = x.title; });
   const sw = (attr, on, label) => `<label class="tool"><input type="checkbox" ${attr} ${on ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${esc(label)}</label>`;
-  const row = (id, mv, i) => `<li class="${sectionShown(c, id) ? '' : 'off'}">${sw(`data-sec-on="${id}"`, sectionShown(c, id), lab[id])}${mv ? `<span class="mv"><button type="button" data-sec-mv="${id}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move ${esc(lab[id])} up">↑</button><button type="button" data-sec-mv="${id}" data-dir="1" ${i === order.length - 1 ? 'disabled' : ''} aria-label="Move ${esc(lab[id])} down">↓</button></span>` : ''}</li>`;
-  return `<p class="grp">Event</p><ol class="order secs">${row('mine', false)}${order.map((id, i) => row(id, true, i)).join('')}</ol>
-    <p class="grp">Tabs</p><div class="tools">${TOOLS.filter(([k]) => k !== 'weather').map(([k, l]) => sw(`data-tool="${k}"`, c.tools[k], l)).join('')}</div>
-    <p class="grp">Just for you</p><div class="tools">${sw('data-vn-on', vnOn(c), 'Vendors and payments')}</div>
-    <div class="btns"><button type="button" class="btn sm ghost" data-b="type-defaults">Reset to ${esc(c.type)} defaults</button></div>`;
+  const row = (id, mv, i) => `<li class="${sectionShown(c, id) ? '' : 'off'}">${sw(`data-sec-on="${id}"`, sectionShown(c, id), lab[id])}${mv ? `<span class="mv"><button type="button" data-sec-mv="${id}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="${esc(t('Move {n} up', { n: lab[id] }))}">↑</button><button type="button" data-sec-mv="${id}" data-dir="1" ${i === order.length - 1 ? 'disabled' : ''} aria-label="${esc(t('Move {n} down', { n: lab[id] }))}">↓</button></span>` : ''}</li>`;
+  return `<p class="grp">${t('Event')}</p><ol class="order secs">${row('mine', false)}${order.map((id, i) => row(id, true, i)).join('')}</ol>
+    <p class="grp">${t('Tabs')}</p><div class="tools">${TOOLS.filter(([k]) => k !== 'weather').map(([k, l]) => sw(`data-tool="${k}"`, c.tools[k], t(l))).join('')}</div>
+    <p class="grp">${t('Just for you')}</p><div class="tools">${sw('data-vn-on', vnOn(c), t('Vendors and payments'))}</div>
+    <div class="btns"><button type="button" class="btn sm ghost" data-b="type-defaults">${esc(t('Reset to {t} defaults', { t: t(TYPE_LABEL[c.type] || c.type) }))}</button></div>`;
 }
-const sectionsSum = (c) => { const ids = ['mine', ...sectionOrder(c)]; const n = ids.filter(id => sectionShown(c, id)).length + TOOLS.filter(([k]) => k !== 'weather' && c.tools[k]).length; return `${n} of ${ids.length + TOOLS.length - 1} on`; };
+const sectionsSum = (c) => { const ids = ['mine', ...sectionOrder(c)]; const n = ids.filter(id => sectionShown(c, id)).length + TOOLS.filter(([k]) => k !== 'weather' && c.tools[k]).length; return t('{n} of {m} on', { n, m: ids.length + TOOLS.length - 1 }); };
 // returns true when it handled the click
 function designClick(b, cfg) {
   const d = b.dataset;
@@ -8738,7 +8741,7 @@ function designClick(b, cfg) {
   if (d.b === 'cover-clear') { cfg.cover = ''; changed(true); return true; }
   if (d.b === 'logo-clear') { delete cfg.logo; changed(true); return true; }
   if (d.brand) return brandClick(b);
-  if (d.b === 'type-defaults') { const td = typeDefaults(cfg.type); cfg.theme = { ...td.theme }; cfg.tools = defaultTools(cfg.type); delete cfg.order; ['about', 'details', 'access', 'rsvp', 'schedule'].forEach(k => { cfg.off[k] = false; }); if (rsvpDefaultOff(cfg.type)) cfg.off.rsvp = true; delete cfg.off.mine; loadFont(cfg.theme.font); changed(true); toast(`${cfg.type} defaults applied`); return true; }
+  if (d.b === 'type-defaults') { const td = typeDefaults(cfg.type); cfg.theme = { ...td.theme }; cfg.tools = defaultTools(cfg.type); delete cfg.order; ['about', 'details', 'access', 'rsvp', 'schedule'].forEach(k => { cfg.off[k] = false; }); if (rsvpDefaultOff(cfg.type)) cfg.off.rsvp = true; delete cfg.off.mine; loadFont(cfg.theme.font); changed(true); toast(t('{t} defaults applied', { t: t(TYPE_LABEL[cfg.type] || cfg.type) })); return true; }
   return false;
 }
 function designInput(i, cfg) {
@@ -8793,7 +8796,7 @@ function vnTotals(P) {
   return { total, paid, left: Math.max(0, Math.round((total - paid) * 100) / 100), due };
 }
 const vnDueSt = (d, today = todayYMD()) => !d ? '' : d < today ? 'over' : daysBetween(today, d) <= 14 ? 'soon' : '';
-const vnMoney = (n, cur) => { n = n || 0; try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur, minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }).format(n); } catch { return `${n} ${cur}`; } };
+const vnMoney = (n, cur) => { n = n || 0; try { return new Intl.NumberFormat(LOCALES[LANG] || 'en-US', { style: 'currency', currency: cur, minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }).format(n); } catch { return `${n} ${cur}`; } };
 const vnDay = (d) => d ? fmt(d, { month: 'short', day: 'numeric', ...(d.slice(0, 4) !== todayYMD().slice(0, 4) ? { year: 'numeric' } : {}) }) : '';
 const vnCur = () => { const P = vnP(); return P.vendors[B.vnIdx] || null; };
 const vnEmpty = (v) => !(v.cat || v.name.trim() || v.contact || v.phone || v.email || v.web || v.addr || v.total != null || v.notes.trim() || v.pays.length);
@@ -8805,20 +8808,20 @@ function vnAccHTML(c, open) {
   const P = vnP(); if (B.card !== 'vendor' && P.vendors.some(vnEmpty)) { P.vendors = P.vendors.filter(v => !vnEmpty(v)); LS.set('priv:' + B.pid, P); }
   const T = vnTotals(P); const n = P.vendors.length; const over = T.due.some(d => vnDueSt(d.x.due) === 'over');
   const sum = n ? `${n} · ${vnMoney(T.paid, P.cur)} of ${vnMoney(T.total, P.cur)} paid` : '';
-  return `<details class="acc vn-acc" data-acc="vendors" ${open ? 'open' : ''}><summary><span class="st ${over ? 'due' : n ? 'ok' : ''}" aria-hidden="true"></span><b>Vendors</b><small>${esc(sum)}</small></summary><div class="acc-b" data-vn-root data-vn-zone data-doc-drop>${vnBodyHTML(c, P, T)}</div></details>`;
+  return `<details class="acc vn-acc" data-acc="vendors" ${open ? 'open' : ''}><summary><span class="st ${over ? 'due' : n ? 'ok' : ''}" aria-hidden="true"></span><b>${t('Vendors')}</b><small>${esc(sum)}</small></summary><div class="acc-b" data-vn-root data-vn-zone data-doc-drop>${vnBodyHTML(c, P, T)}</div></details>`;
 }
 function vnBodyHTML(c, P, T) {
   const cur = P.cur; vnAIKnown();
   const tile = (l, v, cl = '') => `<div class="${cl}"><small>${l}</small><b>${esc(vnMoney(v, cur))}</b></div>`;
   const tiles = P.vendors.length ? `<div class="vn-tot" data-vn-tot>${tile('Committed', T.total)}${tile('Paid', T.paid)}${tile('Remaining', T.left, 'left')}</div>` : '';
   const due = T.due.slice(0, 6);
-  const dueHTML = due.length ? `<p class="grp">Next due</p><ul class="vn-due">${due.map(d => { const st = vnDueSt(d.x.due);
-    return `<li class="${st}"><button type="button" class="vn-due-b" data-vn-open="${d.vi}"><span class="vn-d">${st === 'over' ? 'Overdue · ' : ''}${esc(vnDay(d.x.due))}</span><span class="vn-n">${esc(d.v.name || d.v.cat || 'Vendor')}</span><b>${esc(vnMoney(d.x.amt, cur))}</b></button><button type="button" class="btn sm" data-vn-paid="${d.vi}:${d.pi}">Mark paid</button></li>`; }).join('')}</ul>` : '';
-  const list = P.vendors.length ? `<p class="grp">All vendors</p><ul class="vn-list">${P.vendors.map((v, i) => { const k = vnCalc(v); const pct = k.total ? Math.min(100, Math.round(k.paid / k.total * 100)) : 0;
+  const dueHTML = due.length ? `<p class="grp">${t('Next due')}</p><ul class="vn-due">${due.map(d => { const st = vnDueSt(d.x.due);
+    return `<li class="${st}"><button type="button" class="vn-due-b" data-vn-open="${d.vi}"><span class="vn-d">${st === 'over' ? 'Overdue · ' : ''}${esc(vnDay(d.x.due))}</span><span class="vn-n">${esc(d.v.name || d.v.cat || 'Vendor')}</span><b>${esc(vnMoney(d.x.amt, cur))}</b></button><button type="button" class="btn sm" data-vn-paid="${d.vi}:${d.pi}">${t('Mark paid')}</button></li>`; }).join('')}</ul>` : '';
+  const list = P.vendors.length ? `<p class="grp">${t('All vendors')}</p><ul class="vn-list">${P.vendors.map((v, i) => { const k = vnCalc(v); const pct = k.total ? Math.min(100, Math.round(k.paid / k.total * 100)) : 0;
     const line = [k.total ? `${vnMoney(k.paid, cur)} of ${vnMoney(k.total, cur)} paid` : k.paid ? `${vnMoney(k.paid, cur)} paid` : '', k.next ? `next ${vnDay(k.next.due)}` : ''].filter(Boolean).join(' · ');
     return `<li><button type="button" class="vn-row${k.total && !k.left ? ' done' : ''}" data-vn-open="${i}"><span class="vn-cat">${esc([v.cat, v.sched].filter(Boolean).join(' · ') || 'Vendor')}</span><b>${esc(v.name || 'Unnamed')}</b>${k.total ? `<span class="vn-bar" aria-hidden="true"><i style="width:${pct}%"></i></span>` : ''}${line ? `<small>${esc(line)}</small>` : ''}</button></li>`; }).join('')}</ul>` : '';
-  const imp = VN_AI ? `<label class="btn sm file-pick">Fill from invoice<input type="file" accept="${DOC_ACCEPT}" data-vn-file hidden></label>` : '';
-  return `${tiles}${dueHTML}${list}<div class="btns vn-acts"><button type="button" class="btn sm primary" data-vn-add>+ Add vendor</button>${imp}<select class="vn-cursel" data-vn-cursel aria-label="Currency">${V_CURS.map(x => `<option ${x === cur ? 'selected' : ''}>${x}</option>`).join('')}</select></div><p class="hint" data-vn-msg role="status" aria-live="polite"></p>`;
+  const imp = VN_AI ? `<label class="btn sm file-pick">${t('Fill from invoice')}<input type="file" accept="${DOC_ACCEPT}" data-vn-file hidden></label>` : '';
+  return `${tiles}${dueHTML}${list}<div class="btns vn-acts"><button type="button" class="btn sm primary" data-vn-add>${t('+ Add vendor')}</button>${imp}<select class="vn-cursel" data-vn-cursel aria-label="${t('Currency')}">${V_CURS.map(x => `<option ${x === cur ? 'selected' : ''}>${x}</option>`).join('')}</select></div><p class="hint" data-vn-msg role="status" aria-live="polite"></p>`;
 }
 function vnRepaint() { const r = $('[data-vn-root]'); if (!r || !B) return; const d = r.closest('details'); const h = vnAccHTML(B.cfg, d && d.open); if (h) d.outerHTML = h; else d.remove(); }
 const vnKHTML = (v, cur) => { const k = vnCalc(v); return [`Paid ${vnMoney(k.paid, cur)}`, `Remaining ${vnMoney(k.left, cur)}`, k.next ? `Next ${vnMoney(k.next.amt, cur)} ${vnDay(k.next.due)}` : ''].filter(Boolean).join(' · '); };
@@ -8829,24 +8832,24 @@ function vnSheetHTML(c) {
   const scheds = [...new Set((c.schedule || []).map(x => (x.title || '').trim()).filter(Boolean))].slice(0, 40);
   const sched = scheds.length ? fieldWrap('For', `<select id="vn-sched" data-vnf="sched"><option value="">—</option>${scheds.concat(v.sched && !scheds.includes(v.sched) ? [v.sched] : []).map(x => `<option ${x === v.sched ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>`, 'vn-sched') : '';
   const pays = v.pays.map((x, i) => { const st = x.paid ? 'paid' : vnDueSt(x.due);
-    return `<div class="vn-pay ${st}" data-vn-pay="${i}"><div class="vn-pr"><label class="vn-dl"><small>Amount</small><input data-vnp="${i}" data-vnk="amt" inputmode="decimal" value="${x.amt ?? ''}" placeholder="0"></label>
+    return `<div class="vn-pay ${st}" data-vn-pay="${i}"><div class="vn-pr"><label class="vn-dl"><small>${t('Amount')}</small><input data-vnp="${i}" data-vnk="amt" inputmode="decimal" value="${x.amt ?? ''}" placeholder="0"></label>
       <label class="vn-dl"><small>${st === 'over' ? 'Overdue' : 'Due'}</small><input type="date" data-vnp="${i}" data-vnk="due" value="${esc(x.due)}"></label></div>
-      <div class="vn-pr2">${x.paid ? `<div class="vn-dl vn-paid"><small><span>Paid</span><button type="button" class="link" data-vn-unpaid="${i}">Unpaid</button></small><input type="date" data-vnp="${i}" data-vnk="paid" value="${esc(x.paid)}" aria-label="Paid on"></div>` : `<button type="button" class="btn sm" data-vn-mark="${i}">Mark paid</button>`}
-      <input data-vnp="${i}" data-vnk="note" value="${esc(x.note)}" placeholder="Method or note" aria-label="Method or note" maxlength="300"><button type="button" class="link vn-x" data-vn-pdel="${i}" aria-label="Remove payment">×</button></div></div>`; }).join('');
-  const imp = VN_AI ? `<label class="btn sm file-pick">Fill from invoice<input type="file" accept="${DOC_ACCEPT}" data-vn-file="${B.vnIdx}" hidden></label>` : '';
+      <div class="vn-pr2">${x.paid ? `<div class="vn-dl vn-paid"><small><span>${t('Paid')}</span><button type="button" class="link" data-vn-unpaid="${i}">${t('Unpaid')}</button></small><input type="date" data-vnp="${i}" data-vnk="paid" value="${esc(x.paid)}" aria-label="${t('Paid on')}"></div>` : `<button type="button" class="btn sm" data-vn-mark="${i}">${t('Mark paid')}</button>`}
+      <input data-vnp="${i}" data-vnk="note" value="${esc(x.note)}" placeholder="${t('Method or note')}" aria-label="${t('Method or note')}" maxlength="300"><button type="button" class="link vn-x" data-vn-pdel="${i}" aria-label="${t('Remove payment')}">×</button></div></div>`; }).join('');
+  const imp = VN_AI ? `<label class="btn sm file-pick">${t('Fill from invoice')}<input type="file" accept="${DOC_ACCEPT}" data-vn-file="${B.vnIdx}" hidden></label>` : '';
   setTimeout(vnWireAC, 0);
   return `<div class="vn-sheet" data-vn-zone data-doc-drop>
-    <div class="chips vn-cats" role="group" aria-label="Category">${V_CATS.map(x => `<button type="button" class="chip ${v.cat === x ? 'on' : ''}" aria-pressed="${v.cat === x}" data-vn-cat="${esc(x)}">${esc(x)}</button>`).join('')}</div>
-    ${fieldWrap('Business', `<input id="vn-name" data-vnf="name" value="${esc(v.name)}" maxlength="120" placeholder="Name">`, 'vn-name')}
+    <div class="chips vn-cats" role="group" aria-label="${t('Category')}">${V_CATS.map(x => `<button type="button" class="chip ${v.cat === x ? 'on' : ''}" aria-pressed="${v.cat === x}" data-vn-cat="${esc(x)}">${esc(x)}</button>`).join('')}</div>
+    ${fieldWrap('Business', `<input id="vn-name" data-vnf="name" value="${esc(v.name)}" maxlength="120" placeholder="${t('Name')}">`, 'vn-name')}
     <div class="vn-2">${inp('contact', 'Contact person', 'text', ' maxlength="120"')}${inp('phone', 'Phone', 'tel', ' maxlength="40"')}</div>
     <div class="vn-2">${inp('email', 'Email', 'email', ' maxlength="160"')}${inp('web', 'Website', 'url', ' placeholder="https://…" maxlength="400"')}</div>
     ${inp('addr', 'Address', 'text', ' maxlength="300"')}
     <div class="vn-2">${fieldWrap(`Contract total (${cur})`, `<input id="vn-total" data-vnf="total" inputmode="decimal" value="${v.total ?? ''}" placeholder="0">`, 'vn-total')}${sched}</div>
-    <h3 class="sub-h">Payments</h3><p class="vn-k" data-vn-k>${esc(vnKHTML(v, cur))}</p>
-    ${pays}<div class="btns"><button type="button" class="btn sm" data-vn-padd>+ Add payment</button>${imp}</div>
+    <h3 class="sub-h">${t('Payments')}</h3><p class="vn-k" data-vn-k>${esc(vnKHTML(v, cur))}</p>
+    ${pays}<div class="btns"><button type="button" class="btn sm" data-vn-padd>${t('+ Add payment')}</button>${imp}</div>
     ${fieldWrap('Notes', `<textarea id="vn-notes" data-vnf="notes" rows="3" maxlength="3000">${esc(v.notes)}</textarea>`, 'vn-notes')}
     <p class="hint" data-vn-msg role="status" aria-live="polite"></p>
-    <div class="btns"><button type="button" class="btn sm bk-rm" data-vn-del>${TRASH_IC}Delete vendor</button></div></div>`;
+    <div class="btns"><button type="button" class="btn sm bk-rm" data-vn-del>${TRASH_IC}${t('Delete vendor')}</button></div></div>`;
 }
 function vnOpen(i) { B.vnIdx = i; openCard('vendor'); }
 // business name → Google place: fills the address, phone and website
@@ -8857,7 +8860,7 @@ function vnPlace(id, tok) {
 function vnWireAC() {
   const inp = $('#sheet #vn-name'); if (!inp) return;
   placeAutocomplete(inp, { bias: () => B && B.cfg.venue, onPick: (id, tok) => vnPlace(id, tok).then(r => { const v = vnCur(); if (!v) return;
-    if (r.name) v.name = r.name.slice(0, 120); ['addr', 'phone', 'web'].forEach(k => { if (r[k]) v[k] = r[k].slice(0, k === 'web' ? 400 : 300); }); vnSave(); renderSheet(); }).catch(() => toast('Couldn’t load that place')) });
+    if (r.name) v.name = r.name.slice(0, 120); ['addr', 'phone', 'web'].forEach(k => { if (r[k]) v[k] = r[k].slice(0, k === 'web' ? 400 : 300); }); vnSave(); renderSheet(); }).catch(() => toast(t('Couldn’t load that place'))) });
 }
 // invoice / contract → a vendor and its payments (ai-import mode "vendor"); only empty fields are filled
 function vnMerge(P, v, d) {
@@ -8890,7 +8893,7 @@ async function vnImport(file, vi) {
     const n = vnMerge(P, v, j.data); vnSave();
     const pid = B.pid; const back = () => { if (!B || B.pid !== pid) return; B.priv = vnNorm(undo); B.privPid = pid; vnSave(); if (B.card === 'vendor') $('#sheet').close(); else vnRepaint(); };
     if (B.card === 'vendor' && B.vnIdx === vi) renderSheet(); else vnOpen(vi);
-    undoToast(`Filled ${v.name || 'vendor'}${n ? ` · ${n} payment${n === 1 ? '' : 's'}` : ''}`, back);
+    undoToast(t('Filled {v}', { v: v.name || t('vendor') }) + (n ? ' · ' + t(n === 1 ? '1 payment' : '{n} payments', { n }) : ''), back);
   } catch (e) { vnMsg(e.signin ? 'Sign in to fill from a document.' : e.message || 'Couldn’t read it.'); }
 }
 // account sync: pull once per page open (the newer copy wins), then push each change ~1 s later
@@ -9081,26 +9084,26 @@ async function logoBlob(img) {
 const brandRepaint = () => { if (!B) return; if (B.card) renderSheet(); else buildForm(); };
 const BR = () => (B.brand = B.brand || { url: '' });
 async function brandFromLink() {
-  const st = BR(); const url = normSite(st.url || ''); if (!url) { st.msg = 'That doesn’t look like a website link.'; return brandRepaint(); }
-  if (!LS.get('signedIn')) { st.msg = 'Sign in to read a website, or upload your logo or a screenshot instead.'; return brandRepaint(); }
-  st.busy = true; st.msg = 'Reading the site’s colors…'; st.prop = null; brandRepaint();
+  const st = BR(); const url = normSite(st.url || ''); if (!url) { st.msg = t('That doesn’t look like a website link.'); return brandRepaint(); }
+  if (!LS.get('signedIn')) { st.msg = t('Sign in to read a website, or upload your logo or a screenshot instead.'); return brandRepaint(); }
+  st.busy = true; st.msg = t('Reading the site’s colors…'); st.prop = null; brandRepaint();
   try {
     if (!(await aiModes()).includes('brand')) throw new Error('Reading a website isn’t available yet. Upload your logo or a screenshot instead.');
     const j = await aiImport({ mode: 'brand', url });
     const p = brandFromSite(j.data, B.cfg.theme);
-    st.prop = p; st.msg = p ? '' : 'No clear brand colors on that site. Try uploading your logo or a screenshot.';
-  } catch (e) { st.msg = e.signin ? 'Sign in to read a website, or upload your logo or a screenshot instead.' : (e.message || 'Couldn’t read that site.'); }
+    st.prop = p; st.msg = p ? '' : t('No clear brand colors on that site. Try uploading your logo or a screenshot.');
+  } catch (e) { st.msg = e.signin ? t('Sign in to read a website, or upload your logo or a screenshot instead.') : (e.message || t('Couldn’t read that site.')); }
   st.busy = false; brandRepaint();
 }
 async function brandFromFile(file) {
   const st = BR(); if (!file) return;
-  if (!/^image\//.test(file.type)) { st.msg = 'Use a photo or screenshot (PNG, JPG).'; return brandRepaint(); }
+  if (!/^image\//.test(file.type)) { st.msg = t('Use a photo or screenshot (PNG, JPG).'); return brandRepaint(); }
   try {
     const img = await fileImage(file); const p = brandFromPalette(paletteOfImage(img), B.cfg.theme);
-    if (!p) { st.prop = null; st.msg = 'Couldn’t find colors in that image.'; return brandRepaint(); }
+    if (!p) { st.prop = null; st.msg = t('Couldn’t find colors in that image.'); return brandRepaint(); }
     if (p.logoOK) { p.logoImg = img; p.logo = img.src; p.useLogo = true; }
     st.prop = p; st.msg = '';
-  } catch (e) { st.prop = null; st.msg = e.message || 'Couldn’t read that image.'; }
+  } catch (e) { st.prop = null; st.msg = e.message || t('Couldn’t read that image.'); }
   brandRepaint();
 }
 async function brandApply() {
@@ -9108,8 +9111,8 @@ async function brandApply() {
   let logo = '';
   if (p.logo && p.useLogo !== false) {
     if (p.logoImg) {
-      if (!LS.get('signedIn') || !SB) { st.msg = 'Applied the colors. Sign in to add the logo too.'; }
-      else { try { st.msg = 'Uploading the logo…'; brandRepaint(); const blob = await logoBlob(p.logoImg); const f = await docUpload({ name: 'logo.png' }, { blob, type: 'image/png', name: 'logo.png', kind: 'image' }); logo = f.url; } catch (e) { st.msg = 'Applied the colors; the logo didn’t upload (' + (e.message || 'error') + ').'; } }
+      if (!LS.get('signedIn') || !SB) { st.msg = t('Applied the colors. Sign in to add the logo too.'); }
+      else { try { st.msg = t('Uploading the logo…'); brandRepaint(); const blob = await logoBlob(p.logoImg); const f = await docUpload({ name: 'logo.png' }, { blob, type: 'image/png', name: 'logo.png', kind: 'image' }); logo = f.url; } catch (e) { st.msg = t('Applied the colors; the logo didn’t upload ({e}).', { e: e.message || 'error' }); } }
     } else logo = p.logo;
   }
   st.undo = { theme: { ...cfg.theme }, logo: cfg.logo || '' };
@@ -9122,7 +9125,7 @@ async function brandApply() {
 function brandUndo() {
   const st = BR(); if (!st.undo) return; const cfg = B.cfg;
   cfg.theme = { ...st.undo.theme }; if (st.undo.logo) cfg.logo = st.undo.logo; else delete cfg.logo; loadFont(cfg.theme.font);
-  B.customColor = !COLOR_NAME[cfg.theme.accent.toLowerCase()]; st.undo = null; st.applied = false; st.msg = 'Back to your previous design.'; changed(true);
+  B.customColor = !COLOR_NAME[cfg.theme.accent.toLowerCase()]; st.undo = null; st.applied = false; st.msg = t('Back to your previous design.'); changed(true);
 }
 function brandHTML(c) {
   const st = (B && B.brand) || { url: '' }; const p = st.prop;
@@ -9130,22 +9133,22 @@ function brandHTML(c) {
     const ink = PAGE_INK[p.mode]; const fnt = FONTS[p.font] || FONTS.field; loadFont(p.font);
     return `<div class="brand-prev${p.mode === 'dark' ? ' dark' : ''}" style="--pa:${esc(p.accent)};--po:${onAccent(p.accent)};--pi:${ink}">
       ${p.logo && p.useLogo !== false ? `<img class="bp-logo" src="${esc(p.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
-      <b class="bp-title" style="font-family:${esc(fnt.css)}">${esc(c.title || 'Your event')}</b>
-      <span class="bp-row"><span class="bp-btn">Get directions</span><span class="bp-link">Add to calendar</span></span></div>
+      <b class="bp-title" style="font-family:${esc(fnt.css)}">${esc(c.title || t('Your event'))}</b>
+      <span class="bp-row"><span class="bp-btn">${t('Get directions')}</span><span class="bp-link">${t('Add to calendar')}</span></span></div>
     <ul class="bp-facts">
-      <li><span class="ddot" style="background:${esc(p.accent)}" aria-hidden="true"></span>Color <b>${esc(colorName(p.accent) === 'Custom' ? p.accent.toUpperCase() : colorName(p.accent))}</b>${p.adjusted ? ' <small class="muted">(adjusted so text stays readable)</small>' : ''}</li>
-      <li><span class="ddot${p.mode === 'dark' ? ' dk' : ' lt'}" aria-hidden="true"></span>Background <b>${p.mode === 'dark' ? 'Dark' : 'Light'}</b></li>
-      <li><span class="ddot" style="background:${PAGE_INK[p.mode]}" aria-hidden="true"></span>Text <b>${p.mode === 'dark' ? 'Light on dark' : 'Dark on light'}</b></li>
-      <li><span class="dprev" style="font-family:${esc(fnt.css)}" aria-hidden="true">Aa</span>Title font <b>${esc(fnt.label)}</b>${p.font === c.theme.font ? ' <small class="muted">(unchanged)</small>' : ''}</li>
+      <li><span class="ddot" style="background:${esc(p.accent)}" aria-hidden="true"></span>${t('Color')} <b>${esc(colorName(p.accent) === 'Custom' ? p.accent.toUpperCase() : colorName(p.accent))}</b>${p.adjusted ? ' <small class="muted">(adjusted so text stays readable)</small>' : ''}</li>
+      <li><span class="ddot${p.mode === 'dark' ? ' dk' : ' lt'}" aria-hidden="true"></span>${t('Background')} <b>${p.mode === 'dark' ? 'Dark' : 'Light'}</b></li>
+      <li><span class="ddot" style="background:${PAGE_INK[p.mode]}" aria-hidden="true"></span>${t('Text')} <b>${p.mode === 'dark' ? 'Light on dark' : 'Dark on light'}</b></li>
+      <li><span class="dprev" style="font-family:${esc(fnt.css)}" aria-hidden="true">Aa</span>${t('Title font')} <b>${esc(fnt.label)}</b>${p.font === c.theme.font ? ' <small class="muted">(unchanged)</small>' : ''}</li>
     </ul>
-    ${p.logo ? `<label class="chk"><input type="checkbox" data-brand-logo ${p.useLogo !== false ? 'checked' : ''}> Use the logo</label>` : ''}
-    <div class="btns"><button type="button" class="btn primary sm" data-brand="apply">Apply</button><button type="button" class="btn sm ghost" data-brand="cancel">Cancel</button></div>`;
+    ${p.logo ? `<label class="chk"><input type="checkbox" data-brand-logo ${p.useLogo !== false ? 'checked' : ''}> ${t('Use the logo')}</label>` : ''}
+    <div class="btns"><button type="button" class="btn primary sm" data-brand="apply">${t('Apply')}</button><button type="button" class="btn sm ghost" data-brand="cancel">${t('Cancel')}</button></div>`;
   })() : '';
-  return `<div class="field brand-m" data-brand-box><label for="d-brand-url">Match your brand</label>
-    <p class="hint">Paste your website, or upload your logo or a screenshot. You’ll see the colors and font before anything changes.</p>
-    ${SB ? `<div class="search"><input id="d-brand-url" type="url" inputmode="url" placeholder="https://yourwebsite.com" autocomplete="off" data-brand-url value="${esc(st.url || '')}"><button type="button" class="btn${st.busy ? ' busy' : ''}" data-brand="go" ${st.busy ? 'disabled' : ''}>Get colors</button></div>` : ''}
-    <div class="brand-up"><label class="btn sm file-pick">Upload logo or screenshot<input type="file" accept="image/*" data-brand-file hidden></label></div>
-    <p class="hint" data-brand-msg role="status" aria-live="polite">${esc(st.msg || '')}${st.undo && !p ? `${st.msg ? ' ' : ''}Brand applied. <button type="button" class="link" data-brand="undo">Undo</button>` : ''}</p>
+  return `<div class="field brand-m" data-brand-box><label for="d-brand-url">${t('Match your brand')}</label>
+    <p class="hint">${t('Paste your website, or upload your logo or a screenshot. You’ll see the colors and font before anything changes.')}</p>
+    ${SB ? `<div class="search"><input id="d-brand-url" type="url" inputmode="url" placeholder="https://yourwebsite.com" autocomplete="off" data-brand-url value="${esc(st.url || '')}"><button type="button" class="btn${st.busy ? ' busy' : ''}" data-brand="go" ${st.busy ? 'disabled' : ''}>${t('Get colors')}</button></div>` : ''}
+    <div class="brand-up"><label class="btn sm file-pick">${t('Upload logo or screenshot')}<input type="file" accept="image/*" data-brand-file hidden></label></div>
+    <p class="hint" data-brand-msg role="status" aria-live="polite">${esc(st.msg || '')}${st.undo && !p ? `${st.msg ? ' ' : ''}${t('Brand applied.')} <button type="button" class="link" data-brand="undo">${t('Undo')}</button>` : ''}</p>
     ${prev}</div>`;
 }
 function brandClick(b) {
@@ -9162,7 +9165,7 @@ if (!document._brandWired) {
   document.addEventListener('keydown', (e) => { const i = e.target; if (B && i.matches && i.matches('[data-brand-url]') && e.key === 'Enter') { e.preventDefault(); BR().url = i.value; if (!BR().busy) brandFromLink(); } });
 }
 // friendly date text over the native picker
-const friendlyDate = (d) => d ? new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(asUTC(d)) : '';
+const friendlyDate = (d) => d ? new Intl.DateTimeFormat(LOCALES[LANG] || 'en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(asUTC(d)) : '';
 document.addEventListener('input', (e) => { const i = e.target; if (!i.matches || !i.matches('.datef input')) return; const s = i.parentElement.querySelector('.datef-txt'); if (s) { s.textContent = friendlyDate(i.value) || i.dataset.ph || ''; s.classList.toggle('ph', !i.value); } });
 document.addEventListener('click', (e) => { const i = e.target; if (i.matches && i.matches('.datef input') && i.showPicker) { try { i.showPicker(); } catch { /* not allowed here */ } } });
 
@@ -9191,12 +9194,12 @@ function countdown(cfg) {
 function whenFieldsHTML(c, p, blankDate = false, datesOnly = false) {
   const timed = !datesOnly && hasTime(c.start); const sd = blankDate ? '' : c.start.slice(0, 10); const ed = (c.end || '').slice(0, 10);
   const fld = (k, label, type, val, extra = '') => type === 'date'
-    ? `<div class="field"><label for="${p}-${k}">${label}</label><div class="datef"><span class="datef-txt ${val ? '' : 'ph'}" aria-hidden="true">${esc(friendlyDate(val) || (k === 'ed' ? 'Same day' : 'Choose a date'))}</span><input id="${p}-${k}" type="date" data-when="${k}" data-ph="${k === 'ed' ? 'Same day' : 'Choose a date'}" value="${esc(val)}"${extra}></div></div>`
-    : `<div class="field"><label for="${p}-${k}">${label}</label><input id="${p}-${k}" type="${type}" data-when="${k}" value="${esc(val)}"${extra}></div>`;
+    ? `<div class="field"><label for="${p}-${k}">${esc(t(label))}</label><div class="datef"><span class="datef-txt ${val ? '' : 'ph'}" aria-hidden="true">${esc(friendlyDate(val) || t(k === 'ed' ? 'Same day' : 'Choose a date'))}</span><input id="${p}-${k}" type="date" data-when="${k}" data-ph="${esc(t(k === 'ed' ? 'Same day' : 'Choose a date'))}" value="${esc(val)}"${extra}></div></div>`
+    : `<div class="field"><label for="${p}-${k}">${esc(t(label))}</label><input id="${p}-${k}" type="${type}" data-when="${k}" value="${esc(val)}"${extra}></div>`;
   return `<div class="when ${timed ? 'timed' : ''}">
     <div class="when-row">${fld('sd', 'Starts', 'date', sd)}${timed ? fld('st', 'Time', 'time', c.start.slice(11, 16)) : ''}</div>
     <div class="when-row">${fld('ed', 'Ends', 'date', ed, sd ? ` min="${sd}"` : '')}${timed ? fld('et', 'Time', 'time', hasTime(c.end) ? c.end.slice(11, 16) : '') : ''}</div>
-    ${datesOnly ? '' : `<button type="button" class="link when-tg" data-when-tg>${timed ? 'Remove times' : '+ Add time'}</button>`}
+    ${datesOnly ? '' : `<button type="button" class="link when-tg" data-when-tg>${timed ? t('Remove times') : '+ ' + t('Add time')}</button>`}
   </div>`;
 }
 function whenInput(c, k, v) {
@@ -9253,13 +9256,13 @@ function route() {
   if (!h.startsWith('new') && !h.startsWith('setup')) SU = null;
   if (h.startsWith('e=')) { const c = unpackEvent(h.slice(2)); if (c) return renderViewer(c, { tab }); return renderBroken(); }
   if (h.startsWith('ex=')) { const e = window.EXAMPLES[h.slice(3)]; if (e) return renderViewer(normalize(clone(e)), { exampleId: h.slice(3), tab }); return renderBroken(); }
-  if (h.startsWith('edit=')) { const c = unpackEvent(h.slice(5)); if (c) { delete c.ek; delete c._ek; return renderBuilder(c, 'Editing a copy. The original link won’t change.'); } return renderBroken(); }
-  if (h.startsWith('edit-ex=')) { const e = window.EXAMPLES[h.slice(8)]; if (e) return renderBuilder(clone(e), 'Copy of an example. Tap Share to get your own link.'); }
+  if (h.startsWith('edit=')) { const c = unpackEvent(h.slice(5)); if (c) { delete c.ek; delete c._ek; return renderBuilder(c, t('Editing a copy. The original link won’t change.')); } return renderBroken(); }
+  if (h.startsWith('edit-ex=')) { const e = window.EXAMPLES[h.slice(8)]; if (e) return renderBuilder(clone(e), t('Copy of an example. Tap Share to get your own link.')); }
   if (h === 'examples') { SU = null; return renderExamples(); }
   if (h === 'setup') return renderSetup();
   if (h === 'new') { const d = LS.get('draft'); return d && d.title ? renderBuilder(d, null, LS.get('draftHosted'), LS.get('draftId') || undefined) : renderSetup(); }
   if (h.startsWith('page=')) { const x = pagesAll().find(p => p.pid === h.slice(5)); if (x) { window.__ownTab = tab || ''; return renderBuilder(x.cfg, null, x.hosted, x.pid); } }
-  if (h.startsWith('dup=')) { const x = pagesAll().find(p => p.pid === h.slice(4)); if (x) { const pid = newPid(); history.replaceState(null, '', siteBase() + '#page=' + pid); return renderBuilder(duplicateCfg(x.cfg), 'This is a copy. Tap Share to get its own link.', null, pid); } }
+  if (h.startsWith('dup=')) { const x = pagesAll().find(p => p.pid === h.slice(4)); if (x) { const pid = newPid(); history.replaceState(null, '', siteBase() + '#page=' + pid); return renderBuilder(duplicateCfg(x.cfg), t('This is a copy. Tap Share to get its own link.'), null, pid); } }
   SU = null; renderLanding();
 }
 
