@@ -4032,7 +4032,7 @@ function wireOffline(cfg, art, opts) {
   if (opts.preview) return;
   const key = opts.hosted ? opts.hosted.slug : syncKey(cfg);
   const stEl = () => art.querySelector('[data-offline-st]');
-  const status = (n) => { const el = stEl(); if (!el) return; el.textContent = !offOn(key) ? t('Needs a connection to open') : navigator.onLine === false ? t('Showing the copy saved on this device') : t('Saved on this device · {n} files', { n }); };
+  const status = (n) => { const el = stEl(); if (!el) return; el.textContent = !offOn(key) ? t('Needs a connection to open') : navigator.onLine === false ? t('Showing the copy saved on this device') : (n === 1 ? t('Saved on this device · 1 file') : t('Saved on this device · {n} files', { n })); };
   const save = () => { if (!offOn(key)) return status(0); if (navigator.onLine === false) return status(0); offSave(cfg).then(status).catch(() => status(0)); };
   save(); flushOutbox();
   addEventListener('online', () => { if (!document.body.contains(art)) return; if (LS.get('signedIn') && cfg.tools.mytrip) syncPush(cfg); save(); });
