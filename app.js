@@ -9849,8 +9849,10 @@ const GL_PRESETS = { Wedding: ['Bride’s family', 'Bride’s friends', 'Groom�
   Conference: ['Speakers', 'Sponsors', 'Staff', 'Attendees'], Retreat: ['Family', 'Friends', 'Work'], Reunion: ['Family', 'Friends'], Birthday: ['Family', 'Friends', 'Work'], Party: ['Family', 'Friends', 'Work'],
   'Bachelor party': ['Friends', 'Family'], 'Bachelorette party': ['Friends', 'Family'] };
 const GL_HUES = ['#0F4A50', '#E35B47', '#5E9C93', '#C98B2B', '#6B5CA5', '#3E7CB1', '#9C4F7A', '#5E8C3A', '#8A6A4F', '#B4402F'];
+// the text-message invitation: one = a household of one (singular "you"), many = two or more or nobody listed yet (plural)
 const INV_TXT = { en: 'Hi {n}, here’s your invitation to {t}: {l}', es: 'Hola, {n}: aquí está tu invitación a {t}: {l}', fr: 'Bonjour {n}, voici votre invitation à {t} : {l}',
-  pt: 'Olá, {n}! Aqui está seu convite para {t}: {l}', de: 'Hallo {n}, hier ist eure Einladung zu {t}: {l}', it: 'Ciao {n}, ecco il vostro invito a {t}: {l}', ja: '{n} 様　{t} への招待状です：{l}' };
+  pt: 'Olá, {n}! Aqui está seu convite para {t}: {l}', de: 'Hallo {n}, hier ist deine Einladung zu {t}: {l}', it: 'Ciao {n}, ecco il tuo invito a {t}: {l}', ja: '{n} 様　{t} への招待状です：{l}' };
+const INV_TXT_MANY = { ...INV_TXT, es: 'Hola, {n}: aquí está su invitación a {t}: {l}', pt: 'Olá, {n}! Aqui está o convite de vocês para {t}: {l}', de: 'Hallo {n}, hier ist eure Einladung zu {t}: {l}', it: 'Ciao {n}, ecco il vostro invito a {t}: {l}' };
 const INV_AND = { en: 'and', es: 'y', fr: 'et', pt: 'e', de: 'und', it: 'e', ja: 'と' };
 const joinFirst = (xs, lang) => { const a = INV_AND[lang] || INV_AND.en; if (lang === 'ja') return xs.join('、').replace(/、([^、]*)$/, a + '$1'); return xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' ' + a + ' ' + xs[xs.length - 1]; };
 const AGE_L = { adult: 'Adult', child: 'Child', infant: 'Infant' };
@@ -9865,7 +9867,8 @@ function glGreeting(h, lang) {
   return fs.length ? joinFirst(fs, lang) : h.name;
 }
 function glInvText(h) { const lang = INV_TXT[h.lang] ? h.lang : (INV_TXT[srcLang(G.cfg)] ? srcLang(G.cfg) : 'en'); const tr = G.cfg.tr && G.cfg.tr[h.lang]; const title = (tr && tr.title && tr.title.t) || G.cfg.title || '';
-  return INV_TXT[lang].replace('{n}', glGreeting(h, lang)).replace('{t}', title).replace('{l}', glLink(h)); }
+  const many = glPeople(h.id).filter(p => p.added_by === 'host').length !== 1;
+  return (many ? INV_TXT_MANY : INV_TXT)[lang].replace('{n}', glGreeting(h, lang)).replace('{t}', title).replace('{l}', glLink(h)); }
 // replies: each person's own row (household link); someone who replied on the open form is matched by name or email
 function glReplies() {
   const by = new Map(); G.rs.filter(r => r.person_id).forEach(r => by.set(r.person_id, r));

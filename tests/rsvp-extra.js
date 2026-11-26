@@ -188,7 +188,7 @@ const parse = (page, note) => page.evaluate((n) => window.__ep.rqParse(n), note)
       ok((await pg.$$eval('#rs-meal option', os => os.map(o => o.textContent).join('|'))) === 'Elige…|Pollo|Pescado|Vegetariano', 'Spanish: the organizer’s meal options translated');
       ok(/¿Necesitas transporte/.test(await pg.textContent('label[for="rs-q0"]')) && /Recepción/.test(await pg.textContent('.rs-evs')), 'Spanish: the question and event titles translated');
       await pg.fill('#rs-guests', '2'); await pg.waitForSelector('[data-rs-plus="0"]');
-      ok((await pg.getAttribute('[data-rs-plus="0"]', 'placeholder')) === 'Invitado 2' && /Nombres de tus acompañantes/.test(await pg.textContent('[data-rsvp-plus]')), 'Spanish: Nombres de tus acompañantes, Invitado 2');
+      ok((await pg.getAttribute('[data-rs-plus="0"]', 'placeholder')) === 'Acompañante 2' && /Nombres de tus acompañantes/.test(await pg.textContent('[data-rsvp-plus]')), 'Spanish: Nombres de tus acompañantes, Acompañante 2');
       await pg.fill('#rs-name', 'Lucía'); await pg.selectOption('#rs-meal', '0'); await pg.click('[data-rsvp="send"]'); await pg.waitForSelector('.rsvp-done');
       const p = await parse(pg, s2.posted[0].note);
       ok(p.x && p.x.meal === 'Chicken' && p.x.events.join('|') === 'Welcome dinner|Ceremony|Reception', 'Spanish: answers stored in the organizer’s words ' + JSON.stringify(p.x));

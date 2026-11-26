@@ -194,9 +194,9 @@ const HEIC = process.env.HEIC || '/System/Library/PrivateFrameworks/Portrait.fra
       await until(async () => { try { lines = execFileSync('/opt/homebrew/bin/uv', ['run', '--quiet', '--with', 'google-auth', '--with', 'google-api-python-client', 'python3', process.env.GMAIL_HTML || '/tmp/epinv/gmail_html.py', q, SHOTS || '/tmp/epinv/mail'], { encoding: 'utf8', cwd: '/Users/bot/bbbot' }).trim().split('\n').filter(Boolean); } catch { lines = []; } return lines.length >= 3; }, 180000, 10000);
       console.log('     gmail: ' + lines.join('\n     gmail: '));
       ok(lines.length === 3, `3 emails received (test + 2 households): ${lines.length}`);
-      const es = lines.find(l => l.includes('-garcia@')); ok(es && /Estás invitado: Lena & Sam/.test(es) && /dkim=pass/.test(es) && /"?Lena & Sam via 1LinkTrip"? <invites@in\.1linktrip\.com>/.test(es), 'Garcias: Spanish subject, from "Lena & Sam via 1LinkTrip", DKIM pass');
+      const es = lines.find(l => l.includes('-garcia@')); ok(es && /Invitación: Lena & Sam/.test(es) && /dkim=pass/.test(es) && /"?Lena & Sam via 1LinkTrip"? <invites@in\.1linktrip\.com>/.test(es), 'Garcias: Spanish subject, from "Lena & Sam via 1LinkTrip", DKIM pass');
       const ts = lines.find(l => l.includes('-owner@')); ok(ts && /\[Test\]/.test(ts), 'organizer: [Test] email');
-      if (es && SHOTS) { const id = es.split('|')[0]; const html = fs.readFileSync(`${SHOTS}/${id}.html`, 'utf8'); ok(html.includes(`/${NAME}?g=${H['The Garcias'].token}&amp;lang=es`) && html.includes(row.images.es.path) && /Querido\/a Ana y Luis:/.test(html), 'Garcias email: personal /<name>?g= link, Spanish picture, first-name greeting');
+      if (es && SHOTS) { const id = es.split('|')[0]; const html = fs.readFileSync(`${SHOTS}/${id}.html`, 'utf8'); ok(html.includes(`/${NAME}?g=${H['The Garcias'].token}&amp;lang=es`) && html.includes(row.images.es.path) && /Hola, Ana y Luis:/.test(html) && /contar con ustedes/.test(html) && !/Querido|invitad[oa]/.test(html), 'Garcias email: personal /<name>?g= link, Spanish picture, first-name greeting');
         fs.copyFileSync(`${SHOTS}/${id}.html`, `${SHOTS}/mail-garcias.html`);
         for (const w of [390, 1280]) { const x = await mk(w); await x.page.goto('file://' + path.resolve(`${SHOTS}/mail-garcias.html`)); await x.page.waitForTimeout(2500); await shot(x.page, `${w}-email`, true); } }
     }

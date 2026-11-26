@@ -41,14 +41,23 @@ const THREAD_QUIET_MS = 10 * 60 * 1000; // one email per thread per 10 minutes
 const RESEND_MS = 10 * 60 * 1000; // an invite can be emailed again after 10 minutes
 
 // household invitation email, per language (the household's own language when the page has it)
-export const INVITE: Record<string, { s: string; hi: string; body: string; btn: string }> = {
-  en: { s: "Invitation: {t}", hi: "Hi {n},", body: "You're invited to {t}. Your page has the details, and you can reply for everyone in your household there.", btn: "Open your invitation" },
-  es: { s: "Invitación: {t}", hi: "Hola, {n}:", body: "Estás invitado a {t}. En tu página están todos los detalles y puedes responder por todos los de tu hogar.", btn: "Abrir tu invitación" },
-  fr: { s: "Invitation : {t}", hi: "Bonjour {n},", body: "Vous êtes invités à {t}. Votre page contient tous les détails, et vous pouvez y répondre pour tout votre foyer.", btn: "Ouvrir votre invitation" },
-  pt: { s: "Convite: {t}", hi: "Olá, {n},", body: "Você está convidado para {t}. Sua página tem todos os detalhes, e você pode responder por todos da sua casa.", btn: "Abrir seu convite" },
-  de: { s: "Einladung: {t}", hi: "Hallo {n},", body: "Ihr seid zu {t} eingeladen. Auf eurer Seite stehen alle Details, und ihr könnt dort für euren ganzen Haushalt antworten.", btn: "Einladung öffnen" },
-  it: { s: "Invito: {t}", hi: "Ciao {n},", body: "Siete invitati a {t}. Nella vostra pagina trovate tutti i dettagli e potete rispondere per tutta la famiglia.", btn: "Apri l'invito" },
-  ja: { s: "ご招待：{t}", hi: "{n} 様", body: "{t} にご招待します。ページに詳細があり、ご家族全員分の出欠をまとめて返信できます。", btn: "招待状を開く" },
+// one = a household of one person (neutral "you"), many = two or more (plural "you"): no gendered forms ("Querido/a", "invitado")
+type InvT = { s: string; hi: string; body: string; btn: string };
+export const INVITE: Record<string, { one: InvT; many: InvT }> = {
+  en: { one: { s: "Invitation: {t}", hi: "Hi {n},", body: "You're invited to {t}. Your page has the details, and you can reply there.", btn: "Open your invitation" },
+    many: { s: "Invitation: {t}", hi: "Hi {n},", body: "You're invited to {t}. Your page has the details, and you can reply for everyone in your household there.", btn: "Open your invitation" } },
+  es: { one: { s: "Invitación: {t}", hi: "Hola, {n}:", body: "Te invitamos a {t}. En tu página están todos los detalles y puedes responder allí.", btn: "Abrir tu invitación" },
+    many: { s: "Invitación: {t}", hi: "Hola, {n}:", body: "Nos encantaría contar con ustedes en {t}. En su página están todos los detalles y pueden responder por todo su hogar.", btn: "Abrir su invitación" } },
+  fr: { one: { s: "Invitation : {t}", hi: "Bonjour {n},", body: "Nous avons le plaisir de vous inviter à {t}. Votre page contient tous les détails, et vous pouvez y répondre.", btn: "Ouvrir votre invitation" },
+    many: { s: "Invitation : {t}", hi: "Bonjour {n},", body: "Nous avons le plaisir de vous inviter à {t}. Votre page contient tous les détails, et vous pouvez y répondre pour tout votre foyer.", btn: "Ouvrir votre invitation" } },
+  pt: { one: { s: "Convite: {t}", hi: "Olá, {n},", body: "Temos o prazer de convidar você para {t}. Sua página tem todos os detalhes, e você pode responder por lá.", btn: "Abrir seu convite" },
+    many: { s: "Convite: {t}", hi: "Olá, {n},", body: "Temos o prazer de convidar vocês para {t}. A página de vocês tem todos os detalhes, e vocês podem responder por todos da casa.", btn: "Abrir o convite" } },
+  de: { one: { s: "Einladung: {t}", hi: "Hallo {n},", body: "Wir laden dich herzlich zu {t} ein. Auf deiner Seite stehen alle Details, und du kannst dort antworten.", btn: "Einladung öffnen" },
+    many: { s: "Einladung: {t}", hi: "Hallo {n},", body: "Wir laden euch herzlich zu {t} ein. Auf eurer Seite stehen alle Details, und ihr könnt dort für euren ganzen Haushalt antworten.", btn: "Einladung öffnen" } },
+  it: { one: { s: "Invito: {t}", hi: "Ciao {n},", body: "Abbiamo il piacere di invitarti a {t}. Nella tua pagina trovi tutti i dettagli e puoi rispondere lì.", btn: "Apri l'invito" },
+    many: { s: "Invito: {t}", hi: "Ciao {n},", body: "Abbiamo il piacere di invitarvi a {t}. Nella vostra pagina trovate tutti i dettagli e potete rispondere per tutta la famiglia.", btn: "Apri l'invito" } },
+  ja: { one: { s: "ご招待：{t}", hi: "{n} 様", body: "{t} にご招待します。ページに詳細があり、そちらからご返信いただけます。", btn: "招待状を開く" },
+    many: { s: "ご招待：{t}", hi: "{n} 様", body: "{t} にご招待します。ページに詳細があり、ご家族全員分の出欠をまとめて返信できます。", btn: "招待状を開く" } },
 };
 const AND: Record<string, string> = { en: "and", es: "y", fr: "et", pt: "e", de: "und", it: "e", ja: "と" };
 export const joinNames = (xs: string[], lang: string) => { const a = AND[lang] || AND.en; if (lang === "ja") return xs.join("、").replace(/、([^、]*)$/, a + "$1");
@@ -208,15 +217,12 @@ async function route(req: Request, deps?: Deps): Promise<Response> {
     if (!(await claimAgain(d.admin, "guest_households", id, was, now))) return json(200, { ok: true, sent: 0, skipped: "recently emailed" });
     const langs: string[] = [String((ev.config && ev.config.lang) || "en"), ...((ev.config && Array.isArray(ev.config.langs)) ? ev.config.langs : [])];
     const lang = h.lang && langs.includes(h.lang) ? h.lang : "";
-    const T = INVITE[lang || String((ev.config && ev.config.lang) || "en")] || INVITE.en;
+    const TT = INVITE[lang || String((ev.config && ev.config.lang) || "en")] || INVITE.en;
     const tr = lang && ev.config && ev.config.tr && ev.config.tr[lang]; // the page's own translated title, when it has one
     const title = String((tr && tr.title && tr.title.t) || (ev.config && ev.config.title) || "").slice(0, 120);
-    let n = String(h.name).slice(0, 120);
-    if (h.greeting === "names") { // "Michael and Sarah": the first names of the adults the organizer listed
-      const { data: ps } = await d.admin.from("guest_people").select("name,age,added_by").eq("household_id", h.id).eq("added_by", "host").limit(30);
-      const fs = (ps || []).filter((p: Row) => p.age !== "child" && p.age !== "infant").map((p: Row) => String(p.name || "").trim().split(/\s+/)[0]).filter(Boolean);
-      if (fs.length) n = joinNames(fs, lang || String((ev.config && ev.config.lang) || "en"));
-    }
+    const { data: ps } = await d.admin.from("guest_people").select("household_id,name,age,added_by").eq("household_id", h.id).eq("added_by", "host").limit(30);
+    const n = greetingOf(h, ps || [], lang || String((ev.config && ev.config.lang) || "en")); // "Michael and Sarah" or the household's name
+    const T = TT[manyOf(h, ps || []) ? "many" : "one"];
     const v = { t: title, n };
     const out = mail(h.email, fill(T.s, v), [fill(T.hi, v), fill(T.body, v)], `${SITE}?e=${ev.slug}&g=${h.token}${lang ? "&lang=" + lang : ""}`, T.btn);
     try { await d.send([out]); } catch (e) { await unclaim(d.admin, "guest_households", id, was); return json(502, { ok: false, error: String((e as Error).message || e).slice(0, 200) }); }
@@ -253,14 +259,31 @@ async function route(req: Request, deps?: Deps): Promise<Response> {
 // ================= invitations (schema-invites.sql) =================
 const INV_BUCKET = "invitations";
 // the invitation email, per language: subject / greeting / body / button / footer, for an invitation and a save the date
-export const INV_MAIL: Record<string, { s: string; std: string; hi: string; body: string; stdBody: string; btn: string; stdBtn: string; foot: string }> = {
-  en: { s: "You’re invited: {t}", std: "Save the date: {t}", hi: "Dear {n},", body: "You’re invited to {t}{d}. Your invitation is below; your page has all the details, and you can reply there for everyone in your household.", stdBody: "Please save the date for {t}{d}. A formal invitation will follow; your page already has the details.", btn: "Open your invitation", stdBtn: "Open your page", foot: "Sent for {t} with 1LinkTrip. This link is personal to your household." },
-  es: { s: "Estás invitado: {t}", std: "Reserva la fecha: {t}", hi: "Querido/a {n}:", body: "Estás invitado a {t}{d}. Tu invitación está abajo; en tu página están todos los detalles y puedes responder por todos los de tu hogar.", stdBody: "Reserva la fecha para {t}{d}. La invitación formal llegará más adelante; tu página ya tiene los detalles.", btn: "Abrir tu invitación", stdBtn: "Abrir tu página", foot: "Enviado para {t} con 1LinkTrip. Este enlace es personal para tu hogar." },
-  fr: { s: "Vous êtes invités : {t}", std: "Réservez la date : {t}", hi: "Chère, cher {n},", body: "Vous êtes invités à {t}{d}. Votre invitation est ci-dessous ; votre page contient tous les détails et vous pouvez y répondre pour tout votre foyer.", stdBody: "Réservez la date pour {t}{d}. L’invitation officielle suivra ; votre page contient déjà les détails.", btn: "Ouvrir votre invitation", stdBtn: "Ouvrir votre page", foot: "Envoyé pour {t} avec 1LinkTrip. Ce lien est personnel à votre foyer." },
-  pt: { s: "Você está convidado: {t}", std: "Reserve a data: {t}", hi: "Querido(a) {n},", body: "Você está convidado para {t}{d}. Seu convite está abaixo; sua página tem todos os detalhes, e você pode responder por todos da sua casa.", stdBody: "Reserve a data para {t}{d}. O convite oficial virá depois; sua página já tem os detalhes.", btn: "Abrir seu convite", stdBtn: "Abrir sua página", foot: "Enviado para {t} com o 1LinkTrip. Este link é pessoal para a sua casa." },
-  de: { s: "Einladung: {t}", std: "Save the Date: {t}", hi: "Liebe/r {n},", body: "Ihr seid zu {t}{d} eingeladen. Eure Einladung seht ihr unten; auf eurer Seite stehen alle Details, und ihr könnt dort für euren ganzen Haushalt antworten.", stdBody: "Bitte merkt euch den Termin für {t}{d} vor. Die offizielle Einladung folgt; auf eurer Seite stehen schon die Details.", btn: "Einladung öffnen", stdBtn: "Eure Seite öffnen", foot: "Für {t} mit 1LinkTrip gesendet. Dieser Link gilt nur für euren Haushalt." },
-  it: { s: "Siete invitati: {t}", std: "Segnate la data: {t}", hi: "Cari {n},", body: "Siete invitati a {t}{d}. Il vostro invito è qui sotto; nella vostra pagina trovate tutti i dettagli e potete rispondere per tutta la famiglia.", stdBody: "Segnate la data di {t}{d}. L’invito ufficiale seguirà; la vostra pagina ha già i dettagli.", btn: "Apri l’invito", stdBtn: "Apri la vostra pagina", foot: "Inviato per {t} con 1LinkTrip. Questo link è personale per la vostra famiglia." },
-  ja: { s: "ご招待：{t}", std: "日程のお知らせ：{t}", hi: "{n} 様", body: "{t}{d}にご招待いたします。招待状は下にございます。ページに詳細があり、ご家族全員分の出欠をまとめて返信できます。", stdBody: "{t}{d}の日程をお知らせします。正式な招待状は後日お送りします。詳細はページでご覧いただけます。", btn: "招待状を開く", stdBtn: "ページを開く", foot: "1LinkTrip から {t} のためにお送りしています。このリンクはご家族専用です。" },
+type InvMailT = { s: string; std: string; hi: string; body: string; stdBody: string; btn: string; stdBtn: string; foot: string };
+// one = a household of one (neutral singular "you"), many = two or more (plural "you"); greetings are "Hi"/"Hola"-style so
+// nothing is gendered ("Querido/a", "Chère, cher", "Liebe/r", "invitado" are gone)
+export const INV_MAIL: Record<string, { one: InvMailT; many: InvMailT }> = {
+  en: {
+    one: { s: "You’re invited: {t}", std: "Save the date: {t}", hi: "Dear {n},", body: "You’re invited to {t}{d}. Your invitation is below; your page has all the details, and you can reply there.", stdBody: "Please save the date for {t}{d}. A formal invitation will follow; your page already has the details.", btn: "Open your invitation", stdBtn: "Open your page", foot: "Sent for {t} with 1LinkTrip. This link is personal to you." },
+    many: { s: "You’re invited: {t}", std: "Save the date: {t}", hi: "Dear {n},", body: "You’re invited to {t}{d}. Your invitation is below; your page has all the details, and you can reply there for everyone in your household.", stdBody: "Please save the date for {t}{d}. A formal invitation will follow; your page already has the details.", btn: "Open your invitation", stdBtn: "Open your page", foot: "Sent for {t} with 1LinkTrip. This link is personal to your household." } },
+  es: {
+    one: { s: "Invitación: {t}", std: "Reserva la fecha: {t}", hi: "Hola, {n}:", body: "Te invitamos a {t}{d}. Tu invitación está abajo; en tu página están todos los detalles y puedes responder allí.", stdBody: "Reserva la fecha para {t}{d}. La invitación formal llegará más adelante; tu página ya tiene los detalles.", btn: "Abrir tu invitación", stdBtn: "Abrir tu página", foot: "Enviado para {t} con 1LinkTrip. Este enlace es solo para ti." },
+    many: { s: "Invitación: {t}", std: "Reserven la fecha: {t}", hi: "Hola, {n}:", body: "Nos encantaría contar con ustedes en {t}{d}. Su invitación está abajo; en su página están todos los detalles y pueden responder por todo su hogar.", stdBody: "Reserven la fecha para {t}{d}. La invitación formal llegará más adelante; su página ya tiene los detalles.", btn: "Abrir su invitación", stdBtn: "Abrir su página", foot: "Enviado para {t} con 1LinkTrip. Este enlace es personal para su hogar." } },
+  fr: {
+    one: { s: "Invitation : {t}", std: "Réservez la date : {t}", hi: "Bonjour {n},", body: "Nous avons le plaisir de vous inviter à {t}{d}. Votre invitation est ci-dessous ; votre page contient tous les détails et vous pouvez y répondre.", stdBody: "Réservez la date pour {t}{d}. L’invitation officielle suivra ; votre page contient déjà les détails.", btn: "Ouvrir votre invitation", stdBtn: "Ouvrir votre page", foot: "Envoyé pour {t} avec 1LinkTrip. Ce lien vous est personnel." },
+    many: { s: "Invitation : {t}", std: "Réservez la date : {t}", hi: "Bonjour {n},", body: "Nous avons le plaisir de vous inviter à {t}{d}. Votre invitation est ci-dessous ; votre page contient tous les détails et vous pouvez y répondre pour tout votre foyer.", stdBody: "Réservez la date pour {t}{d}. L’invitation officielle suivra ; votre page contient déjà les détails.", btn: "Ouvrir votre invitation", stdBtn: "Ouvrir votre page", foot: "Envoyé pour {t} avec 1LinkTrip. Ce lien est personnel à votre foyer." } },
+  pt: {
+    one: { s: "Convite: {t}", std: "Reserve a data: {t}", hi: "Olá, {n},", body: "Temos o prazer de convidar você para {t}{d}. Seu convite está abaixo; sua página tem todos os detalhes, e você pode responder por lá.", stdBody: "Reserve a data para {t}{d}. O convite oficial virá depois; sua página já tem os detalhes.", btn: "Abrir seu convite", stdBtn: "Abrir sua página", foot: "Enviado para {t} com o 1LinkTrip. Este link é só seu." },
+    many: { s: "Convite: {t}", std: "Reservem a data: {t}", hi: "Olá, {n},", body: "Temos o prazer de convidar vocês para {t}{d}. O convite de vocês está abaixo; a página de vocês tem todos os detalhes, e vocês podem responder por todos da casa.", stdBody: "Reservem a data para {t}{d}. O convite oficial virá depois; a página de vocês já tem os detalhes.", btn: "Abrir o convite", stdBtn: "Abrir a página", foot: "Enviado para {t} com o 1LinkTrip. Este link é pessoal para a casa de vocês." } },
+  de: {
+    one: { s: "Einladung: {t}", std: "Save the Date: {t}", hi: "Hallo {n},", body: "Wir laden dich herzlich zu {t}{d} ein. Deine Einladung siehst du unten; auf deiner Seite stehen alle Details, und du kannst dort antworten.", stdBody: "Bitte merk dir den Termin für {t}{d} vor. Die offizielle Einladung folgt; auf deiner Seite stehen schon die Details.", btn: "Einladung öffnen", stdBtn: "Deine Seite öffnen", foot: "Für {t} mit 1LinkTrip gesendet. Dieser Link gilt nur für dich." },
+    many: { s: "Einladung: {t}", std: "Save the Date: {t}", hi: "Hallo {n},", body: "Wir laden euch herzlich zu {t}{d} ein. Eure Einladung seht ihr unten; auf eurer Seite stehen alle Details, und ihr könnt dort für euren ganzen Haushalt antworten.", stdBody: "Bitte merkt euch den Termin für {t}{d} vor. Die offizielle Einladung folgt; auf eurer Seite stehen schon die Details.", btn: "Einladung öffnen", stdBtn: "Eure Seite öffnen", foot: "Für {t} mit 1LinkTrip gesendet. Dieser Link gilt nur für euren Haushalt." } },
+  it: {
+    one: { s: "Invito: {t}", std: "Segna la data: {t}", hi: "Ciao {n},", body: "Abbiamo il piacere di invitarti a {t}{d}. Il tuo invito è qui sotto; nella tua pagina trovi tutti i dettagli e puoi rispondere lì.", stdBody: "Segna la data di {t}{d}. L’invito ufficiale seguirà; la tua pagina ha già i dettagli.", btn: "Apri l’invito", stdBtn: "Apri la tua pagina", foot: "Inviato per {t} con 1LinkTrip. Questo link è solo per te." },
+    many: { s: "Invito: {t}", std: "Segnate la data: {t}", hi: "Ciao {n},", body: "Abbiamo il piacere di invitarvi a {t}{d}. Il vostro invito è qui sotto; nella vostra pagina trovate tutti i dettagli e potete rispondere per tutta la famiglia.", stdBody: "Segnate la data di {t}{d}. L’invito ufficiale seguirà; la vostra pagina ha già i dettagli.", btn: "Apri l’invito", stdBtn: "Apri la vostra pagina", foot: "Inviato per {t} con 1LinkTrip. Questo link è personale per la vostra famiglia." } },
+  ja: {
+    one: { s: "ご招待：{t}", std: "日程のお知らせ：{t}", hi: "{n} 様", body: "{t}{d}にご招待いたします。招待状は下にございます。ページに詳細があり、そちらからご返信いただけます。", stdBody: "{t}{d}の日程をお知らせします。正式な招待状は後日お送りします。詳細はページでご覧いただけます。", btn: "招待状を開く", stdBtn: "ページを開く", foot: "1LinkTrip から {t} のためにお送りしています。このリンクはご本人専用です。" },
+    many: { s: "ご招待：{t}", std: "日程のお知らせ：{t}", hi: "{n} 様", body: "{t}{d}にご招待いたします。招待状は下にございます。ページに詳細があり、ご家族全員分の出欠をまとめて返信できます。", stdBody: "{t}{d}の日程をお知らせします。正式な招待状は後日お送りします。詳細はページでご覧いただけます。", btn: "招待状を開く", stdBtn: "ページを開く", foot: "1LinkTrip から {t} のためにお送りしています。このリンクはご家族専用です。" } },
 };
 const SEND_PAUSE_MS = 150; // Resend allows 10 requests a second; one batch call per 150 ms stays well under
 const BATCH = 100; // Resend batch: up to 100 emails a call
@@ -292,10 +315,15 @@ export function personalLink(slug: string, name: string | null, tok: string, lan
 }
 export const publicUrl = (supaUrl: string, path: string) => `${supaUrl.replace(/\/$/, "")}/storage/v1/object/public/${INV_BUCKET}/${path.split("/").map(encodeURIComponent).join("/")}`;
 // the greeting: the household's name, or the first names of the adults the organizer listed ("Michael and Sarah")
+// two or more people (or a household with nobody listed yet, e.g. "The Kims") → the plural forms
+export function manyOf(h: Row, people: Row[]): boolean {
+  const ps = people.filter((p) => (!p.household_id || p.household_id === h.id) && p.added_by === "host");
+  return ps.length !== 1;
+}
 export function greetingOf(h: Row, people: Row[], lang: string): string {
   let n = String(h.name || "").slice(0, 120);
   if (h.greeting === "names") {
-    const fs = people.filter((p) => p.household_id === h.id && p.added_by === "host" && p.age !== "child" && p.age !== "infant").map((p) => String(p.name || "").trim().split(/\s+/)[0]).filter(Boolean);
+    const fs = people.filter((p) => (!p.household_id || p.household_id === h.id) && p.added_by === "host" && p.age !== "child" && p.age !== "infant").map((p) => String(p.name || "").trim().split(/\s+/)[0]).filter(Boolean);
     if (fs.length) n = joinNames(fs, lang);
   }
   return n;
@@ -311,8 +339,8 @@ export function senderOf(from: string, title: string) { // "Ana & Ben via 1LinkT
   return nm ? `"${nm} via 1LinkTrip" <${addr}>` : from;
 }
 // one invitation email
-export function inviteMail(o: { to: string; kind: string; lang: string; title: string; cfg: Row; greet: string; link: string; img: string | null; w?: number; h?: number; test?: boolean }): Mail {
-  const T = INV_MAIL[o.lang] || INV_MAIL.en; const std = o.kind === "save_the_date";
+export function inviteMail(o: { to: string; kind: string; lang: string; title: string; cfg: Row; greet: string; link: string; img: string | null; w?: number; h?: number; test?: boolean; many?: boolean }): Mail {
+  const T = (INV_MAIL[o.lang] || INV_MAIL.en)[o.many === false ? "one" : "many"]; const std = o.kind === "save_the_date";
   const v = { t: o.title, n: o.greet, d: dateLine(o.cfg, o.lang) };
   const subject = (o.test ? "[Test] " : "") + fill(std ? T.std : T.s, v);
   const hi = fill(T.hi, v), body = fill(std ? T.stdBody : T.body, v), btn = std ? T.stdBtn : T.btn, foot = fill(T.foot, v);
@@ -380,7 +408,7 @@ export async function drain(d: Deps, now: number, eid: string | null, force = fa
     if (why) { await d.admin.from("invite_sends").update({ status: "failed", error: why }).eq("id", r.id); out.failed++; continue; }
     const lang = r.lang && INV_MAIL[r.lang] ? r.lang : (INV_MAIL[c!.src] ? c!.src : "en");
     const img = pickImage(inv!, r.lang, c!.src); const path = r.image_path || (img && img.path) || null;
-    const m = inviteMail({ to: h!.email, kind: r.kind, lang, title: titleIn(c!.cfg, r.lang), cfg: c!.cfg, greet: greetingOf(h!, ppl, lang), link: personalLink(c!.ev.slug, c!.name, h!.token, r.lang && r.lang !== c!.src ? r.lang : ""),
+    const m = inviteMail({ to: h!.email, kind: r.kind, lang, title: titleIn(c!.cfg, r.lang), cfg: c!.cfg, greet: greetingOf(h!, ppl, lang), many: manyOf(h!, ppl), link: personalLink(c!.ev.slug, c!.name, h!.token, r.lang && r.lang !== c!.src ? r.lang : ""),
       img: path ? publicUrl(SUPA(), path) : null, w: img && img.w, h: img && img.h });
     m.from = senderOf(from, titleIn(c!.cfg, c!.src)); m.to = h!.email;
     ready.push({ r, m });
@@ -444,7 +472,7 @@ async function invites(d: Deps, me: Row & { id: string }, b: Row, now: number): 
     const ml = lang && INV_MAIL[lang] ? lang : (INV_MAIL[c.src] ? c.src : "en");
     const img = pickImage(inv, lang, c.src);
     const who = String((me.user_metadata && (me.user_metadata.full_name || me.user_metadata.name)) || "").trim().split(/\s+/)[0];
-    const m = inviteMail({ to, kind: inv.kind, lang: ml, title: titleIn(c.cfg, lang), cfg: c.cfg, greet: h ? greetingOf(h, ppl, ml) : (who || to.split("@")[0]),
+    const m = inviteMail({ to, kind: inv.kind, lang: ml, title: titleIn(c.cfg, lang), cfg: c.cfg, greet: h ? greetingOf(h, ppl, ml) : (who || to.split("@")[0]), many: h ? manyOf(h, ppl) : false,
       link: h ? personalLink(c.ev.slug, c.name, h.token, lang && lang !== c.src ? lang : "") : (c.name ? SITE + c.name : `${SITE}?e=${c.ev.slug}`), img: img ? publicUrl(SUPA(), img.path) : null, w: img && img.w, h: img && img.h, test: true });
     m.from = senderOf((globalThis as { Deno?: { env: { get(k: string): string | undefined } } }).Deno?.env.get("NOTIFY_FROM") || "1LinkTrip <onboarding@resend.dev>", titleIn(c.cfg, c.src));
     try { const sb = d.sendBatch || (async (ms: Mail[]) => { await d.send(ms); return [""]; }); await sb([m]); }

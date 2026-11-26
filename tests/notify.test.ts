@@ -98,7 +98,7 @@ Deno.test("planner invite: owner only, resend after 10 min; household invite in 
   const P1 = "00000000-0000-0000-0000-0000000000b9", HH = "00000000-0000-0000-0000-0000000000d9";
   db.t.page_planners = [{ id: P1, event_id: E, email: "ana@x.com", token: "a".repeat(32), user_id: null, accepted_at: null, notified_at: null }];
   db.t.events[0].config = { title: "Ana & Ben", lang: "en", langs: ["es"], tr: { es: { title: { h: 1, t: "Ana y Ben" } } } };
-  db.t.guest_households = [{ id: HH, event_id: E, name: "The Garcias", email: "garcia@x.com", lang: "es", token: "b".repeat(24), notified_at: null }];
+  db.t.guest_households = [{ id: HH, event_id: E, name: "The Garcias", email: "garcia@x.com", lang: "es", token: "b".repeat(24), notified_at: null }]; db.t.guest_people = [];
   assert((await call(X, { kind: "planner", id: P1 }, deps)).status === 403, "a stranger cannot send a planner invite");
   let r = await call(H, { kind: "planner", id: P1 }, deps);
   assert(r.j.sent === 1 && sent[0].to === "ana@x.com" && sent[0].text.includes("?e=w-abc12&p=" + "a".repeat(32)), "owner's invite carries the link: " + JSON.stringify(r.j));

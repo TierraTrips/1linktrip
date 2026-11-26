@@ -1,7 +1,7 @@
 // Tests for the invitation emails in ai/notify.ts (kinds invite / invite_test / invite_status / drain) with an in-memory
 // stand-in for the Supabase admin client, a captured Resend batch call and a fake clock.
 //   NOTIFY_TEST=1 deno test --allow-env tests/invites.test.ts
-import { handler, SendError, inviteMail, personalLink, greetingOf, allowance, nextUtcDay, type Mail } from "../ai/notify.ts";
+import { handler, SendError, inviteMail, personalLink, greetingOf, manyOf, allowance, nextUtcDay, type Mail } from "../ai/notify.ts";
 
 const assert = (c: unknown, m: string) => { if (!c) throw new Error(m); };
 const OWN = "00000000-0000-0000-0000-0000000000a1", PLN = "00000000-0000-0000-0000-0000000000a2", STR = "00000000-0000-0000-0000-0000000000a3";
@@ -74,12 +74,39 @@ Deno.test("pure parts: personal link, greeting, mail text per language", () => {
   assert(greetingOf({ id: "h", name: "The Smiths", greeting: "names" }, ppl, "es") === "Michael y Sarah", "joined in Spanish");
   assert(greetingOf({ id: "h", name: "The Smiths", greeting: "household" }, ppl, "en") === "The Smiths", "household name");
   const m = inviteMail({ to: "a@x.com", kind: "invitation", lang: "es", title: "Ana y Ben", cfg: { start: "2027-06-12" }, greet: "Michael y Sarah", link: "https://1linktrip.com/ana-ben?g=x", img: "https://s/x.jpg", w: 1200, h: 1680 });
-  assert(m.subject === "Estás invitado: Ana y Ben" && /Querido\/a Michael y Sarah:/.test(m.text) && /12 de junio de 2027/.test(m.text) && /Abrir tu invitación: https:\/\/1linktrip.com\/ana-ben\?g=x/.test(m.text), "Spanish invitation: " + m.subject + " | " + m.text);
+  assert(m.subject === "Invitación: Ana y Ben" && /Hola, Michael y Sarah:/.test(m.text) && /Nos encantaría contar con ustedes/.test(m.text) && /Abrir su invitación/.test(m.text) && !/Querido|invitad[oa]/.test(m.text) && /12 de junio de 2027/.test(m.text) && /Abrir su invitación: https:\/\/1linktrip.com\/ana-ben\?g=x/.test(m.text), "Spanish invitation: " + m.subject + " | " + m.text);
   assert(/<img src="https:\/\/s\/x.jpg" width="520" height="728"/.test(m.html) && /lang="es"/.test(m.html), "picture at email width, aspect kept");
   const x = inviteMail({ to: "a@x.com", kind: "save_the_date", lang: "en", title: "<b>A & B</b>", cfg: {}, greet: "Ann", link: "https://1linktrip.com/x?g=1", img: null, test: true });
   assert(x.subject === "[Test] Save the date: <b>A & B</b>" && !/<b>A/.test(x.html) && /&lt;b&gt;A &amp; B/.test(x.html) && !/<img/.test(x.html), "save the date, test prefix, escaped, no picture");
   const j = inviteMail({ to: "a@x.com", kind: "invitation", lang: "ja", title: "結婚式", cfg: { start: "2027-06-12" }, greet: "山田", link: "l", img: null });
   assert(j.subject === "ご招待：結婚式" && /山田 様/.test(j.text) && /2027年6月12日/.test(j.text), "Japanese: " + j.text);
+});
+
+Deno.test("number + gender: one person → neutral singular, two or more → plural, in all 7 languages", () => {
+  const mk = (lang: string, many: boolean, kind = "invitation") => inviteMail({ to: "a@x.com", kind, lang, title: "T", cfg: { start: "2027-06-12" }, greet: many ? "Ana y Luis" : "Ana", link: "L", img: null, many });
+  // what each form must (and must not) say: singular "you" vs plural "you"; nothing gendered (o/a, (a), /r, Chère/cher, Cari, invitado/a, convidado)
+  const GENDERED = /\bQuerid|o\/a\b|\(a\)|\/r\b|Chère|\bcher\b|\bCari\b|\binvitad[oa]s?\b|\bconvidad[oa]s?\b|\binvitat[oi]\b|\binvités?\b|\bLiebe/;
+  const want: Record<string, [RegExp, RegExp, RegExp, RegExp]> = { // [one must, one must not, many must, many must not]
+    es: [/Hola, Ana:[\s\S]*Te invitamos[\s\S]*Abrir tu invitación/, /ustedes|\bsu\b|pueden/, /Hola, Ana y Luis:[\s\S]*contar con ustedes[\s\S]*pueden responder por todo su hogar/, /\btu\b|puedes|Te invitamos/],
+    fr: [/Bonjour Ana,[\s\S]*vous inviter/, /foyer/, /Bonjour Ana y Luis,[\s\S]*pour tout votre foyer/, /vous est personnel/],
+    pt: [/Olá, Ana,[\s\S]*convidar você[\s\S]*Abrir seu convite/, /vocês/, /convidar vocês[\s\S]*todos da casa/, /você(?!s)|\bseu\b|\bsua\b/],
+    de: [/Hallo Ana,[\s\S]*laden dich[\s\S]*deiner Seite/, /\beuch\b|\beure?r?\b|\bihr\b/, /laden euch[\s\S]*ganzen Haushalt/, /\bdich\b|\bdu\b|\bdeine?r?\b/],
+    it: [/Ciao Ana,[\s\S]*invitarti[\s\S]*tua pagina/, /\bvi\b|vostr|invitarvi|trovate/, /invitarvi[\s\S]*vostra pagina[\s\S]*tutta la famiglia/, /invitarti|\btua\b|\btuo\b|trovi\b/],
+    ja: [/Ana 様[\s\S]*ご返信いただけます/, /ご家族/, /ご家族全員分/, /ご本人専用/],
+    en: [/Dear Ana,[\s\S]*reply there\./, /household/, /everyone in your household/, /personal to you\./],
+  };
+  for (const [l, [om, on, mm, mn]] of Object.entries(want)) {
+    for (const kind of ["invitation", "save_the_date"]) {
+      const one = mk(l, false, kind), many = mk(l, true, kind); const o = one.subject + "\n" + one.text, m = many.subject + "\n" + many.text;
+      assert(!GENDERED.test(o) && !GENDERED.test(m), `${l} ${kind}: no gendered forms\n${o}\n${m}`);
+      if (kind === "invitation") { assert(om.test(o) && !on.test(o), `${l} one person:\n${o}`); assert(mm.test(m) && !mn.test(m), `${l} two people:\n${m}`); }
+    }
+  }
+  assert(mk("es", false, "save_the_date").subject === "Reserva la fecha: T" && mk("es", true, "save_the_date").subject === "Reserven la fecha: T", "es save the date: tú vs ustedes");
+  assert(mk("it", false, "save_the_date").subject === "Segna la data: T" && mk("it", true, "save_the_date").subject === "Segnate la data: T", "it save the date: tu vs voi");
+  // who counts: the people the organizer listed in the household (none listed yet → plural, e.g. "The Kims")
+  const p = (n: number) => Array.from({ length: n }, (_, i) => ({ household_id: "h", name: "P" + i, age: "adult", added_by: "host" }));
+  assert(!manyOf({ id: "h" }, p(1)) && manyOf({ id: "h" }, p(2)) && manyOf({ id: "h" }, []) && !manyOf({ id: "h" }, [...p(1), { household_id: "h", name: "x", added_by: "guest" }, { household_id: "z", name: "y", added_by: "host" }]), "manyOf counts the household's host-listed people");
 });
 
 Deno.test("only the page's organizers can send; a stranger and other pages' households are refused", async () => {
@@ -103,7 +130,7 @@ Deno.test("send: personalized per household, language, link; no email → skippe
   let r = await call(PLN, { kind: "invite", id: INV, households: [hid(0), hid(1), hid(2), hid(3)] }, deps);
   assert(r.status === 200 && r.j.queued === 3 && r.j.sent === 3 && r.j.noEmail === 1 && calls.length === 1, "3 emailed in one batch call, 1 without email: " + JSON.stringify(r.j));
   const es = sent.find((m) => m.to === "h2@x.com")!; const en = sent.find((m) => m.to === "h0@x.com")!; const nm = sent.find((m) => m.to === "h3@x.com")!;
-  assert(es.subject === "Estás invitado: Ana y Ben" && /ana-ben\?g=a{24}&lang=es/.test(es.text) && /inv-es-aaaaaa\.jpg/.test(es.html), "Spanish household: Spanish text, title, picture and link: " + es.text);
+  assert(es.subject === "Invitación: Ana y Ben" && /ana-ben\?g=a{24}&lang=es/.test(es.text) && /inv-es-aaaaaa\.jpg/.test(es.html), "Spanish household: Spanish text, title, picture and link: " + es.text);
   assert(en.subject === "You’re invited: Ana & Ben" && /Dear House 0,/.test(en.text) && /https:\/\/1linktrip.com\/ana-ben\?g=a{24}\n/.test(en.text) && /inv-en-aaaaaa\.jpg/.test(en.html), "English household: " + en.text);
   assert(/Dear Michael and Sarah,/.test(nm.text), "first-name greeting");
   assert(en.from === '"Ana & Ben via 1LinkTrip" <onboarding@resend.dev>', "sender shows the page: " + en.from);
@@ -182,7 +209,7 @@ Deno.test("claims: a row being sent is never sent twice; stuck rows fail instead
 Deno.test("test email goes to the organizer only, personalized like the household chosen", async () => {
   const db = fakeDb(3); const { deps, sent } = mkDeps(db);
   let r = await call(PLN, { kind: "invite_test", id: INV, household: hid(2) }, deps);
-  assert(r.j.sent === 1 && r.j.to === "pat@x.com" && sent[0].to === "pat@x.com" && sent[0].subject === "[Test] Estás invitado: Ana y Ben" && /lang=es/.test(sent[0].text), "test to the planner, as the Spanish household: " + sent[0].subject);
+  assert(r.j.sent === 1 && r.j.to === "pat@x.com" && sent[0].to === "pat@x.com" && sent[0].subject === "[Test] Invitación: Ana y Ben" && /lang=es/.test(sent[0].text), "test to the planner, as the Spanish household: " + sent[0].subject);
   assert(db.t.invite_sends.length === 0, "a test is not a send");
   r = await call(OWN, { kind: "invite_test", id: INV, lang: "en" }, deps);
   assert(sent[1].to === "olly@x.com" && /Dear Olly,/.test(sent[1].text) && /https:\/\/1linktrip.com\/ana-ben\n/.test(sent[1].text), "no household: greets the organizer, plain page link: " + sent[1].text);
