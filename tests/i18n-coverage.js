@@ -5,7 +5,9 @@
 //  2. pseudo-locale (structural): every key renders as ⟦key⟧, so any English word still on screen that isn't the
 //     organizer's own content (example text, place / airport / airline names) is a string that skipped t().
 //     Guest demo (every tab, share sheet, a detail sheet, Nearby filters, My trip) and the organizer's own page
-//     (an itinerary item sheet + its … menu, a stop sheet, Settings with every accordion open, a card, Share).
+//     (an itinerary item sheet + its … menu, a stop sheet, Settings with every accordion open, a card, Share), and the
+//     organizers' list screens from made-up data: Settings → Planners + Guest list, the merge prompt, the guest list
+//     (Guests, Dietary, Groups, Seating) with its dialogs and the printed seating lists.
 //  3. each real language: the same screens rendered in es/fr/pt/de/it/ja; no t() lookup misses its table, and no
 //     English-only word is left (ja: no Latin word outside the brand / code allow-list).
 // 390 px, offline (third-party data APIs aborted).
@@ -41,7 +43,7 @@ const PH = (s) => (s.match(/\{\w+\}/g) || []).sort().join();
 
 // in-page: the organizer's content and place data, so it can be told apart from interface text
 const DATA_JS = `(() => { const out = new Set(); const walk = (v) => { if (typeof v === 'string') { if (v.length > 1) out.add(v); } else if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === 'object') Object.values(v).forEach(walk); };
-  [window.EXAMPLES, window.EXAMPLES_TR, window.OSM_SNAPSHOTS, window.AIRLINES, window.REGIONAL_AIRLINES].forEach(walk);
+  [window.EXAMPLES, window.EXAMPLES_TR, window.OSM_SNAPSHOTS, window.AIRLINES, window.REGIONAL_AIRLINES, window.__fakeData].forEach(walk);
   (window.AIRPORTS || []).forEach(a => { out.add(a[1]); out.add(a[2]); });
   return [...out].sort((a, b) => b.length - a.length); })()`;
 const COLLECT = () => {
@@ -83,6 +85,26 @@ async function screens(page, kind, url, cb) {
       if (tab === 'nearby' && await click('[data-pf-open]')) { await page.waitForTimeout(400); await grab('nearby filters'); await close(); }
       if (tab === 'mytrip' && await click('.ev-panel[data-panel="mytrip"] [data-ds]')) { await page.waitForTimeout(500); await grab('my trip detail sheet'); await close(); }
     }
+  } else if (kind === 'lists') {
+    // the organizers' list screens from made-up data, offline: Settings → Planners + Guest list (a hosted page with a team),
+    // the merge prompt, then #guests: Guests (selection bar, group by), Dietary, Groups, Seating, and their dialogs
+    await page.evaluate(LISTS_JS); await page.waitForTimeout(300);
+    await click('.b-top [data-act="settings"]'); await page.waitForTimeout(400);
+    await page.evaluate(() => document.querySelectorAll('details[data-acc="team"], details[data-acc="guests"]').forEach(d => { d.open = true; })); await page.waitForTimeout(200);
+    await grab('settings: planners + guest list');
+    await page.evaluate(() => { const X = window.__ep.lists; X.conflictDlg('Ana', [X.partName(X.B().cfg, 'f:title'), X.partName(X.B().cfg, 'f:tagline')]); }); await page.waitForTimeout(200); await grab('merge prompt');
+    await page.evaluate(() => { const d = document.querySelector('#mergedlg'); d.onclose = null; d.close(); });
+    const L = (body) => page.evaluate(`(() => { const X = window.__ep.lists; const G = X.G(); ${body} })()`);
+    await page.evaluate(() => { const X = window.__ep.lists; X.setG(window.__fakeG()); X.glMount(); const G = X.G(); G.sel.add(G.hs[0].id); X.glPaint(); }); await page.waitForTimeout(300); await grab('guest list');
+    await L('G.sel.clear(); G.by = true; G.filter = "norsvp"; X.glPaint();'); await grab('guest list by group');
+    for (const tab of ['diet', 'groups', 'seat']) { await L(`G.tab = '${tab}'; X.glPaint();`); await page.waitForTimeout(200); await grab('guest list ' + tab); }
+    await L('G.st.pend = true; G.ts[0].capacity = 1; X.glPaint();'); await grab('seating over capacity + no reply');
+    await L('G.ts = []; X.glPaint();'); await grab('seating, no tables'); await page.evaluate(() => { const X = window.__ep.lists; X.setG(window.__fakeG()); X.G().tab = 'seat'; X.glPaint(); });
+    const dlgs = ['X.glImportDlg(); const ta = document.querySelector("#gl-paste"); ta.value = "Ana Garcia, ana@example.com" + String.fromCharCode(10) + "Ben Okafor"; ta.dispatchEvent(new Event("input", { bubbles: true }));',
+      'X.glEditDlg(G.hs[0].id);', 'X.stPickDlg([G.ps[0].id], X.t("Seat {n}", { n: G.ps[0].name }), G.ps[0].id);', 'X.stEditDlg(G.ts[0].id);', 'X.stEditDlg(null);'];
+    for (const js of dlgs) { await L(js); await page.waitForTimeout(250); await grab('dialog ' + js.slice(0, 14)); await close(); }
+    await L('document.querySelector("#st-print")?.remove(); window.print = () => {}; X.stPrint("table");'); await page.waitForTimeout(150); await page.evaluate(() => { document.querySelector('#st-print').style.display = 'block'; }); await grab('print by table');
+    await L('X.stPrint("abc");'); await page.waitForTimeout(150); await grab('print find your table');
   } else {
     await grab('owner page');
     for (const ed of ['s:', 'st:', 'sec:details', 'hero', 'when']) {
@@ -98,10 +120,35 @@ async function screens(page, kind, url, cb) {
   }
   return shots;
 }
+// made-up organizer data for the 'lists' screens (names, groups and tables are the organizer's own content)
+const LISTS_JS = `(() => {
+  localStorage.setItem('ep:signedIn', 'true'); const X = window.__ep.lists; const B = X.B(); const buildForm = X.buildForm;
+  const ago = (m) => new Date(Date.now() - m * 60000).toISOString();
+  B.hosted = { id: 'e0', slug: 'cov-page', url: '', pub: true };
+  B.team = { me: 'u1', rows: [{ id: null, role: 'owner', name: 'Olly Owner', email: 'olly@example.com', joined: true, me: true }, { id: 'p1', role: 'planner', name: 'Ana Ruiz', email: 'ana@example.com', joined: true, me: false, token: 'a'.repeat(32) }, { id: 'p2', role: 'planner', name: '', email: 'sam@example.com', joined: false, me: false, token: 'b'.repeat(32) }],
+    act: [{ actor: 'u2', actor_name: 'Ana Ruiz', keys: ['f:title', 'f:tagline'], at: ago(5) }, { actor: 'u2', actor_name: 'Ana Ruiz', keys: ['sc-:zz'], at: ago(200) }, { actor: 'u1', actor_name: 'Olly Owner', keys: ['f:venue'], at: ago(3000) }] };
+  B.glSum = { n: 12, opened: 7 };
+  buildForm();
+  const gs = [{ id: 'g1', name: 'Bride family' }, { id: 'g2', name: 'Work friends' }];
+  const hs = [{ id: 'h1', name: 'Garcia household', lang: 'es', plus_ones: 1, greeting: 'names', group_id: 'g1', email: 'garcia@example.com', token: 'c'.repeat(24), first_opened_at: ago(90), opens: 3, sort: 1 },
+    { id: 'h2', name: 'Okafor household', lang: '', plus_ones: 0, greeting: 'household', group_id: 'g2', token: 'd'.repeat(24), opens: 0, sort: 2 },
+    { id: 'h3', name: 'Kim household', lang: '', plus_ones: 0, greeting: 'household', group_id: null, token: 'e'.repeat(24), opens: 0, sort: 3 }];
+  const P = (id, hid, name, age, extra) => ({ id, household_id: hid, name, age, plus_ones: 0, added_by: 'host', sort: 0, created_at: ago(1000), table_id: null, ...(extra || {}) });
+  const ps = [P('p1', 'h1', 'Ana Garcia', 'adult', { plus_ones: 1, table_id: 't1' }), P('p2', 'h1', 'Sofi Garcia', 'child', { table_id: 't1' }), P('p3', 'h1', 'Marta Ruiz', 'adult', { added_by: 'guest', plus_of: 'p1' }),
+    P('p4', 'h2', 'Ben Okafor', 'adult'), P('p5', 'h3', 'Jae Kim', 'adult'), P('p6', 'h3', 'Ida Kim', 'infant', { table_id: 't2' })];
+  const note = (x) => '[[1lt:' + JSON.stringify({ v: 1, ...x }) + ']]';
+  const rs = [{ person_id: 'p1', attending: true, note: note({ diets: ['vegetarian'], meal: 'Fish', diet: 'Sesame allergy' }), created_at: ago(60) }, { person_id: 'p2', attending: true, note: note({ diets: ['nut_allergy'] }), created_at: ago(60) },
+    { person_id: 'p3', attending: true, note: null, created_at: ago(60) }, { person_id: 'p4', attending: false, note: null, created_at: ago(30) }, { person_id: 'p6', attending: true, note: null, created_at: ago(20) }];
+  const ts = [{ id: 't1', name: 'Rose', shape: 'round', capacity: 8, head: false, sort: 0, x: null, y: null }, { id: 't2', name: 'Lily', shape: 'rect', capacity: 6, head: true, sort: 1, x: null, y: null }];
+  window.__fakeData = ['Olly Owner', 'Ana Ruiz', 'Ana', 'Olly', 'Fish', 'Sesame allergy', ...gs.map(g => g.name), ...hs.map(h => h.name), ...ps.map(p => p.name), ...ps.map(p => p.name.split(' ')[0]), ...ts.map(t => t.name), 'GG', 'AG', 'SG', 'IK', 'garcia@example.com', '?e=cov-page', 'cov-page'];
+  window.__fakeG = () => ({ eid: 'e0', ev: { id: 'e0', slug: 'cov-page', published: false }, cfg: B.cfg, filter: 'all', grp: '', by: false, sel: new Set(), tab: 'list',
+    hs: JSON.parse(JSON.stringify(hs)), ps: JSON.parse(JSON.stringify(ps)), rs, gs, hot: new Map([['h1', true], ['h2', false]]), opens: 3, ts: JSON.parse(JSON.stringify(ts)), seat: { show: true },
+    st: { pend: false, grp: '', q: '', hh: false, fold: false, view: 'cards' } });
+})()`;
 const WORD = /[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’]{2,}/g; const isL = (c) => !!c && /[A-Za-zÀ-ÖØ-öø-ÿ]/.test(c);
 // remove the organizer's content / place data: the whole text when it is part of one, else each whole-word occurrence
 const BRANDS = ['Open-Meteo', '1LinkTrip', 'LinkTrip', 'Wi-Fi'];
-const strip = (s, D) => { let x = s; for (let y = ''; y !== x;) { y = x; x = x.replace(/⟦[^⟦⟧]*⟧/g, ' '); } for (const b of BRANDS) x = x.split(b).join(' ');
+const strip = (s, D) => { let x = s; for (let y = ''; y !== x;) { y = x; x = x.replace(/⟦[^⟦⟧]*⟧/g, ' '); } x = x.replace(/^[^⟦]*⟧/, ' ').replace(/⟦[^⟧]*$/, ' '); /* a phrase split by markup inside it (a bold number, a bold name) */ for (const b of BRANDS) x = x.split(b).join(' ');
   if (/[A-Za-z]{3}/.test(x) && D.blob.includes(x.trim())) return '';
   if (/[A-Za-z]{3}/.test(x)) for (const d of D.segs) { if (!x.includes(d)) continue; let i = 0, out = ''; for (let j = x.indexOf(d); j >= 0; j = x.indexOf(d, j + 1)) { if (!isL(x[j - 1]) && !isL(x[j + d.length])) { out += x.slice(i, j) + ' '; i = j + d.length; } } x = out + x.slice(i); if (!/[A-Za-z]{3}/.test(x)) break; }
   // links, emails, codes (IATA, currency)
@@ -110,7 +157,7 @@ const dataOf = (list) => { const segs = new Set(); for (const v of list) for (co
 
 (async () => {
   const browser = await chromium.launch();
-  const SCREENS = [['guest', '?demo=japan&lang=$L'], ['guest', '?demo=wedding&lang=$L'], ['owner', '#edit-ex=japan-trip'], ['owner', '#edit-ex=tulum-wedding']];
+  const SCREENS = [['guest', '?demo=japan&lang=$L'], ['guest', '?demo=wedding&lang=$L'], ['owner', '#edit-ex=japan-trip'], ['owner', '#edit-ex=tulum-wedding'], ['lists', '#edit-ex=tulum-wedding']];
   try {
     // ---------- 2. pseudo-locale ----------
     {

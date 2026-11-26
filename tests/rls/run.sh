@@ -16,7 +16,8 @@ q -f "$ROOT/supabase/schema-5.sql"; q -f "$ROOT/supabase/schema-5.sql"
 [ -n "${EXTRA_SQL:-}" ] && q -f "$EXTRA_SQL" # e.g. a part not committed yet, to test against it
 q -f "$ROOT/supabase/schema-6.sql"; q -f "$ROOT/supabase/schema-6.sql"
 q -f "$ROOT/supabase/schema-names.sql"; q -f "$ROOT/supabase/schema-names.sql"
-OUT="$(PGOPTIONS="-c client_min_messages=notice" "$PG/psql" -h "$DIR" -p "$PORT" -U postgres -X -q -v ON_ERROR_STOP=1 -f "$HERE/messaging.sql" -f "$HERE/private.sql" -f "$HERE/shares.sql" -f "$HERE/names.sql" -f "$HERE/team.sql" 2>&1 | sed -n 's/.*NOTICE:  //p')"
+q -f "$ROOT/supabase/schema-seating.sql"; q -f "$ROOT/supabase/schema-seating.sql"
+OUT="$(PGOPTIONS="-c client_min_messages=notice" "$PG/psql" -h "$DIR" -p "$PORT" -U postgres -X -q -v ON_ERROR_STOP=1 -f "$HERE/messaging.sql" -f "$HERE/private.sql" -f "$HERE/shares.sql" -f "$HERE/names.sql" -f "$HERE/team.sql" -f "$HERE/seating.sql" 2>&1 | sed -n 's/.*NOTICE:  //p')"
 echo "$OUT"
 n_ok=$(grep -c '^ok' <<<"$OUT" || true); n_fail=$(grep -c '^FAIL' <<<"$OUT" || true)
 echo "$n_ok ok, $n_fail failed"
