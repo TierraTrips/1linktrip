@@ -4280,20 +4280,20 @@ async function pnAfterPublish(h, first) {
 // open: the field is showing. A page without a name shows it straight away (with the offered name)
 function pnEditHTML(h, open) {
   const cur = pnName(h.slug); const val = cur || (B && B.pnSug) || '';
-  if (!open) return `<div class="pn" data-pn data-pn-eid="${esc(h.id)}" data-pn-slug="${esc(h.slug)}"><p class="pn-cur">${cur ? `Link name: <b>${esc(pnPrefix())}${esc(cur)}</b> <button type="button" class="link" data-pn-open>Change</button>` : `<button type="button" class="link" data-pn-open>Choose a link name: ${esc(pnPrefix())}…</button>`}</p></div>`;
-  return `<div class="pn open" data-pn data-pn-eid="${esc(h.id)}" data-pn-slug="${esc(h.slug)}"><label for="pn-in-${esc(h.slug)}">${cur ? 'Change the link' : 'Choose a link name'}</label>
-    <div class="pn-row"><span class="pn-pre" aria-hidden="true">${esc(pnPrefix())}</span><input id="pn-in-${esc(h.slug)}" data-pn-in value="${esc(val)}" maxlength="40" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" inputmode="url" aria-describedby="pn-st-${esc(h.slug)}"><button type="button" class="btn sm primary" data-pn-save disabled>${cur ? 'Save' : 'Use this link'}</button>${cur ? '<button type="button" class="btn sm ghost" data-pn-cancel>Cancel</button>' : ''}</div>
-    <small class="pn-st muted" id="pn-st-${esc(h.slug)}" data-pn-st role="status" aria-live="polite">${cur ? 'Old links keep working.' : ''}</small></div>`;
+  if (!open) return `<div class="pn" data-pn data-pn-eid="${esc(h.id)}" data-pn-slug="${esc(h.slug)}"><p class="pn-cur">${cur ? `${t('Link name:')} <b>${esc(pnPrefix())}${esc(cur)}</b> <button type="button" class="link" data-pn-open>${t('Change')}</button>` : `<button type="button" class="link" data-pn-open>${t('Choose a link name:')} ${esc(pnPrefix())}…</button>`}</p></div>`;
+  return `<div class="pn open" data-pn data-pn-eid="${esc(h.id)}" data-pn-slug="${esc(h.slug)}"><label for="pn-in-${esc(h.slug)}">${t(cur ? 'Change the link' : 'Choose a link name')}</label>
+    <div class="pn-row"><span class="pn-pre" aria-hidden="true">${esc(pnPrefix())}</span><input id="pn-in-${esc(h.slug)}" data-pn-in value="${esc(val)}" maxlength="40" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" inputmode="url" aria-describedby="pn-st-${esc(h.slug)}"><button type="button" class="btn sm primary" data-pn-save disabled>${t(cur ? 'Save' : 'Use this link')}</button>${cur ? `<button type="button" class="btn sm ghost" data-pn-cancel>${t('Cancel')}</button>` : ''}</div>
+    <small class="pn-st muted" id="pn-st-${esc(h.slug)}" data-pn-st role="status" aria-live="polite">${cur ? t('Old links keep working.') : ''}</small></div>`;
 }
 const pnCheck = debounce(async (box) => {
   const inp = box.querySelector('[data-pn-in]'), st = box.querySelector('[data-pn-st]'), btn = box.querySelector('[data-pn-save]'); if (!inp) return;
   const n = inp.value; const seq = box._seq = (box._seq || 0) + 1;
-  const put = (k) => { if (box._seq !== seq) return; st.textContent = PN_MSG[k] || ''; st.dataset.k = k; btn.disabled = !(k === 'ok' || k === 'alias'); };
+  const put = (k) => { if (box._seq !== seq) return; st.textContent = PN_MSG[k] ? t(PN_MSG[k]) : ''; st.dataset.k = k; btn.disabled = !(k === 'ok' || k === 'alias'); };
   if (!n) { st.textContent = ''; btn.disabled = true; return; }
   const bad = nameProblem(n); if (bad) return put(bad);
-  st.textContent = 'Checking…'; st.dataset.k = ''; btn.disabled = true;
+  st.textContent = t('Checking…'); st.dataset.k = ''; btn.disabled = true;
   try { const c = await sb(); const { data, error } = await c.rpc('page_name_check', { nm: n, eid: box.dataset.pnEid }); if (error) throw error; put(String(data)); }
-  catch (e) { if (box._seq === seq) { st.textContent = navigator.onLine === false ? 'You’re offline.' : 'Couldn’t check that name. Try again.'; st.dataset.k = ''; } }
+  catch (e) { if (box._seq === seq) { st.textContent = t(navigator.onLine === false ? 'You’re offline.' : 'Couldn’t check that name. Try again.'); st.dataset.k = ''; } }
 }, 300);
 // an open field: check what's in it, or offer a name made from the title
 async function pnFill(box) {
@@ -4322,13 +4322,13 @@ function pnWire() {
     if ('pnOpen' in b.dataset) { box.outerHTML = pnEditHTML(h, true); const i = document.getElementById('pn-in-' + h.slug); if (!i) return; i.focus(); i.select(); pnFill(i.closest('[data-pn]')); return; }
     if ('pnCancel' in b.dataset) { box.outerHTML = pnEditHTML(h, false); return; }
     const inp = box.querySelector('[data-pn-in]'), st = box.querySelector('[data-pn-st]'); const n = inp.value;
-    if (nameProblem(n)) { st.textContent = PN_MSG[nameProblem(n)]; return; }
-    b.disabled = true; st.textContent = 'Saving…';
+    if (nameProblem(n)) { st.textContent = t(PN_MSG[nameProblem(n)]); return; }
+    b.disabled = true; st.textContent = t('Saving…');
     try {
       const c = await sb(); const { data, error } = await c.rpc('page_name_set', { eid: h.id, nm: n }); if (error) throw error;
       const had = pnName(h.slug); pnRemember(had, h.slug, data); if (B) B.pnSug = '';
-      pnRepaint(h.slug); toast(had ? 'Link changed. The old link still works.' : 'Link saved'); dispatchEvent(new Event('ep-pages'));
-    } catch (er) { b.disabled = false; st.textContent = navigator.onLine === false ? 'You’re offline.' : (er && er.message) || 'Couldn’t save. Try again.'; }
+      pnRepaint(h.slug); toast(t(had ? 'Link changed. The old link still works.' : 'Link saved')); dispatchEvent(new Event('ep-pages'));
+    } catch (er) { b.disabled = false; st.textContent = navigator.onLine === false ? t('You’re offline.') : (er && er.message) || t('Couldn’t save. Try again.'); }
   });
 }
 function renderPubHost() { const box = $('#pub-host'); if (box) box.innerHTML = pubHostHTML(); }
@@ -4393,7 +4393,7 @@ async function renderMine(id, notice) {
   if (error) return shell(`<h1>${t('My pages')}</h1><p>${t('Couldn’t load your pages.')} ${esc(error.message)}</p>`);
   shell(`<div class="mine-h"><h1>${t('My pages')}</h1><span class="muted small">${esc(user.email || '')} · <button type="button" class="link" data-mine="signout">${t('Sign out')}</button></span></div>
     <section data-slot="mine-inbox"></section>
-    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || t('Untitled'))}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · not shared'}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(r.slug))}</a>` : ''}</div><div class="btns"><button type="button" class="btn sm primary" data-mine-edit="${esc(r.id)}">${t('Open')}</button><a class="btn sm" href="#mine/${esc(r.id)}">${t('Replies and updates')}</a>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">${t('Copy link')}</button>` : ''}<button type="button" class="btn sm ghost" data-mine-del="${esc(r.id)}" aria-label="${esc(t('Delete {n}', { n: cfg.title || t('Untitled') }))}">${t('Delete')}</button></div></li>`; }).join('')}</ul>` : `<p class="lede">${t('No short links yet. Make a page, tap Share, then Get a short link.')}</p><a class="btn primary" href="#setup">${t('Make a page')}</a>`}`);
+    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || t('Untitled'))}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · ' + t('not shared')}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(r.slug))}</a>` : ''}</div><div class="btns"><button type="button" class="btn sm primary" data-mine-edit="${esc(r.id)}">${t('Open')}</button><a class="btn sm" href="#mine/${esc(r.id)}">${t('Replies and updates')}</a>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">${t('Copy link')}</button>` : ''}<button type="button" class="btn sm ghost" data-mine-del="${esc(r.id)}" aria-label="${esc(t('Delete {n}', { n: cfg.title || t('Untitled') }))}">${t('Delete')}</button></div></li>`; }).join('')}</ul>` : `<p class="lede">${t('No short links yet. Make a page, tap Share, then Get a short link.')}</p><a class="btn primary" href="#setup">${t('Make a page')}</a>`}`);
   mineInbox(c, data).catch(() => {});
   if (data.length) msgReady().then(async ok => { // "2 new" next to pages with unanswered guest messages
     if (!ok) return; const { data: ms } = await c.from('event_messages').select('event_id,guest,from_host,created_at').in('event_id', data.map(x => x.id)).order('created_at', { ascending: true }).limit(5000);
@@ -7160,7 +7160,7 @@ function routeClick(b, cfg) {
     const snap = clone(cfg); const pk = planKey(cfg), plan0 = LS.get(pk, null), sk = 'shifted:' + syncKey(cfg), done0 = LS.get(sk, null);
     shiftDates(cfg, '', n); B.shift = null; changed(true);
     B.shiftUndo = () => { B.shiftUndo = null; Object.keys(cfg).forEach(k => delete cfg[k]); Object.assign(cfg, snap); if (plan0 == null) LS.del(pk); else LS.set(pk, plan0); if (done0 == null) LS.del(sk); else LS.set(sk, done0); changed(true); };
-    renderSheet(); toast(`Trip moved to ${tripSpanTxt(cfg)}`);
+    renderSheet(); toast(t('Trip moved to {d}', { d: tripSpanTxt(cfg) }));
   }
   return true;
 }
