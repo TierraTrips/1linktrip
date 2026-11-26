@@ -4391,7 +4391,7 @@ async function renderMine(id, notice) {
   if (error) return shell(`<h1>${t('My pages')}</h1><p>${t('Couldn’t load your pages.')} ${esc(error.message)}</p>`);
   shell(`<div class="mine-h"><h1>${t('My pages')}</h1><span class="muted small">${esc(user.email || '')} · <button type="button" class="link" data-mine="signout">${t('Sign out')}</button></span></div>
     <section data-slot="mine-inbox"></section>
-    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · not shared'}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(r.slug))}</a>` : ''}</div><div class="btns"><button type="button" class="btn sm primary" data-mine-edit="${esc(r.id)}">${t('Open')}</button><a class="btn sm" href="#mine/${esc(r.id)}">${t('Replies and updates')}</a>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">${t('Copy link')}</button>` : ''}<button type="button" class="btn sm ghost" data-mine-del="${esc(r.id)}" aria-label="Delete ${esc(cfg.title || 'Untitled')}">${t('Delete')}</button></div></li>`; }).join('')}</ul>` : `<p class="lede">${t('No short links yet. Make a page, tap Share, then Get a short link.')}</p><a class="btn primary" href="#setup">${t('Make a page')}</a>`}`);
+    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || t('Untitled'))}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · not shared'}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(r.slug))}</a>` : ''}</div><div class="btns"><button type="button" class="btn sm primary" data-mine-edit="${esc(r.id)}">${t('Open')}</button><a class="btn sm" href="#mine/${esc(r.id)}">${t('Replies and updates')}</a>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">${t('Copy link')}</button>` : ''}<button type="button" class="btn sm ghost" data-mine-del="${esc(r.id)}" aria-label="${esc(t('Delete {n}', { n: cfg.title || t('Untitled') }))}">${t('Delete')}</button></div></li>`; }).join('')}</ul>` : `<p class="lede">${t('No short links yet. Make a page, tap Share, then Get a short link.')}</p><a class="btn primary" href="#setup">${t('Make a page')}</a>`}`);
   mineInbox(c, data).catch(() => {});
   if (data.length) msgReady().then(async ok => { // "2 new" next to pages with unanswered guest messages
     if (!ok) return; const { data: ms } = await c.from('event_messages').select('event_id,guest,from_host,created_at').in('event_id', data.map(x => x.id)).order('created_at', { ascending: true }).limit(5000);
@@ -4404,7 +4404,7 @@ async function renderMine(id, notice) {
     if (b.dataset.mine === 'signout') { await c.auth.signOut(); LS.del('signedIn'); LS.del('draftHosted'); location.hash = '#'; }
     if (b.dataset.mineCopy) copy(shortURL(b.dataset.mineCopy));
     if (b.dataset.mineDel) {
-      const r = data.find(x => x.id === b.dataset.mineDel); if (!r) return; const name = normalize(r.config).title || 'Untitled';
+      const r = data.find(x => x.id === b.dataset.mineDel); if (!r) return; const name = normalize(r.config).title || t('Untitled');
       if (!await confirmDlg({ title: t('Delete “{n}”?', { n: name }), body: t(r.published ? 'It’s removed from your account on every device, its link stops working, and its replies and updates are deleted too.' : 'It’s removed from your account on every device and its replies and updates are deleted too.'), ok: t('Delete') })) return;
       b.disabled = true;
       try { await pageDelete({ id: r.id }); } catch (err) { b.disabled = false; toast(t('Couldn’t delete:') + ' ' + pubWhy(err)); return; }
@@ -4462,7 +4462,7 @@ async function renderMineEvent(id, shell, c, user) {
   const replies = [...latest.values()].reverse().map(x => { const p = rqParse(x.note); return { ...x, note: p.text, x: p.x || {} }; }); const yes = replies.filter(x => x.attending); const no = replies.filter(x => !x.attending);
   const RQ = rqReplyCols(cfg, replies); const rqSum = rqSummary(yes);
   const guests = LS.get(guestListKey(id), []) || []; const waiting = notReplied(guests, replies);
-  shell(`<p><a href="#mine">${t('← My pages')}</a></p><div class="mine-h"><h1>${esc(cfg.title || 'Untitled')}</h1><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(r.slug))}</a></div>
+  shell(`<p><a href="#mine">${t('← My pages')}</a></p><div class="mine-h"><h1>${esc(cfg.title || t('Untitled'))}</h1><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(r.slug))}</a></div>
     ${msgs ? `<section class="mine-sec" id="mine-msgs"><h2>${t('Messages')}</h2><label class="tool gm-on"><input type="checkbox" data-gm-on ${cfg.guestMessages ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${t('Let guests message you')}</label>${inboxHTML(msgs, seen)}</section>` : ''}
     <section class="mine-sec"><h2>${t('Updates')}</h2><p class="muted small">${t('Guests see these at the top of your page.')}</p>
       <form class="ann-form" onsubmit="return false"><textarea id="an-body" rows="3" maxlength="2000" placeholder="${t('Shuttle leaves the hotel at 4:30. Bring a jacket.')}"></textarea>${msgs ? sendToHTML(groups) : ''}<div class="btns"><button type="button" class="btn primary" data-an="post">${t('Post update')}</button></div><p class="hint" role="status" aria-live="polite"></p></form>
@@ -5065,7 +5065,7 @@ function wireLanding() {
   const m = $('.land'); if (!m) return;
   m.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-mp-del]'); if (!b) return; const x = pagesAll().find(p => p.pid === b.dataset.mpDel); if (!x) return;
-    const name = (x.cfg && x.cfg.title) || 'Untitled';
+    const name = (x.cfg && x.cfg.title) || t('Untitled');
     const body = x.hosted && x.hosted.id ? (acctOn() ? `It’s removed from your account on every device${x.hosted.pub ? ' and its link stops working' : ''}.` : 'It’s also removed from your account the next time you sign in.')
       : x.url ? 'Links you already shared keep working.' : 'It’s only saved on this device.';
     if (!await confirmDlg({ title: t('Delete “{n}”?', { n: name }), body, ok: t('Delete') })) return;
@@ -7106,7 +7106,7 @@ function routeHTML(c, only = null) {
   if (only != null) return `<ol class="route-ed">${ss[only] ? row(ss[only], only) : ''}</ol>`;
   const nd = ss.filter(stopDated).length;
   return `${c.start && isTrip(c) ? `<div class="rt-sum"><div><span class="lbl-s">${t('Trip dates')}</span><b>${esc(tripSpanTxt(c))}</b>${nd ? `<small>${esc(t(ss.filter(x => x.name).length === 1 ? '1 stop' : '{n} stops', { n: ss.filter(x => x.name).length }))} · ${t('in date order')}</small>` : ''}</div>${B && B.shift ? '' : `<div class="rt-acts">${B && B.shiftUndo ? `<button type="button" class="btn sm ghost" data-sh="undo">${t('Undo move')}</button>` : ''}<button type="button" class="btn sm" data-sh="open">${t('Move trip dates')}</button></div>`}</div>${B && B.shift ? shiftPanelHTML(c) : ''}` : ''}
-    <ol class="route-ed">${ss.map((s, i) => row(s, i) + (i < ss.length - 1 ? `<li class="st-ins"><button type="button" data-st-ins="${i}" aria-label="Insert a stop after ${esc(s.name || 'this stop')}">${t('+ Insert a stop')}</button></li>` : '')).join('')}</ol>
+    <ol class="route-ed">${ss.map((s, i) => row(s, i) + (i < ss.length - 1 ? `<li class="st-ins"><button type="button" data-st-ins="${i}" aria-label="${esc(t('Insert a stop after {s}', { s: s.name || t('this stop') }))}">${t('+ Insert a stop')}</button></li>` : '')).join('')}</ol>
     <button type="button" class="btn sm" data-st-add>${t('+ Add a stop')}</button>`;
 }
 // gentle notes between stops: an overlap (with Make room) or a gap (with Insert a stop here)
@@ -7772,7 +7772,7 @@ async function mineInbox(c, evs) {
   const el = $('[data-slot="mine-inbox"]'); if (!el) return;
   const { data, error } = await c.from('trip_items').select('id,item').eq('page_key', 'inbox').limit(100); if (error || !data || !data.length) return;
   const rows = data.map(r => [r, inbItem(r)]).filter(([, x]) => x); if (!rows.length) return;
-  const trips = new Map(); const addT = (cfg) => { if (!cfg || cfg.demoTrip) return; const k = syncKey(cfg); if (k && !trips.has(k)) trips.set(k, cfg.title || 'Untitled'); };
+  const trips = new Map(); const addT = (cfg) => { if (!cfg || cfg.demoTrip) return; const k = syncKey(cfg); if (k && !trips.has(k)) trips.set(k, cfg.title || t('Untitled')); };
   evs.forEach(r => addT(normalize(clone(r.config)))); pagesAll().forEach(p => addT(p.cfg));
   const opts = [...trips].map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join('');
   el.innerHTML = `<h2>${esc(rows.length === 1 ? t('1 forwarded booking') : t('{n} forwarded bookings', { n: rows.length }))}</h2><ul class="mine-list inbox-mine">${rows.map(([r, x]) => `<li><div><b>${esc(x.name || t(ITIN_KINDS[x.kind] || 'Booking'))}</b><span>${esc(inbWhen(x))}</span></div>${opts ? `<select data-inbox-to="${esc(r.id)}" aria-label="${esc(t('Add to a trip'))}"><option value="">${t('Add to…')}</option>${opts}</select>` : `<span class="muted small">${t('Open a trip to add it')}</span>`}</li>`).join('')}</ul>`;
@@ -8262,7 +8262,7 @@ function docReviewHTML(c, items, st = {}) {
   const dates = di < 0 ? '' : ed === di ? `<div class="dr-dates"><ul class="dr-lines">${editHTML(di)}</ul></div>` : `<div class="dr-dates"><span><b>${t('Trip dates')}</b> ${esc(dateRange(items[di].date, items[di].end))}</span><button type="button" class="link" data-dr-edit="${di}">${t('Edit')}</button></div>`;
   return `<div class="dr" data-sheet="doc-review"><p class="dr-lead">${t('Found in your document. Untick anything you don\'t want, or tap a row to see it.')}</p>${dates}
     <div class="dr-gs">${groups.map(G => { const on = !off[G.g], op = !!open[G.g]; const name = drGroupName(c, G, items);
-      return `<div class="dr-g${on ? '' : ' off'}${op ? ' open' : ''}" data-dr-g="${esc(G.g)}"><div class="dr-gh"><input type="checkbox" class="dr-on" data-dr-gon="${esc(G.g)}" ${on ? 'checked' : ''} aria-label="Add ${esc(name)}"><button type="button" class="dr-gt" data-dr-open="${esc(G.g)}" aria-expanded="${op}"><span class="dr-gn"><b>${esc(name)}</b> · ${esc(drGroupCount(c, G, items))}${G.sec === 'route' && stopsOf(c).length ? '<small class="muted">Replaces the current route</small>' : ''}${G.sec === 'schedule' && on ? docHotelSwapHTML(c, G.idx.map(i => items[i]).filter(x => !x.gone)) : ''}</span><i class="dr-chev" aria-hidden="true"></i></button></div>
+      return `<div class="dr-g${on ? '' : ' off'}${op ? ' open' : ''}" data-dr-g="${esc(G.g)}"><div class="dr-gh"><input type="checkbox" class="dr-on" data-dr-gon="${esc(G.g)}" ${on ? 'checked' : ''} aria-label="${esc(t('Add {n}', { n: name }))}"><button type="button" class="dr-gt" data-dr-open="${esc(G.g)}" aria-expanded="${op}"><span class="dr-gn"><b>${esc(name)}</b> · ${esc(drGroupCount(c, G, items))}${G.sec === 'route' && stopsOf(c).length ? '<small class="muted">Replaces the current route</small>' : ''}${G.sec === 'schedule' && on ? docHotelSwapHTML(c, G.idx.map(i => items[i]).filter(x => !x.gone)) : ''}</span><i class="dr-chev" aria-hidden="true"></i></button></div>
         ${op ? `<ul class="dr-lines">${G.idx.map(i => i === ed ? editHTML(i) : `<li><button type="button" class="dr-line" data-dr-edit="${i}">${esc(drLine(c, items[i]))}</button></li>`).join('')}</ul>` : ''}</div>`; }).join('')}</div>
     <div class="btns"><button type="button" class="btn primary" data-doc-apply ${n ? '' : 'disabled'}>${st.key && st.key !== 'main' ? 'Add' : 'Add to page'}</button><button type="button" class="btn ghost" data-doc-cancel>${t('Cancel')}</button></div></div>`;
 }
@@ -8358,7 +8358,7 @@ function docBlockHTML(key) {
   const pickers = main
     ? (!st || st.phase === 'done' ? `<div class="doc-drop" data-doc-drop><label class="btn file-pick doc-pick">${t('✦ Upload a document')}<input type="file" accept="${DOC_ACCEPT}" data-doc-pick hidden></label><span class="doc-or muted small">${t('or drop a file here')}</span></div>` : '')
     : (!st || st.phase === 'done' || st.phase === 'busy' ? `<p class="doc-h">${t('Upload a document')}</p><div class="doc-drop" data-doc-drop><div class="doc-btns"><label class="btn sm file-pick${st && st.phase === 'busy' ? ' busy' : ''}" data-doc-fillbtn ${DOC_AI ? '' : 'hidden'}>${t('Fill from document')}<input type="file" accept="${DOC_ACCEPT}" data-doc-fill hidden></label><label class="btn sm file-pick">${t('Attach for guests')}<input type="file" accept="${DOC_ACCEPT}" data-doc-attach hidden></label></div><span class="doc-or muted small">${t('or drop a file here')}</span></div>` : '');
-  const list = files.length ? `<ul class="doc-files">${files.map(f => `<li><span class="doc-ic" aria-hidden="true">${f.type === 'pdf' ? 'PDF' : 'IMG'}</span><a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${esc(f.name)}</a><button type="button" class="link" data-doc-del="${f.id}" aria-label="Remove ${esc(f.name)}">${t('Remove')}</button></li>`).join('')}</ul>` : '';
+  const list = files.length ? `<ul class="doc-files">${files.map(f => `<li><span class="doc-ic" aria-hidden="true">${f.type === 'pdf' ? 'PDF' : 'IMG'}</span><a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${esc(f.name)}</a><button type="button" class="link" data-doc-del="${f.id}" aria-label="${esc(t('Remove {n}', { n: f.name }))}">${t('Remove')}</button></li>`).join('')}</ul>` : '';
   return `<div class="doc-up${main ? ' doc-main-up' : ''}" data-doc-key="${esc(key)}">${pickers}${list}${inner}<p class="hint" data-doc-msg role="status" aria-live="polite">${esc(msg)}${undo}</p></div>`;
 }
 // a file dropped anywhere else on the builder goes to the main "Upload a document"
