@@ -1820,7 +1820,7 @@ dialog.shr-dlg { padding: 0; border: 0; width: min(520px, 100vw); max-width: 100
 .gl-filters, .gl-gchips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -18px 8px; padding: 0 18px 2px; } .gl-filters::-webkit-scrollbar, .gl-gchips::-webkit-scrollbar { display: none; }
 .gl-filters .chip, .gl-gchips .chip { flex: none; min-height: 36px; background: var(--paper); }
 .gl-filters .chip.on, .gl-gchips .chip.on { background: var(--ink); color: #fff; }
-.gl-gc i, .gl-g i, .gl-sh i, .gl-groups li > i { width: 9px; height: 9px; border-radius: 50%; background: var(--g, var(--sage)); display: inline-block; flex: none; }
+.gl-gc i, .gl-g i, .gl-sh i, .gl-gr1 > i { width: 9px; height: 9px; border-radius: 50%; background: var(--g, var(--sage)); display: inline-block; flex: none; }
 .gl-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 12px; }
 .gl-sh { display: flex; align-items: center; gap: 8px; font: 600 1.05rem var(--brand); margin: 18px 2px 8px; } .gl-sh span { font: 600 .72rem var(--mono); color: var(--slate); }
 .gl-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
