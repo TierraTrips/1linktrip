@@ -2209,3 +2209,35 @@ p.hh-trs { display: block; }
   #st-print.sh .sh-ck { width: 26pt; text-align: center; } #st-print.sh .sh-ck i { display: inline-block; width: 11pt; height: 11pt; border: 1.2px solid #333; border-radius: 2pt; }
 }
 .sh-sl > li, .sh-wait ul > li { min-width: 0; } .sh-wait select { width: 46%; }
+[data-slot="arr-share"]:empty { display: none; }
+
+/* ---- per-guest fields (Guest list → Fields): a ledger — sticky guest column, inline cells ---- */
+.gl-page.fd-wide { max-width: 1240px; }
+.fd .ar-bar .fd-q { margin-left: auto; min-width: 180px; flex: 0 1 260px; } .fd-q input { width: 100%; }
+.fd-empty { background: var(--paper); border-radius: 12px; padding: 14px; }
+.fd-bulk { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--ink); color: #fff; border-radius: 12px; padding: 8px 12px; margin: 0 0 10px; }
+.fd-bulk select, .fd-bulk input { min-height: 36px; border-radius: 9px; border: 0; padding: 0 8px; font-size: 15px; } .fd-bulk .link { color: #fff; }
+.fd-wrap { overflow: auto; background: var(--paper); border-radius: 14px; max-height: 70vh; }
+.fd-grid { border-collapse: separate; border-spacing: 0; min-width: 100%; font-size: .92rem; }
+.fd-grid thead th { position: sticky; top: 0; z-index: 2; background: var(--paper); text-align: left; padding: 10px 8px 8px; border-bottom: 2px solid var(--ink); white-space: nowrap; vertical-align: bottom; font-weight: 650; }
+.fd-grid thead th small { display: block; font: 600 .56rem var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--slate); margin-top: 2px; }
+.fd-h { border: 0; background: none; padding: 0; font: inherit; color: var(--ink); cursor: pointer; border-bottom: 1px dashed var(--contour); } .fd-h:hover, .fd-h:focus-visible { border-bottom-color: var(--ink); }
+.fd-grid tbody th { position: sticky; left: 0; z-index: 1; background: var(--paper); text-align: left; font-weight: 500; padding: 4px 10px 4px 4px; white-space: nowrap; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; }
+.fd-grid thead th:nth-child(2) { position: sticky; left: 0; z-index: 3; }
+.fd-grid td { padding: 3px 4px; border-bottom: 1px solid var(--fog); }
+.fd-grid tr.fd-hh td { font: 600 .66rem var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--slate); padding: 12px 8px 4px; border-bottom: 0; background: var(--paper); }
+.fd-ck { width: 34px; text-align: center; padding-left: 8px !important; }
+.fd-grid input:not([type]), .fd-grid input[inputmode], .fd-grid select { min-width: 96px; width: 100%; min-height: 36px; border: 1.5px solid transparent; border-radius: 8px; padding: 0 8px; background: var(--fog); font-size: 15px; color: var(--ink); font-family: var(--mono); }
+.fd-grid input:focus, .fd-grid select:focus { border-color: var(--ink); background: var(--paper); outline: none; }
+.fd-grid .saving { opacity: .6; } .fd-grid .saved { border-color: var(--sage); } .fd-grid .bad { border-color: var(--route); }
+.fd-file { margin: 8px 0; } #fd-paste { width: 100%; font: 14px var(--mono); border: 1.5px solid var(--rule); border-radius: 10px; padding: 8px; } .fd-res { min-height: 1.2em; font-size: .9rem; }
+textarea[data-fde="choices"] { width: 100%; border: 1.5px solid var(--rule); border-radius: 10px; padding: 8px; font-size: 15px; }
+/* household link: Your details */
+.hh-fd { background: var(--fog); border-radius: 14px; padding: 12px 14px; margin: 0 0 12px; }
+.hh-fd > small { font: 600 .66rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted, #5D6372); }
+.hh-fd dl { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 6px 0 0; } .hh-fd dl > div { display: grid; }
+.hh-fd dt { font: 600 .62rem var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--slate); } .hh-fd dd { margin: 0; font: 600 1.25rem/1.2 var(--brand); }
+.hh-fdn { margin: 10px 0 0; font-weight: 650; }
+.fd-bulk select, .fd-bulk input { color: var(--ink); background: #fff; min-width: 110px; }
+.fd-q input { min-height: 40px; border: 1.5px solid var(--rule); border-radius: 999px; padding: 0 14px; font-size: 16px; background: var(--paper); color: var(--ink); }
+.fd-bulk .btn.primary { background: var(--route); border-color: var(--route); color: #fff; }

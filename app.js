@@ -9783,10 +9783,10 @@ function hhFormHTML(cfg, src, hosted) {
   const H = hosted.hh; const reps = new Map((H.replies || []).map(r => { const p = rqParse(r.note); return [r.person_id, { ...r, x: p.x || {} }]; }));
   const people = hhOrder(H);
   if (!H.editing && people.length && people.every(p => reps.has(p.id))) {
-    return `${hhSeatHTML(H)}${hhShuttleHTML(H)}<div class="rsvp-done hh-done"><p><b>${esc(t('Thanks, {n}.', { n: H.name }))}</b></p><ul class="hh-sum">${people.map(p => { const r = reps.get(p.id); return `<li><span>${esc(p.name)}</span><b class="${r.attending ? 'y' : 'n'}">${r.attending ? t('Coming') : t('Can’t make it')}</b></li>`; }).join('')}</ul>
+    return `${hhSeatHTML(H)}${hhFieldsHTML(H)}${hhShuttleHTML(H)}<div class="rsvp-done hh-done"><p><b>${esc(t('Thanks, {n}.', { n: H.name }))}</b></p><ul class="hh-sum">${people.map(p => { const r = reps.get(p.id); return `<li><span>${esc(p.name)}</span><b class="${r.attending ? 'y' : 'n'}">${r.attending ? t('Coming') : t('Can’t make it')}</b></li>`; }).join('')}</ul>
       ${H.trOff ? '' : hhTravelSum(H)}<button type="button" class="btn sm" data-hh="edit">${t('Change replies')}</button></div>`;
   }
-  return `${hhSeatHTML(H)}${hhShuttleHTML(H)}<form class="rsvp hh-rsvp" novalidate onsubmit="return false"><p class="hh-for">${t('Replying for')} <b>${esc(H.name)}</b></p>
+  return `${hhSeatHTML(H)}${hhFieldsHTML(H)}${hhShuttleHTML(H)}<form class="rsvp hh-rsvp" novalidate onsubmit="return false"><p class="hh-for">${t('Replying for')} <b>${esc(H.name)}</b></p>
     <div class="hh-ps">${people.map(p => hhPersonHTML(cfg, src, H, p, reps.get(p.id))).join('')}</div>
     <div class="hh-adds">${hhAddersHTML(H)}</div>
     ${H.trOff ? '' : hhTravelHTML(H)}
@@ -9956,7 +9956,8 @@ function glPaint() {
   m.closest('.gl-page').classList.toggle('st-wide', G.tab === 'seat');
   if (G.arrOff && G.tab === 'arr') G.tab = 'list'; const ab = $('[data-gl-arr]', m); if (ab) ab.hidden = !!G.arrOff; m.closest('.gl-page').classList.toggle('ar-wide', G.tab === 'arr' || G.tab === 'shut');
   if ((G.shOff || G.arrOff) && G.tab === 'shut') G.tab = 'list'; const shb = $('[data-gl-shut]', m); if (shb) shb.hidden = !!(G.shOff || G.arrOff);
-  $('[data-gl-body]', m).innerHTML = G.tab === 'diet' ? glDietHTML() : G.tab === 'groups' ? glGroupsHTML() : G.tab === 'seat' ? stHTML() : G.tab === 'inv' ? ivTabHTML() : G.tab === 'arr' ? arHTML() : G.tab === 'shut' ? shHTML() : glListHTML();
+  if (G.fdOff && G.tab === 'fld') G.tab = 'list'; const fdb = $('[data-gl-fld]', m); if (fdb) fdb.hidden = !!G.fdOff; m.closest('.gl-page').classList.toggle('fd-wide', G.tab === 'fld');
+  $('[data-gl-body]', m).innerHTML = G.tab === 'diet' ? glDietHTML() : G.tab === 'groups' ? glGroupsHTML() : G.tab === 'seat' ? stHTML() : G.tab === 'inv' ? ivTabHTML() : G.tab === 'arr' ? arHTML() : G.tab === 'shut' ? shHTML() : G.tab === 'fld' ? fdHTML() : glListHTML();
   stFit();
   const bar = $('[data-gl-bar]', m); const n = G.sel.size; bar.hidden = !n || G.tab !== 'list';
   if (n) bar.innerHTML = `<b>${esc(t('{n} selected', { n }))}</b><select data-gl-bulkgrp aria-label="${esc(t('Set group'))}"><option value="">${t('Set group…')}</option>${G.gs.map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}<option value="none">${t('No group')}</option></select><button type="button" class="btn sm" data-gl-bulkcopy>${t('Copy links')}</button><button type="button" class="btn sm" data-gl-bulkmail>${t(G.ivOff ? 'Email invitations' : 'Send invitation')}</button><button type="button" class="link" data-gl-clear>${t('Clear')}</button>`;
@@ -9976,6 +9977,7 @@ async function glLoad() {
   if (!G.iv) G.iv = ivBlank(); await ivLoad().catch(() => { G.ivOff = true; });
   await arLoad().catch(() => { G.arrOff = true; });
   await shLoad().catch(() => { G.shOff = true; });
+  await fdLoad().catch(() => { G.fdOff = true; });
 }
 async function renderGuests(eid) {
   LANG = uiLang(); document.documentElement.lang = LANG; document.documentElement.dir = 'ltr'; document.title = t('Guest list') + ' · 1LinkTrip';
@@ -9986,7 +9988,7 @@ async function renderGuests(eid) {
   if (!user) { LS.del('signedIn'); LS.set('afterSignIn', '#guests/' + eid); return renderMine('', t('Sign in to see your guest list.')); }
   const c = await sb(); const { data: ev } = await c.from('events').select('id,slug,config,published,owner').eq('id', eid).maybeSingle();
   if (!ev) return shell(`<h1>${t('Guest list')}</h1><p>${t('Only the page’s organizers can see its guest list.')}</p><p><a href="#mine">${t('Back to My pages')}</a></p>`);
-  G = { eid, ev, cfg: normalize(ev.config), filter: 'all', grp: '', by: false, sel: new Set(), tab: /^seat/.test(location.hash.split('&t=')[1] || '') ? 'seat' : /^inv/.test(location.hash.split('&t=')[1] || '') ? 'inv' : /^arr/.test(location.hash.split('&t=')[1] || '') ? 'arr' : /^shut/.test(location.hash.split('&t=')[1] || '') ? 'shut' : 'list', iv: null, hs: [], ps: [], rs: [], gs: [], hot: new Map(), opens: 0,
+  G = { eid, ev, cfg: normalize(ev.config), filter: 'all', grp: '', by: false, sel: new Set(), tab: /^seat/.test(location.hash.split('&t=')[1] || '') ? 'seat' : /^inv/.test(location.hash.split('&t=')[1] || '') ? 'inv' : /^arr/.test(location.hash.split('&t=')[1] || '') ? 'arr' : /^shut/.test(location.hash.split('&t=')[1] || '') ? 'shut' : /^fld/.test(location.hash.split('&t=')[1] || '') ? 'fld' : 'list', iv: null, hs: [], ps: [], rs: [], gs: [], hot: new Map(), opens: 0,
     ts: [], seat: { show: false }, st: { pend: !!LS.get('stp:' + eid), grp: '', q: '', hh: false, fold: false, view: LS.get('stv:' + eid) || 'cards' } };
   try { await glLoad(); } catch (e) { return shell(`<h1>${t('Guest list')}</h1><p>${t('Couldn’t load it.')} ${esc(pubWhy(e))}</p>`); }
   // first visit: the usual groups for this kind of event (renameable, removable)
@@ -10008,12 +10010,12 @@ function glMount() {
     <section class="gl">
       <div class="gl-sum" data-gl-sum></div>
       ${G.ev.published ? '' : `<p class="b-note">${t('Share the page first: personal links open only once it’s shared.')}</p>`}
-      <div class="gl-head"><div class="seg2 gl-tabs" role="tablist"><button type="button" role="tab" data-gl-tab="list">${tCtx('tab', 'Guests')}</button><button type="button" role="tab" data-gl-tab="diet">${t('Dietary')}</button><button type="button" role="tab" data-gl-tab="groups">${t('Groups')}</button><button type="button" role="tab" data-gl-tab="seat" data-gl-seat>${t('Seating')}</button><button type="button" role="tab" data-gl-tab="inv" data-gl-inv>${t('Invitations')}</button><button type="button" role="tab" data-gl-tab="arr" data-gl-arr>${t('Arrivals')}</button><button type="button" role="tab" data-gl-tab="shut" data-gl-shut>${t('Shuttles')}</button></div>
+      <div class="gl-head"><div class="seg2 gl-tabs" role="tablist"><button type="button" role="tab" data-gl-tab="list">${tCtx('tab', 'Guests')}</button><button type="button" role="tab" data-gl-tab="diet">${t('Dietary')}</button><button type="button" role="tab" data-gl-tab="groups">${t('Groups')}</button><button type="button" role="tab" data-gl-tab="seat" data-gl-seat>${t('Seating')}</button><button type="button" role="tab" data-gl-tab="inv" data-gl-inv>${t('Invitations')}</button><button type="button" role="tab" data-gl-tab="arr" data-gl-arr>${t('Arrivals')}</button><button type="button" role="tab" data-gl-tab="shut" data-gl-shut>${t('Shuttles')}</button><button type="button" role="tab" data-gl-tab="fld" data-gl-fld>${t('Fields')}</button></div>
         <button type="button" class="btn sm primary" data-gl-add>${t('Add guests')}</button></div>
       <div data-gl-body></div>
       <div class="gl-bar" data-gl-bar hidden></div>
     </section>`);
-  glPaint(); glWire(); stWire(); { const m = $('.gl'); if (m && !m._iw) { m._iw = true; ivWire(m); arWire(m); shWire(m); } }
+  glPaint(); glWire(); stWire(); { const m = $('.gl'); if (m && !m._iw) { m._iw = true; ivWire(m); arWire(m); shWire(m); fdWire(m); } }
 }
 function glCSV(rows, name) {
   const blob = new Blob(['﻿' + rows.map(l => l.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -10023,7 +10025,7 @@ function glWire() {
   const m = $('.gl'); if (!m || m._w) return; m._w = true;
   m.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset; const c = await sb();
-    if (d.glTab) { G.tab = d.glTab; glPaint(); if (G.tab === 'seat') { stPoll(); stSync(); } try { history.replaceState(history.state, '', '#guests/' + G.eid + (['seat', 'inv', 'arr', 'shut'].includes(G.tab) ? '&t=' + G.tab : '')); } catch { /* fine */ } return; }
+    if (d.glTab) { G.tab = d.glTab; glPaint(); if (G.tab === 'seat') { stPoll(); stSync(); } try { history.replaceState(history.state, '', '#guests/' + G.eid + (['seat', 'inv', 'arr', 'shut', 'fld'].includes(G.tab) ? '&t=' + G.tab : '')); } catch { /* fine */ } return; }
     if (d.glF) { G.filter = d.glF; glPaint(); return; }
     if (d.glGrp != null) { G.grp = d.glGrp; glPaint(); return; }
     if (d.glCopy) { const h = G.hs.find(x => x.id === d.glCopy); if (h) copy(glLink(h)); return; }
@@ -11498,5 +11500,154 @@ function hhShuttleHTML(H) {
     ${(r.people || []).length < all ? `<p class="muted small">${esc((r.people || []).map(id => nm.get(id)).filter(Boolean).join(', '))}</p>` : ''}</li>`).join('')}</ul></div>`;
 }
 
-window.__ep = { sh: { shSuggest, shEditDlg, shManifestHTML, shPrint, shCSV, hhShuttleHTML, shFromSug }, ar: { arRows, arFromTrips, arEditDlg, arCSV, hhTravelHTML, hhTravelSum, arShareMount }, iv: { ivRender, ivTexts, ivDefault, ivDate, ivPrepUpload, ivOpenBuilder, ivUploadDlg, ivTabHTML, ivLangs, ivTrailStep, IV_TPLS, ivPal }, lists: { B: () => B, G: () => G, setG: (g) => { G = g; }, ivBlank, buildForm, glMount, glPaint, conflictDlg, partName, glImportDlg, glEditDlg, stPickDlg, stEditDlg, stPrint, t, stLayout, stPlace, stAdd10, stFolded, FT: [FT_W, FT_H] }, cfgMerge3, cfgTakeTheirs, glParse, glGroupRows, joinFirst, rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtModel, rtSer, rtRead, rtEdToggle, rtSelect, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+// ================= per-guest organizer fields (schema-fields.sql) =================
+// Guest list → Fields: the organizers' own columns per guest (bib, wave, badge type, meal…): text / number / choice, each
+// either organizers-only or shown to that guest on their link. Table is the seating chart's (edited here too). One grid,
+// inline edits, bulk set for the picked guests, CSV out and in (matched by name + household).
+const FD_KINDS = [['text', 'Text'], ['number', 'Number'], ['choice', 'Choice']];
+const fdVal = (fid, pid) => ((G.fv || []).find(v => v.field_id === fid && v.person_id === pid) || {}).value || '';
+const fdFields = () => [...(G.fd || [])].sort((a, b) => (a.sort - b.sort) || String(a.created_at).localeCompare(String(b.created_at)));
+const fdHasTables = () => !G.stOff && (G.ts || []).length > 0;
+function fdCellHTML(f, p) {
+  const v = fdVal(f.id, p.id); const a = `data-fd-cell="${esc(f.id)}|${esc(p.id)}" aria-label="${esc(f.label + ' · ' + stName(p))}"`;
+  if (f.kind === 'choice') return `<select ${a}><option value=""></option>${(f.choices || []).map(c => `<option${c === v ? ' selected' : ''}>${esc(c)}</option>`).join('')}${v && !(f.choices || []).includes(v) ? `<option selected>${esc(v)}</option>` : ''}</select>`;
+  return `<input ${a} value="${esc(v)}" maxlength="200"${f.kind === 'number' ? ' inputmode="decimal"' : ''}>`;
+}
+function fdHTML() {
+  if (!G.fdS) G.fdS = { q: '', sel: new Set() }; const S = G.fdS; const fs = fdFields(); const tbl = fdHasTables();
+  const q = normName(S.q); const people = G.hs.flatMap(h => glPeople(h.id).map(p => ({ p, h }))).filter(({ p, h }) => !q || normName(p.name + ' ' + h.name).includes(q));
+  const head = `<tr><th class="fd-ck"><input type="checkbox" data-fd-all aria-label="${esc(t('Select all'))}"${people.length && people.every(x => S.sel.has(x.p.id)) ? ' checked' : ''}></th><th>${t('Guest')}</th>${tbl ? `<th>${t('Table')}<small>${t(G.seat && G.seat.show ? 'Shown to guests' : 'Organizers only')}</small></th>` : ''}${fs.map(f => `<th><button type="button" class="fd-h" data-fd-edit="${esc(f.id)}">${esc(f.label)}</button><small>${t(f.visible === 'guest' ? 'Shown to guests' : 'Organizers only')}</small></th>`).join('')}</tr>`;
+  let last = '';
+  const rows = people.map(({ p, h }) => { const hh = h.id !== last ? `<tr class="fd-hh"><td colspan="${2 + (tbl ? 1 : 0) + fs.length}">${esc(h.name)}</td></tr>` : ''; last = h.id;
+    return `${hh}<tr><td class="fd-ck"><input type="checkbox" data-fd-sel="${esc(p.id)}"${S.sel.has(p.id) ? ' checked' : ''} aria-label="${esc(t('Select {n}', { n: stName(p) }))}"></td><th scope="row">${esc(stName(p))}</th>${tbl ? `<td><select data-fd-table="${esc(p.id)}" aria-label="${esc(t('Table') + ' · ' + stName(p))}"><option value="">—</option>${G.ts.map(x => `<option value="${esc(x.id)}"${p.table_id === x.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></td>` : ''}${fs.map(f => `<td>${fdCellHTML(f, p)}</td>`).join('')}</tr>`; }).join('');
+  const n = S.sel.size;
+  return `<div class="fd">
+    <div class="ar-bar"><button type="button" class="btn sm primary" data-fd-new>${t('Add a field')}</button><button type="button" class="btn sm" data-fd-import>${t('Import CSV')}</button><button type="button" class="btn sm" data-fd-csv>${t('Download CSV')}</button>
+      <div class="search fd-q"><input data-fd-q value="${esc(S.q)}" placeholder="${esc(t('Find a guest'))}" aria-label="${esc(t('Find a guest'))}"></div></div>
+    ${fs.length || tbl ? '' : `<p class="muted fd-empty">${t('Add a field for anything you track per guest: bib number, wave, badge type, meal, room…')}</p>`}
+    ${n && fs.length ? `<div class="fd-bulk" role="group" aria-label="${esc(t('Set for the selected guests'))}"><b>${esc(t('{n} selected', { n }))}</b><select data-fd-bf aria-label="${esc(t('Field'))}">${fs.map(f => `<option value="${esc(f.id)}"${S.bf === f.id ? ' selected' : ''}>${esc(f.label)}</option>`).join('')}</select>${(() => { const f = fs.find(x => x.id === S.bf) || fs[0]; return f.kind === 'choice' ? `<select data-fd-bv aria-label="${esc(t('Value'))}"><option value="">${t('(empty)')}</option>${(f.choices || []).map(c => `<option>${esc(c)}</option>`).join('')}</select>` : `<input data-fd-bv placeholder="${esc(t('Value'))}" aria-label="${esc(t('Value'))}"${f.kind === 'number' ? ' inputmode="decimal"' : ''}>`; })()}<button type="button" class="btn sm primary" data-fd-bset>${t('Set')}</button><button type="button" class="link" data-fd-bclear>${t('Clear')}</button></div>` : ''}
+    ${fs.length || tbl ? `<div class="fd-wrap"><table class="fd-grid"><thead>${head}</thead><tbody>${rows || `<tr><td colspan="9" class="muted">${t('No guests yet')}</td></tr>`}</tbody></table></div>` : ''}
+  </div>`;
+}
+async function fdLoad() {
+  const c = await sb(); const [f, v] = await Promise.all([c.from('guest_fields').select('*').eq('event_id', G.eid).order('sort').limit(40), c.from('guest_field_values').select('field_id,person_id,value').eq('event_id', G.eid).limit(50000)]);
+  if (f.error) throw f.error; G.fd = f.data || []; G.fv = v.data || [];
+}
+async function fdSet(fid, pids, value) {
+  const c = await sb(); value = String(value || '').trim(); const f = (G.fd || []).find(x => x.id === fid);
+  const { error } = value ? await c.from('guest_field_values').upsert(pids.map(person_id => ({ field_id: fid, person_id, value })), { onConflict: 'field_id,person_id' }) : await c.from('guest_field_values').delete().eq('field_id', fid).in('person_id', pids);
+  if (error) { toast(f && f.kind === 'number' && /number/.test(error.message) ? t('{f} takes a number', { f: f.label }) : error.message); return false; }
+  G.fv = (G.fv || []).filter(v => !(v.field_id === fid && pids.includes(v.person_id))).concat(value ? pids.map(person_id => ({ field_id: fid, person_id, value })) : []); return true;
+}
+function fdEditDlg(id) {
+  const f = id ? (G.fd || []).find(x => x.id === id) : { label: '', kind: 'text', choices: [], visible: 'planners' }; if (!f) return;
+  const d = glDlg(`<h2>${t(id ? 'Edit field' : 'Add a field')}</h2>
+    <label class="ar-in"><span>${t('Name')}</span><input data-fde="label" value="${esc(f.label)}" maxlength="60" placeholder="${esc(t('e.g. Bib number'))}"></label>
+    <div class="field"><span class="lbl-s">${t('Type')}</span><div class="seg2" role="radiogroup">${FD_KINDS.map(([k, l]) => `<button type="button" role="radio" data-fde-kind="${k}" class="${f.kind === k ? 'on' : ''}" aria-checked="${f.kind === k}">${t(l)}</button>`).join('')}</div></div>
+    <label class="ar-in" data-fde-ch${f.kind === 'choice' ? '' : ' hidden'}><span>${t('Choices, one per line')}</span><textarea data-fde="choices" rows="4" placeholder="${esc(t('e.g. Speaker\nSponsor\nAttendee'))}">${esc((f.choices || []).join('\n'))}</textarea></label>
+    <div class="field"><span class="lbl-s">${t('Who sees it')}</span><div class="seg2" role="radiogroup">${[['planners', 'Organizers only'], ['guest', 'Also that guest, on their link']].map(([k, l]) => `<button type="button" role="radio" data-fde-vis="${k}" class="${f.visible === k ? 'on' : ''}" aria-checked="${f.visible === k}">${t(l)}</button>`).join('')}</div></div>
+    <div class="btns cf-b">${id ? `<button type="button" class="link" data-fde-del>${t('Delete field')}</button>` : ''}<button type="button" class="btn ghost" data-fde-x>${t('Cancel')}</button><button type="button" class="btn primary" data-fde-ok>${t('Save')}</button></div>`);
+  const st = { kind: f.kind, visible: f.visible };
+  d.onclick = async (e) => {
+    const b = e.target.closest('button'); if (e.target === d || (b && b.dataset.fdeX != null)) { d.close(); return; } if (!b) return;
+    if (b.dataset.fdeKind) { st.kind = b.dataset.fdeKind; $$('[data-fde-kind]', d).forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); }); d.querySelector('[data-fde-ch]').hidden = st.kind !== 'choice'; return; }
+    if (b.dataset.fdeVis) { st.visible = b.dataset.fdeVis; $$('[data-fde-vis]', d).forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); }); return; }
+    const c = await sb();
+    if (b.dataset.fdeDel != null) { if (!await confirmDlg({ title: t('Delete “{n}”?', { n: f.label }), body: t('Its values for every guest go too.'), ok: t('Delete'), cancel: t('Cancel') })) return; const { error } = await c.from('guest_fields').delete().eq('id', id); if (error) { toast(error.message); return; } G.fd = G.fd.filter(x => x.id !== id); G.fv = G.fv.filter(v => v.field_id !== id); d.close(); glPaint(); return; }
+    if (b.dataset.fdeOk == null) return;
+    const label = d.querySelector('[data-fde="label"]').value.trim().slice(0, 60); if (!label) { toast(t('Give the field a name')); return; }
+    const choices = st.kind === 'choice' ? [...new Set(d.querySelector('[data-fde="choices"]').value.split(/\n|,/).map(x => x.trim().slice(0, 60)).filter(Boolean))].slice(0, 30) : [];
+    if (st.kind === 'choice' && !choices.length) { toast(t('Add at least one choice')); return; }
+    const row = { label, kind: st.kind, choices, visible: st.visible };
+    if (id) { const { error } = await c.from('guest_fields').update(row).eq('id', id); if (error) { toast(error.message); return; } Object.assign(f, row); }
+    else { const nid = crypto.randomUUID(); const { error } = await c.from('guest_fields').insert({ id: nid, event_id: G.eid, sort: (G.fd || []).length, ...row }); if (error) { toast(error.message); return; } G.fd = (G.fd || []).concat([{ id: nid, event_id: G.eid, sort: (G.fd || []).length, created_at: new Date().toISOString(), ...row }]); }
+    d.close(); toast(t('Saved')); glPaint();
+  };
+}
+function fdCSV() {
+  const fs = fdFields(); const tbl = fdHasTables();
+  const rows = [[t('Household'), t('Name'), ...(tbl ? [t('Table')] : []), ...fs.map(f => f.label)]];
+  G.hs.forEach(h => glPeople(h.id).forEach(p => rows.push([h.name, p.name, ...(tbl ? [(stT(p.table_id) || {}).name || ''] : []), ...fs.map(f => fdVal(f.id, p.id))])));
+  glCSV(rows, t('fields'));
+}
+// CSV in: a header row; Name (and Household) find the guest; every other column is a field by its label (new labels become
+// organizers-only text fields; Table sets the seat when the page has that table)
+function fdParseCSV(text) {
+  const out = []; let row = [], cur = '', q = false; const s = String(text || '').replace(/^﻿/, '');
+  const sep = (s.split('\n')[0].match(/;/g) || []).length > (s.split('\n')[0].match(/,/g) || []).length ? ';' : (s.split('\n')[0].includes('\t') ? '\t' : ',');
+  for (let i = 0; i < s.length; i++) { const ch = s[i];
+    if (q) { if (ch === '"' && s[i + 1] === '"') { cur += '"'; i++; } else if (ch === '"') q = false; else cur += ch; continue; }
+    if (ch === '"') q = true; else if (ch === sep) { row.push(cur); cur = ''; } else if (ch === '\n' || ch === '\r') { if (ch === '\r' && s[i + 1] === '\n') i++; row.push(cur); out.push(row); row = []; cur = ''; } else cur += ch; }
+  if (cur || row.length) { row.push(cur); out.push(row); }
+  return out.map(r => r.map(x => x.trim().replace(/^'(?=[=+\-@])/, ''))).filter(r => r.some(Boolean));
+}
+async function fdImport(text) {
+  const rows = fdParseCSV(text); if (rows.length < 2) return { error: t('Paste a header row and at least one guest.') };
+  const hd = rows[0]; const low = hd.map(h => normName(h)); const ni = low.findIndex(h => [normName(t('Name')), 'name', 'guest', normName(t('Guest'))].includes(h)); if (ni < 0) return { error: t('Add a Name column.') };
+  const hi = low.findIndex(h => [normName(t('Household')), 'household'].includes(h)); const ti = low.findIndex(h => [normName(t('Table')), 'table'].includes(h));
+  const cols = hd.map((h, i) => i).filter(i => i !== ni && i !== hi && i !== ti && hd[i]);
+  const c = await sb(); const made = [];
+  for (const i of cols) if (!fdFields().some(f => normName(f.label) === low[i])) { const id = crypto.randomUUID(); const row = { id, event_id: G.eid, label: hd[i].slice(0, 60), kind: 'text', choices: [], visible: 'planners', sort: (G.fd || []).length };
+    const { error } = await c.from('guest_fields').insert(row); if (error) return { error: error.message }; G.fd = (G.fd || []).concat([{ ...row, created_at: new Date().toISOString() }]); made.push(row.label); }
+  const missing = []; let n = 0; const bad = []; const sets = new Map();
+  for (const r of rows.slice(1)) {
+    const nm = normName(r[ni]); const hn = hi >= 0 ? normName(r[hi]) : ''; if (!nm) continue;
+    const p = G.ps.find(x => normName(x.name) === nm && (!hn || normName((stHH(x) || {}).name) === hn)) || G.ps.find(x => normName(x.name) === nm);
+    if (!p) { missing.push(r[ni]); continue; } n++;
+    for (const i of cols) { const f = fdFields().find(x => normName(x.label) === low[i]); const v = (r[i] || '').trim(); if (!f || !v) continue;
+      if (f.kind === 'choice' && !(f.choices || []).includes(v)) { bad.push(`${f.label}: ${v}`); continue; } if (f.kind === 'number' && !/^-?\d{1,12}([.,]\d{1,6})?$/.test(v)) { bad.push(`${f.label}: ${v}`); continue; }
+      const k = f.id + '|' + v; if (!sets.has(k)) sets.set(k, []); sets.get(k).push(p.id); }
+    if (ti >= 0 && r[ti] && fdHasTables()) { const tb = G.ts.find(x => normName(x.name) === normName(r[ti])); if (tb && p.table_id !== tb.id) { const { error } = await c.from('guest_people').update({ table_id: tb.id }).eq('id', p.id); if (!error) p.table_id = tb.id; } }
+  }
+  for (const [k, pids] of sets) { const [fid, ...v] = k.split('|'); if (!await fdSet(fid, pids, v.join('|'))) return { error: t('Couldn’t save every value.') }; }
+  return { n, missing, made, bad };
+}
+function fdImportDlg() {
+  const d = glDlg(`<h2>${t('Import CSV')}</h2><p class="muted small">${t('First row: column names. Name (and Household, if names repeat) finds each guest; every other column fills the field with that name — new names become organizers-only text fields.')}</p>
+    <textarea id="fd-paste" rows="7" placeholder="${esc(t('Name') + ',Bib,Wave\nAna Garcia,214,B')}"></textarea>
+    <label class="btn sm fd-file">${t('Choose a file…')}<input type="file" accept=".csv,text/csv,text/plain" data-fd-file hidden></label>
+    <p class="fd-res" role="status" aria-live="polite"></p>
+    <div class="btns cf-b"><button type="button" class="btn ghost" data-fdi-x>${t('Close')}</button><button type="button" class="btn primary" data-fdi-ok>${t('Import')}</button></div>`);
+  d.onchange = async (e) => { const i = e.target.closest('[data-fd-file]'); if (!i || !i.files[0]) return; d.querySelector('#fd-paste').value = await i.files[0].text(); };
+  d.onclick = async (e) => {
+    if (e.target === d || e.target.closest('[data-fdi-x]')) { d.close(); return; }
+    const b = e.target.closest('[data-fdi-ok]'); if (!b) return; b.disabled = true; const res = d.querySelector('.fd-res');
+    const r = await fdImport(d.querySelector('#fd-paste').value); b.disabled = false;
+    if (r.error) { res.textContent = r.error; return; }
+    res.textContent = [t(r.n === 1 ? 'Updated 1 guest.' : 'Updated {n} guests.', { n: r.n }), r.made.length ? t('New fields: {l}.', { l: r.made.join(', ') }) : '', r.missing.length ? t('Not on the guest list: {l}.', { l: r.missing.slice(0, 8).join(', ') }) : '', r.bad.length ? t('Skipped (not a choice or number): {l}.', { l: r.bad.slice(0, 6).join(', ') }) : ''].filter(Boolean).join(' ');
+    glPaint();
+  };
+}
+function fdWire(m) {
+  m.addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b || !G || G.tab !== 'fld') return; const d = b.dataset;
+    if (d.fdNew != null) { fdEditDlg(null); return; }
+    if (d.fdEdit) { fdEditDlg(d.fdEdit); return; }
+    if (d.fdCsv != null) { fdCSV(); return; }
+    if (d.fdImport != null) { fdImportDlg(); return; }
+    if (d.fdBclear != null) { G.fdS.sel.clear(); glPaint(); return; }
+    if (d.fdBset != null) { const fid = (m.querySelector('[data-fd-bf]') || {}).value; const v = (m.querySelector('[data-fd-bv]') || {}).value || ''; const ids = [...G.fdS.sel]; b.disabled = true;
+      if (await fdSet(fid, ids, v)) toast(t(ids.length === 1 ? 'Set for 1 guest' : 'Set for {n} guests', { n: ids.length })); glPaint(); return; }
+  });
+  m.addEventListener('change', async (e) => {
+    const i = e.target; if (!G || G.tab !== 'fld') return; const d = i.dataset;
+    if (d.fdCell) { const [fid, pid] = d.fdCell.split('|'); const was = fdVal(fid, pid); if (i.value.trim() === was) return; i.classList.add('saving');
+      const okk = await fdSet(fid, [pid], i.value); i.classList.remove('saving'); i.classList.toggle('bad', !okk); if (!okk) i.value = was; else { i.classList.add('saved'); setTimeout(() => i.classList.remove('saved'), 900); } return; }
+    if (d.fdTable != null) { const p = G.ps.find(x => x.id === d.fdTable); const was = p.table_id || null; const to = i.value || null; const c = await sb();
+      const { error } = await c.from('guest_people').update({ table_id: to }).eq('id', p.id); if (error) { toast(error.message); i.value = was || ''; return; } p.table_id = to; return; }
+    if (d.fdSel) { if (i.checked) G.fdS.sel.add(d.fdSel); else G.fdS.sel.delete(d.fdSel); glPaint(); return; }
+    if (d.fdAll != null) { const q = normName(G.fdS.q); G.hs.forEach(h => glPeople(h.id).forEach(p => { if (!q || normName(p.name + ' ' + h.name).includes(q)) { if (i.checked) G.fdS.sel.add(p.id); else G.fdS.sel.delete(p.id); } })); glPaint(); return; }
+    if (d.fdBf != null) { G.fdS.bf = i.value; glPaint(); return; }
+  });
+  m.addEventListener('input', debounce((e) => { const i = e.target; if (!G || G.tab !== 'fld' || i.dataset.fdQ == null) return; G.fdS.q = i.value; glPaint(); const q = m.querySelector('[data-fd-q]'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 200));
+}
+// the household's own guest-visible fields, on its personal link
+function hhFieldsHTML(H) {
+  const fs = (H.fields || []).filter(f => f && (f.values || []).length); if (!fs.length) return '';
+  const nm = new Map((H.people || []).map(p => [p.id, p.name])); const pids = [...new Set(fs.flatMap(f => f.values.map(v => v.person_id)))];
+  if (pids.length === 1) return `<div class="hh-fd"><small>${t('Your details')}</small><dl>${fs.map(f => `<div><dt>${esc(f.label)}</dt><dd>${esc(f.values[0].value)}</dd></div>`).join('')}</dl></div>`;
+  return `<div class="hh-fd"><small>${t('Your details')}</small>${pids.map(pid => `<p class="hh-fdn">${esc(nm.get(pid) || '')}</p><dl>${fs.map(f => { const v = f.values.find(x => x.person_id === pid); return v ? `<div><dt>${esc(f.label)}</dt><dd>${esc(v.value)}</dd></div>` : ''; }).join('')}</dl>`).join('')}</div>`;
+}
+
+window.__ep = { fd: { fdParseCSV, fdImport, fdEditDlg, fdImportDlg, fdCSV, hhFieldsHTML }, sh: { shSuggest, shEditDlg, shManifestHTML, shPrint, shCSV, hhShuttleHTML, shFromSug }, ar: { arRows, arFromTrips, arEditDlg, arCSV, hhTravelHTML, hhTravelSum, arShareMount }, iv: { ivRender, ivTexts, ivDefault, ivDate, ivPrepUpload, ivOpenBuilder, ivUploadDlg, ivTabHTML, ivLangs, ivTrailStep, IV_TPLS, ivPal }, lists: { B: () => B, G: () => G, setG: (g) => { G = g; }, ivBlank, buildForm, glMount, glPaint, conflictDlg, partName, glImportDlg, glEditDlg, stPickDlg, stEditDlg, stPrint, t, stLayout, stPlace, stAdd10, stFolded, FT: [FT_W, FT_H] }, cfgMerge3, cfgTakeTheirs, glParse, glGroupRows, joinFirst, rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtModel, rtSer, rtRead, rtEdToggle, rtSelect, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

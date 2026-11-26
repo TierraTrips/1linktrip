@@ -20,7 +20,8 @@ q -f "$ROOT/supabase/schema-seating.sql"; q -f "$ROOT/supabase/schema-seating.sq
 q -f "$ROOT/supabase/schema-invites.sql"; q -f "$ROOT/supabase/schema-invites.sql"
 q -f "$ROOT/supabase/schema-arrivals.sql"; q -f "$ROOT/supabase/schema-arrivals.sql"
 q -f "$ROOT/supabase/schema-shuttles.sql"; q -f "$ROOT/supabase/schema-shuttles.sql"
-OUT="$(PGOPTIONS="-c client_min_messages=notice" "$PG/psql" -h "$DIR" -p "$PORT" -U postgres -X -q -v ON_ERROR_STOP=1 -f "$HERE/messaging.sql" -f "$HERE/private.sql" -f "$HERE/shares.sql" -f "$HERE/names.sql" -f "$HERE/team.sql" -f "$HERE/seating.sql" -f "$HERE/invites.sql" -f "$HERE/arrivals.sql" -f "$HERE/shuttles.sql" 2>&1 | sed -n 's/.*NOTICE:  //p')"
+q -f "$ROOT/supabase/schema-fields.sql"; q -f "$ROOT/supabase/schema-fields.sql"
+OUT="$(PGOPTIONS="-c client_min_messages=notice" "$PG/psql" -h "$DIR" -p "$PORT" -U postgres -X -q -v ON_ERROR_STOP=1 -f "$HERE/messaging.sql" -f "$HERE/private.sql" -f "$HERE/shares.sql" -f "$HERE/names.sql" -f "$HERE/team.sql" -f "$HERE/seating.sql" -f "$HERE/invites.sql" -f "$HERE/arrivals.sql" -f "$HERE/shuttles.sql" -f "$HERE/fields.sql" 2>&1 | sed -n 's/.*NOTICE:  //p')"
 echo "$OUT"
 n_ok=$(grep -c '^ok' <<<"$OUT" || true); n_fail=$(grep -c '^FAIL' <<<"$OUT" || true)
 echo "$n_ok ok, $n_fail failed"

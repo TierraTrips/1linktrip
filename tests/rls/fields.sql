@@ -1,0 +1,46 @@
+-- RLS checks for supabase/schema-fields.sql (after arrivals.sql + shuttles.sql: same users, pages, households, aids tokens).
+\set ON_ERROR_STOP 1
+set client_min_messages = notice;
+set role authenticated; select as_s('9001');
+select t_ok($$insert into public.guest_fields (id, event_id, label, kind, visible, sort) values ('00000000-0000-0000-0000-00000000f901', '00000000-0000-0000-0000-00000000e901', 'Bib', 'number', 'guest', 0)$$, 'owner adds a guest-visible number field (Bib)');
+select t_ok($$insert into public.guest_fields (id, event_id, label, kind, choices, visible, sort) values ('00000000-0000-0000-0000-00000000f902', '00000000-0000-0000-0000-00000000e901', 'Wave', 'choice', '{A,B,C}', 'guest', 1)$$, 'owner adds a choice field (Wave)');
+select t_ok($$insert into public.guest_fields (id, event_id, label, kind, visible, sort) values ('00000000-0000-0000-0000-00000000f903', '00000000-0000-0000-0000-00000000e901', 'VIP note', 'text', 'planners', 2)$$, 'owner adds an organizers-only field');
+select t_ok($$insert into public.guest_fields (id, event_id, label) values ('00000000-0000-0000-0000-00000000f904', '00000000-0000-0000-0000-00000000e902', 'Other page')$$, 'owner adds a field on another page');
+select t_fail($$insert into public.guest_fields (event_id, label, kind) values ('00000000-0000-0000-0000-00000000e901', 'X', 'date')$$, 'kind is text / number / choice');
+select t_fail($$insert into public.guest_fields (event_id, label, visible) values ('00000000-0000-0000-0000-00000000e901', 'X', 'everyone')$$, 'visibility is planners / guest');
+select t_fail($$insert into public.guest_fields (event_id, label) values ('00000000-0000-0000-0000-00000000e901', '  ')$$, 'a field needs a label');
+reset role;
+set role authenticated; select as_s('9002');
+select t_ok($$insert into public.guest_field_values (field_id, person_id, value) values ('00000000-0000-0000-0000-00000000f901', '00000000-0000-0000-0000-00000000b901', '214'), ('00000000-0000-0000-0000-00000000f901', '00000000-0000-0000-0000-00000000b903', '215'),
+  ('00000000-0000-0000-0000-00000000f902', '00000000-0000-0000-0000-00000000b901', 'B'), ('00000000-0000-0000-0000-00000000f903', '00000000-0000-0000-0000-00000000b901', 'Bride''s aunt')$$, 'planner sets values');
+select t_fail($$insert into public.guest_field_values (field_id, person_id, value) values ('00000000-0000-0000-0000-00000000f901', '00000000-0000-0000-0000-00000000b902', 'two hundred')$$, 'a number field refuses text');
+select t_fail($$insert into public.guest_field_values (field_id, person_id, value) values ('00000000-0000-0000-0000-00000000f902', '00000000-0000-0000-0000-00000000b902', 'Z')$$, 'a choice field refuses other values');
+select t_fail($$insert into public.guest_field_values (field_id, person_id, value) values ('00000000-0000-0000-0000-00000000f901', '00000000-0000-0000-0000-00000000b904', '1')$$, 'a guest of another page cannot get a value here');
+select t_fail($$insert into public.guest_field_values (field_id, person_id, value) values ('00000000-0000-0000-0000-00000000f904', '00000000-0000-0000-0000-00000000b904', 'x')$$, 'planner cannot write another page''s field');
+select t_ok($$insert into public.guest_field_values (field_id, person_id, value) values ('00000000-0000-0000-0000-00000000f902', '00000000-0000-0000-0000-00000000b902', 'C') on conflict (field_id, person_id) do update set value = excluded.value$$, 'upsert a value (bulk edit path)');
+select t_ok($$insert into public.guest_field_values (field_id, person_id, value) values ('00000000-0000-0000-0000-00000000f902', '00000000-0000-0000-0000-00000000b902', 'A') on conflict (field_id, person_id) do update set value = excluded.value$$, 'upsert changes it');
+select t_eq((select count(*) from public.guest_field_values where value = 'A'), 1, 'Luis is wave A now');
+select t_fail($$update public.guest_fields set event_id = '00000000-0000-0000-0000-00000000e902' where id = '00000000-0000-0000-0000-00000000f901'$$, 'a field cannot move pages');
+reset role;
+set role authenticated; select as_s('9003');
+select t_eq((select count(*) from public.guest_fields), 0, 'stranger reads no fields');
+select t_eq((select count(*) from public.guest_field_values), 0, 'stranger reads no values');
+select t_fail($$insert into public.guest_fields (event_id, label) values ('00000000-0000-0000-0000-00000000e901', 'Intruder')$$, 'stranger cannot add a field');
+update public.guest_field_values set value = '999'; delete from public.guest_fields;
+reset role;
+select t_eq((select count(*) from public.guest_fields where event_id = '00000000-0000-0000-0000-00000000e901'), 3, 'stranger deleted no field');
+select t_eq((select count(*) from public.guest_field_values where value = '999'), 0, 'stranger changed no value');
+set role anon; select set_config('request.jwt.claims', '', false);
+select t_fail($$select count(*) from public.guest_field_values$$, 'anon cannot read values');
+select t_txt((select string_agg(f ->> 'label', ',') from jsonb_array_elements(public.household_get('arr-a1', (select v from aids where k = 'hA'), false) -> 'fields') f), 'Bib,Wave', 'household A sees Bib and Wave, not the organizers-only note');
+select t_txt((public.household_get('arr-a1', (select v from aids where k = 'hA'), false) -> 'fields')::text ~ 'aunt' || '', 'false', 'the organizers-only value never reaches the link');
+select t_eq(jsonb_array_length(public.household_get('arr-a1', (select v from aids where k = 'hA'), false) -> 'fields' -> 0 -> 'values'), 1, 'Bib: only Ana''s value (not Ben''s 215)');
+select t_txt((select string_agg(f ->> 'label', ',') from jsonb_array_elements(public.household_get('arr-a1', (select v from aids where k = 'hB'), false) -> 'fields') f), 'Bib', 'household B sees only its Bib');
+select t_txt((public.household_get('arr-a1', (select v from aids where k = 'hB'), false) -> 'fields' -> 0 -> 'values' -> 0 ->> 'value'), '215', 'Ben''s own bib');
+reset role;
+set role authenticated; select as_s('9001');
+select t_ok($$update public.guest_fields set visible = 'planners' where id = '00000000-0000-0000-0000-00000000f902'$$, 'owner hides Wave from guests');
+reset role;
+set role anon; select set_config('request.jwt.claims', '', false);
+select t_txt((select string_agg(f ->> 'label', ',') from jsonb_array_elements(public.household_get('arr-a1', (select v from aids where k = 'hA'), false) -> 'fields') f), 'Bib', 'hidden field gone from the link');
+reset role;

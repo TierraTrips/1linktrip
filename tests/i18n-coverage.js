@@ -132,6 +132,12 @@ async function screens(page, kind, url, cb) {
     await L('G.sh.dir = "dep"; X.glPaint();'); await grab('shuttles departures');
     await L('window.__ep.sh.shEditDlg("r1");'); await page.waitForTimeout(200); await grab('shuttle edit dialog'); await close();
     await L('G.sr = []; G.srr = []; X.glPaint();'); await grab('shuttles empty');
+    await L(`G.fd = [{ id: 'f1', label: 'Bib', kind: 'number', choices: [], visible: 'guest', sort: 0, created_at: '2026-01-01' }, { id: 'f2', label: 'Wave', kind: 'choice', choices: ['A', 'B'], visible: 'planners', sort: 1, created_at: '2026-01-02' }];
+      G.fv = [{ field_id: 'f1', person_id: 'p1', value: '214' }]; window.__fakeData.push('Bib', 'Wave', '214', 'A', 'B'); G.tab = 'fld'; X.glPaint();`); await page.waitForTimeout(300); await grab('fields');
+    await L('G.fdS.sel.add("p1"); X.glPaint();'); await grab('fields bulk');
+    await L('window.__ep.fd.fdEditDlg("f2");'); await page.waitForTimeout(200); await grab('field edit dialog'); await close();
+    await L('window.__ep.fd.fdImportDlg();'); await page.waitForTimeout(200); await grab('fields import dialog'); await close();
+    await L('G.fd = []; G.fv = []; G.ts = []; X.glPaint();'); await grab('fields empty');
     await L('G.tab = "list"; X.glPaint();');
   } else {
     await grab('owner page');
