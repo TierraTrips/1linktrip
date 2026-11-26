@@ -15,6 +15,7 @@ const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = se
 // the text and only ever emits <strong>, <em>, <mark> of its own, so nothing typed can become HTML. A marker needs text
 // right next to it (no space) and a partner on the same line; anything unmatched stays as typed ("5 * 3", "*sold out").
 // A single * between two Latin letters/digits stays a star (2*3*4); CJK text needs no spaces around markers.
+// A backslash escapes a * or = (\* is a plain star); only the formatting editor writes these, for stars/equals typed as text.
 const RT_TAG = { '**': 'strong', '*': 'em', '==': 'mark' };
 function rtParse(s, emit) {
   s = String(s ?? ''); const out = [], st = []; let buf = '', i = 0;
@@ -24,6 +25,11 @@ function rtParse(s, emit) {
   while (i < s.length) {
     const c = s[i];
     if (c === '\n') { flush(); unwind(); out.push('\n'); i++; continue; }
+    if (c === '\\') { // backslashes before * or = escape: an odd run makes the star/equals literal (the editor writes these)
+      let j = i; while (s[j] === '\\') j++; const k = j - i, nx = s[j];
+      if (nx !== '*' && nx !== '=') { buf += s.slice(i, j); i = j; continue; }
+      buf += '\\'.repeat(k >> 1); if (k & 1) { buf += nx; j++; } i = j; continue;
+    }
     if (c !== '*' && c !== '=') { buf += c; i++; continue; }
     let j = i; while (s[j] === c) j++; let n = j - i; const prev = s[i - 1], next = s[j];
     if ((c === '=' && n !== 2) || n > 3) { buf += s.slice(i, j); i = j; continue; }
@@ -57,7 +63,7 @@ const rtParas = (s) => String(s || '').split(/\n\s*\n/).filter(p => p.trim()).ma
 // translation: markers travel as <b>/<i>/<mark> (models keep tags around the right words); back to markers after, with an
 // unmatched tag dropped and spaces moved outside the markers
 const RT_TR = { '**': 'b', '*': 'i', '==': 'mark' };
-const rtToTags = (s) => rtParse(s, { text: (x) => x, open: (t) => `<${RT_TR[Object.keys(RT_TAG).find(k => RT_TAG[k] === t)]}>`, close: (t) => `</${RT_TR[Object.keys(RT_TAG).find(k => RT_TAG[k] === t)]}>` });
+const rtToTags = (s) => rtParse(s, { text: /\\[*=]/.test(s) ? (x) => x.replace(/(\\*)([*=])/g, (m, b, c) => b + b + '\\' + c) : (x) => x, open: (t) => `<${RT_TR[Object.keys(RT_TAG).find(k => RT_TAG[k] === t)]}>`, close: (t) => `</${RT_TR[Object.keys(RT_TAG).find(k => RT_TAG[k] === t)]}>` });
 function rtFromTags(s) {
   const M = { b: '**', i: '*', mark: '==' }; const out = [], st = []; let last = 0; s = String(s ?? '');
   for (const m of s.matchAll(/<(\/?)(b|i|mark)>/gi)) {
