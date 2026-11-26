@@ -379,10 +379,29 @@ function rtWatch() {
 }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+// ---------- organizer demos: ?demo=wedding|conference|race&view=organizer (Dylan 11/25) ----------
+// The real organizer screens (page, guest list and every tab, replies, planners) on sample data, no account. A sandbox:
+// this tab's storage is in memory, the database is an in-memory stand-in (org-demos.js), and nothing reaches the
+// server — every request to the project (REST, notify / invitation email, AI, storage) is answered here instead.
+// A reload starts the demo fresh.
+const ORG = (() => { try { const q = new URLSearchParams(location.search); const k = q.get('demo'); return q.get('view') === 'organizer' && ['wedding', 'conference', 'race'].includes(k) ? { k, q: '?demo=' + k + '&view=organizer', eid: '', pid: '' } : null; } catch { return null; } })();
+const ORG_MEM = new Map(); const ORG_FILES = new Map();
+if (ORG) {
+  const host = window.EP_SUPABASE && window.EP_SUPABASE.url; const real = window.fetch.bind(window);
+  const json = (b, status = 200) => Promise.resolve(new Response(b == null ? null : JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } }));
+  window.fetch = (input, init = {}) => {
+    const url = String(input && input.url ? input.url : input); if (!host || !url.startsWith(host)) return real(input, init);
+    const path = url.slice(host.length).split('?')[0]; const method = String(init.method || (input && input.method) || 'GET').toUpperCase();
+    if (path.startsWith('/functions/v1/notify')) { if (method !== 'POST') return json({}); let b = {}; try { b = JSON.parse(init.body || '{}'); } catch { /* empty */ } return Promise.resolve(window.ORG_NOTIFY ? window.ORG_NOTIFY(b) : { ok: false }).then(j => json(j)); }
+    if (path.startsWith('/functions/')) return json({ error: 'Not available in the demo' }, 503);
+    if (path.startsWith('/rest/')) return method === 'GET' ? json([]) : json(null, 204);
+    return json({ error: 'Not available in the demo' }, 404);
+  };
+}
 const LS = {
-  get(k, d = null) { try { const v = localStorage.getItem('ep:' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem('ep:' + k, JSON.stringify(v)); } catch { /* quota */ } if (window.__shTouch) window.__shTouch(k); }, // a shared trip follows its bookings
-  del(k) { try { localStorage.removeItem('ep:' + k); } catch {} }
+  get(k, d = null) { try { const v = ORG ? ORG_MEM.get(k) : localStorage.getItem('ep:' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { if (ORG) ORG_MEM.set(k, JSON.stringify(v)); else localStorage.setItem('ep:' + k, JSON.stringify(v)); } catch { /* quota */ } if (window.__shTouch) window.__shTouch(k); }, // a shared trip follows its bookings
+  del(k) { try { if (ORG) ORG_MEM.delete(k); else localStorage.removeItem('ep:' + k); } catch {} }
 };
 
 // ---------- page names: https://1linktrip.com/<name> (Dylan 11/25: "customizable URLs") ----------
@@ -3950,13 +3969,14 @@ async function aboutFill() {
 const SB = window.EP_SUPABASE && window.EP_SUPABASE.url ? window.EP_SUPABASE : null;
 const SB_JS = { src: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js', integrity: 'sha384-uteMfOloLDGt042uDz+xHGF3ym63/WQ6rFq7murQRG8Ih7QrXGEGNtWd8688sb4O' };
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,46}[a-z0-9]$/;
-const siteBase = () => location.origin + APP_ROOT; // the app itself (a /<name> address is a page, not the app)
-// a hosted page's link: the pretty one when the page has a name, else ?e=<slug>
-const shortURL = (slug) => pnName(slug) ? siteBase() + pnName(slug) : `${siteBase()}?e=${slug}`;
-const linkText = (slug) => pnName(slug) ? location.host + APP_ROOT + pnName(slug) : '?e=' + slug;
+const siteBase = () => location.origin + APP_ROOT + (ORG ? ORG.q : ''); // the app itself (a /<name> address is a page, not the app); a demo stays a demo
+// a hosted page's link: the pretty one when the page has a name, else ?e=<slug> (a demo's: its guest-side example)
+const shortURL = (slug) => ORG ? location.origin + APP_ROOT + '?demo=' + ORG.k : pnName(slug) ? siteBase() + pnName(slug) : `${siteBase()}?e=${slug}`;
+const linkText = (slug) => ORG ? location.host + APP_ROOT + '?demo=' + ORG.k : pnName(slug) ? location.host + APP_ROOT + pnName(slug) : '?e=' + slug;
 let sbClient = null, sbLoading = null;
 function sb() {
   if (sbClient) return Promise.resolve(sbClient);
+  if (ORG) return Promise.reject(new Error('Demo')); // the demo's stand-in is set before anything asks
   if (!SB) return Promise.reject(new Error('Hosting is not set up'));
   return sbLoading || (sbLoading = new Promise((res, rej) => {
     const go = () => {
@@ -5351,9 +5371,56 @@ function myPagesHTML() {
     return `<li style="${themeStyle(c.theme)}"><i class="mp-dot" aria-hidden="true"></i><div class="mp-t"><b>${esc(c.title || t('Untitled'))}</b><span>${esc([t(TYPE_LABEL[c.type] || c.type), c.start ? dateRange(c.start, c.end) : '', open ? t('shared') : '', x.pid === cur ? t('last opened') : ''].filter(Boolean).join(' · '))}</span></div>
       <div class="mp-b"><a class="btn sm primary" href="#page=${esc(x.pid)}" aria-label="${esc(t('Open {n}', { n: c.title || t('Untitled') }))}">${t('Open')}</a><a class="btn sm ghost" href="#dup=${esc(x.pid)}">${t('Duplicate')}</a>${x.hosted && x.hosted.planner ? `<a class="btn sm ghost" href="#mine">${t('Co-planner')}</a>` : `<button type="button" class="btn sm ghost" data-mp-del="${esc(x.pid)}" aria-label="${esc(t('Delete {n}', { n: c.title || t('Untitled') }))}">${t('Delete')}</button>`}</div></li>`; }).join('')}</ul></section>`;
 }
+// ---------- organizer demos (see ORG at the top): boot, the demo bar, the cards on #examples ----------
+const ORG_LIST = [['wedding', 'tulum-wedding', 'For wedding planners', 'Households, plus-ones, seating, invitations, shuttles'],
+  ['conference', 'nyc-conference', 'For conference teams', 'Speakers and sponsors, badges, speaker dinner, airport pickups'],
+  ['race', 'chicago-10k', 'For race directors', 'Runners and clubs, bibs and waves, race-morning shuttles']];
+const loadScript = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => { s.remove(); rej(new Error('load')); }; document.head.appendChild(s); });
+async function orgBoot() {
+  LANG = uiLang(); document.documentElement.lang = LANG;
+  $('#app').innerHTML = `<main class="mine"><div class="mine-in"><p class="muted">${t('Loading…')}</p></div></main>`;
+  try { await loadScript('org-demos.js'); } catch { $('#app').innerHTML = `<main class="mine"><div class="mine-in"><p>${t('Couldn’t load it.')} <a href="${esc(APP_ROOT)}#examples">${t('Example pages')}</a></p></div></main>`; return; }
+  if (window.EXAMPLES_TR === undefined) { window.EXAMPLES_TR = null; await loadScript('examples-tr.js').catch(() => {}); }
+  const exId = DEMOS[ORG.k]; const cfg = normalize(clone(window.EXAMPLES[exId])); delete cfg.demoTrip;
+  if (window.EXAMPLES_TR && window.EXAMPLES_TR[exId]) cfg.tr = clone(window.EXAMPLES_TR[exId]);
+  const S = window.ORG_DEMO.build(window.ORG_DEMOS[ORG.k], cfg, { rqPack, ivDefault });
+  sbClient = window.ORG_DEMO.fakeClient(S, ORG_FILES); window.ORG_NOTIFY = (b) => window.ORG_DEMO.fakeNotify(S, b); window.__orgDemo = S;
+  // the invitation pictures, drawn here (the real app stores the ones it drew when the design was saved)
+  for (const row of S.db.invitations) {
+    for (const photo of [true, false]) {
+      try { const d = { ...row.design, usePhoto: photo && row.design.usePhoto }; const cv = await ivRender(d, S.cfg, srcLang(S.cfg), row.kind, 720); const blob = await ivBlob(cv);
+        const path = `${S.eid}/${row.kind}-demo.jpg`; ORG_FILES.set(IV_BUCKET + '/' + path, URL.createObjectURL(blob)); const im = { path, w: cv.width, h: cv.height };
+        row.images = Object.fromEntries(ivLangsOf(S).map(l => [l, im])); row.design = d; break; } catch { /* a photo the canvas can't use: drawn without it */ }
+    }
+  }
+  const ev = S.db.events[0]; ORG.eid = S.eid; ORG.pid = 'p' + ORG.k + 'demo'; ORG.title = cfg.title;
+  LS.set('signedIn', true); LS.set('msgReady', { t: Date.now(), ok: true }); LS.set('notifyReady', { t: Date.now(), ok: true });
+  LS.set('pages', [{ pid: ORG.pid, cfg: normalize(clone(cfg)), url: '', hosted: { id: S.eid, slug: S.slug, owner: S.me.id, pub: true }, updated: Date.now(), edited: Date.parse(ev.updated_at) }]);
+  LS.set('draftId', ORG.pid); pbSet(S.eid, ev.updated_at, cfg); if (S.priv) LS.set('priv:' + ORG.pid, S.priv);
+  if (S.db.guest_tables.length) LS.set('stv:' + S.eid, 'floor');
+  route();
+}
+const ivLangsOf = (S) => [...new Set([srcLang(S.cfg), ...S.db.guest_households.map(h => h.lang).filter(Boolean)])];
+// a slim bar over every demo screen: what this is, the organizer screens, the guest side, and the way out
+function orgBar(h) {
+  let bar = $('#org-bar');
+  if (!bar) { bar = document.createElement('div'); bar.id = 'org-bar'; bar.className = 'org-bar'; bar.setAttribute('role', 'region'); bar.setAttribute('aria-label', t('Demo')); document.body.insertBefore(bar, $('#app')); }
+  const on = h.startsWith('guests/') ? 'g' : h.startsWith('mine/') ? 'm' : h.startsWith('page=') || h === 'new' ? 'p' : '';
+  const a = (k, href, label) => `<a href="${esc(href)}"${on === k ? ' aria-current="page"' : ''}>${esc(label)}</a>`;
+  bar.innerHTML = `<div class="org-in"><span class="org-tag">${t('Demo')}</span><span class="org-t" title="${esc(t('Sample data. Changes stay in this tab and nothing is sent.'))}"><b>${esc(ORG.title || '')}</b> <span>${t('Sample data. Changes stay in this tab and nothing is sent.')}</span></span>
+    <nav class="org-nav" aria-label="${esc(t('Organizer view'))}">${a('g', '#guests/' + ORG.eid, t('Guest list'))}${a('p', '#page=' + ORG.pid, t('Page'))}${a('m', '#mine/' + ORG.eid, t('Messages'))}<a href="${esc(APP_ROOT)}?demo=${esc(ORG.k)}" target="_blank" rel="noopener">${t('Guest view')} <span aria-hidden="true">↗</span></a></nav>
+    <a class="btn sm primary org-cta" href="${esc(APP_ROOT)}#setup">${t('Create your own')}</a></div>`;
+}
+function orgSamplesHTML() {
+  return `<section class="land-ex org-ex" id="for-planners"><h2>${t('For planners: the organizer view')}</h2><p class="muted org-lede">${t('See a sample event from the organizer’s side: guest list, seating, invitations, arrivals and shuttles. No sign-up; changes stay in your browser.')}</p>
+    <div class="ex-grid">${ORG_LIST.map(([k, id, who, what]) => { const e = normalize(clone(window.EXAMPLES[id])); return `<div class="ex-card org-card" style="${themeStyle(e.theme)}"><a class="ex-hit" href="?demo=${k}&amp;view=organizer" aria-label="${esc(t('Open {n}', { n: e.title }) + ' · ' + t('Organizer view'))}"></a>
+        <span class="ex-img" style="background-image:url('${esc(e.cover)}')"></span>
+        <span class="ex-body"><span class="lbl">${esc(t(who))}</span><b>${esc(e.title)}</b><span>${esc(t(what))}</span></span>
+        <span class="ex-acts"><a class="btn sm primary" href="?demo=${k}&amp;view=organizer">${t('Organizer view')}</a><a class="btn sm ghost" href="?demo=${k}">${t('Guest view')}</a></span></div>`; }).join('')}</div></section>`;
+}
 function renderExamples() {
   document.title = t('Example pages') + ' · 1LinkTrip'; scrollTo(0, 0);
-  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a><span class="land-nav"><a class="btn primary" href="#setup">${t('Create a page')}</a></span></header>${samplesHTML()}</main>`;
+  $('#app').innerHTML = `<main class="land"><header class="land-top"><a class="brand" href="#">${BRAND}</a><span class="land-nav"><a class="btn primary" href="#setup">${t('Create a page')}</a></span></header>${samplesHTML()}${orgSamplesHTML()}</main>`;
 }
 function samplesHTML() {
   const ex = window.EXAMPLES; const order = ['japan-trip', 'tulum-wedding', 'chicago-10k', 'redrocks-concert', 'nyc-conference', 'sf-festival'].filter(id => ex[id]);
@@ -10076,7 +10143,7 @@ const IV_W = 1200, IV_H = 1680; // email-friendly: shown at 520 px wide, sharp o
 const IV_HEAD = { classic: 'Together with their families', modern: 'You’re invited', minimal: 'You’re invited', party: 'Let’s celebrate', conference: 'You’re invited to attend', race: 'On your marks' };
 const IV_PHRASES = ['Together with their families', 'request the pleasure of your company', 'You’re invited', 'Let’s celebrate', 'You’re invited to attend', 'On your marks', 'Save the date', 'Invitation to follow', 'Date', 'Place'];
 const IV_FIELDS = [['headline', 'Headline'], ['names', 'Names or title'], ['date', 'Date line'], ['place', 'Place'], ['note', 'Note']];
-const ivUrl = (path) => path ? `${SB.url}/storage/v1/object/public/${IV_BUCKET}/${String(path).split('/').map(encodeURIComponent).join('/')}` : '';
+const ivUrl = (path) => ORG ? ORG_FILES.get(IV_BUCKET + '/' + path) || '' : path ? `${SB.url}/storage/v1/object/public/${IV_BUCKET}/${String(path).split('/').map(encodeURIComponent).join('/')}` : '';
 const tIn = (lang, s, tx) => (tx && tx['ph:' + s]) || (lang === 'en' ? s : ((I18N[lang] || {})[s] || s));
 const ivHex = (h) => { const m = /^#?([0-9a-f]{6})$/i.exec(h || ''); const n = m ? parseInt(m[1], 16) : 0x0F4A50; return [n >> 16, (n >> 8) & 255, n & 255]; };
 const ivMix = (a, b, k) => { const x = ivHex(a), y = ivHex(b); return '#' + x.map((v, i) => Math.round(v * (1 - k) + y[i] * k).toString(16).padStart(2, '0')).join(''); };
@@ -11152,7 +11219,11 @@ function route() {
     if (!PATH.slug) { SU = null; return pathResolve(false); }
     if (!PATH.fresh && !PATH.checked) { PATH.checked = true; pathResolve(true); } // known on this device: open now, check in the background
   }
-  const qs = locQ(); const qe = qs.get('e'), qd = qs.get('demo');
+  if (ORG) { // an organizer demo: its organizer screens only; anything else opens its guest list
+    if (!ORG.eid) return; orgBar(h);
+    if (!/^(mine(\/.+)?|guests\/[\w-]+|page=[\w-]+|new)$/.test(h)) { const tb = tab || (h.startsWith('t=') ? h.slice(2) : ''); history.replaceState(null, '', siteBase() + '#guests/' + ORG.eid + (/^(seat|inv|arr|shut|fld)$/.test(tb) ? '&t=' + tb : '')); return route(); }
+  }
+  const qs = locQ(); const qe = qs.get('e'), qd = ORG ? null : qs.get('demo');
   if (qe && (h === '' || h.startsWith('t='))) { SU = null; return renderHosted(qe.toLowerCase(), h.startsWith('t=') ? h.slice(2) : tab); }
   if (qd && DEMOS[qd] && (h === '' || h.startsWith('t='))) { SU = null; return renderViewer(normalize(clone(window.EXAMPLES[DEMOS[qd]])), { exampleId: DEMOS[qd], tab: h.startsWith('t=') ? h.slice(2) : tab }); }
   if (qe || qd) history.replaceState(null, '', siteBase() + location.hash);
@@ -11173,8 +11244,8 @@ function route() {
 
 window.addEventListener('hashchange', route);
 rtWatch();
-route();
-if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
+if (ORG) orgBoot(); else route();
+if (!ORG && acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
 // ================= arrivals board (schema-arrivals.sql) =================
 // Guest list → Arrivals: who lands / leaves when, where and on what, and where they stay — per household. Two sources:
 // the household's own RSVP travel fields (guest_travel) and, only for guests who switched on "Share my arrival with the

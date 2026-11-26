@@ -2241,3 +2241,25 @@ textarea[data-fde="choices"] { width: 100%; border: 1.5px solid var(--rule); bor
 .fd-bulk select, .fd-bulk input { color: var(--ink); background: #fff; min-width: 110px; }
 .fd-q input { min-height: 40px; border: 1.5px solid var(--rule); border-radius: 999px; padding: 0 14px; font-size: 16px; background: var(--paper); color: var(--ink); }
 .fd-bulk .btn.primary { background: var(--route); border-color: var(--route); color: #fff; }
+/* organizer demos (?demo=…&view=organizer): a slim bar over the real screens, and their cards on #examples */
+.org-bar { background: var(--forest); color: #fff; font-size: .82rem; position: relative; z-index: 30; }
+.org-in { max-width: 1180px; margin: 0 auto; display: flex; align-items: center; gap: 6px 14px; padding: 7px 16px; flex-wrap: wrap; }
+.org-tag { font: 600 .68rem var(--mono); letter-spacing: .08em; text-transform: uppercase; background: var(--route); color: #fff; border-radius: 6px; padding: 2px 7px; }
+.org-t { flex: 1 1 260px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .92; }
+.org-t span { opacity: .8; }
+.org-nav { display: flex; gap: 2px; flex-wrap: wrap; }
+.org-nav a { color: #fff; text-decoration: none; padding: 4px 9px; border-radius: 8px; opacity: .85; }
+.org-nav a:hover { background: rgba(255,255,255,.12); opacity: 1; }
+.org-nav a[aria-current="page"] { background: rgba(255,255,255,.18); opacity: 1; font-weight: 600; }
+.org-bar .org-cta { background: #fff; color: var(--forest); border-color: #fff; }
+@media (max-width: 759px) {
+  .org-in { padding: 6px 12px; gap: 4px 8px; }
+  .org-t { flex: 1 1 0; } .org-t span { display: none; }
+  .org-nav { order: 3; flex: 1 1 100%; overflow-x: auto; flex-wrap: nowrap; margin: 0 -6px; scrollbar-width: none; }
+  .org-nav::-webkit-scrollbar { display: none; }
+  .org-nav a { white-space: nowrap; padding: 4px 8px; }
+}
+@media print { .org-bar { display: none; } }
+.org-ex { margin-top: 34px; }
+.org-ex .org-lede { margin: -8px 0 16px; max-width: 60ch; }
+@media (max-width: 759px) { .org-bar .org-cta { padding: 5px 12px; font-size: .8rem; min-height: 0; } }
