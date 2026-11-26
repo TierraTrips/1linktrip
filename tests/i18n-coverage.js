@@ -105,6 +105,18 @@ async function screens(page, kind, url, cb) {
     for (const js of dlgs) { await L(js); await page.waitForTimeout(250); await grab('dialog ' + js.slice(0, 14)); await close(); }
     await L('document.querySelector("#st-print")?.remove(); window.print = () => {}; X.stPrint("table");'); await page.waitForTimeout(150); await page.evaluate(() => { document.querySelector('#st-print').style.display = 'block'; }); await grab('print by table');
     await L('X.stPrint("abc");'); await page.waitForTimeout(150); await grab('print find your table');
+    // Invitations: empty (two ways in), the builder (and in a guest language), a saved design with sends + the queue
+    await page.evaluate(() => { document.querySelector('#st-print')?.remove(); const X = window.__ep.lists; X.setG(window.__fakeG()); const G = X.G(); G.tab = 'inv'; G.iv = Object.assign(X.ivBlank(), { st: { ok: true, left: 3, dailyCap: 100 } }); X.glPaint(); }); await page.waitForTimeout(400); await grab('invitations: start');
+    // the builder's placeholders are the card's own words (page / guest language, not the interface): content
+    const cardWords = 'window.__fakeData.push(...[...document.querySelectorAll("[data-iv-t]")].map(x => x.placeholder).filter(Boolean));';
+    await L('window.__ep.iv.ivOpenBuilder("invitation");' + cardWords); await page.waitForTimeout(600); await grab('invitations: builder');
+    await L('G.iv.build.lang = "es"; X.glPaint();' + cardWords); await page.waitForTimeout(400); await grab('invitations: builder in a guest language');
+    await L(`G.iv.build = null; G.iv.rows = [{ id: 'i1', kind: 'invitation', source: 'template', design: {}, images: { en: { path: 'e0/inv-en-abcdef.jpg', w: 1200, h: 1680 }, es: { path: 'e0/inv-es-abcdef.jpg', w: 1200, h: 1680 } }, show_on_page: true }];
+      G.iv.sends = [{ id: 's1', household_id: 'h1', invitation_id: 'i1', kind: 'invitation', channel: 'email', status: 'delivered', sent_at: new Date(Date.now() - 864e5).toISOString(), delivered_at: new Date().toISOString(), queued_at: new Date(Date.now() - 864e5).toISOString() },
+        { id: 's2', household_id: 'h2', invitation_id: 'i1', kind: 'invitation', channel: 'email', status: 'queued', queued_at: new Date().toISOString() }, { id: 's3', household_id: 'h3', invitation_id: 'i1', kind: 'invitation', channel: 'text', status: 'sent', sent_at: new Date().toISOString(), queued_at: new Date().toISOString() }];
+      G.iv.st = { ok: true, left: 0, dailyCap: 100, next_at: new Date(Date.now() + 36e5).toISOString() }; G.iv.rf = 'all'; G.iv.sel = null; X.glPaint();`); await page.waitForTimeout(400); await grab('invitations: saved, sent, queued');
+    await L('G.iv.kind = "save_the_date"; G.iv.rows[0].kind = "x"; X.glPaint();'); await page.waitForTimeout(300); await grab('invitations: save the date start');
+    await L('G.tab = "list"; G.iv.kind = "invitation"; G.iv.rows[0].kind = "invitation"; X.glPaint();'); await page.waitForTimeout(300); await grab('guest list with sends');
   } else {
     await grab('owner page');
     for (const ed of ['s:', 'st:', 'sec:details', 'hero', 'when']) {

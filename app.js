@@ -2395,6 +2395,7 @@ function renderEvent(cfg, root, opts = {}) {
   <article class="ev ${cfg.theme.mode === 'dark' ? 'dark' : ''} ${tabs.length > 1 ? 'has-tabs' : ''} ${opts.preview ? 'is-preview' : ''}" style="${themeStyle(cfg.theme)}" lang="${LANG}">
     ${tabs.length > 1 ? `<nav class="ev-tabs" role="tablist" aria-label="${t('Page sections')}">${tabs.map(([k, l]) => `<button type="button" role="tab" data-tab-go="${k}" aria-selected="${k === cur}"><svg viewBox="0 0 24 24" aria-hidden="true">${TAB_ICONS[k]}</svg><span>${t(l)}</span></button>`).join('')}</nav>` : ''}
     <div class="ev-panel" data-panel="event"${cur === 'event' ? '' : ' hidden'}>
+      ${opts.hosted && opts.hosted.hh && opts.hosted.hh.inv ? ivGuestHTML(opts.hosted) : ''}
       <header class="ev-hero ${cfg.cover ? 'has-cover' : ''}">
         ${cfg.cover ? `<img class="ev-cover" src="${esc(cfg.cover)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
         <div class="ev-hero-in">
@@ -4102,8 +4103,9 @@ async function renderHosted(slug, tab) {
   const htok = LS.get('hh:' + row.id);
   if (htok && !pagesAll().some(p => p.hosted && p.hosted.id === row.id)) {
     const k = 'hho:' + row.id; let rec = true; try { rec = !sessionStorage.getItem(k); } catch { /* private mode */ }
-    try { const [hh, seats] = await Promise.all([hhRpc('household_get', { s: row.slug, tok: htok, record: rec }), hhRpc('household_seats', { s: row.slug, tok: htok }).catch(() => null)]); // seats: null unless the organizers show tables
-      if (hh && hh.people) { hosted.hh = { tok: htok, ...hh, seats: Array.isArray(seats) ? seats : [] }; try { sessionStorage.setItem(k, '1'); } catch {} } else LS.del('hh:' + row.id); }
+    try { const [hh, seats, inv] = await Promise.all([hhRpc('household_get', { s: row.slug, tok: htok, record: rec }), hhRpc('household_seats', { s: row.slug, tok: htok }).catch(() => null), // seats: null unless the organizers show tables
+        hhRpc('household_invitation', { s: row.slug, tok: htok }).catch(() => null)]); // the invitation it was sent, while the organizers show it
+      if (hh && hh.people) { hosted.hh = { tok: htok, ...hh, seats: Array.isArray(seats) ? seats : [], inv: inv && inv.path ? inv : null }; try { sessionStorage.setItem(k, '1'); } catch {} } else LS.del('hh:' + row.id); }
     catch { /* offline: the page without the household form */ }
   } else if (!htok && !pagesAll().some(p => p.hosted && p.hosted.id === row.id)) pageOpenOnce(row);
   LANG = guestLangPick(cfg);
@@ -9673,10 +9675,10 @@ function teamTags(cfg, art) {
   Object.entries(TAG_KEYS).forEach(([ed, keys]) => { const el = art.querySelector(`[data-ed="${ed}"]`); if (el) tag(el, keys, el.querySelector(':scope > .sec-h') || el); });
   $$('[data-ed^="sec:c-"]', art).forEach(el => tag(el, ['f:custom'], el.querySelector(':scope > .sec-h') || el));
 }
-async function notifyCall(kind, id) {
+async function notifyCall(kind, id, extra) {
   try {
     if (!SB) return null; const c = await sb(); const { data } = await c.auth.getSession(); const tok = data && data.session && data.session.access_token; if (!tok) return null;
-    const r = await fetchTimeout(`${SB.url}/functions/v1/notify`, { method: 'POST', headers: { Authorization: 'Bearer ' + tok, apikey: SB.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, id }) }, 20000);
+    const r = await fetchTimeout(`${SB.url}/functions/v1/notify`, { method: 'POST', headers: { Authorization: 'Bearer ' + tok, apikey: SB.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, id, ...(extra || {}) }) }, 60000);
     return await r.json().catch(() => null);
   } catch { return null; }
 }
@@ -9875,15 +9877,15 @@ function glStat(h) {
   const ps = glPeople(h.id); const host = ps.filter(p => p.added_by === 'host');
   const replied = ps.filter(p => G.rep.has(p.id)).length; const coming = ps.filter(p => (G.rep.get(p.id) || {}).attending).length;
   const plusLeft = Math.max(0, (h.plus_ones || 0) - ps.filter(p => p.added_by === 'guest' && !p.plus_of).length) + host.reduce((n, p) => n + Math.max(0, (p.plus_ones || 0) - ps.filter(q => q.plus_of === p.id).length), 0);
-  return { ps, host, replied, coming, plusLeft, noReply: host.some(p => !G.rep.has(p.id)) || !ps.length, hotel: G.hot.has(h.id) ? G.hot.get(h.id) : null, opened: !!h.first_opened_at };
+  return { ps, host, replied, coming, plusLeft, noReply: host.some(p => !G.rep.has(p.id)) || !ps.length, hotel: G.hot.has(h.id) ? G.hot.get(h.id) : null, opened: !!h.first_opened_at, sent: !!(G.iv && ivLast(h.id)) };
 }
-const GL_FILTERS = [['all', 'All'], ['unopened', 'Not opened'], ['norsvp', 'No RSVP'], ['nohotel', 'No hotel'], ['plus', 'Unused plus-ones']];
-const glPass = (f, s) => f === 'all' || (f === 'unopened' && !s.opened) || (f === 'norsvp' && s.noReply) || (f === 'nohotel' && s.hotel !== true) || (f === 'plus' && s.plusLeft > 0);
+const GL_FILTERS = [['all', 'All'], ['notsent', 'Not sent'], ['unopened', 'Not opened'], ['norsvp', 'No RSVP'], ['nohotel', 'No hotel'], ['plus', 'Unused plus-ones']];
+const glPass = (f, s) => f === 'all' || (f === 'notsent' && !s.sent) || (f === 'unopened' && !s.opened) || (f === 'norsvp' && s.noReply) || (f === 'nohotel' && s.hotel !== true) || (f === 'plus' && s.plusLeft > 0);
 function glDietOf(x) { return [...(x.diets || []).map(k => t((HH_DIETS.find(d => d[0] === k) || [k, k])[1])), x.diet].filter(Boolean); }
 
 function glHouseHTML(h) {
   const s = glStat(h); const g = glGroup(h.group_id); const hue = glHue(h.group_id);
-  const trail = [
+  const trail = [...(G.ivOff ? [] : [ivTrailStep(h)]),
     [s.opened ? 'on' : 'off', s.opened ? t('Opened {t}', { t: ago(h.first_opened_at) }) + (h.opens > 1 ? ` · ${h.opens}×` : '') : t('Not opened')],
     [!s.ps.length || !s.replied ? 'off' : s.replied >= s.ps.length && !s.noReply ? 'on' : 'part', s.replied ? t('Replied {n}/{m}', { n: s.replied, m: s.ps.length }) : t('No reply')],
     [s.hotel === true ? 'on' : s.hotel === false ? 'off' : 'unk', t(s.hotel === true ? 'Hotel chosen' : s.hotel === false ? 'No hotel' : 'Hotel ?')]];
@@ -9895,7 +9897,7 @@ function glHouseHTML(h) {
     <div class="gl-top"><label class="gl-sel"><input type="checkbox" data-gl-sel="${esc(h.id)}"${G.sel.has(h.id) ? ' checked' : ''} aria-label="${esc(t('Select {n}', { n: h.name }))}"></label>
       <div class="gl-hd"><b>${esc(h.name)}</b><span class="gl-meta">${[g ? `<span class="gl-g"><i aria-hidden="true"></i>${esc(g.name)}</span>` : '', h.lang ? esc(langName(h.lang)) : '', s.plusLeft ? esc(t('+{n} open', { n: s.plusLeft })) : ''].filter(Boolean).join(' · ')}</span></div>
       <button type="button" class="btn sm ghost gl-ed" data-gl-edit="${esc(h.id)}" aria-label="${esc(t('Edit {n}', { n: h.name }))}">${t('Edit')}</button></div>
-    <ol class="gl-trail">${trail.map(([c, l]) => `<li class="${c}">${esc(l)}</li>`).join('')}</ol>
+    <ol class="gl-trail" style="--n:${trail.length}">${trail.map(([c, l]) => `<li class="${c}">${esc(l)}</li>`).join('')}</ol>
     <ul class="gl-ps">${s.ps.map(person).join('') || `<li class="muted">${t('No guests yet')}</li>`}</ul>
     <div class="gl-acts"><button type="button" class="btn sm" data-gl-copy="${esc(h.id)}">${t('Copy link')}</button><a class="btn sm" href="sms:${phone ? esc(phone) : ''}?&body=${enc(glInvText(h))}">${t('Text')}</a><a class="btn sm" href="mailto:${esc(h.email || '')}?subject=${enc(G.cfg.title || '')}&body=${enc(glInvText(h))}">${t('Email')}</a></div>
   </li>`;
@@ -9936,16 +9938,19 @@ function glGroupsHTML() {
 function glPaint() {
   const m = $('.gl'); if (!m) return; glReplies();
   const S = G.hs.map(glStat); const ppl = S.reduce((n, s) => n + s.ps.length, 0);
-  $('[data-gl-sum]', m).innerHTML = [['Invites', G.hs.length], ['Guests', ppl], ['Opened', `${G.hs.filter(h => h.first_opened_at).length}/${G.hs.length}`], ['Coming', S.reduce((n, s) => n + s.coming, 0)], ['No reply', S.filter(s => s.noReply).length]].map(([l, v]) => `<div><small>${esc(t(l))}</small><b>${v}</b></div>`).join('');
+  $('[data-gl-sum]', m).innerHTML = [['Invites', G.hs.length], ['Guests', ppl], ...(G.ivOff ? [] : [['Sent', `${G.hs.filter(h => ivLast(h.id)).length}/${G.hs.length}`]]), ['Opened', `${G.hs.filter(h => h.first_opened_at).length}/${G.hs.length}`], ['Coming', S.reduce((n, s) => n + s.coming, 0)], ['No reply', S.filter(s => s.noReply).length]].map(([l, v]) => `<div><small>${esc(t(l))}</small><b>${v}</b></div>`).join('');
   $('[data-gl-plain]').textContent = G.opens ? t(G.opens === 1 ? 'Plain link opened once' : 'Plain link opened {n} times', { n: G.opens }) : '';
   $$('[data-gl-tab]', m).forEach(b => { const on = b.dataset.glTab === G.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
   if (G.stOff && G.tab === 'seat') G.tab = 'list'; const sb2 = $('[data-gl-seat]', m); if (sb2) sb2.hidden = !!G.stOff;
+  if (G.ivOff && G.tab === 'inv') G.tab = 'list'; const ib = $('[data-gl-inv]', m); if (ib) ib.hidden = !!G.ivOff; m.closest('.gl-page').classList.toggle('iv-wide', G.tab === 'inv');
   m.closest('.gl-page').classList.toggle('st-wide', G.tab === 'seat');
-  $('[data-gl-body]', m).innerHTML = G.tab === 'diet' ? glDietHTML() : G.tab === 'groups' ? glGroupsHTML() : G.tab === 'seat' ? stHTML() : glListHTML();
+  $('[data-gl-body]', m).innerHTML = G.tab === 'diet' ? glDietHTML() : G.tab === 'groups' ? glGroupsHTML() : G.tab === 'seat' ? stHTML() : G.tab === 'inv' ? ivTabHTML() : glListHTML();
   stFit();
   const bar = $('[data-gl-bar]', m); const n = G.sel.size; bar.hidden = !n || G.tab !== 'list';
-  if (n) bar.innerHTML = `<b>${esc(t('{n} selected', { n }))}</b><select data-gl-bulkgrp aria-label="${esc(t('Set group'))}"><option value="">${t('Set group…')}</option>${G.gs.map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}<option value="none">${t('No group')}</option></select><button type="button" class="btn sm" data-gl-bulkcopy>${t('Copy links')}</button><button type="button" class="btn sm" data-gl-bulkmail>${t('Email invitations')}</button><button type="button" class="link" data-gl-clear>${t('Clear')}</button>`;
+  if (n) bar.innerHTML = `<b>${esc(t('{n} selected', { n }))}</b><select data-gl-bulkgrp aria-label="${esc(t('Set group'))}"><option value="">${t('Set group…')}</option>${G.gs.map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}<option value="none">${t('No group')}</option></select><button type="button" class="btn sm" data-gl-bulkcopy>${t('Copy links')}</button><button type="button" class="btn sm" data-gl-bulkmail>${t(G.ivOff ? 'Email invitations' : 'Send invitation')}</button><button type="button" class="link" data-gl-clear>${t('Clear')}</button>`;
+  ivAfterPaint();
 }
+
 async function glLoad() {
   const c = await sb(); const eid = G.eid;
   const [hs, ps, rs, gs, hot, op] = await Promise.all([c.from('guest_households').select('*').eq('event_id', eid).order('sort').order('created_at').limit(2000),
@@ -9956,6 +9961,7 @@ async function glLoad() {
   if (hs.error) throw hs.error;
   Object.assign(G, { hs: hs.data || [], ps: ps.data || [], rs: rs.data || [], gs: gs.data || [], hot: new Map((hot.data || []).map(x => [x.id, x.has_hotel])), opens: (op.data || []).reduce((n, x) => n + (x.n || 0), 0) });
   await stLoad().catch(() => { G.stOff = true; });
+  if (!G.iv) G.iv = ivBlank(); await ivLoad().catch(() => { G.ivOff = true; });
 }
 async function renderGuests(eid) {
   LANG = uiLang(); document.documentElement.lang = LANG; document.documentElement.dir = 'ltr'; document.title = t('Guest list') + ' · 1LinkTrip';
@@ -9966,7 +9972,7 @@ async function renderGuests(eid) {
   if (!user) { LS.del('signedIn'); LS.set('afterSignIn', '#guests/' + eid); return renderMine('', t('Sign in to see your guest list.')); }
   const c = await sb(); const { data: ev } = await c.from('events').select('id,slug,config,published,owner').eq('id', eid).maybeSingle();
   if (!ev) return shell(`<h1>${t('Guest list')}</h1><p>${t('Only the page’s organizers can see its guest list.')}</p><p><a href="#mine">${t('Back to My pages')}</a></p>`);
-  G = { eid, ev, cfg: normalize(ev.config), filter: 'all', grp: '', by: false, sel: new Set(), tab: /^seat/.test(location.hash.split('&t=')[1] || '') ? 'seat' : 'list', hs: [], ps: [], rs: [], gs: [], hot: new Map(), opens: 0,
+  G = { eid, ev, cfg: normalize(ev.config), filter: 'all', grp: '', by: false, sel: new Set(), tab: /^seat/.test(location.hash.split('&t=')[1] || '') ? 'seat' : /^inv/.test(location.hash.split('&t=')[1] || '') ? 'inv' : 'list', iv: null, hs: [], ps: [], rs: [], gs: [], hot: new Map(), opens: 0,
     ts: [], seat: { show: false }, st: { pend: !!LS.get('stp:' + eid), grp: '', q: '', hh: false, fold: false, view: LS.get('stv:' + eid) || 'cards' } };
   try { await glLoad(); } catch (e) { return shell(`<h1>${t('Guest list')}</h1><p>${t('Couldn’t load it.')} ${esc(pubWhy(e))}</p>`); }
   // first visit: the usual groups for this kind of event (renameable, removable)
@@ -9988,12 +9994,12 @@ function glMount() {
     <section class="gl">
       <div class="gl-sum" data-gl-sum></div>
       ${G.ev.published ? '' : `<p class="b-note">${t('Share the page first: personal links open only once it’s shared.')}</p>`}
-      <div class="gl-head"><div class="seg2 gl-tabs" role="tablist"><button type="button" role="tab" data-gl-tab="list">${tCtx('tab', 'Guests')}</button><button type="button" role="tab" data-gl-tab="diet">${t('Dietary')}</button><button type="button" role="tab" data-gl-tab="groups">${t('Groups')}</button><button type="button" role="tab" data-gl-tab="seat" data-gl-seat>${t('Seating')}</button></div>
+      <div class="gl-head"><div class="seg2 gl-tabs" role="tablist"><button type="button" role="tab" data-gl-tab="list">${tCtx('tab', 'Guests')}</button><button type="button" role="tab" data-gl-tab="diet">${t('Dietary')}</button><button type="button" role="tab" data-gl-tab="groups">${t('Groups')}</button><button type="button" role="tab" data-gl-tab="seat" data-gl-seat>${t('Seating')}</button><button type="button" role="tab" data-gl-tab="inv" data-gl-inv>${t('Invitations')}</button></div>
         <button type="button" class="btn sm primary" data-gl-add>${t('Add guests')}</button></div>
       <div data-gl-body></div>
       <div class="gl-bar" data-gl-bar hidden></div>
     </section>`);
-  glPaint(); glWire(); stWire();
+  glPaint(); glWire(); stWire(); { const m = $('.gl'); if (m && !m._iw) { m._iw = true; ivWire(m); } }
 }
 function glCSV(rows, name) {
   const blob = new Blob(['﻿' + rows.map(l => l.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -10003,13 +10009,14 @@ function glWire() {
   const m = $('.gl'); if (!m || m._w) return; m._w = true;
   m.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset; const c = await sb();
-    if (d.glTab) { G.tab = d.glTab; glPaint(); if (G.tab === 'seat') { stPoll(); stSync(); } try { history.replaceState(history.state, '', '#guests/' + G.eid + (G.tab === 'seat' ? '&t=seat' : '')); } catch { /* fine */ } return; }
+    if (d.glTab) { G.tab = d.glTab; glPaint(); if (G.tab === 'seat') { stPoll(); stSync(); } try { history.replaceState(history.state, '', '#guests/' + G.eid + (G.tab === 'seat' ? '&t=seat' : G.tab === 'inv' ? '&t=inv' : '')); } catch { /* fine */ } return; }
     if (d.glF) { G.filter = d.glF; glPaint(); return; }
     if (d.glGrp != null) { G.grp = d.glGrp; glPaint(); return; }
     if (d.glCopy) { const h = G.hs.find(x => x.id === d.glCopy); if (h) copy(glLink(h)); return; }
     if (d.glCopyall != null) { copy(G.hs.filter(h => !h.first_opened_at).map(h => `${h.name}: ${glLink(h)}`).join('\n')); return; }
     if (d.glBulkcopy != null) { copy(G.hs.filter(h => G.sel.has(h.id)).map(h => `${h.name}: ${glLink(h)}`).join('\n')); return; }
     if (d.glClear != null) { G.sel.clear(); glPaint(); return; }
+    if (d.glBulkmail != null && !G.ivOff) { G.iv.rf = 'pick'; G.iv.sel = new Set([...G.sel].filter(id => (G.hs.find(h => h.id === id) || {}).email)); G.iv.build = null; G.sel.clear(); G.tab = 'inv'; glPaint(); try { history.replaceState(history.state, '', '#guests/' + G.eid + '&t=inv'); } catch { /* fine */ } window.scrollTo(0, 0); return; }
     if (d.glBulkmail != null) {
       const hs = G.hs.filter(h => G.sel.has(h.id) && h.email); if (!hs.length) { toast(t('None of these has an email')); return; }
       if (!G.ev.published) { toast(t('Share the page first')); return; }
@@ -10036,6 +10043,537 @@ function glWire() {
       const { error } = await c.from('guest_households').update({ group_id: gid }).in('id', ids); if (error) { toast(error.message); return; }
       G.hs.forEach(h => { if (G.sel.has(h.id)) h.group_id = gid; }); toast(t('{n} moved to {g}', { n: ids.length, g: gid ? glGroup(gid).name : t('No group') })); G.sel.clear(); glPaint(); }
   });
+}
+
+// ================= invitations (schema-invites.sql): design one (template or upload), send it, follow it =================
+// Guest list → Invitations. One "invitation" and one "save the date" per page. A template design is kept as data (texts,
+// font, color, photo) and drawn on a canvas — once per guest language, so each household gets its own language; an
+// uploaded design is sent as it is. Emails go through the notify function (kind "invite"), which keeps to the day's email
+// allowance and queues the rest for the next day. Texts open the phone's Messages (or share sheet with the picture).
+const IV_BUCKET = 'invitations';
+const IV_KINDS = [['invitation', 'Invitation'], ['save_the_date', 'Save the date']];
+const IV_TPLS = [['classic', 'Classic'], ['modern', 'Modern'], ['minimal', 'Minimal'], ['party', 'Party'], ['conference', 'Conference'], ['race', 'Race']];
+const IV_TYPE_TPL = { Wedding: 'classic', Party: 'party', Birthday: 'party', 'Bachelor party': 'party', 'Bachelorette party': 'party', Reunion: 'party', Festival: 'party', Concert: 'party',
+  Conference: 'conference', Meetup: 'conference', Retreat: 'minimal', Race: 'race', Hyrox: 'race', 'Sporting event': 'race', Trip: 'modern' };
+const IV_W = 1200, IV_H = 1680; // email-friendly: shown at 520 px wide, sharp on phones
+// phrases drawn into the picture, in the household's language (tables in i18n.js; other languages are translated on save)
+const IV_HEAD = { classic: 'Together with their families', modern: 'You’re invited', minimal: 'You’re invited', party: 'Let’s celebrate', conference: 'You’re invited to attend', race: 'On your marks' };
+const IV_PHRASES = ['Together with their families', 'request the pleasure of your company', 'You’re invited', 'Let’s celebrate', 'You’re invited to attend', 'On your marks', 'Save the date', 'Invitation to follow', 'Date', 'Place'];
+const IV_FIELDS = [['headline', 'Headline'], ['names', 'Names or title'], ['date', 'Date line'], ['place', 'Place'], ['note', 'Note']];
+const ivUrl = (path) => path ? `${SB.url}/storage/v1/object/public/${IV_BUCKET}/${String(path).split('/').map(encodeURIComponent).join('/')}` : '';
+const tIn = (lang, s, tx) => (tx && tx['ph:' + s]) || (lang === 'en' ? s : ((I18N[lang] || {})[s] || s));
+const ivHex = (h) => { const m = /^#?([0-9a-f]{6})$/i.exec(h || ''); const n = m ? parseInt(m[1], 16) : 0x0F4A50; return [n >> 16, (n >> 8) & 255, n & 255]; };
+const ivMix = (a, b, k) => { const x = ivHex(a), y = ivHex(b); return '#' + x.map((v, i) => Math.round(v * (1 - k) + y[i] * k).toString(16).padStart(2, '0')).join(''); };
+const ivSerif = (font) => ['field', 'serif', 'classic'].includes(font);
+const ivDisplay = (font) => (FONTS[font] || FONTS.field).css;
+const ivBody = (font) => ivSerif(font) ? "'Newsreader', Georgia, serif" : "'Public Sans', system-ui, sans-serif";
+async function ivFonts(font) {
+  loadFont(font); const fam = (css) => css.split(',')[0];
+  try { await Promise.all([document.fonts.load(`600 40px ${fam(ivDisplay(font))}`), document.fonts.load(`400 40px ${fam(ivBody(font))}`), document.fonts.load(`italic 400 40px ${fam(ivBody(font))}`), document.fonts.load(`600 40px ${fam(ivBody(font))}`), document.fonts.load("500 20px 'IBM Plex Mono'")]); } catch { /* system fonts */ }
+}
+const ivImgs = new Map();
+function ivImg(url) {
+  if (!ivImgs.has(url)) ivImgs.set(url, new Promise((res, rej) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.referrerPolicy = 'no-referrer'; i.onload = () => res(i); i.onerror = () => { ivImgs.delete(url); rej(new Error('photo')); }; i.src = url; }));
+  return ivImgs.get(url);
+}
+// the date line, in a language: "Saturday, 12 June 2027" (+ the time when the page has one); a range for several days
+function ivDate(cfg, lang, short) {
+  const s = String(cfg.start || ''); if (!/^\d{4}-\d{2}-\d{2}/.test(s)) return '';
+  const d = (x) => new Date(x.slice(0, 10) + 'T12:00:00Z'); const L = lang || 'en';
+  try {
+    const e = String(cfg.end || '').slice(0, 10);
+    if (e && e > s.slice(0, 10)) return new Intl.DateTimeFormat(L, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).formatRange(d(s), d(e));
+    const day = new Intl.DateTimeFormat(L, { ...(short ? {} : { weekday: 'long' }), day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(d(s));
+    if (s.length > 10 && !short) { const [hh, mm] = s.slice(11, 16).split(':').map(Number); const tm = new Intl.DateTimeFormat(L, { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' }).format(new Date(Date.UTC(2000, 0, 1, hh, mm))); return `${day} · ${tm}`; }
+    return day;
+  } catch { return s.slice(0, 10); }
+}
+const ivPlace = (cfg) => { const v = cfg.venue || {}; return [v.name, v.city && v.city !== v.name ? v.city : ''].filter(Boolean).join(' · '); };
+const ivTitleIn = (cfg, lang) => { const tr = lang && cfg.tr && cfg.tr[lang]; return String((tr && tr.title && tr.title.t) || cfg.title || ''); };
+// a fresh design for this page: its type's style, its title / date / place, its photo, its color and font
+function ivDefault(cfg, kind) {
+  return { tpl: IV_TYPE_TPL[cfg.type] || 'modern', font: FONTS[cfg.theme && cfg.theme.font] ? cfg.theme.font : 'field', color: (cfg.theme && cfg.theme.accent) || LAGOON,
+    photo: httpsUrl(cfg.cover || '') || '', usePhoto: !!httpsUrl(cfg.cover || ''), t: { headline: '', names: '', date: '', place: '', note: '' }, tx: {}, kind };
+}
+const ivUserHash = (d) => hashStr(JSON.stringify(IV_FIELDS.map(([k]) => (d.t || {})[k] || '')));
+// the texts drawn for one language: the organizer's own words (translated), else the automatic ones
+function ivTexts(d, cfg, lang, kind) {
+  const src = srcLang(cfg); const tr = lang !== src && d.tx && d.tx[lang]; const ok = tr && tr.h === ivUserHash(d);
+  const own = (k) => { const v = ((d.t || {})[k] || '').trim(); if (!v) return ''; return lang === src ? v : (ok && tr[k]) || v; };
+  const std = kind === 'save_the_date';
+  return { headline: own('headline') || tIn(lang, std ? 'Save the date' : IV_HEAD[d.tpl] || IV_HEAD.modern, tr), names: own('names') || ivTitleIn(cfg, lang),
+    date: own('date') || ivDate(cfg, lang, std), place: own('place') || ivPlace(cfg), note: own('note') || (std ? tIn(lang, 'Invitation to follow', tr) : ''),
+    sub: d.tpl === 'classic' && !std && cfg.type === 'Wedding' && !own('headline') ? tIn(lang, 'request the pleasure of your company', tr) : '',
+    lDate: tIn(lang, 'Date', tr), lPlace: tIn(lang, 'Place', tr), lang };
+}
+// ---- drawing ----
+const IVCJK = /[　-鿿가-힯＀-￯]/;
+function ivWrap(g, text, maxW) {
+  const words = IVCJK.test(text) && !/\s/.test(text.trim()) ? [...text] : String(text).split(/(\s+)/).filter(x => x); const lines = []; let cur = '';
+  for (const w of words) { const nx = cur + w; if (cur && g.measureText(nx.trimEnd()).width > maxW) { lines.push(cur.trim()); cur = w.trimStart(); } else cur = nx; }
+  if (cur.trim()) lines.push(cur.trim()); return lines.length ? lines : [''];
+}
+// the biggest size (≤ size) at which the text fits in maxW × lines
+function ivFit(g, text, { font, size, min = 18, maxW, lines = 2, track = 0 }) {
+  for (let px = size; ; px = Math.floor(px * 0.93)) {
+    g.font = font(px); ivTrack(g, track * px); const ls = ivWrap(g, text, maxW);
+    if ((ls.length <= lines && ls.every(l => g.measureText(l).width <= maxW)) || px <= min) return { px, lines: ls.slice(0, Math.max(lines, 1)) };
+  }
+}
+const ivTrack = (g, px) => { if ('letterSpacing' in g) g.letterSpacing = `${Math.round(px * 10) / 10}px`; };
+function ivText(g, lines, x, y, lh, align = 'center') { g.textAlign = align; g.textBaseline = 'alphabetic'; lines.forEach((l, i) => g.fillText(l, x, y + i * lh)); return y + (lines.length - 1) * lh; }
+function ivCover(g, img, x, y, w, h) { const k = Math.max(w / img.naturalWidth, h / img.naturalHeight); const sw = w / k, sh = h / k; g.drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 2, sw, sh, x, y, w, h); }
+const ivRand = (seed) => { let s = parseInt(seed, 36) % 2147483647 || 7; return () => (s = (s * 16807) % 2147483647) / 2147483647; };
+// names "Lena & Sam" → ["Lena", "&", "Sam"] for the formal styles
+const ivPair = (s) => { const m = String(s).match(/^(.{1,40}?)\s+(&|\+|and|y|et|und|e|と)\s+(.{1,40})$/i); return m ? [m[1], m[2], m[3]] : null; };
+// stack blocks [height, draw(y)] centered between top and bottom
+function ivStack(blocks, top, bottom) { const tot = blocks.reduce((n, b) => n + b[0], 0); let y = top + Math.max(0, (bottom - top - tot) / 2); for (const [h, draw] of blocks) { draw(y); y += h; } }
+
+const IV_DRAW = {
+  classic(g, o) {
+    const { T, P, D, B, photo, std } = o; const W = IV_W, H = IV_H, cx = W / 2;
+    g.fillStyle = P.paper; g.fillRect(0, 0, W, H);
+    g.strokeStyle = P.a; g.globalAlpha = 0.55; g.lineWidth = 2.5; g.strokeRect(58, 58, W - 116, H - 116); g.globalAlpha = 0.35; g.lineWidth = 1.2; g.strokeRect(76, 76, W - 152, H - 152); g.globalAlpha = 1;
+    let top = 170;
+    if (photo) { const aw = 420, ah = 500, ax = cx - aw / 2, ay = 150; g.save(); g.beginPath(); g.moveTo(ax, ay + aw / 2); g.arc(cx, ay + aw / 2, aw / 2, Math.PI, 0); g.lineTo(ax + aw, ay + ah); g.lineTo(ax, ay + ah); g.closePath(); g.clip(); ivCover(g, photo, ax, ay, aw, ah); g.restore();
+      g.strokeStyle = P.a; g.globalAlpha = 0.5; g.lineWidth = 2; g.beginPath(); g.moveTo(ax - 14, ay + aw / 2); g.arc(cx, ay + aw / 2, aw / 2 + 14, Math.PI, 0); g.lineTo(ax + aw + 14, ay + ah + 14); g.lineTo(ax - 14, ay + ah + 14); g.closePath(); g.stroke(); g.globalAlpha = 1; top = ay + ah + 70; }
+    const maxW = W - 300; const blocks = [];
+    const head = ivFit(g, (std ? T.headline : T.headline).toUpperCase(), { font: (px) => `600 ${px}px ${B}`, size: std ? 34 : 30, maxW, lines: 2, track: 0.22 });
+    blocks.push([head.lines.length * head.px * 1.5 + 36, (y) => { g.fillStyle = P.a; g.font = `600 ${head.px}px ${B}`; ivTrack(g, head.px * 0.22); ivText(g, head.lines, cx, y + head.px, head.px * 1.5); ivTrack(g, 0); }]);
+    const pair = ivPair(T.names); const nSize = photo ? (std ? 84 : 104) : (std ? 100 : 128);
+    if (pair && !std) {
+      const a = ivFit(g, pair[0], { font: (px) => `500 ${px}px ${D}`, size: nSize, maxW, lines: 1 }), b = ivFit(g, pair[2], { font: (px) => `500 ${px}px ${D}`, size: nSize, maxW, lines: 1 }); const px = Math.min(a.px, b.px);
+      blocks.push([px * 2.9 + 20, (y) => { g.fillStyle = P.ink; g.font = `500 ${px}px ${D}`; ivText(g, [pair[0]], cx, y + px, 0); g.fillStyle = P.a; g.font = `italic 400 ${Math.round(px * 0.5)}px ${B}`; ivText(g, [pair[1]], cx, y + px * 1.72, 0); g.fillStyle = P.ink; g.font = `500 ${px}px ${D}`; ivText(g, [pair[2]], cx, y + px * 2.62, 0); }]);
+    } else {
+      const n = ivFit(g, T.names, { font: (px) => `500 ${px}px ${D}`, size: nSize, maxW, lines: 3 });
+      blocks.push([n.lines.length * n.px * 1.12 + 26, (y) => { g.fillStyle = P.ink; g.font = `500 ${n.px}px ${D}`; ivText(g, n.lines, cx, y + n.px, n.px * 1.12); }]);
+    }
+    if (T.sub) { const s = ivFit(g, T.sub, { font: (px) => `italic 400 ${px}px ${B}`, size: 36, maxW, lines: 2 }); blocks.push([s.lines.length * s.px * 1.35 + 30, (y) => { g.fillStyle = P.ink2; g.font = `italic 400 ${s.px}px ${B}`; ivText(g, s.lines, cx, y + s.px, s.px * 1.35); }]); }
+    blocks.push([64, (y) => { g.strokeStyle = P.a; g.lineWidth = 1.6; g.beginPath(); g.moveTo(cx - 150, y + 30); g.lineTo(cx - 22, y + 30); g.moveTo(cx + 22, y + 30); g.lineTo(cx + 150, y + 30); g.stroke(); g.fillStyle = P.a; g.beginPath(); g.moveTo(cx, y + 19); g.lineTo(cx + 11, y + 30); g.lineTo(cx, y + 41); g.lineTo(cx - 11, y + 30); g.closePath(); g.fill(); }]);
+    if (T.date) { const dd = std ? ivFit(g, T.date, { font: (px) => `500 ${px}px ${D}`, size: 76, maxW, lines: 2 }) : ivFit(g, T.date.toUpperCase(), { font: (px) => `600 ${px}px ${B}`, size: 34, maxW, lines: 2, track: 0.12 });
+      blocks.push([dd.lines.length * dd.px * 1.35 + 18, (y) => { g.fillStyle = std ? P.a : P.ink; g.font = std ? `500 ${dd.px}px ${D}` : `600 ${dd.px}px ${B}`; ivTrack(g, std ? 0 : dd.px * 0.12); ivText(g, dd.lines, cx, y + dd.px, dd.px * 1.35); ivTrack(g, 0); }]); }
+    if (T.place) { const pl = ivFit(g, T.place, { font: (px) => `400 ${px}px ${B}`, size: 32, maxW, lines: 2 }); blocks.push([pl.lines.length * pl.px * 1.4 + 10, (y) => { g.fillStyle = P.ink2; g.font = `400 ${pl.px}px ${B}`; ivText(g, pl.lines, cx, y + pl.px, pl.px * 1.4); }]); }
+    ivStack(blocks, top, H - (T.note ? 250 : 150));
+    if (T.note) { const nt = ivFit(g, T.note, { font: (px) => `italic 400 ${px}px ${B}`, size: 30, maxW, lines: 2 }); g.fillStyle = P.ink2; g.font = `italic 400 ${nt.px}px ${B}`; ivText(g, nt.lines, cx, H - 190 - (nt.lines.length - 1) * nt.px * 1.3 + nt.px, nt.px * 1.3); }
+  },
+  modern(g, o) {
+    const { T, P, D, B, photo, std } = o; const W = IV_W, H = IV_H; const split = Math.round(H * 0.5); const x = 130, maxW = W - 230;
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+    if (photo) { ivCover(g, photo, 0, 0, W, split); const gr = g.createLinearGradient(0, split - 260, 0, split); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.28)'); g.fillStyle = gr; g.fillRect(0, split - 260, W, 260); }
+    else { g.fillStyle = P.a; g.fillRect(0, 0, W, split); const ini = String(T.names).split(/\s*(?:&|\+|\band\b|\by\b|\bet\b|\bund\b)\s*|\s+/).map(w => (w.match(/[\p{L}\p{N}]/u) || [''])[0]).filter(Boolean).slice(0, 2).join('') || '·';
+      g.fillStyle = P.on; g.globalAlpha = 0.13; g.font = `700 520px ${D}`; g.textAlign = 'right'; g.fillText(ini, W - 50, split - 70); g.globalAlpha = 1; }
+    const head = ivFit(g, T.headline.toUpperCase(), { font: (px) => `700 ${px}px ${B}`, size: 32, maxW, lines: 1, track: 0.16 });
+    g.fillStyle = P.a; g.font = `700 ${head.px}px ${B}`; ivTrack(g, head.px * 0.16); ivText(g, head.lines, x, split + 136, 0, 'left'); ivTrack(g, 0);
+    const big = std ? T.date : T.names; const nn = ivFit(g, big, { font: (px) => `700 ${px}px ${D}`, size: 136, maxW, lines: 3 });
+    g.fillStyle = P.ink; g.font = `700 ${nn.px}px ${D}`; const yEnd = ivText(g, nn.lines, x, split + 170 + nn.px, nn.px * 1.04, 'left');
+    g.fillStyle = P.a; g.fillRect(x - 46, split + 108, 12, yEnd - split - 80);
+    // the details sit at the foot of the card
+    const rows = []; const sm = std ? T.names : T.date;
+    if (sm) rows.push([ivFit(g, sm, { font: (px) => `600 ${px}px ${B}`, size: 40, maxW, lines: 2 }), (px) => `600 ${px}px ${B}`, P.ink]);
+    if (T.place) rows.push([ivFit(g, T.place, { font: (px) => `400 ${px}px ${B}`, size: 34, maxW, lines: 2 }), (px) => `400 ${px}px ${B}`, P.ink2]);
+    const nt = T.note ? ivFit(g, T.note, { font: (px) => `400 ${px}px ${B}`, size: 28, maxW, lines: 2 }) : null;
+    let y = H - 120 - (nt ? nt.lines.length * nt.px * 1.3 + 50 : 0) - rows.reduce((n, [f]) => n + f.lines.length * f.px * 1.3 + 14, 0);
+    y = Math.max(y, yEnd + 70);
+    rows.forEach(([f, font, col]) => { g.fillStyle = col; g.font = font(f.px); y = ivText(g, f.lines, x, y + f.px, f.px * 1.3, 'left') + 14; });
+    if (nt) { g.fillStyle = P.ink2; g.font = `400 ${nt.px}px ${B}`; g.globalAlpha = 0.85; ivText(g, nt.lines, x, H - 120 - (nt.lines.length - 1) * nt.px * 1.3, nt.px * 1.3, 'left'); g.globalAlpha = 1; }
+  },
+  minimal(g, o) {
+    const { T, P, D, B, photo, std } = o; const W = IV_W, H = IV_H, x = 130, maxW = W - 260;
+    g.fillStyle = P.white; g.fillRect(0, 0, W, H);
+    const head = ivFit(g, T.headline.toUpperCase(), { font: (px) => `500 ${px}px 'IBM Plex Mono', ui-monospace, monospace`, size: 26, maxW: photo ? maxW - 380 : maxW, lines: 2, track: 0.14 });
+    g.fillStyle = P.ink2; g.font = `500 ${head.px}px 'IBM Plex Mono', ui-monospace, monospace`; ivTrack(g, head.px * 0.14); ivText(g, head.lines, x, 210, head.px * 1.5, 'left'); ivTrack(g, 0);
+    g.fillStyle = P.a; g.fillRect(x, 262 + (head.lines.length - 1) * head.px * 1.5, 120, 4);
+    if (photo) { ivCover(g, photo, W - 130 - 340, 150, 340, 420); }
+    let y = Math.round(H * (photo ? 0.56 : 0.52));
+    const big = std ? T.date : T.names, small = std ? T.names : T.date;
+    const nn = ivFit(g, big, { font: (px) => `500 ${px}px ${D}`, size: 136, maxW, lines: 4 }); g.fillStyle = P.ink; g.font = `500 ${nn.px}px ${D}`; y = ivText(g, nn.lines, x, y, nn.px * 1.08, 'left') + 60;
+    g.fillStyle = P.rule; g.fillRect(x, y, maxW, 2); y += 70;
+    if (small) { const dd = ivFit(g, small, { font: (px) => `500 ${px}px ${B}`, size: 44, maxW, lines: 2 }); g.fillStyle = P.ink; g.font = `500 ${dd.px}px ${B}`; y = ivText(g, dd.lines, x, y, dd.px * 1.3, 'left') + 18; }
+    if (T.place) { const pl = ivFit(g, T.place, { font: (px) => `400 ${px}px ${B}`, size: 36, maxW, lines: 2 }); g.fillStyle = P.ink2; g.font = `400 ${pl.px}px ${B}`; ivText(g, pl.lines, x, y + pl.px, pl.px * 1.35, 'left'); }
+    if (T.note) { const nt = ivFit(g, T.note, { font: (px) => `400 ${px}px ${B}`, size: 30, maxW, lines: 3 }); g.fillStyle = P.ink2; g.font = `400 ${nt.px}px ${B}`; ivText(g, nt.lines, x, H - 150 - (nt.lines.length - 1) * nt.px * 1.35, nt.px * 1.35, 'left'); }
+  },
+  party(g, o) {
+    const { T, P, D, B, photo, std, seed } = o; const W = IV_W, H = IV_H, cx = W / 2, maxW = W - 220;
+    g.fillStyle = P.a; g.fillRect(0, 0, W, H);
+    const r = ivRand(seed); const cols = [P.on, P.light, P.warm];
+    for (let i = 0; i < 70; i++) { const px = r() * W, py = r() * H; if (Math.abs(px - cx) < 380 && py > 420 && py < 1300) continue; g.globalAlpha = 0.18 + r() * 0.35; g.fillStyle = cols[i % 3]; g.save(); g.translate(px, py); g.rotate(r() * Math.PI);
+      if (i % 3 === 0) { g.beginPath(); g.arc(0, 0, 8 + r() * 12, 0, Math.PI * 2); g.fill(); } else g.fillRect(-14, -5, 28 + r() * 18, 10); g.restore(); }
+    g.globalAlpha = 1; const blocks = [];
+    if (photo) blocks.push([400, (y) => { g.save(); g.beginPath(); g.arc(cx, y + 180, 180, 0, Math.PI * 2); g.clip(); ivCover(g, photo, cx - 180, y, 360, 360); g.restore(); g.strokeStyle = P.on; g.lineWidth = 10; g.beginPath(); g.arc(cx, y + 180, 185, 0, Math.PI * 2); g.stroke(); }]);
+    const hd = ivFit(g, T.headline.toUpperCase(), { font: (px) => `800 ${px}px ${D}`, size: photo ? 140 : 176, maxW, lines: 2 });
+    blocks.push([hd.lines.length * hd.px * 0.98 + 40, (y) => { g.fillStyle = P.on; g.font = `800 ${hd.px}px ${D}`; ivText(g, hd.lines, cx, y + hd.px * 0.86, hd.px * 0.98); }]);
+    const nn = ivFit(g, T.names, { font: (px) => `600 ${px}px ${B}`, size: 66, maxW, lines: 2 });
+    blocks.push([nn.lines.length * nn.px * 1.25 + 52, (y) => { g.fillStyle = P.on; g.font = `600 ${nn.px}px ${B}`; ivText(g, nn.lines, cx, y + nn.px, nn.px * 1.25); }]);
+    if (T.date) { const dd = ivFit(g, T.date, { font: (px) => `700 ${px}px ${B}`, size: std ? 54 : 40, maxW: maxW - 80, lines: 1 }); const tw = g.measureText(dd.lines[0]).width + 80, th = dd.px + 46;
+      blocks.push([th + 30, (y) => { g.fillStyle = P.on; g.beginPath(); g.roundRect(cx - tw / 2, y, tw, th, th / 2); g.fill(); g.fillStyle = P.a; g.font = `700 ${dd.px}px ${B}`; ivText(g, dd.lines, cx, y + th / 2 + dd.px * 0.36, 0); }]); }
+    if (T.place) { const pl = ivFit(g, T.place, { font: (px) => `500 ${px}px ${B}`, size: 38, maxW, lines: 2 }); blocks.push([pl.lines.length * pl.px * 1.35, (y) => { g.fillStyle = P.on; g.font = `500 ${pl.px}px ${B}`; ivText(g, pl.lines, cx, y + pl.px, pl.px * 1.35); }]); }
+    ivStack(blocks, 120, H - (T.note ? 230 : 120));
+    if (T.note) { const nt = ivFit(g, T.note, { font: (px) => `500 ${px}px ${B}`, size: 28, maxW, lines: 2 }); g.fillStyle = P.on; g.globalAlpha = 0.85; g.font = `500 ${nt.px}px ${B}`; ivText(g, nt.lines, cx, H - 140 - (nt.lines.length - 1) * nt.px * 1.3, nt.px * 1.3); g.globalAlpha = 1; }
+  },
+  conference(g, o) {
+    const { T, P, D, B, photo, std } = o; const W = IV_W, H = IV_H, x = 110, maxW = W - 220; const M = "'IBM Plex Mono', ui-monospace, monospace";
+    g.fillStyle = P.deep; g.fillRect(0, 0, W, H);
+    let top = 0; if (photo) { top = 560; ivCover(g, photo, 0, 0, W, top); g.fillStyle = P.deep; g.globalAlpha = 0.35; g.fillRect(0, 0, W, top); g.globalAlpha = 1; }
+    g.strokeStyle = '#ffffff'; g.globalAlpha = 0.06; g.lineWidth = 1; for (let i = 60; i < W; i += 60) { g.beginPath(); g.moveTo(i, top); g.lineTo(i, H); g.stroke(); } for (let j = top + 60; j < H; j += 60) { g.beginPath(); g.moveTo(0, j); g.lineTo(W, j); g.stroke(); } g.globalAlpha = 1;
+    g.fillStyle = P.light; g.fillRect(x, top + 150, 64, 8);
+    let y = top + 240;
+    const hd = ivFit(g, T.headline.toUpperCase(), { font: (px) => `600 ${px}px ${M}`, size: 28, maxW, lines: 2, track: 0.08 }); g.fillStyle = P.light; g.font = `600 ${hd.px}px ${M}`; ivTrack(g, hd.px * 0.08); y = ivText(g, hd.lines, x, y, hd.px * 1.4, 'left') + 40; ivTrack(g, 0);
+    const big = std ? T.date : T.names; const nn = ivFit(g, big, { font: (px) => `700 ${px}px ${D}`, size: photo ? 112 : 140, maxW, lines: 4 }); g.fillStyle = '#ffffff'; g.font = `700 ${nn.px}px ${D}`; y = ivText(g, nn.lines, x, y + nn.px, nn.px * 1.06, 'left') + 90;
+    y = Math.max(y, H - (T.note ? 470 : 380));
+    const cols = std ? [[T.lPlace, T.place], ['', T.names]] : [[T.lDate, T.date], [T.lPlace, T.place]];
+    g.fillStyle = '#ffffff'; g.globalAlpha = 0.25; g.fillRect(x, y - 40, maxW, 2); g.globalAlpha = 1;
+    const cw = (maxW - 50) / 2;
+    cols.forEach(([l, v], i) => { if (!v) return; const cx2 = x + i * (cw + 50); g.fillStyle = P.light; g.font = `500 22px ${M}`; ivTrack(g, 2.5); if (l) ivText(g, [l.toUpperCase()], cx2, y + 10, 0, 'left'); ivTrack(g, 0);
+      const vv = ivFit(g, v, { font: (px) => `500 ${px}px ${B}`, size: 40, maxW: cw, lines: 3 }); g.fillStyle = '#ffffff'; g.font = `500 ${vv.px}px ${B}`; ivText(g, vv.lines, cx2, y + 66, vv.px * 1.3, 'left'); });
+    if (T.note) { const nt = ivFit(g, T.note, { font: (px) => `400 ${px}px ${B}`, size: 28, maxW, lines: 2 }); g.fillStyle = '#ffffff'; g.globalAlpha = 0.75; g.font = `400 ${nt.px}px ${B}`; ivText(g, nt.lines, x, H - 120 - (nt.lines.length - 1) * nt.px * 1.3, nt.px * 1.3, 'left'); g.globalAlpha = 1; }
+  },
+  race(g, o) {
+    const { T, P, D, B, photo, std } = o; const W = IV_W, H = IV_H, cx = W / 2;
+    g.fillStyle = P.paper; g.fillRect(0, 0, W, H);
+    if (photo) { ivCover(g, photo, 0, 0, W, 520); g.fillStyle = P.paper; g.globalAlpha = 0.15; g.fillRect(0, 0, W, 520); g.globalAlpha = 1; }
+    g.save(); g.translate(0, photo ? 470 : 250); g.rotate(-0.12); for (let i = 0; i < 3; i++) { g.fillStyle = i === 1 ? P.warm : P.a; g.globalAlpha = i === 1 ? 0.9 : 0.85; g.fillRect(-200, i * 46, W + 400, 26); } g.restore(); g.globalAlpha = 1;
+    const bx = 130, by = photo ? 600 : 420, bw = W - 260, bh = 880;
+    g.save(); g.shadowColor = 'rgba(0,0,0,.18)'; g.shadowBlur = 40; g.shadowOffsetY = 14; g.fillStyle = '#ffffff'; g.beginPath(); g.roundRect(bx, by, bw, bh, 34); g.fill(); g.restore();
+    g.save(); g.beginPath(); g.roundRect(bx, by, bw, bh, 34); g.clip(); g.fillStyle = P.a; g.fillRect(bx, by, bw, 170); g.restore();
+    g.strokeStyle = P.a; g.lineWidth = 6; g.beginPath(); g.roundRect(bx, by, bw, bh, 34); g.stroke();
+    [[bx + 46, by + 46], [bx + bw - 46, by + 46], [bx + 46, by + bh - 46], [bx + bw - 46, by + bh - 46]].forEach(([px, py], i) => { g.fillStyle = i < 2 ? P.paper : P.soft; g.beginPath(); g.arc(px, py, 13, 0, Math.PI * 2); g.fill(); });
+    const hd = ivFit(g, T.headline.toUpperCase(), { font: (px) => `800 ${px}px ${D}`, size: 64, maxW: bw - 200, lines: 1, track: 0.04 }); g.fillStyle = P.on; g.font = `800 ${hd.px}px ${D}`; ivTrack(g, hd.px * 0.04); ivText(g, hd.lines, cx, by + 85 + hd.px * 0.36, 0); ivTrack(g, 0);
+    const blocks = []; const big = std ? T.date : T.names;
+    const nn = ivFit(g, big.toUpperCase(), { font: (px) => `800 ${px}px ${D}`, size: 150, maxW: bw - 140, lines: 3 }); blocks.push([nn.lines.length * nn.px * 0.98 + 40, (y) => { g.fillStyle = P.ink; g.font = `800 ${nn.px}px ${D}`; ivText(g, nn.lines, cx, y + nn.px * 0.84, nn.px * 0.98); }]);
+    const sm = std ? T.names : T.date; if (sm) { const dd = ivFit(g, sm, { font: (px) => `700 ${px}px ${B}`, size: 40, maxW: bw - 140, lines: 2 }); blocks.push([dd.lines.length * dd.px * 1.3 + 16, (y) => { g.fillStyle = P.a; g.font = `700 ${dd.px}px ${B}`; ivText(g, dd.lines, cx, y + dd.px, dd.px * 1.3); }]); }
+    if (T.place) { const pl = ivFit(g, T.place, { font: (px) => `500 ${px}px ${B}`, size: 32, maxW: bw - 140, lines: 2 }); blocks.push([pl.lines.length * pl.px * 1.35, (y) => { g.fillStyle = P.ink2; g.font = `500 ${pl.px}px ${B}`; ivText(g, pl.lines, cx, y + pl.px, pl.px * 1.35); }]); }
+    ivStack(blocks, by + 200, by + bh - 70);
+    if (T.note) { const nt = ivFit(g, T.note, { font: (px) => `500 ${px}px ${B}`, size: 30, maxW: W - 260, lines: 2 }); g.fillStyle = P.ink2; g.font = `500 ${nt.px}px ${B}`; ivText(g, nt.lines, cx, Math.min(H - 110, by + bh + 120), nt.px * 1.3); }
+  },
+};
+function ivPal(c) { const a = /^#[0-9a-f]{6}$/i.test(c || '') ? c : LAGOON; return { a, on: onAccent(a), paper: ivMix(a, '#ffffff', 0.95), white: ivMix(a, '#ffffff', 0.985), soft: ivMix(a, '#ffffff', 0.78), light: ivMix(a, '#ffffff', 0.6), warm: ivMix(a, '#F2B84B', 0.55),
+  deep: ivMix(a, '#0a0e12', 0.62), ink: ivMix(a, '#141a1c', 0.82), ink2: ivMix(a, '#3b4648', 0.7), rule: ivMix(a, '#ffffff', 0.75) }; }
+// draw one design in one language → a canvas (W wide; 1200 for sending, smaller for previews and thumbnails)
+async function ivRender(d, cfg, lang, kind, W = IV_W) {
+  const c = document.createElement('canvas'); c.width = W; c.height = Math.round(W * IV_H / IV_W); const g = c.getContext('2d');
+  await ivFonts(d.font); let photo = null;
+  if (d.usePhoto && d.photo) { try { photo = await ivImg(d.photo); } catch { photo = null; } }
+  g.scale(W / IV_W, W / IV_W);
+  (IV_DRAW[d.tpl] || IV_DRAW.modern)(g, { T: ivTexts(d, cfg, lang, kind), P: ivPal(d.color), D: ivDisplay(d.font), B: ivBody(d.font), photo, std: kind === 'save_the_date', seed: hashStr(String(cfg.title || 'x')) });
+  return c;
+}
+const ivBlob = (canvas, q = 0.86) => new Promise((res, rej) => { try { canvas.toBlob(b => b ? res(b) : rej(new Error('This photo can’t be used in the picture. Upload it instead.')), 'image/jpeg', q); } catch { rej(new Error('This photo can’t be used in the picture. Upload it instead.')); } });
+
+// ---- uploads: a picture (JPG / PNG / HEIC) or a PDF's first page → an email-sized JPEG ----
+const HEIC_JS = { src: 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js', integrity: 'sha384-OTofQ0MEeiSgh62havBcemCIK0gqj809wX6UA0uPISNMRnR6NZyCdGzX3SbLrgwL' };
+const PDF_JS = { src: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js', integrity: 'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e', worker: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js' };
+const ivLibs = {};
+function ivLib(L, global) {
+  if (window[global]) return Promise.resolve(window[global]);
+  return ivLibs[L.src] || (ivLibs[L.src] = new Promise((res, rej) => { const s = document.createElement('script'); s.src = L.src; s.integrity = L.integrity; s.crossOrigin = 'anonymous';
+    s.onload = () => window[global] ? res(window[global]) : rej(new Error('load')); s.onerror = () => { delete ivLibs[L.src]; s.remove(); rej(new Error(t('Couldn’t open that file. Check your connection and try again.'))); }; document.head.appendChild(s); }));
+}
+const ivIsHeic = (f) => /hei[cf]/i.test(f.type || '') || /\.hei[cf]$/i.test(f.name || '');
+async function ivBitmap(f) {
+  if (isPdf(f)) {
+    const lib = await ivLib(PDF_JS, 'pdfjsLib'); lib.GlobalWorkerOptions.workerSrc = PDF_JS.worker;
+    const pdf = await lib.getDocument({ data: new Uint8Array(await f.arrayBuffer()), isEvalSupported: false }).promise; const p = await pdf.getPage(1);
+    const v0 = p.getViewport({ scale: 1 }); const v = p.getViewport({ scale: Math.min(4, 1600 / Math.max(v0.width, v0.height)) });
+    const c = document.createElement('canvas'); c.width = Math.round(v.width); c.height = Math.round(v.height); const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+    await p.render({ canvasContext: g, viewport: v }).promise; return c;
+  }
+  try { return await createImageBitmap(f); } catch (e) { if (!ivIsHeic(f)) throw new Error(t('Use a JPG, PNG, HEIC or PDF.')); }
+  const h2a = await ivLib(HEIC_JS, 'heic2any'); const out = await h2a({ blob: f, toType: 'image/jpeg', quality: 0.92 }); return createImageBitmap(Array.isArray(out) ? out[0] : out);
+}
+async function ivPrepUpload(f) {
+  if (f.size > 25 * 1024 * 1024) throw new Error(t('That file is too large (25 MB max).'));
+  const bm = await ivBitmap(f); const w0 = bm.width, h0 = bm.height; if (!w0 || !h0) throw new Error(t('Use a JPG, PNG, HEIC or PDF.'));
+  const k = Math.min(1, IV_W / w0, 3600 / h0); const c = document.createElement('canvas'); c.width = Math.max(100, Math.round(w0 * k)); c.height = Math.max(100, Math.round(h0 * k));
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(bm, 0, 0, c.width, c.height); if (bm.close) bm.close();
+  let q = 0.88, blob = await ivBlob(c, q); while (blob.size > 900e3 && q > 0.6) { q -= 0.08; blob = await ivBlob(c, q); }
+  return { blob, w: c.width, h: c.height, url: URL.createObjectURL(blob) };
+}
+async function ivPut(blob, name) {
+  const c = await sb(); const path = `${G.eid}/${name}-${Math.random().toString(36).slice(2, 10)}.jpg`;
+  const { error } = await c.storage.from(IV_BUCKET).upload(path, blob, { contentType: 'image/jpeg', cacheControl: '31536000', upsert: false }); if (error) throw error; return path;
+}
+const ivDrop = async (paths) => { const xs = paths.filter(Boolean); if (!xs.length) return; try { const c = await sb(); await c.storage.from(IV_BUCKET).remove(xs); } catch { /* left over, harmless */ } };
+
+// ---- state ----
+const ivRow = (kind) => (G.iv.rows || []).find(r => r.kind === kind) || null;
+const ivSrcImg = (row) => { if (!row) return null; const im = row.images || {}; return im[srcLang(G.cfg)] || im.en || Object.values(im)[0] || null; };
+// the languages pictures are drawn in: the page's, and every household's that the page can show
+function ivLangs() { const ok = new Set(pageLangs(G.cfg)); return [...new Set([srcLang(G.cfg), ...G.hs.map(h => h.lang).filter(l => l && ok.has(l))])].slice(0, 12); }
+const ivHhLang = (h) => (h.lang && pageLangs(G.cfg).includes(h.lang) ? h.lang : '');
+// a household's latest send of a kind (or of any kind), newest first
+function ivLast(hid, kind) { let best = null; for (const s of (G.iv && G.iv.sends) || []) if (s.household_id === hid && (!kind || s.kind === kind) && s.status !== 'canceled') { const at = s.sent_at || s.queued_at; if (!best || at > (best.sent_at || best.queued_at)) best = s; } return best; }
+const ivWasSent = (hid, kind) => ((G.iv && G.iv.sends) || []).some(s => s.household_id === hid && s.kind === kind && ['sent', 'delivered', 'sending'].includes(s.status));
+const ivQueued = (hid, kind) => ((G.iv && G.iv.sends) || []).some(s => s.household_id === hid && s.kind === kind && s.status === 'queued');
+async function ivLoad() {
+  const c = await sb(); const eid = G.eid;
+  const [iv, sd] = await Promise.all([c.from('invitations').select('*').eq('event_id', eid), c.from('invite_sends').select('id,household_id,invitation_id,kind,channel,status,error,sent_at,queued_at,not_before,delivered_at,bounced_at,lang').eq('event_id', eid).order('queued_at').limit(20000)]);
+  if (iv.error) throw iv.error;
+  G.iv = Object.assign(G.iv || ivBlank(), { rows: iv.data || [], sends: sd.data || [] });
+}
+const ivBlank = () => ({ rows: [], sends: [], kind: 'invitation', build: null, rf: 'notsent', grp: '', sel: null, st: null });
+async function ivStatus() { const j = await notifyCall('invite_status', G.eid); if (j && j.ok) { G.iv.st = j; const q = $('[data-iv-quota]'); if (q) q.outerHTML = ivQuotaHTML(); const r = $('[data-iv-rest]'); if (r) r.outerHTML = ivRestHTML(); } return j; }
+
+// ---- the dashboard step: Sent ----
+function ivTrailStep(h) {
+  const s = ivLast(h.id); if (!s) return ['off', t('Not sent')];
+  if (s.status === 'queued') return ['part', t('Queued')];
+  if (s.status === 'bounced' || s.status === 'complained') return ['off', t('Bounced')];
+  if (s.status === 'failed') return ['off', t('Didn’t send')];
+  const at = s.sent_at || s.queued_at; return ['on', t(s.channel === 'text' ? 'Texted {t}' : 'Sent {t}', { t: ago(at) })];
+}
+
+// ---- the Invitations tab ----
+function ivTabHTML() {
+  if (G.ivOff) return `<p class="muted">${t('Invitations aren’t set up on this site yet.')}</p>`;
+  const I = G.iv; const row = ivRow(I.kind);
+  return `<div class="iv">
+    <div class="iv-top"><div class="seg2 iv-kinds" role="tablist" aria-label="${esc(t('Invitation'))}">${IV_KINDS.map(([k, l]) => `<button type="button" role="tab" data-iv-kind="${k}" aria-selected="${I.kind === k}" class="${I.kind === k ? 'on' : ''}">${t(l)}</button>`).join('')}</div></div>
+    ${I.build ? ivBuilderHTML() : row ? ivMainHTML(row) : ivEmptyHTML()}
+  </div>`;
+}
+function ivEmptyHTML() {
+  const std = G.iv.kind === 'save_the_date';
+  return `<div class="iv-start">
+    <button type="button" class="iv-opt" data-iv-new><span class="iv-fan" aria-hidden="true">${IV_TPLS.slice(0, 3).map(([k]) => `<canvas data-iv-thumb="${k}" width="120" height="168"></canvas>`).join('')}</span>
+      <b>${t(std ? 'Design a save the date' : 'Design an invitation')}</b><span>${t('Pick a style. Your page’s title, date, place, photo and colors are filled in; change any of it.')}</span></button>
+    <label class="iv-opt iv-up"><span class="iv-upic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/><path d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg></span>
+      <b>${t('Upload your own design')}</b><span>${t('A JPG, PNG, HEIC or PDF (first page). Sent as it is.')}</span><input type="file" data-iv-file accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif,application/pdf,.pdf"></label>
+  </div>`;
+}
+// recipients: the filter chips, then one row per household (checkbox, how far it got, Text / Share)
+const IV_RF = [['notsent', 'Not sent'], ['all', 'All'], ['unopened', 'Not opened'], ['norsvp', 'No RSVP'], ['pick', 'Pick']];
+function ivPass(f, h, S) { const k = G.iv.kind; if (f === 'notsent') return !ivWasSent(h.id, k) && !ivQueued(h.id, k); if (f === 'pick' || f === 'all') return true; return glPass(f, S.get(h.id)); }
+function ivVisible() { const S = new Map(G.hs.map(h => [h.id, glStat(h)])); return G.hs.filter(h => ivPass(G.iv.rf, h, S) && (!G.iv.grp || h.group_id === G.iv.grp)); }
+function ivSel() { if (!G.iv.sel) G.iv.sel = new Set(G.iv.rf === 'pick' ? [] : ivVisible().filter(h => h.email).map(h => h.id)); return G.iv.sel; }
+function ivMainHTML(row) {
+  const I = G.iv; const img = ivSrcImg(row); const S = new Map(G.hs.map(h => [h.id, glStat(h)]));
+  const cnt = (f) => G.hs.filter(h => ivPass(f, h, S)).length; const vis = ivVisible(); const sel = ivSel();
+  const can = navigator.canShare && (() => { try { return navigator.canShare({ files: [new File(['x'], 'x.jpg', { type: 'image/jpeg' })] }); } catch { return false; } })();
+  const rowHTML = (h) => { const s = ivLast(h.id, I.kind); const st = !s ? ['', t('Not sent')] : s.status === 'queued' ? ['q', t('Queued')] : ['bounced', 'complained'].includes(s.status) ? ['x', t('Bounced')] : s.status === 'failed' ? ['x', t('Didn’t send')]
+      : s.status === 'delivered' ? ['y', t('Delivered {t}', { t: ago(s.delivered_at || s.sent_at) })] : ['y', t(s.channel === 'text' ? 'Texted {t}' : 'Sent {t}', { t: ago(s.sent_at || s.queued_at) })];
+    const op = h.first_opened_at ? `<span class="iv-op">${esc(t('Opened {t}', { t: ago(h.first_opened_at) }))}</span>` : '';
+    const phone = (h.phone || '').replace(/[^\d+]/g, '');
+    return `<li class="iv-r${h.email ? '' : ' noem'}"><label class="iv-ck"><input type="checkbox" data-iv-sel="${esc(h.id)}"${sel.has(h.id) ? ' checked' : ''}${h.email ? '' : ' disabled'} aria-label="${esc(t('Select {n}', { n: h.name }))}"></label>
+      <div class="iv-rn"><b>${esc(h.name)}</b><span>${esc(h.email || t('No email'))}${ivHhLang(h) && ivHhLang(h) !== srcLang(G.cfg) ? ' · ' + esc(langName(h.lang)) : ''}</span></div>
+      <div class="iv-rs"><em class="iv-st ${st[0]}"${s && s.error ? ` title="${esc(s.error)}"` : ''}>${esc(st[1])}</em>${op}</div>
+      <div class="iv-ra"><a class="btn sm" data-iv-text="${esc(h.id)}" href="sms:${phone ? esc(phone) : ''}?&body=${enc(glInvText(h))}">${t('Text')}</a>${can ? `<button type="button" class="btn sm" data-iv-share="${esc(h.id)}">${t('Share')}</button>` : ''}</div></li>`; };
+  const gChips = G.gs.length ? `<div class="chips gl-gchips" role="group" aria-label="${esc(t('Groups'))}"><button type="button" class="chip ${!I.grp ? 'on' : ''}" data-iv-grp="">${t('All groups')}</button>${G.gs.map(g => `<button type="button" class="chip gl-gc ${I.grp === g.id ? 'on' : ''}" style="--g:${glHue(g.id)}" data-iv-grp="${esc(g.id)}"><i aria-hidden="true"></i>${esc(g.name)}</button>`).join('')}</div>` : '';
+  return `<div class="iv-main">
+    <div class="iv-left">
+      <figure class="iv-card">${img ? `<img src="${esc(ivUrl(img.path))}" width="${img.w}" height="${img.h}" alt="${esc(t(I.kind === 'save_the_date' ? 'Save the date' : 'Invitation'))}">` : ''}</figure>
+      <div class="btns iv-acts">${row.source === 'template' ? `<button type="button" class="btn sm" data-iv-edit>${t('Edit design')}</button>` : ''}<label class="btn sm file-btn">${t(row.source === 'template' ? 'Upload instead' : 'Replace')}<input type="file" data-iv-file accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif,application/pdf,.pdf"></label>${row.source === 'upload' ? `<button type="button" class="btn sm" data-iv-new>${t('Design one instead')}</button>` : ''}<button type="button" class="link gl-del" data-iv-del>${t('Delete')}</button></div>
+      <label class="tool iv-show"><input type="checkbox" data-iv-show ${row.show_on_page ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${t('Show it at the top of their page')}</label>
+      ${row.source === 'template' && ivLangs().length > 1 ? `<p class="muted small">${esc(t('Drawn in {n} languages, one for each household’s language.', { n: ivLangs().length }))}</p>` : ''}
+    </div>
+    <section class="iv-send">
+      <h3 class="iv-h">${t('Send')}</h3>
+      <div class="chips gl-filters" role="group" aria-label="${esc(t('Show'))}">${IV_RF.map(([k, l]) => `<button type="button" class="chip ${I.rf === k ? 'on' : ''}" data-iv-rf="${k}">${t(l)}${k === 'pick' ? '' : ` <span>${cnt(k)}</span>`}</button>`).join('')}</div>
+      ${gChips}
+      <div class="iv-selbar"><button type="button" class="link" data-iv-all>${t('Select all')}</button><button type="button" class="link" data-iv-none>${t('Select none')}</button></div>
+      <ul class="iv-list">${vis.map(rowHTML).join('') || `<li class="muted iv-empty">${t(G.hs.length ? 'No households match.' : 'Add guests first.')}</li>`}</ul>
+      ${ivQuotaHTML()}
+      ${ivRestHTML()}
+      <div class="btns iv-go"><button type="button" class="btn" data-iv-test>${t('Send test to me')}</button><button type="button" class="btn primary" data-iv-send${ivSendable().length ? '' : ' disabled'}>${esc(ivSendLabel())}</button></div>
+      ${G.ev.published ? '' : `<p class="b-note">${t('Share the page first: personal links open only once it’s shared.')}</p>`}
+    </section>
+  </div>`;
+}
+const ivSendable = () => [...ivSel()].map(id => G.hs.find(h => h.id === id)).filter(h => h && h.email);
+const ivSendLabel = () => { const n = ivSendable().length; return n ? t(n === 1 ? 'Email 1 household' : 'Email {n} households', { n }) : t('Email'); };
+function ivQuotaHTML() {
+  const st = G.iv.st; const n = ivSendable().filter(h => !ivWasSent(h.id, G.iv.kind) && !ivQueued(h.id, G.iv.kind)).length;
+  if (!st) return `<p class="iv-quota muted small" data-iv-quota>${t('Checking today’s email allowance…')}</p>`;
+  const left = st.left || 0; let tail = '';
+  if (n > left) tail = left ? ' ' + t('{a} go now; the other {b} go out automatically tomorrow.', { a: left, b: n - left }) : ' ' + t('These go out automatically tomorrow.');
+  return `<p class="iv-quota small${n > left ? ' over' : ''}" data-iv-quota><b>${esc(left ? t(left === 1 ? 'You can email 1 more household today' : 'You can email {n} more households today', { n: left }) : t('No emails left today'))}</b> <span class="muted">${esc(t('({n} emails a day on this plan)', { n: st.dailyCap || 100 }))}</span>${esc(tail)}</p>`;
+}
+function ivRestHTML() {
+  const q = G.iv.sends.filter(s => s.status === 'queued' && s.kind === G.iv.kind).length; if (!q) return '<div data-iv-rest hidden></div>';
+  const st = G.iv.st; const when = st && st.next_at ? fmtStamp(st.next_at) : '';
+  return `<div class="iv-rest" data-iv-rest><span>${esc(t(q === 1 ? '1 email waiting for the next day’s allowance' : '{n} emails waiting for the next day’s allowance', { n: q }))}${when ? ' · ' + esc(t('next {t}', { t: when })) : ''}</span><button type="button" class="btn sm" data-iv-rest-go>${t('Send the rest now')}</button><button type="button" class="link" data-iv-cancel>${t('Cancel them')}</button></div>`;
+}
+
+// ---- the builder ----
+function ivBuilderHTML() {
+  const B2 = G.iv.build; const d = B2.d; const src = srcLang(G.cfg); const L = B2.lang; const tr = L !== src ? (d.tx[L] || {}) : null; const T0 = ivTexts(d, G.cfg, L, B2.kind);
+  const langs = ivLangs();
+  const field = ([k, l]) => { const v = tr ? (tr.h === ivUserHash(d) ? tr[k] || '' : '') : d.t[k] || ''; const auto = tr ? ((d.t[k] || '').trim() || T0[k]) : T0[k];
+    const big = k === 'note'; return `<label class="iv-f"><span>${t(l)}</span>${big ? `<textarea rows="2" data-iv-t="${k}" maxlength="240" placeholder="${esc(auto)}">${esc(v)}</textarea>` : `<input data-iv-t="${k}" maxlength="140" value="${esc(v)}" placeholder="${esc(auto)}">`}</label>`; };
+  const cover = httpsUrl(G.cfg.cover || '');
+  return `<div class="iv-b">
+    <div class="iv-stage"><div class="iv-sheet"><canvas data-iv-prev width="600" height="840" aria-label="${esc(t('Preview'))}" role="img"></canvas></div>
+      ${langs.length > 1 ? `<label class="iv-pl"><span>${t('Preview in')}</span><select data-iv-lang>${langs.map(l => `<option value="${esc(l)}"${l === L ? ' selected' : ''}>${esc(langName(l))}</option>`).join('')}</select></label>` : ''}
+      ${tr ? `<p class="muted small">${esc(t('Text in {l}. Leave a line empty to use the translation of your text.', { l: langName(L) }))} <button type="button" class="link" data-iv-tr>${t('Translate again')}</button></p>` : ''}</div>
+    <div class="iv-ctl">
+      <p class="grp">${t('Style')}</p>
+      <div class="iv-tpls" role="radiogroup" aria-label="${esc(t('Style'))}">${IV_TPLS.map(([k, l]) => `<button type="button" role="radio" aria-checked="${d.tpl === k}" class="${d.tpl === k ? 'on' : ''}" data-iv-tpl="${k}"><canvas data-iv-thumb="${k}" width="120" height="168"></canvas><span>${t(l)}</span></button>`).join('')}</div>
+      <p class="grp">${t('Text')}</p>
+      <p class="muted small iv-hint">${t('Empty lines fill in from your page, in each guest’s language.')}</p>
+      ${IV_FIELDS.map(field).join('')}
+      <p class="grp">${t('Look')}</p>
+      <label class="iv-f"><span>${t('Fonts')}</span><select data-iv-font>${Object.entries(FONTS).map(([k, f]) => `<option value="${k}"${d.font === k ? ' selected' : ''}>${esc(t(f.label))}</option>`).join('')}</select></label>
+      <div class="iv-f"><span>${t('Color')}</span><div class="swatches">${[...new Set([(G.cfg.theme && G.cfg.theme.accent) || LAGOON, ...SWATCHES])].map(s => `<button type="button" class="sw ${s.toLowerCase() === String(d.color).toLowerCase() ? 'on' : ''}" style="background:${s}" data-iv-sw="${s}" aria-label="${esc(t('Color'))} ${s}"></button>`).join('')}<input type="color" data-iv-color value="${esc(d.color)}" aria-label="${t('Custom color')}"></div></div>
+      <div class="iv-f iv-ph"><span>${t('Photo')}</span><div class="btns">${d.photo ? `<label class="tool"><input type="checkbox" data-iv-usephoto ${d.usePhoto ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${t('Use the photo')}</label>` : ''}<label class="btn sm file-btn">${t(d.photo ? 'Change photo' : 'Add a photo')}<input type="file" data-iv-photo accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif"></label>${cover && d.photo !== cover ? `<button type="button" class="link" data-iv-cover>${t('Use the page photo')}</button>` : ''}</div><p class="muted small" data-iv-phmsg></p></div>
+      <div class="btns cf-b iv-bb"><button type="button" class="btn ghost" data-iv-x>${t('Cancel')}</button><button type="button" class="btn primary" data-iv-save>${t('Save design')}</button></div>
+    </div>
+  </div>`;
+}
+let ivT = 0, ivTT = 0, ivSeqN = 0;
+async function ivPreview() {
+  const B2 = G.iv && G.iv.build; const cv = $('[data-iv-prev]'); if (!B2 || !cv) return; const n = ++ivSeqN;
+  const c = await ivRender(B2.d, G.cfg, B2.lang, B2.kind, 600); if (n !== ivSeqN) return; const g = cv.getContext('2d'); g.clearRect(0, 0, cv.width, cv.height); g.drawImage(c, 0, 0);
+  const msg = $('[data-iv-phmsg]'); if (msg) { let bad = false; if (B2.d.usePhoto && B2.d.photo) { try { await ivImg(B2.d.photo); } catch { bad = true; } } msg.textContent = bad ? t('That photo can’t be used here. Add it from your device.') : ''; }
+}
+async function ivThumbs() {
+  const B2 = G.iv && G.iv.build; const d = B2 ? B2.d : ivDefault(G.cfg, G.iv.kind); const kind = B2 ? B2.kind : G.iv.kind; const lang = B2 ? B2.lang : srcLang(G.cfg);
+  for (const cv of $$('[data-iv-thumb]')) { const c = await ivRender({ ...d, tpl: cv.dataset.ivThumb }, G.cfg, lang, kind, 240); const g = cv.getContext('2d'); g.clearRect(0, 0, cv.width, cv.height); g.drawImage(c, 0, 0, cv.width, cv.height); }
+}
+const ivRedraw = (thumbs) => { clearTimeout(ivT); ivT = setTimeout(ivPreview, 90); if (thumbs) { clearTimeout(ivTT); ivTT = setTimeout(ivThumbs, 260); } };
+function ivOpenBuilder(kind) {
+  const row = ivRow(kind); const d = row && row.source === 'template' && row.design && row.design.tpl ? JSON.parse(JSON.stringify(row.design)) : ivDefault(G.cfg, kind);
+  d.t = { headline: '', names: '', date: '', place: '', note: '', ...(d.t || {}) }; d.tx = d.tx || {};
+  G.iv.build = { kind, d, lang: srcLang(G.cfg) }; glPaint();
+}
+// the organizer's words in another language: translated once per language, kept with the design (editable there)
+async function ivTranslate(d, lang, force) {
+  const src = srcLang(G.cfg); if (lang === src) return true; const h = ivUserHash(d); const cur = d.tx[lang];
+  const fields = Object.fromEntries(IV_FIELDS.map(([k]) => [k, (d.t[k] || '').trim()]).filter(x => x[1]));
+  const needPh = !I18N[lang] && lang !== 'en'; // phrases for languages without interface tables
+  if (needPh) IV_PHRASES.forEach(p => { fields['ph:' + p] = p; });
+  if (!force && cur && cur.h === h && (!needPh || cur['ph:Save the date'])) return true;
+  if (!Object.keys(fields).length) { d.tx[lang] = { h }; return true; }
+  try { const j = await aiTranslate({ mode: 'translate', fields, target: lang, source: needPh && !Object.keys(fields).some(k => !k.startsWith('ph:')) ? 'en' : src });
+    const out = { h }; ((j.data && j.data.translations) || []).forEach(x => { if (x.key in fields && typeof x.text === 'string') out[x.key] = String(x.text).slice(0, 240); });
+    if (!force && cur && cur.h === h) IV_FIELDS.forEach(([k]) => { if (cur[k]) out[k] = cur[k]; }); // keep the organizer's own edits
+    d.tx[lang] = out; return true;
+  } catch { return false; }
+}
+async function ivSaveDesign(btn) {
+  const B2 = G.iv.build; const d = B2.d; const kind = B2.kind; const old = ivRow(kind); const langs = ivLangs(); const c = await sb();
+  btn.disabled = true; const lbl = btn.textContent; const bad = [];
+  try {
+    for (const L of langs) { btn.textContent = t('Translating…'); if (!await ivTranslate(d, L)) bad.push(langName(L)); }
+    const images = {}; let i = 0;
+    for (const L of langs) { btn.textContent = t('Saving {n}/{m}…', { n: ++i, m: langs.length }); const cv = await ivRender(d, G.cfg, L, kind, IV_W); const blob = await ivBlob(cv);
+      images[L] = { path: await ivPut(blob, (kind === 'invitation' ? 'inv' : 'std') + '-' + L), w: cv.width, h: cv.height }; }
+    const body = { source: 'template', design: d, images };
+    const r = old ? await c.from('invitations').update(body).eq('id', old.id).select('*').single() : await c.from('invitations').insert({ event_id: G.eid, kind, ...body }).select('*').single();
+    if (r.error) throw r.error;
+    if (old) ivDrop(Object.values(old.images || {}).map(x => x.path));
+    G.iv.rows = G.iv.rows.filter(x => x.kind !== kind).concat([r.data]); G.iv.build = null; G.iv.sel = null; glPaint();
+    toast(bad.length ? t('Saved. Couldn’t translate into {l}; those guests see your text as written.', { l: bad.join(', ') }) : t('Design saved'));
+  } catch (e) { btn.disabled = false; btn.textContent = lbl; toast(t('Couldn’t save: {e}', { e: pubWhy(e) })); }
+}
+// an uploaded design: preview, then saved as the picture for every language
+function ivUploadDlg(file) {
+  const kind = G.iv.kind;
+  const d = glDlg(`<h2>${t(kind === 'save_the_date' ? 'Your save the date' : 'Your invitation')}</h2><div class="iv-upv" data-iv-upv><p class="muted">${t('Opening…')}</p></div>
+    <p class="muted small">${t('Guests get this picture as it is, in every language. Their personal link goes under it.')}</p>
+    <div class="btns cf-b"><button type="button" class="btn ghost" data-iv-ux>${t('Cancel')}</button><button type="button" class="btn primary" data-iv-uok disabled>${t('Use this design')}</button></div>`);
+  d.classList.add('iv-dlg'); let prep = null;
+  ivPrepUpload(file).then(p => { prep = p; $('[data-iv-upv]', d).innerHTML = `<img src="${esc(p.url)}" width="${p.w}" height="${p.h}" alt="${esc(t('Preview'))}"><span class="muted small">${p.w} × ${p.h} · ${Math.round(p.blob.size / 1024)} KB</span>`; $('[data-iv-uok]', d).disabled = false; })
+    .catch(e => { $('[data-iv-upv]', d).innerHTML = `<p class="b-note">${esc(e.message || t('Use a JPG, PNG, HEIC or PDF.'))}</p>`; });
+  d.onclick = async (e) => {
+    if (e.target === d) { d.close(); return; } const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.ivUx != null) d.close();
+    if (b.dataset.ivUok != null && prep) {
+      b.disabled = true; b.textContent = t('Saving…');
+      try { const c = await sb(); const old = ivRow(kind); const path = await ivPut(prep.blob, (kind === 'invitation' ? 'inv' : 'std') + '-up');
+        const body = { source: 'upload', design: { file: String(file.name || '').slice(0, 120) }, images: { [srcLang(G.cfg)]: { path, w: prep.w, h: prep.h } } };
+        const r = old ? await c.from('invitations').update(body).eq('id', old.id).select('*').single() : await c.from('invitations').insert({ event_id: G.eid, kind, ...body }).select('*').single();
+        if (r.error) throw r.error; if (old) ivDrop(Object.values(old.images || {}).map(x => x.path));
+        G.iv.rows = G.iv.rows.filter(x => x.kind !== kind).concat([r.data]); G.iv.build = null; d.close(); glPaint(); toast(t('Design saved'));
+      } catch (err) { b.disabled = false; b.textContent = t('Use this design'); toast(t('Couldn’t save: {e}', { e: pubWhy(err) })); }
+    }
+  };
+}
+// a household's picture as a file, for the share sheet (phones)
+async function ivFile(h) {
+  const row = ivRow(G.iv.kind); if (!row) return null; const im = row.images || {}; const L = ivHhLang(h); const img = im[L] || ivSrcImg(row); if (!img) return null;
+  const r = await fetch(ivUrl(img.path)); const b = await r.blob(); return new File([b], (G.cfg.title || 'invitation').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() + '.jpg', { type: 'image/jpeg' });
+}
+async function ivRecordText(h) {
+  const row = ivRow(G.iv.kind); try { const c = await sb(); const L = ivHhLang(h); const img = row && ((row.images || {})[L] || ivSrcImg(row));
+    const { data, error } = await c.from('invite_sends').insert({ household_id: h.id, invitation_id: row ? row.id : null, kind: G.iv.kind, channel: 'text', lang: L, image_path: img ? img.path : null }).select('*').single();
+    if (!error && data) { G.iv.sends.push(data); setTimeout(glPaint, 400); } } catch { /* the text still opens */ }
+}
+async function ivSend(btn) {
+  const kind = G.iv.kind; const row = ivRow(kind); if (!row) return; if (!G.ev.published) { toast(t('Share the page first')); return; }
+  const hs = ivSendable(); if (!hs.length) { toast(t('None of these has an email')); return; }
+  const again = hs.filter(h => ivWasSent(h.id, kind)); let again2 = false;
+  if (again.length) {
+    const choice = await new Promise((res) => { const d = glDlg(`<h2>${esc(t(again.length === 1 ? 'Send again to 1 already sent?' : 'Send again to {n} already sent?', { n: again.length }))}</h2>
+      <p>${esc(again.slice(0, 6).map(h => h.name).join(', ') + (again.length > 6 ? ' …' : ''))}</p>${hs.length > again.length ? `<p class="muted small">${esc(t('The other {n} get it either way.', { n: hs.length - again.length }))}</p>` : ''}
+      <div class="btns cf-b"><button type="button" class="btn ghost" data-c="x">${t('Cancel')}</button>${hs.length > again.length ? `<button type="button" class="btn" data-c="skip">${t('Skip them')}</button>` : ''}<button type="button" class="btn primary" data-c="again">${t('Send again')}</button></div>`);
+      d.onclick = (e) => { const b = e.target.closest('[data-c]'); if (e.target === d || b) { d.onclose = null; d.close(); res(b ? b.dataset.c : 'x'); } }; d.onclose = () => res('x'); });
+    if (choice === 'x') return; again2 = choice === 'again';
+  }
+  btn.disabled = true; btn.textContent = t('Sending…');
+  const ids = (again2 ? hs : hs.filter(h => !ivWasSent(h.id, kind))).map(h => h.id);
+  const j = await notifyCall('invite', row.id, { households: ids, again: again2 });
+  await ivLoad().catch(() => {}); G.iv.sel = null;
+  if (!j || !j.ok) { glPaint(); ivStatus(); toast(t('Couldn’t send: {e}', { e: (j && j.error) || t('check your connection') })); return; }
+  const parts = []; if (j.sent) parts.push(t(j.sent === 1 ? 'Emailed 1 household' : 'Emailed {n} households', { n: j.sent }));
+  if (j.waiting) parts.push(t('{n} go out tomorrow', { n: j.waiting })); if (j.failed) parts.push(t('{n} didn’t send', { n: j.failed }));
+  if (j.skipped === 'page not shared') parts.push(t('Share the page first'));
+  glPaint(); ivStatus(); toast(parts.join(' · ') || t('Nothing to send'));
+}
+function ivWire(m) {
+  m.addEventListener('click', async (e) => {
+    const a = e.target.closest('[data-iv-text]'); if (a) { const h = G.hs.find(x => x.id === a.dataset.ivText); if (h) ivRecordText(h); return; } // the link opens Messages itself
+    const b = e.target.closest('button'); if (!b || !b.closest('.iv')) return; const d = b.dataset; const I = G.iv;
+    if (d.ivKind) { I.kind = d.ivKind; I.build = null; I.sel = null; glPaint(); return; }
+    if (d.ivNew != null) { ivOpenBuilder(I.kind); return; }
+    if (d.ivEdit != null) { ivOpenBuilder(I.kind); return; }
+    if (d.ivX != null) { I.build = null; glPaint(); return; }
+    if (d.ivSave != null) { ivSaveDesign(b); return; }
+    if (d.ivTpl) { I.build.d.tpl = d.ivTpl; $$('[data-iv-tpl]').forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-checked', String(on)); }); const ph = $$('[data-iv-t]'); const T0 = ivTexts(I.build.d, G.cfg, I.build.lang, I.build.kind); ph.forEach(x => { if (x.dataset.ivT === 'headline') x.placeholder = T0.headline; }); ivRedraw(); return; }
+    if (d.ivSw) { I.build.d.color = d.ivSw; $$('[data-iv-sw]').forEach(x => x.classList.toggle('on', x === b)); ivRedraw(true); return; }
+    if (d.ivCover != null) { I.build.d.photo = httpsUrl(G.cfg.cover || ''); I.build.d.usePhoto = true; glPaint(); return; }
+    if (d.ivTr != null) { b.disabled = true; b.textContent = t('Translating…'); const ok = await ivTranslate(I.build.d, I.build.lang, true); glPaint(); if (!ok) toast(t('Couldn’t translate. Type the text for this language.')); return; }
+    if (d.ivDel != null) { const row = ivRow(I.kind); if (!row || !await confirmDlg({ title: t('Delete this design?'), body: t('Guests who were sent it keep their email; it leaves their page.'), ok: t('Delete'), cancel: t('Cancel') })) return;
+      const c = await sb(); const { error } = await c.from('invitations').delete().eq('id', row.id); if (error) { toast(error.message); return; } ivDrop(Object.values(row.images || {}).map(x => x.path)); I.rows = I.rows.filter(x => x.id !== row.id); glPaint(); toast(t('Deleted')); return; }
+    if (d.ivRf) { I.rf = d.ivRf; I.sel = null; glPaint(); return; }
+    if (d.ivGrp != null) { I.grp = d.ivGrp; I.sel = null; glPaint(); return; }
+    if (d.ivAll != null) { I.sel = new Set(ivVisible().filter(h => h.email).map(h => h.id)); glPaint(); return; }
+    if (d.ivNone != null) { I.sel = new Set(); glPaint(); return; }
+    if (d.ivSend != null) { ivSend(b); return; }
+    if (d.ivTest != null) { const row = ivRow(I.kind); if (!row) return; b.disabled = true; const first = ivSendable()[0];
+      const j = await notifyCall('invite_test', row.id, first ? { household: first.id } : {}); b.disabled = false;
+      toast(j && j.ok && j.sent ? t('Test sent to {e}', { e: j.to }) : t('Couldn’t send: {e}', { e: (j && j.error) || t('check your connection') })); ivStatus(); return; }
+    if (d.ivRestGo != null) { b.disabled = true; const j = await notifyCall('drain', G.eid); await ivLoad().catch(() => {}); glPaint(); ivStatus();
+      toast(j && j.ok ? (j.sent ? t(j.sent === 1 ? 'Emailed 1 household' : 'Emailed {n} households', { n: j.sent }) : t('No emails left today. They go out tomorrow.')) : t('Couldn’t send: {e}', { e: (j && j.error) || t('check your connection') })); return; }
+    if (d.ivCancel != null) { const ids = I.sends.filter(s => s.status === 'queued' && s.kind === I.kind).map(s => s.id); if (!ids.length) return;
+      const c = await sb(); const { error } = await c.from('invite_sends').update({ status: 'canceled' }).in('id', ids); if (error) { toast(error.message); return; } await ivLoad().catch(() => {}); glPaint(); ivStatus(); toast(t('Canceled')); return; }
+    if (d.ivShare) { const h = G.hs.find(x => x.id === d.ivShare); if (!h) return; try { const f = await ivFile(h); const data = { text: glInvText(h), ...(f ? { files: [f] } : {}) }; await navigator.share(data); ivRecordText(h); } catch (err) { if (err && err.name !== 'AbortError') toast(t('Couldn’t open the share sheet')); } return; }
+  });
+  m.addEventListener('input', (e) => {
+    const i = e.target; const I = G.iv; if (!I || !I.build) return;
+    if (i.dataset.ivT) { const src = srcLang(G.cfg); const d = I.build.d; const v = i.value.slice(0, 240);
+      if (I.build.lang === src) d.t[i.dataset.ivT] = v; else { const h = ivUserHash(d); const tx = d.tx[I.build.lang] && d.tx[I.build.lang].h === h ? d.tx[I.build.lang] : (d.tx[I.build.lang] = { h }); tx[i.dataset.ivT] = v; }
+      ivRedraw(i.dataset.ivT === 'names' || i.dataset.ivT === 'headline'); }
+    if (i.dataset.ivColor != null) { I.build.d.color = i.value; $$('[data-iv-sw]').forEach(x => x.classList.remove('on')); ivRedraw(true); }
+  });
+  m.addEventListener('change', async (e) => {
+    const i = e.target; const I = G.iv; if (!I) return;
+    if (i.dataset.ivSel) { const s = ivSel(); if (i.checked) s.add(i.dataset.ivSel); else s.delete(i.dataset.ivSel); const q = $('[data-iv-quota]'); if (q) q.outerHTML = ivQuotaHTML(); const sb2 = $('[data-iv-send]'); if (sb2) { sb2.textContent = ivSendLabel(); sb2.disabled = !ivSendable().length; } return; }
+    if (i.dataset.ivShow != null) { const row = ivRow(I.kind); if (!row) return; const c = await sb(); const { error } = await c.from('invitations').update({ show_on_page: i.checked }).eq('id', row.id); if (error) { i.checked = !i.checked; toast(error.message); return; } row.show_on_page = i.checked; toast(t(i.checked ? 'Shown on their page' : 'Hidden from their page')); return; }
+    if (i.dataset.ivFile != null && i.files && i.files[0]) { ivUploadDlg(i.files[0]); i.value = ''; return; }
+    if (!I.build) return;
+    if (i.dataset.ivLang) { I.build.lang = i.value; if (i.value !== srcLang(G.cfg) && !(I.build.d.tx[i.value] && I.build.d.tx[i.value].h === ivUserHash(I.build.d))) { glPaint(); await ivTranslate(I.build.d, i.value); } glPaint(); return; }
+    if (i.dataset.ivFont) { I.build.d.font = i.value; ivRedraw(true); return; }
+    if (i.dataset.ivUsephoto != null) { I.build.d.usePhoto = i.checked; ivRedraw(true); return; }
+    if (i.dataset.ivPhoto != null && i.files && i.files[0]) { const f = i.files[0]; i.value = ''; const msg = $('[data-iv-phmsg]'); if (msg) msg.textContent = t('Uploading…');
+      try { const p = await ivPrepUpload(f); const path = await ivPut(p.blob, 'photo'); I.build.d.photo = ivUrl(path); I.build.d.usePhoto = true; glPaint(); } catch (err) { if (msg) msg.textContent = t('Couldn’t add it: {e}', { e: pubWhy(err) }); } }
+  });
+}
+// after the tab is drawn: thumbnails + preview, the allowance
+function ivAfterPaint() { if (G.tab !== 'inv' || G.ivOff) return; if ($('[data-iv-thumb]')) ivThumbs(); if ($('[data-iv-prev]')) ivPreview(); if (!G.iv.st && ivRow(G.iv.kind) && !G.iv.stP) { G.iv.stP = true; ivStatus().finally(() => { G.iv.stP = false; }); } }
+
+// ---- the guest's side: the invitation at the top of their personal link ----
+function ivGuestHTML(hosted) {
+  const v = hosted && hosted.hh && hosted.hh.inv; if (!v || !v.path) return '';
+  return `<figure class="iv-guest"><a href="${esc(ivUrl(v.path))}" target="_blank" rel="noopener"><img src="${esc(ivUrl(v.path))}" width="${+v.w || 1200}" height="${+v.h || 1680}" alt="${esc(t(v.kind === 'save_the_date' ? 'Save the date' : 'Your invitation'))}" decoding="async"></a></figure>`;
 }
 
 // ---- adding guests: paste lines or a CSV (household / name / email / phone / address / group / language / age) ----
@@ -10621,5 +11159,5 @@ window.addEventListener('hashchange', route);
 rtWatch();
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { lists: { B: () => B, G: () => G, setG: (g) => { G = g; }, buildForm, glMount, glPaint, conflictDlg, partName, glImportDlg, glEditDlg, stPickDlg, stEditDlg, stPrint, t, stLayout, stPlace, stAdd10, stFolded, FT: [FT_W, FT_H] }, cfgMerge3, cfgTakeTheirs, glParse, glGroupRows, joinFirst, rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtModel, rtSer, rtRead, rtEdToggle, rtSelect, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { iv: { ivRender, ivTexts, ivDefault, ivDate, ivPrepUpload, ivOpenBuilder, ivUploadDlg, ivTabHTML, ivLangs, ivTrailStep, IV_TPLS, ivPal }, lists: { B: () => B, G: () => G, setG: (g) => { G = g; }, ivBlank, buildForm, glMount, glPaint, conflictDlg, partName, glImportDlg, glEditDlg, stPickDlg, stEditDlg, stPrint, t, stLayout, stPlace, stAdd10, stFolded, FT: [FT_W, FT_H] }, cfgMerge3, cfgTakeTheirs, glParse, glGroupRows, joinFirst, rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtModel, rtSer, rtRead, rtEdToggle, rtSelect, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

@@ -19,8 +19,26 @@ textarea{width:100%;height:40vh;box-sizing:border-box;font:12px ui-monospace,Men
 //          SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are provided to Edge Functions automatically.
 //
 // POST { &quot;kind&quot;: &quot;message&quot;, &quot;id&quot;: &quot;&lt;event_messages.id&gt;&quot; }   guest wrote → email the page owner; host replied → email that guest
-// POST { &quot;kind&quot;: &quot;announcement&quot;, &quot;id&quot;: &quot;&lt;announcements.id&gt;&quot; } owner posted → email the chosen groups (or everyone known)
+// POST { &quot;kind&quot;: &quot;announcement&quot;, &quot;id&quot;: &quot;&lt;announcements.id&gt;&quot; } owner / planner posted → email the chosen groups (or everyone known)
+// POST { &quot;kind&quot;: &quot;planner&quot;, &quot;id&quot;: &quot;&lt;page_planners.id&gt;&quot; }     owner invited a co-planner → email the invite link
+// POST { &quot;kind&quot;: &quot;household&quot;, &quot;id&quot;: &quot;&lt;guest_households.id&gt;&quot; } owner / planner → email that household its personal link,
+//                                                            in the household's language
+// POST { &quot;kind&quot;: &quot;invite&quot;, &quot;id&quot;: &quot;&lt;invitations.id&gt;&quot;, &quot;households&quot;: [ids], &quot;again&quot;: false }  owner / planner → email each
+//                                                            household the invitation picture + its personal link, in its
+//                                                            language. Already sent (or queued) households are skipped unless
+//                                                            &quot;again&quot;. Sends what today's email allowance allows now; the rest
+//                                                            is queued and goes out automatically on the next day (cron
+//                                                            &quot;drain&quot;), or with { &quot;kind&quot;: &quot;drain&quot;, &quot;id&quot;: &quot;&lt;event id&gt;&quot; }.
+// POST { &quot;kind&quot;: &quot;invite_test&quot;, &quot;id&quot;: &quot;&lt;invitations.id&gt;&quot;, &quot;household&quot;: &quot;&lt;id&gt;&quot;?, &quot;lang&quot;: &quot;es&quot;? } → the same email, to the
+//                                                            signed-in organizer's own (confirmed) address
+// POST { &quot;kind&quot;: &quot;invite_status&quot;, &quot;id&quot;: &quot;&lt;event id&gt;&quot; }        → today's / this month's emails left, queued, next send time
+// POST { &quot;kind&quot;: &quot;drain&quot; } + header x-cron-secret               → sends queued invitations that are due (pg_cron, see
+//                                                            supabase/schema-invites-cron.sql; secret NOTIFY_CRON_SECRET)
 // GET  → { ok, ready } (ready = RESEND_API_KEY is set)
+// Secrets (optional): NOTIFY_DAILY_CAP (100), NOTIFY_MONTHLY_CAP (3000) = the Resend plan's allowance;
+//          NOTIFY_RESERVE (10) = emails a day kept back for sign-in links, planner invites and messages.
+//          Never more than the allowance is sent: the server reads Resend's x-resend-daily-quota / -monthly-quota
+//          headers after every send and logs its own sends (email_usage / email_log, schema-invites.sql).
 // Each row is emailed at most once (notified_at). The host's own email address is never sent to guests.
 
 import { createClient } from &quot;npm:@supabase/supabase-js@2.119.0&quot;;
@@ -30,6 +48,24 @@ const ALLOWED_ORIGINS = [&quot;https://1linktrip.com&quot;, &quot;https://www.1l
 const SITE = &quot;https://1linktrip.com/&quot;;
 const MAX_RECIPIENTS = 300;
 const THREAD_QUIET_MS = 10 * 60 * 1000; // one email per thread per 10 minutes
+const RESEND_MS = 10 * 60 * 1000; // an invite can be emailed again after 10 minutes
+
+// household invitation email, per language (the household's own language when the page has it)
+export const INVITE: Record&lt;string, { s: string; hi: string; body: string; btn: string }&gt; = {
+  en: { s: &quot;Invitation: {t}&quot;, hi: &quot;Hi {n},&quot;, body: &quot;You're invited to {t}. Your page has the details, and you can reply for everyone in your household there.&quot;, btn: &quot;Open your invitation&quot; },
+  es: { s: &quot;Invitación: {t}&quot;, hi: &quot;Hola, {n}:&quot;, body: &quot;Estás invitado a {t}. En tu página están todos los detalles y puedes responder por todos los de tu hogar.&quot;, btn: &quot;Abrir tu invitación&quot; },
+  fr: { s: &quot;Invitation : {t}&quot;, hi: &quot;Bonjour {n},&quot;, body: &quot;Vous êtes invités à {t}. Votre page contient tous les détails, et vous pouvez y répondre pour tout votre foyer.&quot;, btn: &quot;Ouvrir votre invitation&quot; },
+  pt: { s: &quot;Convite: {t}&quot;, hi: &quot;Olá, {n},&quot;, body: &quot;Você está convidado para {t}. Sua página tem todos os detalhes, e você pode responder por todos da sua casa.&quot;, btn: &quot;Abrir seu convite&quot; },
+  de: { s: &quot;Einladung: {t}&quot;, hi: &quot;Hallo {n},&quot;, body: &quot;Ihr seid zu {t} eingeladen. Auf eurer Seite stehen alle Details, und ihr könnt dort für euren ganzen Haushalt antworten.&quot;, btn: &quot;Einladung öffnen&quot; },
+  it: { s: &quot;Invito: {t}&quot;, hi: &quot;Ciao {n},&quot;, body: &quot;Siete invitati a {t}. Nella vostra pagina trovate tutti i dettagli e potete rispondere per tutta la famiglia.&quot;, btn: &quot;Apri l'invito&quot; },
+  ja: { s: &quot;ご招待：{t}&quot;, hi: &quot;{n} 様&quot;, body: &quot;{t} にご招待します。ページに詳細があり、ご家族全員分の出欠をまとめて返信できます。&quot;, btn: &quot;招待状を開く&quot; },
+};
+const AND: Record&lt;string, string&gt; = { en: &quot;and&quot;, es: &quot;y&quot;, fr: &quot;et&quot;, pt: &quot;e&quot;, de: &quot;und&quot;, it: &quot;e&quot;, ja: &quot;と&quot; };
+export const joinNames = (xs: string[], lang: string) =&gt; { const a = AND[lang] || AND.en; if (lang === &quot;ja&quot;) return xs.join(&quot;、&quot;).replace(/、([^、]*)$/, a + &quot;$1&quot;);
+  return xs.length &lt; 2 ? xs.join(&quot;&quot;) : xs.slice(0, -1).join(&quot;, &quot;) + &quot; &quot; + a + &quot; &quot; + xs[xs.length - 1]; };
+// deno-lint-ignore no-explicit-any
+type Row = Record&lt;string, any&gt;;
+const fill = (s: string, v: Record&lt;string, string&gt;) =&gt; s.replace(/\{(\w)\}/g, (_, k) =&gt; v[k] ?? &quot;&quot;);
 
 export function corsFor(req: Request): Record&lt;string, string&gt; {
   const origin = req.headers.get(&quot;Origin&quot;) || &quot;&quot;;
@@ -43,10 +79,15 @@ export function corsFor(req: Request): Record&lt;string, string&gt; {
 const json = (status: number, body: unknown) =&gt;
   new Response(JSON.stringify(body), { status, headers: { &quot;Content-Type&quot;: &quot;application/json&quot; } });
 
-export type Mail = { to: string; subject: string; text: string; html: string };
+export type Mail = { to: string; subject: string; text: string; html: string; from?: string };
 // deno-lint-ignore no-explicit-any
 type Admin = any;
-export type Deps = { admin: Admin; send: (mails: Mail[]) =&gt; Promise&lt;void&gt;; ready: boolean; now?: () =&gt; number };
+// sendBatch: one Resend batch call (≤100 emails) → the Resend id of each email, in order. Throws SendError on failure.
+export type Deps = { admin: Admin; send: (mails: Mail[]) =&gt; Promise&lt;void&gt;; ready: boolean; now?: () =&gt; number;
+  sendBatch?: (mails: Mail[], key?: string) =&gt; Promise&lt;string[]&gt;; sleep?: (ms: number) =&gt; Promise&lt;void&gt;; caps?: Partial&lt;Caps&gt;; isServer?: (req: Request) =&gt; boolean };
+export type Caps = { daily: number; monthly: number; reserve: number };
+export class SendError extends Error { status: number; retryAfter: number; quota: boolean;
+  constructor(m: string, status: number, retryAfter = 1, quota = false) { super(m); this.status = status; this.retryAfter = retryAfter; this.quota = quota; } }
 
 const esc = (s: string) =&gt; s.replace(/[&amp;&lt;&gt;&quot;']/g, (c) =&gt; ({ &quot;&amp;&quot;: &quot;&amp;amp;&quot;, &quot;&lt;&quot;: &quot;&amp;lt;&quot;, &quot;&gt;&quot;: &quot;&amp;gt;&quot;, '&quot;': &quot;&amp;quot;&quot;, &quot;'&quot;: &quot;&amp;#39;&quot; }[c] as string));
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -69,6 +110,25 @@ async function claim(admin: Admin, table: string, id: string): Promise&lt;boolea
   const { data, error } = await admin.from(table).update({ notified_at: new Date().toISOString() }).eq(&quot;id&quot;, id).is(&quot;notified_at&quot;, null).select(&quot;id&quot;);
   return !error &amp;&amp; Array.isArray(data) &amp;&amp; data.length === 1;
 }
+// invites: once, or again after RESEND_MS (guarded on the value read, so two taps send one)
+async function claimAgain(admin: Admin, table: string, id: string, was: string | null, now: number): Promise&lt;boolean&gt; {
+  if (was &amp;&amp; now - Date.parse(was) &lt; RESEND_MS) return false;
+  let q = admin.from(table).update({ notified_at: new Date(now).toISOString() }).eq(&quot;id&quot;, id);
+  q = was ? q.eq(&quot;notified_at&quot;, was) : q.is(&quot;notified_at&quot;, null);
+  const { data, error } = await q.select(&quot;id&quot;);
+  return !error &amp;&amp; Array.isArray(data) &amp;&amp; data.length === 1;
+}
+// a failed send gives the claim back, so the invite can be tried again
+async function unclaim(admin: Admin, table: string, id: string, was: string | null) {
+  try { await admin.from(table).update({ notified_at: was }).eq(&quot;id&quot;, id); } catch { /* the 10-minute wait still applies */ }
+}
+// the page's owner, or an accepted planner (signed in with the invited, confirmed email)
+async function plans(admin: Admin, ev: { id: string; owner: string }, me: { id: string; email?: string; email_confirmed_at?: string }): Promise&lt;boolean&gt; {
+  if (ev.owner === me.id) return true;
+  if (!me.email || !me.email_confirmed_at) return false;
+  const { data } = await admin.from(&quot;page_planners&quot;).select(&quot;id&quot;).eq(&quot;event_id&quot;, ev.id).eq(&quot;user_id&quot;, me.id).eq(&quot;email&quot;, String(me.email).toLowerCase()).not(&quot;accepted_at&quot;, &quot;is&quot;, null).limit(1);
+  return Array.isArray(data) &amp;&amp; data.length &gt; 0;
+}
 
 // Every answer carries the CORS headers for this request's Origin.
 export async function handler(req: Request, deps?: Deps): Promise&lt;Response&gt; {
@@ -84,24 +144,33 @@ async function route(req: Request, deps?: Deps): Promise&lt;Response&gt; {
   if (req.method !== &quot;POST&quot;) return json(405, { ok: false, error: &quot;Use POST&quot; });
 
   const token = (req.headers.get(&quot;Authorization&quot;) || &quot;&quot;).replace(/^Bearer\s+/i, &quot;&quot;);
+  // deno-lint-ignore no-explicit-any
+  let b: any;
+  // the scheduled drain (pg_cron + pg_net) carries the cron secret (x-cron-secret = NOTIFY_CRON_SECRET, kept in Vault)
+  if (d.isServer &amp;&amp; d.isServer(req)) {
+    try { b = await req.json(); } catch { return json(400, { ok: false, error: &quot;Send JSON&quot; }); }
+    if (b.kind !== &quot;drain&quot;) return json(400, { ok: false, error: &quot;Unknown request&quot; });
+    if (!d.ready) return json(200, { ok: true, sent: 0, skipped: &quot;email not set up&quot; });
+    return json(200, { ok: true, ...(await drain(d, d.now ? d.now() : Date.now(), null)) });
+  }
   const { data: who } = token ? await d.admin.auth.getUser(token) : { data: null };
   const me = who &amp;&amp; who.user;
   if (!me) return json(401, { ok: false, error: &quot;Sign in first&quot; });
 
-  let b: { kind?: string; id?: string };
   try { b = await req.json(); } catch { return json(400, { ok: false, error: &quot;Send JSON&quot; }); }
   const id = String(b.id || &quot;&quot;);
-  if (!UUID.test(id) || (b.kind !== &quot;message&quot; &amp;&amp; b.kind !== &quot;announcement&quot;)) return json(400, { ok: false, error: &quot;Unknown request&quot; });
+  if (!UUID.test(id) || ![&quot;message&quot;, &quot;announcement&quot;, &quot;planner&quot;, &quot;household&quot;, &quot;invite&quot;, &quot;invite_test&quot;, &quot;invite_status&quot;, &quot;drain&quot;].includes(String(b.kind))) return json(400, { ok: false, error: &quot;Unknown request&quot; });
   if (!d.ready) return json(200, { ok: true, sent: 0, skipped: &quot;email not set up&quot; });
   const now = d.now ? d.now() : Date.now();
+  if (String(b.kind).startsWith(&quot;invite&quot;) || b.kind === &quot;drain&quot;) return invites(d, me, b, now);
 
   if (b.kind === &quot;message&quot;) {
     const { data: m } = await d.admin.from(&quot;event_messages&quot;).select(&quot;id,event_id,guest,from_host,guest_name,guest_email,body,notified_at,created_at&quot;).eq(&quot;id&quot;, id).maybeSingle();
     if (!m) return json(404, { ok: false, error: &quot;Not found&quot; });
     const { data: ev } = await d.admin.from(&quot;events&quot;).select(&quot;id,slug,owner,config&quot;).eq(&quot;id&quot;, m.event_id).maybeSingle();
     if (!ev) return json(404, { ok: false, error: &quot;Not found&quot; });
-    // only the person who wrote it can ask for its email
-    if (m.from_host ? ev.owner !== me.id : m.guest !== me.id) return json(403, { ok: false, error: &quot;Not yours&quot; });
+    // only the person who wrote it can ask for its email (a host reply: the owner or a planner)
+    if (m.from_host ? !(await plans(d.admin, ev, me)) : m.guest !== me.id) return json(403, { ok: false, error: &quot;Not yours&quot; });
     if (m.notified_at) return json(200, { ok: true, sent: 0, skipped: &quot;already sent&quot; });
     const title = String((ev.config &amp;&amp; ev.config.title) || &quot;your page&quot;).slice(0, 120);
     // a burst of messages in one thread becomes one email
@@ -122,11 +191,53 @@ async function route(req: Request, deps?: Deps): Promise&lt;Response&gt; {
     return json(200, { ok: true, sent: 1 });
   }
 
-  // announcement: only the page owner, and only once
+  if (b.kind === &quot;planner&quot;) { // the owner's invite to a co-planner
+    const { data: p } = await d.admin.from(&quot;page_planners&quot;).select(&quot;id,event_id,email,token,accepted_at,notified_at&quot;).eq(&quot;id&quot;, id).maybeSingle();
+    if (!p) return json(404, { ok: false, error: &quot;Not found&quot; });
+    const { data: ev } = await d.admin.from(&quot;events&quot;).select(&quot;id,slug,owner,config&quot;).eq(&quot;id&quot;, p.event_id).maybeSingle();
+    if (!ev || ev.owner !== me.id) return json(403, { ok: false, error: &quot;Not yours&quot; });
+    if (p.accepted_at) return json(200, { ok: true, sent: 0, skipped: &quot;already joined&quot; });
+    if (!EMAIL.test(p.email)) return json(200, { ok: true, sent: 0, skipped: &quot;no email&quot; });
+    const was = p.notified_at;
+    if (!(await claimAgain(d.admin, &quot;page_planners&quot;, id, was, now))) return json(200, { ok: true, sent: 0, skipped: &quot;recently emailed&quot; });
+    const title = String((ev.config &amp;&amp; ev.config.title) || &quot;a page&quot;).slice(0, 120);
+    const who = String((me.user_metadata &amp;&amp; (me.user_metadata.full_name || me.user_metadata.name)) || &quot;&quot;).trim().slice(0, 60) || &quot;The organizer&quot;;
+    const out = mail(p.email, `${who} invited you to plan ${title}`, [`${who} invited you to plan ${title} on 1LinkTrip with them.`, `Sign in with this email address (${p.email}) to edit the page together.`], `${SITE}?e=${ev.slug}&amp;p=${p.token}`, &quot;Open the page&quot;);
+    try { await d.send([out]); } catch (e) { await unclaim(d.admin, &quot;page_planners&quot;, id, was); return json(502, { ok: false, error: String((e as Error).message || e).slice(0, 200) }); }
+    return json(200, { ok: true, sent: 1 });
+  }
+
+  if (b.kind === &quot;household&quot;) { // a household's personal invitation link, in its language
+    const { data: h } = await d.admin.from(&quot;guest_households&quot;).select(&quot;id,event_id,name,email,lang,token,notified_at,greeting&quot;).eq(&quot;id&quot;, id).maybeSingle();
+    if (!h) return json(404, { ok: false, error: &quot;Not found&quot; });
+    const { data: ev } = await d.admin.from(&quot;events&quot;).select(&quot;id,slug,owner,config,published&quot;).eq(&quot;id&quot;, h.event_id).maybeSingle();
+    if (!ev || !(await plans(d.admin, ev, me))) return json(403, { ok: false, error: &quot;Not yours&quot; });
+    if (!ev.published) return json(200, { ok: true, sent: 0, skipped: &quot;page not shared&quot; });
+    if (!h.email || !EMAIL.test(h.email)) return json(200, { ok: true, sent: 0, skipped: &quot;no email&quot; });
+    const was = h.notified_at;
+    if (!(await claimAgain(d.admin, &quot;guest_households&quot;, id, was, now))) return json(200, { ok: true, sent: 0, skipped: &quot;recently emailed&quot; });
+    const langs: string[] = [String((ev.config &amp;&amp; ev.config.lang) || &quot;en&quot;), ...((ev.config &amp;&amp; Array.isArray(ev.config.langs)) ? ev.config.langs : [])];
+    const lang = h.lang &amp;&amp; langs.includes(h.lang) ? h.lang : &quot;&quot;;
+    const T = INVITE[lang || String((ev.config &amp;&amp; ev.config.lang) || &quot;en&quot;)] || INVITE.en;
+    const tr = lang &amp;&amp; ev.config &amp;&amp; ev.config.tr &amp;&amp; ev.config.tr[lang]; // the page's own translated title, when it has one
+    const title = String((tr &amp;&amp; tr.title &amp;&amp; tr.title.t) || (ev.config &amp;&amp; ev.config.title) || &quot;&quot;).slice(0, 120);
+    let n = String(h.name).slice(0, 120);
+    if (h.greeting === &quot;names&quot;) { // &quot;Michael and Sarah&quot;: the first names of the adults the organizer listed
+      const { data: ps } = await d.admin.from(&quot;guest_people&quot;).select(&quot;name,age,added_by&quot;).eq(&quot;household_id&quot;, h.id).eq(&quot;added_by&quot;, &quot;host&quot;).limit(30);
+      const fs = (ps || []).filter((p: Row) =&gt; p.age !== &quot;child&quot; &amp;&amp; p.age !== &quot;infant&quot;).map((p: Row) =&gt; String(p.name || &quot;&quot;).trim().split(/\s+/)[0]).filter(Boolean);
+      if (fs.length) n = joinNames(fs, lang || String((ev.config &amp;&amp; ev.config.lang) || &quot;en&quot;));
+    }
+    const v = { t: title, n };
+    const out = mail(h.email, fill(T.s, v), [fill(T.hi, v), fill(T.body, v)], `${SITE}?e=${ev.slug}&amp;g=${h.token}${lang ? &quot;&amp;lang=&quot; + lang : &quot;&quot;}`, T.btn);
+    try { await d.send([out]); } catch (e) { await unclaim(d.admin, &quot;guest_households&quot;, id, was); return json(502, { ok: false, error: String((e as Error).message || e).slice(0, 200) }); }
+    return json(200, { ok: true, sent: 1 });
+  }
+
+  // announcement: the page owner or a planner, and only once
   const { data: a } = await d.admin.from(&quot;announcements&quot;).select(&quot;id,event_id,body,group_ids,notified_at&quot;).eq(&quot;id&quot;, id).maybeSingle();
   if (!a) return json(404, { ok: false, error: &quot;Not found&quot; });
   const { data: ev } = await d.admin.from(&quot;events&quot;).select(&quot;id,slug,owner,config,published&quot;).eq(&quot;id&quot;, a.event_id).maybeSingle();
-  if (!ev || ev.owner !== me.id) return json(403, { ok: false, error: &quot;Not yours&quot; });
+  if (!ev || !(await plans(d.admin, ev, me))) return json(403, { ok: false, error: &quot;Not yours&quot; });
   if (a.notified_at) return json(200, { ok: true, sent: 0, skipped: &quot;already sent&quot; });
   const gids: string[] = Array.isArray(a.group_ids) ? a.group_ids : [];
   const emails = new Set&lt;string&gt;();
@@ -149,20 +260,261 @@ async function route(req: Request, deps?: Deps): Promise&lt;Response&gt; {
   return json(200, { ok: true, sent: mails.length });
 }
 
+// ================= invitations (schema-invites.sql) =================
+const INV_BUCKET = &quot;invitations&quot;;
+// the invitation email, per language: subject / greeting / body / button / footer, for an invitation and a save the date
+export const INV_MAIL: Record&lt;string, { s: string; std: string; hi: string; body: string; stdBody: string; btn: string; stdBtn: string; foot: string }&gt; = {
+  en: { s: &quot;You’re invited: {t}&quot;, std: &quot;Save the date: {t}&quot;, hi: &quot;Dear {n},&quot;, body: &quot;You’re invited to {t}{d}. Your invitation is below; your page has all the details, and you can reply there for everyone in your household.&quot;, stdBody: &quot;Please save the date for {t}{d}. A formal invitation will follow; your page already has the details.&quot;, btn: &quot;Open your invitation&quot;, stdBtn: &quot;Open your page&quot;, foot: &quot;Sent for {t} with 1LinkTrip. This link is personal to your household.&quot; },
+  es: { s: &quot;Estás invitado: {t}&quot;, std: &quot;Reserva la fecha: {t}&quot;, hi: &quot;Querido/a {n}:&quot;, body: &quot;Estás invitado a {t}{d}. Tu invitación está abajo; en tu página están todos los detalles y puedes responder por todos los de tu hogar.&quot;, stdBody: &quot;Reserva la fecha para {t}{d}. La invitación formal llegará más adelante; tu página ya tiene los detalles.&quot;, btn: &quot;Abrir tu invitación&quot;, stdBtn: &quot;Abrir tu página&quot;, foot: &quot;Enviado para {t} con 1LinkTrip. Este enlace es personal para tu hogar.&quot; },
+  fr: { s: &quot;Vous êtes invités : {t}&quot;, std: &quot;Réservez la date : {t}&quot;, hi: &quot;Chère, cher {n},&quot;, body: &quot;Vous êtes invités à {t}{d}. Votre invitation est ci-dessous ; votre page contient tous les détails et vous pouvez y répondre pour tout votre foyer.&quot;, stdBody: &quot;Réservez la date pour {t}{d}. L’invitation officielle suivra ; votre page contient déjà les détails.&quot;, btn: &quot;Ouvrir votre invitation&quot;, stdBtn: &quot;Ouvrir votre page&quot;, foot: &quot;Envoyé pour {t} avec 1LinkTrip. Ce lien est personnel à votre foyer.&quot; },
+  pt: { s: &quot;Você está convidado: {t}&quot;, std: &quot;Reserve a data: {t}&quot;, hi: &quot;Querido(a) {n},&quot;, body: &quot;Você está convidado para {t}{d}. Seu convite está abaixo; sua página tem todos os detalhes, e você pode responder por todos da sua casa.&quot;, stdBody: &quot;Reserve a data para {t}{d}. O convite oficial virá depois; sua página já tem os detalhes.&quot;, btn: &quot;Abrir seu convite&quot;, stdBtn: &quot;Abrir sua página&quot;, foot: &quot;Enviado para {t} com o 1LinkTrip. Este link é pessoal para a sua casa.&quot; },
+  de: { s: &quot;Einladung: {t}&quot;, std: &quot;Save the Date: {t}&quot;, hi: &quot;Liebe/r {n},&quot;, body: &quot;Ihr seid zu {t}{d} eingeladen. Eure Einladung seht ihr unten; auf eurer Seite stehen alle Details, und ihr könnt dort für euren ganzen Haushalt antworten.&quot;, stdBody: &quot;Bitte merkt euch den Termin für {t}{d} vor. Die offizielle Einladung folgt; auf eurer Seite stehen schon die Details.&quot;, btn: &quot;Einladung öffnen&quot;, stdBtn: &quot;Eure Seite öffnen&quot;, foot: &quot;Für {t} mit 1LinkTrip gesendet. Dieser Link gilt nur für euren Haushalt.&quot; },
+  it: { s: &quot;Siete invitati: {t}&quot;, std: &quot;Segnate la data: {t}&quot;, hi: &quot;Cari {n},&quot;, body: &quot;Siete invitati a {t}{d}. Il vostro invito è qui sotto; nella vostra pagina trovate tutti i dettagli e potete rispondere per tutta la famiglia.&quot;, stdBody: &quot;Segnate la data di {t}{d}. L’invito ufficiale seguirà; la vostra pagina ha già i dettagli.&quot;, btn: &quot;Apri l’invito&quot;, stdBtn: &quot;Apri la vostra pagina&quot;, foot: &quot;Inviato per {t} con 1LinkTrip. Questo link è personale per la vostra famiglia.&quot; },
+  ja: { s: &quot;ご招待：{t}&quot;, std: &quot;日程のお知らせ：{t}&quot;, hi: &quot;{n} 様&quot;, body: &quot;{t}{d}にご招待いたします。招待状は下にございます。ページに詳細があり、ご家族全員分の出欠をまとめて返信できます。&quot;, stdBody: &quot;{t}{d}の日程をお知らせします。正式な招待状は後日お送りします。詳細はページでご覧いただけます。&quot;, btn: &quot;招待状を開く&quot;, stdBtn: &quot;ページを開く&quot;, foot: &quot;1LinkTrip から {t} のためにお送りしています。このリンクはご家族専用です。&quot; },
+};
+const SEND_PAUSE_MS = 150; // Resend allows 10 requests a second; one batch call per 150 ms stays well under
+const BATCH = 100; // Resend batch: up to 100 emails a call
+const STUCK_MS = 15 * 60 * 1000;
+export const utcDay = (ms: number) =&gt; new Date(ms).toISOString().slice(0, 10);
+export const nextUtcDay = (ms: number) =&gt; { const d = new Date(ms); d.setUTCHours(24, 10, 0, 0); return d.getTime(); }; // 00:10 UTC next day
+const envNum = (k: string, dflt: number) =&gt; { const v = Number((globalThis as { Deno?: { env: { get(k: string): string | undefined } } }).Deno?.env.get(k) ?? &quot;&quot;); return Number.isFinite(v) &amp;&amp; v &gt; 0 ? v : dflt; };
+export function capsOf(d: Deps): Caps { return { daily: d.caps?.daily ?? envNum(&quot;NOTIFY_DAILY_CAP&quot;, 100), monthly: d.caps?.monthly ?? envNum(&quot;NOTIFY_MONTHLY_CAP&quot;, 3000), reserve: d.caps?.reserve ?? envNum(&quot;NOTIFY_RESERVE&quot;, 10) }; }
+
+// what is left today / this month: Resend's own counts at the last send (headers) + what was sent since, or our own log
+export async function allowance(d: Deps, now: number) {
+  const c = capsOf(d); const day = utcDay(now), month = day.slice(0, 7);
+  const { data: u } = await d.admin.from(&quot;email_usage&quot;).select(&quot;day,day_used,month,month_used,observed_at&quot;).eq(&quot;id&quot;, 1).maybeSingle();
+  const dayFrom = u &amp;&amp; u.day === day &amp;&amp; u.observed_at ? u.observed_at : day + &quot;T00:00:00.000Z&quot;;
+  const monFrom = u &amp;&amp; u.month === month &amp;&amp; u.observed_at ? u.observed_at : month + &quot;-01T00:00:00.000Z&quot;;
+  const from = dayFrom &lt; monFrom ? dayFrom : monFrom;
+  const { data: logs } = await d.admin.from(&quot;email_log&quot;).select(&quot;at,n&quot;).gte(&quot;at&quot;, from).limit(20000);
+  const ms = (x: unknown) =&gt; Date.parse(String(x)) || 0;
+  const sum = (since: string) =&gt; (logs || []).filter((r: Row) =&gt; ms(r.at) &gt;= ms(since)).reduce((n: number, r: Row) =&gt; n + (r.n || 0), 0);
+  const dayUsed = (u &amp;&amp; u.day === day ? u.day_used || 0 : 0) + sum(dayFrom);
+  const monthUsed = (u &amp;&amp; u.month === month ? u.month_used || 0 : 0) + sum(monFrom);
+  const dayLeft = Math.max(0, c.daily - c.reserve - dayUsed), monthLeft = Math.max(0, c.monthly - c.reserve - monthUsed);
+  return { dayLeft, monthLeft, left: Math.min(dayLeft, monthLeft), dayUsed, monthUsed, dailyCap: c.daily, monthlyCap: c.monthly, reserve: c.reserve };
+}
+// the page's link: https://1linktrip.com/&lt;name&gt;?g=&lt;token&gt; (or ?e=&lt;slug&gt;&amp;g=…), + &amp;lang= when the household reads another language
+export function personalLink(slug: string, name: string | null, tok: string, lang: string) {
+  const base = name ? `${SITE}${name}` : `${SITE}?e=${slug}`;
+  return base + (base.includes(&quot;?&quot;) ? &quot;&amp;&quot; : &quot;?&quot;) + &quot;g=&quot; + tok + (lang ? &quot;&amp;lang=&quot; + lang : &quot;&quot;);
+}
+export const publicUrl = (supaUrl: string, path: string) =&gt; `${supaUrl.replace(/\/$/, &quot;&quot;)}/storage/v1/object/public/${INV_BUCKET}/${path.split(&quot;/&quot;).map(encodeURIComponent).join(&quot;/&quot;)}`;
+// the greeting: the household's name, or the first names of the adults the organizer listed (&quot;Michael and Sarah&quot;)
+export function greetingOf(h: Row, people: Row[], lang: string): string {
+  let n = String(h.name || &quot;&quot;).slice(0, 120);
+  if (h.greeting === &quot;names&quot;) {
+    const fs = people.filter((p) =&gt; p.household_id === h.id &amp;&amp; p.added_by === &quot;host&quot; &amp;&amp; p.age !== &quot;child&quot; &amp;&amp; p.age !== &quot;infant&quot;).map((p) =&gt; String(p.name || &quot;&quot;).trim().split(/\s+/)[0]).filter(Boolean);
+    if (fs.length) n = joinNames(fs, lang);
+  }
+  return n;
+}
+// &quot; · 12 June 2027&quot; style date for the body, in the household's language (the page's start day)
+export function dateLine(cfg: Row, lang: string): string {
+  const s = String((cfg &amp;&amp; cfg.start) || &quot;&quot;).slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return &quot;&quot;;
+  try { const f = new Intl.DateTimeFormat(lang || &quot;en&quot;, { day: &quot;numeric&quot;, month: &quot;long&quot;, year: &quot;numeric&quot;, timeZone: &quot;UTC&quot; }).format(new Date(s + &quot;T12:00:00Z&quot;)); return lang === &quot;ja&quot; ? `（${f}）` : `, ${f}`; } catch { return &quot;&quot;; }
+}
+export function senderOf(from: string, title: string) { // &quot;Ana &amp; Ben via 1LinkTrip &lt;invites@…&gt;&quot;
+  const m = from.match(/&lt;([^&lt;&gt;\s]+@[^&lt;&gt;\s]+)&gt;/); const addr = m ? m[1] : from.trim();
+  const nm = String(title || &quot;&quot;).replace(/[&quot;&lt;&gt;\r\n\\]/g, &quot;&quot;).replace(/\s+/g, &quot; &quot;).trim().slice(0, 60);
+  return nm ? `&quot;${nm} via 1LinkTrip&quot; &lt;${addr}&gt;` : from;
+}
+// one invitation email
+export function inviteMail(o: { to: string; kind: string; lang: string; title: string; cfg: Row; greet: string; link: string; img: string | null; w?: number; h?: number; test?: boolean }): Mail {
+  const T = INV_MAIL[o.lang] || INV_MAIL.en; const std = o.kind === &quot;save_the_date&quot;;
+  const v = { t: o.title, n: o.greet, d: dateLine(o.cfg, o.lang) };
+  const subject = (o.test ? &quot;[Test] &quot; : &quot;&quot;) + fill(std ? T.std : T.s, v);
+  const hi = fill(T.hi, v), body = fill(std ? T.stdBody : T.body, v), btn = std ? T.stdBtn : T.btn, foot = fill(T.foot, v);
+  const text = `${hi}\n\n${body}\n\n${btn}: ${o.link}\n\n${foot}\n`;
+  const W = 520; const ih = o.w &amp;&amp; o.h ? Math.round(W * o.h / o.w) : 0;
+  const img = o.img ? `&lt;tr&gt;&lt;td style=&quot;padding:0 0 22px&quot;&gt;&lt;a href=&quot;${esc(o.link)}&quot;&gt;&lt;img src=&quot;${esc(o.img)}&quot; width=&quot;${W}&quot;${ih ? ` height=&quot;${ih}&quot;` : &quot;&quot;} alt=&quot;${esc(o.title)}&quot; style=&quot;display:block;width:100%;max-width:${W}px;height:auto;border:0;border-radius:6px;box-shadow:0 10px 30px -12px rgba(15,74,80,.35)&quot;&gt;&lt;/a&gt;&lt;/td&gt;&lt;/tr&gt;` : &quot;&quot;;
+  const html = `&lt;!doctype html&gt;&lt;html lang=&quot;${esc(o.lang || &quot;en&quot;)}&quot;&gt;&lt;body style=&quot;margin:0;padding:0;background:#EDF4F1&quot;&gt;&lt;table role=&quot;presentation&quot; width=&quot;100%&quot; cellpadding=&quot;0&quot; cellspacing=&quot;0&quot; style=&quot;background:#EDF4F1&quot;&gt;&lt;tr&gt;&lt;td align=&quot;center&quot; style=&quot;padding:28px 12px&quot;&gt;
+&lt;table role=&quot;presentation&quot; width=&quot;${W}&quot; cellpadding=&quot;0&quot; cellspacing=&quot;0&quot; style=&quot;width:100%;max-width:${W}px;font:16px/1.55 Georgia,'Times New Roman',serif;color:#0F4A50&quot;&gt;
+&lt;tr&gt;&lt;td style=&quot;padding:0 2px 16px;font-size:18px&quot;&gt;${esc(hi)}&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td style=&quot;padding:0 2px 22px&quot;&gt;${esc(body)}&lt;/td&gt;&lt;/tr&gt;
+${img}
+&lt;tr&gt;&lt;td align=&quot;center&quot; style=&quot;padding:0 0 26px&quot;&gt;&lt;a href=&quot;${esc(o.link)}&quot; style=&quot;display:inline-block;background:#0F4A50;color:#ffffff;text-decoration:none;font:600 16px -apple-system,'Segoe UI',Helvetica,Arial,sans-serif;padding:13px 22px;border-radius:10px&quot;&gt;${esc(btn)}&lt;/a&gt;&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td style=&quot;padding:14px 2px 0;border-top:1px solid #C5DDD8;font:13px/1.5 -apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:#41655F&quot;&gt;${esc(foot)}&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/body&gt;&lt;/html&gt;`;
+  return { to: o.to, subject, text, html };
+}
+
+// the page, its link name, its languages, its designs: what every invitation email of a page needs
+async function pageCtx(d: Deps, eid: string) {
+  const { data: ev } = await d.admin.from(&quot;events&quot;).select(&quot;id,slug,owner,config,published&quot;).eq(&quot;id&quot;, eid).maybeSingle();
+  if (!ev) return null;
+  const { data: nm } = await d.admin.from(&quot;page_names&quot;).select(&quot;name&quot;).eq(&quot;event_id&quot;, eid).eq(&quot;is_current&quot;, true).limit(1);
+  const cfg = ev.config || {}; const src = String(cfg.lang || &quot;en&quot;);
+  const langs = [src, ...(Array.isArray(cfg.langs) ? cfg.langs : [])].map(String);
+  return { ev, cfg, src, langs, name: (nm &amp;&amp; nm[0] &amp;&amp; nm[0].name) || null };
+}
+const titleIn = (cfg: Row, lang: string) =&gt; { const tr = lang &amp;&amp; cfg.tr &amp;&amp; cfg.tr[lang]; return String((tr &amp;&amp; tr.title &amp;&amp; tr.title.t) || cfg.title || &quot;&quot;).slice(0, 120); };
+const pickImage = (inv: Row, lang: string, src: string) =&gt; { const im = inv.images || {}; return im[lang] || im[src] || im.en || Object.values(im)[0] || null; };
+const SUPA = () =&gt; (globalThis as { Deno?: { env: { get(k: string): string | undefined } } }).Deno?.env.get(&quot;SUPABASE_URL&quot;) || &quot;https://example.supabase.co&quot;;
+
+// send queued invitation emails that are due (one page, or all), within the allowance; the rest waits for tomorrow
+export async function drain(d: Deps, now: number, eid: string | null, force = false) { // force: &quot;Send the rest now&quot; (one page, waiting rows too)
+  const iso = (ms: number) =&gt; new Date(ms).toISOString();
+  // an email stuck &quot;sending&quot; (the function died mid-call) is not retried — it may have gone out; it shows as failed
+  { let q = d.admin.from(&quot;invite_sends&quot;).update({ status: &quot;failed&quot;, error: &quot;Interrupted while sending; check with the guest before sending again.&quot; }).eq(&quot;status&quot;, &quot;sending&quot;).lte(&quot;queued_at&quot;, iso(now - STUCK_MS)); if (eid) q = q.eq(&quot;event_id&quot;, eid); await q; }
+  let q = d.admin.from(&quot;invite_sends&quot;).select(&quot;id,event_id,household_id,invitation_id,kind,to_email,lang,image_path&quot;).eq(&quot;status&quot;, &quot;queued&quot;).order(&quot;queued_at&quot;, { ascending: true }).limit(BATCH * 3);
+  if (!(force &amp;&amp; eid)) q = q.lte(&quot;not_before&quot;, iso(now));
+  if (eid) q = q.eq(&quot;event_id&quot;, eid);
+  const { data: due } = await q; const rows: Row[] = due || [];
+  const al = await allowance(d, now);
+  const out = { sent: 0, failed: 0, deferred: 0, left: al.left, next_at: null as string | null };
+  if (!rows.length) return out;
+  const take = rows.slice(0, al.left); const later = rows.slice(al.left);
+  if (later.length) { // over today's allowance: tomorrow (00:10 UTC), automatically
+    const at = iso(nextUtcDay(now)); await d.admin.from(&quot;invite_sends&quot;).update({ not_before: at }).in(&quot;id&quot;, later.map((r) =&gt; r.id)).eq(&quot;status&quot;, &quot;queued&quot;);
+    out.deferred = later.length; out.next_at = at;
+  }
+  if (!take.length) return out;
+  // claim: only rows still queued are ours (a cron run and a &quot;Send the rest&quot; tap never send the same row twice)
+  const { data: got } = await d.admin.from(&quot;invite_sends&quot;).update({ status: &quot;sending&quot; }).in(&quot;id&quot;, take.map((r) =&gt; r.id)).eq(&quot;status&quot;, &quot;queued&quot;).select(&quot;id&quot;);
+  const mine = new Set((got || []).map((r: Row) =&gt; r.id)); const work = take.filter((r) =&gt; mine.has(r.id));
+  const ctxs = new Map&lt;string, Row | null&gt;(); const invs = new Map&lt;string, Row | null&gt;(); const hhs = new Map&lt;string, Row&gt;(); const ppl: Row[] = [];
+  for (const e of [...new Set(work.map((r) =&gt; r.event_id))]) ctxs.set(e, await pageCtx(d, e));
+  for (const i of [...new Set(work.map((r) =&gt; r.invitation_id).filter(Boolean))]) { const { data } = await d.admin.from(&quot;invitations&quot;).select(&quot;id,kind,images&quot;).eq(&quot;id&quot;, i).maybeSingle(); invs.set(i, data || null); }
+  const hids = [...new Set(work.map((r) =&gt; r.household_id))];
+  for (let i = 0; i &lt; hids.length; i += 200) {
+    const { data: hs } = await d.admin.from(&quot;guest_households&quot;).select(&quot;id,event_id,name,email,lang,token,greeting&quot;).in(&quot;id&quot;, hids.slice(i, i + 200)); (hs || []).forEach((h: Row) =&gt; hhs.set(h.id, h));
+    const { data: ps } = await d.admin.from(&quot;guest_people&quot;).select(&quot;household_id,name,age,added_by&quot;).in(&quot;household_id&quot;, hids.slice(i, i + 200)).limit(5000); ppl.push(...(ps || []));
+  }
+  const from = (globalThis as { Deno?: { env: { get(k: string): string | undefined } } }).Deno?.env.get(&quot;NOTIFY_FROM&quot;) || &quot;1LinkTrip &lt;onboarding@resend.dev&gt;&quot;;
+  const ready: { r: Row; m: Mail }[] = [];
+  for (const r of work) {
+    const c = ctxs.get(r.event_id); const h = hhs.get(r.household_id); const inv = r.invitation_id ? invs.get(r.invitation_id) : null;
+    const why = !c || !c.ev.published ? &quot;The page isn’t shared&quot; : !h ? &quot;Household removed&quot; : !h.email || !EMAIL.test(h.email) ? &quot;No email address&quot; : !inv ? &quot;The design was deleted&quot; : &quot;&quot;;
+    if (why) { await d.admin.from(&quot;invite_sends&quot;).update({ status: &quot;failed&quot;, error: why }).eq(&quot;id&quot;, r.id); out.failed++; continue; }
+    const lang = r.lang &amp;&amp; INV_MAIL[r.lang] ? r.lang : (INV_MAIL[c!.src] ? c!.src : &quot;en&quot;);
+    const img = pickImage(inv!, r.lang, c!.src); const path = r.image_path || (img &amp;&amp; img.path) || null;
+    const m = inviteMail({ to: h!.email, kind: r.kind, lang, title: titleIn(c!.cfg, r.lang), cfg: c!.cfg, greet: greetingOf(h!, ppl, lang), link: personalLink(c!.ev.slug, c!.name, h!.token, r.lang &amp;&amp; r.lang !== c!.src ? r.lang : &quot;&quot;),
+      img: path ? publicUrl(SUPA(), path) : null, w: img &amp;&amp; img.w, h: img &amp;&amp; img.h });
+    m.from = senderOf(from, titleIn(c!.cfg, c!.src)); m.to = h!.email;
+    ready.push({ r, m });
+  }
+  const sendBatch = d.sendBatch || (async (ms: Mail[]) =&gt; { await d.send(ms); return ms.map(() =&gt; &quot;&quot;); });
+  const sleep = d.sleep || ((ms: number) =&gt; new Promise((res) =&gt; setTimeout(res, ms)));
+  const backTo = async (rs: Row[], at: number, err: string | null) =&gt; { await d.admin.from(&quot;invite_sends&quot;).update({ status: &quot;queued&quot;, not_before: iso(at), error: err }).in(&quot;id&quot;, rs.map((x) =&gt; x.id)).eq(&quot;status&quot;, &quot;sending&quot;); };
+  for (let i = 0; i &lt; ready.length; i += BATCH) {
+    const part = ready.slice(i, i + BATCH); let ids: string[] | null = null; let stop = false;
+    for (let tries = 0; tries &lt; 4 &amp;&amp; !ids; tries++) {
+      try { ids = await sendBatch(part.map((x) =&gt; x.m), &quot;inv-&quot; + part[0].r.id + &quot;-&quot; + part.length); }
+      catch (e) {
+        const se = e as SendError;
+        if (se &amp;&amp; se.status === 429 &amp;&amp; !se.quota &amp;&amp; tries &lt; 3) { await sleep(Math.min(5000, Math.max(1000, (se.retryAfter || 1) * 1000))); continue; } // rate limit: wait, try again
+        if (se &amp;&amp; se.status === 429) { // allowance used up (or still rate limited): back in the queue — tomorrow for the allowance, a minute for the rate
+          const at = se.quota ? nextUtcDay(now) : now + 60_000; await backTo(part.map((x) =&gt; x.r), at, null);
+          for (let j = i + BATCH; j &lt; ready.length; j += BATCH) await backTo(ready.slice(j, j + BATCH).map((x) =&gt; x.r), at, null);
+          out.deferred += ready.length - i; out.next_at = iso(at); stop = true; break;
+        }
+        const msg = String((e as Error).message || e).slice(0, 280);
+        await d.admin.from(&quot;invite_sends&quot;).update({ status: &quot;failed&quot;, error: msg }).in(&quot;id&quot;, part.map((x) =&gt; x.r.id)).eq(&quot;status&quot;, &quot;sending&quot;);
+        out.failed += part.length; break;
+      }
+    }
+    if (stop) break;
+    if (ids) {
+      const at = iso(d.now ? d.now() : Date.now());
+      for (let j = 0; j &lt; part.length; j++) await d.admin.from(&quot;invite_sends&quot;).update({ status: &quot;sent&quot;, sent_at: at, resend_id: ids[j] || null, error: null }).eq(&quot;id&quot;, part[j].r.id);
+      out.sent += part.length;
+    }
+    if (i + BATCH &lt; ready.length) await sleep(SEND_PAUSE_MS);
+  }
+  out.left = Math.max(0, al.left - out.sent);
+  return out;
+}
+
+async function invites(d: Deps, me: Row &amp; { id: string }, b: Row, now: number): Promise&lt;Response&gt; {
+  const id = String(b.id);
+  if (b.kind === &quot;invite_status&quot; || b.kind === &quot;drain&quot;) { // id = the page
+    const c = await pageCtx(d, id); if (!c || !(await plans(d.admin, c.ev, me))) return json(403, { ok: false, error: &quot;Not yours&quot; });
+    const r = b.kind === &quot;drain&quot; ? await drain(d, now, id, true) : null;
+    const al = await allowance(d, now);
+    const { data: q } = await d.admin.from(&quot;invite_sends&quot;).select(&quot;id,not_before&quot;).eq(&quot;event_id&quot;, id).eq(&quot;status&quot;, &quot;queued&quot;).limit(5000);
+    const qs = (q || []).map((x: Row) =&gt; String(x.not_before)).sort();
+    return json(200, { ok: true, ...(r || {}), left: al.left, dayLeft: al.dayLeft, monthLeft: al.monthLeft, dailyCap: al.dailyCap, monthlyCap: al.monthlyCap, reserve: al.reserve,
+      queued: qs.length, next_at: qs[0] || (r &amp;&amp; r.next_at) || null });
+  }
+  const { data: inv } = await d.admin.from(&quot;invitations&quot;).select(&quot;id,event_id,kind,images&quot;).eq(&quot;id&quot;, id).maybeSingle();
+  if (!inv) return json(404, { ok: false, error: &quot;Not found&quot; });
+  const c = await pageCtx(d, inv.event_id); if (!c || !(await plans(d.admin, c.ev, me))) return json(403, { ok: false, error: &quot;Not yours&quot; });
+  if (!c.ev.published) return json(200, { ok: true, sent: 0, skipped: &quot;page not shared&quot; });
+  if (!inv.images || !Object.keys(inv.images).length) return json(400, { ok: false, error: &quot;Save the design first&quot; });
+
+  if (b.kind === &quot;invite_test&quot;) { // to the organizer's own confirmed email, personalized like a household (or plainly)
+    const to = me.email &amp;&amp; me.email_confirmed_at ? String(me.email).toLowerCase() : &quot;&quot;; if (!to) return json(400, { ok: false, error: &quot;Confirm your email first&quot; });
+    const al = await allowance(d, now); if (al.left &lt; 1) return json(429, { ok: false, error: &quot;No emails left today&quot;, left: 0 });
+    let h: Row | null = null; let ppl: Row[] = [];
+    if (UUID.test(String(b.household || &quot;&quot;))) { const { data } = await d.admin.from(&quot;guest_households&quot;).select(&quot;id,event_id,name,lang,token,greeting&quot;).eq(&quot;id&quot;, b.household).eq(&quot;event_id&quot;, c.ev.id).maybeSingle(); h = data || null;
+      if (h) { const { data: ps } = await d.admin.from(&quot;guest_people&quot;).select(&quot;household_id,name,age,added_by&quot;).eq(&quot;household_id&quot;, h.id).limit(60); ppl = ps || []; } }
+    const want = String(b.lang || (h &amp;&amp; h.lang) || &quot;&quot;); const lang = c.langs.includes(want) || INV_MAIL[want] ? want : &quot;&quot;;
+    const ml = lang &amp;&amp; INV_MAIL[lang] ? lang : (INV_MAIL[c.src] ? c.src : &quot;en&quot;);
+    const img = pickImage(inv, lang, c.src);
+    const who = String((me.user_metadata &amp;&amp; (me.user_metadata.full_name || me.user_metadata.name)) || &quot;&quot;).trim().split(/\s+/)[0];
+    const m = inviteMail({ to, kind: inv.kind, lang: ml, title: titleIn(c.cfg, lang), cfg: c.cfg, greet: h ? greetingOf(h, ppl, ml) : (who || to.split(&quot;@&quot;)[0]),
+      link: h ? personalLink(c.ev.slug, c.name, h.token, lang &amp;&amp; lang !== c.src ? lang : &quot;&quot;) : (c.name ? SITE + c.name : `${SITE}?e=${c.ev.slug}`), img: img ? publicUrl(SUPA(), img.path) : null, w: img &amp;&amp; img.w, h: img &amp;&amp; img.h, test: true });
+    m.from = senderOf((globalThis as { Deno?: { env: { get(k: string): string | undefined } } }).Deno?.env.get(&quot;NOTIFY_FROM&quot;) || &quot;1LinkTrip &lt;onboarding@resend.dev&gt;&quot;, titleIn(c.cfg, c.src));
+    try { const sb = d.sendBatch || (async (ms: Mail[]) =&gt; { await d.send(ms); return [&quot;&quot;]; }); await sb([m]); }
+    catch (e) { const se = e as SendError; return json(se &amp;&amp; se.status === 429 ? 429 : 502, { ok: false, error: String((e as Error).message || e).slice(0, 200) }); }
+    return json(200, { ok: true, sent: 1, to });
+  }
+
+  // kind &quot;invite&quot;: queue one email per household (skipping ones already sent / queued unless again), then send what's allowed
+  const want: string[] = Array.isArray(b.households) ? b.households.map(String).filter((x: string) =&gt; UUID.test(x)).slice(0, 2000) : [];
+  if (!want.length) return json(400, { ok: false, error: &quot;Choose who to send it to&quot; });
+  const hs: Row[] = [];
+  for (let i = 0; i &lt; want.length; i += 200) { const { data } = await d.admin.from(&quot;guest_households&quot;).select(&quot;id,event_id,email,lang&quot;).eq(&quot;event_id&quot;, c.ev.id).in(&quot;id&quot;, want.slice(i, i + 200)); hs.push(...(data || [])); }
+  const withEmail = hs.filter((h) =&gt; h.email &amp;&amp; EMAIL.test(h.email));
+  const prev: Row[] = [];
+  for (let i = 0; i &lt; withEmail.length; i += 200) { const { data } = await d.admin.from(&quot;invite_sends&quot;).select(&quot;household_id,status&quot;).eq(&quot;invitation_id&quot;, inv.id).eq(&quot;channel&quot;, &quot;email&quot;).in(&quot;household_id&quot;, withEmail.slice(i, i + 200).map((h) =&gt; h.id)).in(&quot;status&quot;, [&quot;queued&quot;, &quot;sending&quot;, &quot;sent&quot;, &quot;delivered&quot;]); prev.push(...(data || [])); }
+  const pending = new Set(prev.filter((p) =&gt; p.status === &quot;queued&quot; || p.status === &quot;sending&quot;).map((p) =&gt; p.household_id)); // never twice in the queue
+  const done = new Set(prev.filter((p) =&gt; p.status === &quot;sent&quot; || p.status === &quot;delivered&quot;).map((p) =&gt; p.household_id));
+  const go = withEmail.filter((h) =&gt; !pending.has(h.id) &amp;&amp; (b.again === true || !done.has(h.id)));
+  const rows = go.map((h) =&gt; { const lang = h.lang &amp;&amp; (c.langs.includes(h.lang) || INV_MAIL[h.lang]) ? h.lang : &quot;&quot;; const img = pickImage(inv, lang, c.src);
+    return { event_id: c.ev.id, household_id: h.id, invitation_id: inv.id, kind: inv.kind, channel: &quot;email&quot;, status: &quot;queued&quot;, to_email: h.email, lang, image_path: img ? img.path : null, created_by: me.id, not_before: new Date(now).toISOString() }; });
+  for (let i = 0; i &lt; rows.length; i += 500) { const { error } = await d.admin.from(&quot;invite_sends&quot;).insert(rows.slice(i, i + 500)); if (error) return json(500, { ok: false, error: String(error.message || error).slice(0, 200) }); }
+  const r = await drain(d, now, c.ev.id);
+  const { data: q } = await d.admin.from(&quot;invite_sends&quot;).select(&quot;id&quot;).eq(&quot;event_id&quot;, c.ev.id).eq(&quot;status&quot;, &quot;queued&quot;).limit(5000);
+  return json(200, { ok: true, queued: rows.length, already: [...done].filter((x) =&gt; !go.some((h) =&gt; h.id === x)).length, pending: pending.size, noEmail: hs.length - withEmail.length,
+    ...r, waiting: (q || []).length });
+}
+
 function defaultDeps(): Deps {
   const url = Deno.env.get(&quot;SUPABASE_URL&quot;) || &quot;&quot;; const svc = Deno.env.get(&quot;SUPABASE_SERVICE_ROLE_KEY&quot;) || &quot;&quot;;
   const key = Deno.env.get(&quot;RESEND_API_KEY&quot;) || &quot;&quot;; const from = Deno.env.get(&quot;NOTIFY_FROM&quot;) || &quot;1LinkTrip &lt;onboarding@resend.dev&gt;&quot;;
   const admin = createClient(url, svc, { auth: { persistSession: false, autoRefreshToken: false } });
-  const send = async (mails: Mail[]) =&gt; {
-    for (let i = 0; i &lt; mails.length; i += 100) { // Resend batch: up to 100 emails a call
-      const r = await fetch(&quot;https://api.resend.com/emails/batch&quot;, {
-        method: &quot;POST&quot;, headers: { Authorization: `Bearer ${key}`, &quot;Content-Type&quot;: &quot;application/json&quot; },
-        body: JSON.stringify(mails.slice(i, i + 100).map((m) =&gt; ({ from, to: [m.to], subject: m.subject, text: m.text, html: m.html }))),
-      });
-      if (!r.ok) throw new Error(`Resend ${r.status}: ${(await r.text()).slice(0, 160)}`);
-    }
+  // every email is counted (email_log); Resend's own running counts (quota headers) are kept in email_usage
+  const record = async (r: Response, kind: string, n: number) =&gt; {
+    try {
+      await admin.from(&quot;email_log&quot;).insert({ kind, n });
+      const dq = Number(r.headers.get(&quot;x-resend-daily-quota&quot;)), mq = Number(r.headers.get(&quot;x-resend-monthly-quota&quot;));
+      if (Number.isFinite(dq) &amp;&amp; r.headers.get(&quot;x-resend-daily-quota&quot;) !== null) {
+        const now = Date.now(); const day = utcDay(now);
+        await admin.from(&quot;email_usage&quot;).upsert({ id: 1, day, day_used: dq, month: day.slice(0, 7), month_used: Number.isFinite(mq) ? mq : 0, observed_at: new Date(now + 1).toISOString() });
+      }
+    } catch { /* counting must never stop a send */ }
   };
-  return { admin, send, ready: !!key &amp;&amp; !!url &amp;&amp; !!svc };
+  const post = async (mails: Mail[], idem?: string) =&gt; {
+    const r = await fetch(&quot;https://api.resend.com/emails/batch&quot;, {
+      method: &quot;POST&quot;, headers: { Authorization: `Bearer ${key}`, &quot;Content-Type&quot;: &quot;application/json&quot;, ...(idem ? { &quot;Idempotency-Key&quot;: idem } : {}) },
+      body: JSON.stringify(mails.map((m) =&gt; ({ from: m.from || from, to: [m.to], subject: m.subject, text: m.text, html: m.html }))),
+    });
+    if (!r.ok) {
+      const body = (await r.text()).slice(0, 300);
+      throw new SendError(`Resend ${r.status}: ${body.slice(0, 160)}`, r.status, Number(r.headers.get(&quot;retry-after&quot;)) || 1, r.status === 429 &amp;&amp; /quota/i.test(body));
+    }
+    const j = await r.json().catch(() =&gt; null);
+    await record(r, &quot;batch&quot;, mails.length);
+    return (j &amp;&amp; Array.isArray(j.data) ? j.data : []).map((x: { id?: string }) =&gt; String((x &amp;&amp; x.id) || &quot;&quot;));
+  };
+  const send = async (mails: Mail[]) =&gt; { for (let i = 0; i &lt; mails.length; i += 100) await post(mails.slice(i, i + 100)); };
+  const sendBatch = (mails: Mail[], idem?: string) =&gt; post(mails, idem); // same key on a retry → Resend never sends it twice (24 h)
+  const cron = Deno.env.get(&quot;NOTIFY_CRON_SECRET&quot;) || &quot;&quot;;
+  const same = (a: string, b: string) =&gt; { if (a.length !== b.length) return false; let r = 0; for (let i = 0; i &lt; a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i); return r === 0; };
+  return { admin, send, sendBatch, ready: !!key &amp;&amp; !!url &amp;&amp; !!svc, isServer: (req: Request) =&gt; cron.length &gt;= 32 &amp;&amp; same(req.headers.get(&quot;x-cron-secret&quot;) || &quot;&quot;, cron) };
 }
 
 // Supabase runs this file as the function; tests import it with NOTIFY_TEST=1 and pass fake deps.
@@ -170,4 +522,8 @@ if (!Deno.env.get(&quot;NOTIFY_TEST&quot;)) Deno.serve((req) =&gt; handler(req))
 </textarea>
 <h3>3. Your domain (when ready)</h3><ol><li>Until a domain is verified in Resend, emails come from <code>onboarding@resend.dev</code> and Resend only delivers them to your own Resend email.</li>
 <li>After you add and verify a domain in Resend → <b>Domains</b>, add the secret <code>NOTIFY_FROM</code> = <code>1LinkTrip &lt;hello@yourdomain.com&gt;</code>. No code change needed.</li></ol>
+<h3>4. Invitations (Guest list → Invitations)</h3><ol><li>Run <code>supabase/schema-invites.sql</code> (designs, sends, the <code>invitations</code> picture bucket).</li>
+<li>Your plan’s email allowance: secrets <code>NOTIFY_DAILY_CAP</code> (default 100) and <code>NOTIFY_MONTHLY_CAP</code> (default 3000); <code>NOTIFY_RESERVE</code> (default 10) is kept back each day for sign-in links and messages. Raise the caps when you upgrade Resend — no code change.</li>
+<li>Emails over the day’s allowance go out the next day by themselves: add the secret <code>NOTIFY_CRON_SECRET</code> (a long random string), put the same string in Vault as <code>notify_cron_secret</code> and the anon key as <code>notify_anon_jwt</code>, then run <code>supabase/schema-invites-cron.sql</code>. Without it, organizers get a <b>Send the rest now</b> button.</li>
+<li>Delivered / bounced: deploy <code>ai/invite-hook.ts</code> as <code>invite-hook</code> with <b>Verify JWT off</b>, add a Resend webhook to it (email.delivered, email.bounced, email.complained) and its signing secret as <code>INVITE_HOOK_SECRET</code>.</li></ol>
 <script>document.querySelectorAll('button[data-copy]').forEach(b=>b.onclick=async()=>{const t=document.getElementById(b.dataset.copy);try{await navigator.clipboard.writeText(t.value)}catch(e){t.select();document.execCommand('copy')}const o=b.textContent;b.textContent='Copied ✓';setTimeout(()=>b.textContent=o,2000)})</script></body></html>
