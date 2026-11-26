@@ -166,7 +166,10 @@ const HH = [ // household, group, people [name, age], replies (y / n / -)
     const [fx, fy] = await center(o.page, `[data-st-ft="${TID['Table 10']}"]`); await o.page.mouse.move(fx, fy); await o.page.mouse.down(); await o.page.mouse.move(fx + 10, fy + 5, { steps: 2 });
     await o.page.mouse.move(room.x + room.width * 0.9, room.y + room.height * 0.12, { steps: 10 }); await o.page.mouse.up();
     const pos = await until(async () => { const x = await sql(`select x, y from public.guest_tables where id = '${TID['Table 10']}'`); return x[0] && x[0].x != null ? x[0] : null; });
-    ok(pos && Math.abs(pos.x - 900) < 30 && Math.abs(pos.y - 77) < 30, `floor plan: Table 10 moved to ${JSON.stringify(pos)}`);
+    ok(pos && pos.x > 600 && pos.y < 500, `floor plan: Table 10 moved to the top right (${JSON.stringify(pos)})`);
+    { const all = await sql(`select name, x, y from public.guest_tables where event_id = '${eid}'`); const [W, H] = await o.page.evaluate(() => window.__ep.lists.FT); const clash = [];
+      for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) if (Math.abs(all[i].x - all[j].x) < W && Math.abs(all[i].y - all[j].y) < H) clash.push(all[i].name + '/' + all[j].name);
+      ok(all.every(x => x.x != null) && !clash.length, `floor plan: dropped onto a table, it moved to a free spot; every table's spot saved, none overlap${clash.length ? ' — ' + clash.join(', ') : ''}`); }
     await mouseDrag(o.page, `.st-un [data-st-p="${PID['Sofi Garcia']}"]`, `[data-st-ft="${TID['Table 10']}"]`);
     ok(await until(async () => (await seatOf('Sofi Garcia')) === 'Table 10'), 'floor plan: Sofi dropped on Table 10');
     await o.page.focus(`[data-st-ft="${TID['Table 9']}"]`); for (let i = 0; i < 3; i++) await o.page.keyboard.press('ArrowLeft');

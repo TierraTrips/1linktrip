@@ -9942,6 +9942,7 @@ function glPaint() {
   if (G.stOff && G.tab === 'seat') G.tab = 'list'; const sb2 = $('[data-gl-seat]', m); if (sb2) sb2.hidden = !!G.stOff;
   m.closest('.gl-page').classList.toggle('st-wide', G.tab === 'seat');
   $('[data-gl-body]', m).innerHTML = G.tab === 'diet' ? glDietHTML() : G.tab === 'groups' ? glGroupsHTML() : G.tab === 'seat' ? stHTML() : glListHTML();
+  stFit();
   const bar = $('[data-gl-bar]', m); const n = G.sel.size; bar.hidden = !n || G.tab !== 'list';
   if (n) bar.innerHTML = `<b>${esc(t('{n} selected', { n }))}</b><select data-gl-bulkgrp aria-label="${esc(t('Set group'))}"><option value="">${t('Set group…')}</option>${G.gs.map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}<option value="none">${t('No group')}</option></select><button type="button" class="btn sm" data-gl-bulkcopy>${t('Copy links')}</button><button type="button" class="btn sm" data-gl-bulkmail>${t('Email invitations')}</button><button type="button" class="link" data-gl-clear>${t('Clear')}</button>`;
 }
@@ -10173,8 +10174,11 @@ function glEditDlg(hid) {
 // only lands while the guest is still where this planner saw them (else: reload, say so). Polls every 15 s while open.
 // Drag = pointer events (mouse: press + move; touch: long-press, then drag; the page scrolls at the edges). Keyboard /
 // no-drag path: Enter or tap on a guest, or "Seat at…" / "Move" → a list of tables.
-const ST_W = 1000, ST_H = 640;
-const ST = { drag: null };
+const ST_W = 1000, ST_H = 640; // floor-plan units (1 unit = 1 css px × --k, the room's width / 1000): x 0–1000, y 0–(grows)
+// every floor-plan table (plate + name + count) fits in FT_W × FT_H units at any shape and seat count; two tables never
+// come closer than that (centers ≥ FT_W apart across or ≥ FT_H apart down). New tables fill grid cells no table touches.
+const FT_W = 146, FT_H = 172, FT_X0 = 74, FT_X1 = ST_W - 74, FT_Y0 = 88, FT_COLS = 6, FT_CH = 180;
+const ST = { drag: null, dirty: new Set() };
 const tt = (s, v) => t(s, v); // the translator, where `t` is a table
 const stT = (id) => G.ts.find(t => t.id === id);
 const stHH = (p) => G.hs.find(h => h.id === p.household_id);
@@ -10229,6 +10233,10 @@ function stPersonHTML(p, where) {
     <i class="st-dot" aria-hidden="true"></i><span class="st-pn">${esc(nm)}</span>${stIcons(p)}${s === 'no' ? `<em>${t('Can’t come')}</em>` : s === 'q' ? `<em>${t('No reply')}</em>` : ''}
     <button type="button" class="st-mv" data-st-pick="${esc(p.id)}" tabindex="-1" aria-hidden="true">${t(where === 'u' ? 'Seat at…' : 'Move')}</button>${where === 't' ? `<button type="button" class="st-x" data-st-unseat="${esc(p.id)}" aria-label="${esc(t('Unseat {n}', { n: nm }))}" title="${esc(t('Unseat'))}">×</button>` : ''}</li>`;
 }
+// phones: the Not seated tray folds itself down to its header once everyone coming has a seat (and opens again when
+// someone doesn't); Show / Hide is the planner's call until that changes
+const stAllSeated = () => !G.ps.some(p => !stSeated(p) && stOk(p)) && G.ps.some(stOk);
+const stFolded = () => { const a = stAllSeated(); if (G.st.foldK != null && G.st.foldK !== a) G.st.foldK = null; return G.st.foldK === a ? !!G.st.fold : a; };
 function stUnHTML() {
   const q = normName(G.st.q);
   const pool = G.ps.filter(p => !stSeated(p) && stOk(p));
@@ -10237,8 +10245,9 @@ function stUnHTML() {
   const pendN = G.ps.filter(p => !stSeated(p) && stRep(p) === 'q').length; const coming = G.ps.filter(p => stRep(p) === 'yes').length;
   const grps = G.gs.map(g => [g, pool.filter(p => stGrp(p) === g.id).length]).filter(([g, n]) => n || G.st.grp === g.id);
   const empty = t(!G.ps.length ? 'No guests yet. Add them on the Guests tab.' : pool.length ? 'No one matches.' : coming ? 'Everyone who’s coming has a seat.' : 'No one has said they’re coming yet. Turn on “Include no reply” to seat people now.');
-  return `<aside class="st-un${G.st.fold ? ' fold' : ''}" data-drop="" aria-label="${esc(t('Not seated'))}">
-    <div class="st-uh"><h3>${t('Not seated')} <span>${pool.length}</span></h3><button type="button" class="link st-fold" data-st-fold aria-expanded="${!G.st.fold}">${t(G.st.fold ? 'Show' : 'Hide')}</button></div>
+  const fold = stFolded();
+  return `<aside class="st-un${fold ? ' fold' : ''}${stAllSeated() ? ' done' : ''}" data-drop="" aria-label="${esc(t('Not seated'))}">
+    <div class="st-uh"><h3>${t('Not seated')} <span>${pool.length}</span></h3><button type="button" class="link st-fold" data-st-fold aria-expanded="${!fold}">${t(fold ? 'Show' : 'Hide')}</button></div>
     <div class="st-ub">
       <input type="search" class="st-q" data-st-q placeholder="${esc(t('Find a guest'))}" aria-label="${esc(t('Find a guest'))}" value="${esc(G.st.q)}">
       <div class="st-tg"><label class="tool"><input type="checkbox" data-st-pend${G.st.pend ? ' checked' : ''}><span class="sw" aria-hidden="true"></span>${t('Include no reply')}${pendN ? ` (${pendN})` : ''}</label><label class="tool"><input type="checkbox" data-st-hhmode${G.st.hh ? ' checked' : ''}><span class="sw" aria-hidden="true"></span>${t('Households together')}</label></div>
@@ -10254,11 +10263,35 @@ function stCardHTML(t) {
     ${over > 0 ? `<p class="st-warn">${esc(tt('{n} over capacity', { n: over }))}</p>` : ''}
     <div class="st-tb">${stPlateHTML(t, ps, 112)}<ul class="st-ps">${ps.map(p => stPersonHTML(p, 't')).join('') || `<li class="st-drop">${tt('Drop guests here')}</li>`}</ul></div></li>`;
 }
-const stPos = (t, i) => { if (t.x != null && t.y != null) return [t.x, t.y]; const n = G.ts.length; const cols = Math.max(1, Math.ceil(Math.sqrt(n * 1.6))); const rows = Math.ceil(n / cols);
-  return [Math.round(((i % cols) + 0.5) * ST_W / cols), Math.round((Math.floor(i / cols) + 0.5) * ST_H / rows)]; };
+// the floor plan, laid out: placed tables keep their spot (a stored spot that collides — two planners, an old layout —
+// is shown at the nearest free one), then unplaced ones take the free grid cells in table order. id → [x, y]
+const stClamp = (x, y) => [Math.round(Math.max(FT_X0, Math.min(FT_X1, +x || 0))), Math.round(Math.max(FT_Y0, +y || 0))];
+const stCell = (i) => [Math.round((i % FT_COLS + 0.5) * ST_W / FT_COLS), FT_Y0 + Math.floor(i / FT_COLS) * FT_CH];
+const stFreeAt = (L, x, y, skip) => { for (const [id, [a, b]] of L) if (id !== skip && Math.abs(a - x) < FT_W && Math.abs(b - y) < FT_H) return false; return true; };
+let ST_OFFS = null; // lattice offsets by distance, for "the nearest free spot"
+function stNear(L, x, y, skip) {
+  [x, y] = stClamp(x, y); if (stFreeAt(L, x, y, skip)) return [x, y];
+  if (!ST_OFFS) { ST_OFFS = []; for (let dx = -1200; dx <= 1200; dx += 10) for (let dy = -1200; dy <= 1200; dy += 10) ST_OFFS.push([dx, dy, dx * dx + dy * dy]); ST_OFFS.sort((a, b) => a[2] - b[2]); }
+  for (const [dx, dy] of ST_OFFS) { const nx = x + dx, ny = y + dy; if (nx < FT_X0 || nx > FT_X1 || ny < FT_Y0) continue; if (stFreeAt(L, nx, ny, skip)) return [nx, ny]; }
+  for (let i = 0; ; i++) { const c = stCell(i); if (stFreeAt(L, c[0], c[1], skip)) return c; } // (far below everything: always ends)
+}
+function stLayout(ts = G.ts) {
+  const L = new Map();
+  for (const t of ts) if (t.x != null && t.y != null) L.set(t.id, stNear(L, t.x, t.y));
+  let i = 0; for (const t of ts) if (t.x == null || t.y == null) { while (!stFreeAt(L, ...stCell(i))) i++; L.set(t.id, stCell(i++)); }
+  return L;
+}
+const stRoomH = (L) => Math.max(ST_H, ...[...L.values()].map(([, y]) => y + FT_Y0 + FT_CH)); // a free row's worth below the last table
 function stFloorHTML() {
-  return `<div class="st-floor"><p class="muted small">${t('Drag tables to lay out the room. Click a table to see who sits there.')}</p><div class="st-room" data-st-room>${G.ts.map((t, i) => { const ps = stAt(t.id); const [x, y] = stPos(t, i);
-    return `<div class="st-ft${ps.length > t.capacity ? ' over' : ''}${t.head ? ' head' : ''}" data-drop="${esc(t.id)}" data-st-ft="${esc(t.id)}" tabindex="0" role="button" aria-label="${esc(t.name + ', ' + tt('{n} of {m} seated. Arrow keys move it, Enter opens it.', { n: ps.length, m: t.capacity }))}" title="${esc(ps.map(stName).join(', ') || tt('No one yet'))}" style="left:${x / 10}%;top:${(y / ST_H) * 100}%">${stPlateHTML(t, ps, 96)}<b>${esc(t.name)}</b><span>${ps.length}/${t.capacity}</span></div>`; }).join('')}</div></div>`;
+  const L = stLayout(); const H = stRoomH(L);
+  return `<div class="st-floor"><p class="muted small">${t('Drag tables to lay out the room. Click a table to see who sits there.')}</p><div class="st-room" data-st-room data-h="${H}" style="aspect-ratio:${ST_W}/${H}${ST.k ? ';--k:' + ST.k : ''}">${G.ts.map((t) => { const ps = stAt(t.id); const [x, y] = L.get(t.id);
+    return `<div class="st-ft${ps.length > t.capacity ? ' over' : ''}${t.head ? ' head' : ''}" data-drop="${esc(t.id)}" data-st-ft="${esc(t.id)}" tabindex="0" role="button" aria-label="${esc(t.name + ', ' + tt('{n} of {m} seated. Arrow keys move it, Enter opens it.', { n: ps.length, m: t.capacity }))}" title="${esc(ps.map(stName).join(', ') || tt('No one yet'))}" style="left:${x / 10}%;top:${(y / H) * 100}%">${stPlateHTML(t, ps, 110)}<b>${esc(t.name)}</b><span>${ps.length}/${t.capacity}</span></div>`; }).join('')}</div></div>`;
+}
+// the floor plan is drawn in room units: tables scale with the room (--k), so a layout looks the same on every screen
+function stFit() {
+  const rm = $('[data-st-room]'); if (!rm) return;
+  const set = () => { const k = Math.round(rm.clientWidth / ST_W * 1000) / 1000; if (k > 0 && k !== ST.k) ST.k = k; if (k > 0) rm.style.setProperty('--k', k); };
+  set(); if (window.ResizeObserver) { if (ST.ro) ST.ro.disconnect(); ST.ro = new ResizeObserver(set); ST.ro.observe(rm); }
 }
 const stWide = () => window.matchMedia('(min-width: 900px)').matches;
 function stHTML() {
@@ -10432,7 +10465,7 @@ function stDown(e) {
 function stStart(d) {
   d.on = true; clearTimeout(d.timer); document.body.classList.add('st-dragging'); d.src.classList.add('st-lift');
   try { navigator.vibrate && navigator.vibrate(12); } catch { /* not on iOS */ }
-  if (d.kind === 't') { const r = $('[data-st-room]').getBoundingClientRect(); d.room = r; return; }
+  if (d.kind === 't') { const rm = $('[data-st-room]'); d.room = rm.getBoundingClientRect(); d.h = +rm.dataset.h || ST_H; d.L = stLayout(); return; }
   const g = d.ghost = document.createElement('div'); g.className = 'st-ghost'; g.textContent = d.label; document.body.appendChild(g); stGhost(d);
   const tick = () => { if (ST.drag !== d) return; const m = 70; if (d.y > m && d.y < innerHeight - m) d.armed = true; const v = !d.armed ? 0 : d.y < m ? -Math.ceil((m - d.y) / 5) : d.y > innerHeight - m ? Math.ceil((d.y - innerHeight + m) / 5) : 0; if (v) { window.scrollBy(0, v); stHover(d); } d.raf = requestAnimationFrame(tick); };
   d.raf = requestAnimationFrame(tick);
@@ -10453,7 +10486,8 @@ function stMoveAt(d, x, y) {
   d.x = x; d.y = y;
   const far = Math.hypot(d.x - d.x0, d.y - d.y0);
   if (!d.on) { if (d.touch) { if (far > 10) stEnd(); } else if (far > 4) stStart(d); return false; }
-  if (d.kind === 't') { const r = d.room; d.src.style.left = Math.max(0, Math.min(100, ((d.x - r.left) / r.width) * 100)) + '%'; d.src.style.top = Math.max(0, Math.min(100, ((d.y - r.top) / r.height) * 100)) + '%'; return true; }
+  if (d.kind === 't') { const [x, y] = stRoomXY(d, d.x, d.y); d.src.style.left = x / 10 + '%'; d.src.style.top = (y / d.h) * 100 + '%';
+    d.src.classList.toggle('st-clash', !stFreeAt(d.L, x, y, d.ids[0])); return true; }
   stGhost(d); stHover(d); return true;
 }
 function stUp(e) { const d = ST.drag; if (!d || e.pointerId !== d.id) return; stFinish(d, e.clientX, e.clientY); }
@@ -10463,22 +10497,32 @@ async function stFinish(d, cx, cy) {
   const was = d.on; const over = d.over; stEnd();
   if (!was) return; // a tap / click: the click handler opens the list of tables (a dialog opened here would get that click on its backdrop)
   ST.dropped = Date.now();
-  if (d.kind === 't') { const r = d.room; const t = stT(d.ids[0]); if (!t) return;
-    const x = Math.round(Math.max(0, Math.min(ST_W, ((cx - r.left) / r.width) * ST_W))), y = Math.round(Math.max(0, Math.min(ST_H, ((cy - r.top) / r.height) * ST_H)));
-    return stPlace(t, x, y); }
+  if (d.kind === 't') { const t = stT(d.ids[0]); if (!t) return; const [x, y] = stRoomXY(d, cx, cy); return stPlace(t, x, y); }
   if (over) await stMove(d.ids, over.dataset.drop || null);
 }
 function stEnd() {
   const d = ST.drag; if (!d) return; ST.drag = null; clearTimeout(d.timer); cancelAnimationFrame(d.raf);
   window.removeEventListener('pointermove', stMoveEv); window.removeEventListener('pointerup', stUp); window.removeEventListener('pointercancel', stEnd);
-  document.body.classList.remove('st-dragging'); if (d.src) d.src.classList.remove('st-lift'); if (d.ghost) d.ghost.remove(); if (d.over) d.over.classList.remove('st-hot', 'st-full');
+  document.body.classList.remove('st-dragging'); if (d.src) d.src.classList.remove('st-lift', 'st-clash'); if (d.ghost) d.ghost.remove(); if (d.over) d.over.classList.remove('st-hot', 'st-full');
 }
-async function stPlace(t, x, y) {
-  const fill = G.ts.map((z, i) => [z, stPos(z, i)]).filter(([z]) => z.x == null || z.y == null); // the auto-placed ones stay where they were drawn
-  t.x = x; t.y = y; const c = await sb();
-  for (const [z, [zx, zy]] of fill) if (z !== t) { z.x = zx; z.y = zy; await c.from('guest_tables').update({ x: zx, y: zy }).eq('id', z.id); }
-  const { error } = await c.from('guest_tables').update({ x, y }).eq('id', t.id); if (error) toast(tt('Couldn’t save: {e}', { e: pubWhy(error) }));
+// pointer → room units, kept inside the room (the room is d.h units tall)
+const stRoomXY = (d, cx, cy) => { const r = d.room; return stClamp(Math.min(FT_X1, ((cx - r.left) / r.width) * ST_W), Math.min(d.h - FT_Y0, ((cy - r.top) / r.height) * d.h)); };
+// put table t at (x, y) — or, if another table is there, the nearest free spot (dir: an arrow key's step: keep going that
+// way past the table in the way). Every table's shown spot is saved with it, so the layout no longer shifts as tables come and go.
+async function stPlace(t, x, y, dir) {
+  const L = stLayout(); let to = null;
+  if (dir) for (let j = 0, [nx, ny] = stClamp(x, y); j < 60; j++, [nx, ny] = stClamp(nx + dir[0], ny + dir[1])) { if (stFreeAt(L, nx, ny, t.id)) { to = [nx, ny]; break; } if ((dir[0] && (nx <= FT_X0 || nx >= FT_X1)) || (dir[1] < 0 && ny <= FT_Y0)) break; }
+  [x, y] = to || stNear(L, x, y, t.id); L.set(t.id, [x, y]);
+  const ch = G.ts.filter(z => { const p = L.get(z.id); return p && (z.x !== p[0] || z.y !== p[1]); }); ch.forEach(z => { [z.x, z.y] = L.get(z.id); });
   stRepaint(); const el = $(`[data-st-ft="${CSS.escape(t.id)}"]`); if (el) el.focus({ preventScroll: true });
+  ch.forEach(z => ST.dirty.add(z.id)); clearTimeout(ST.kt);
+  if (dir) { ST.kt = setTimeout(stSaveSpots, 500); return; } // arrow keys: save once they stop
+  return stSaveSpots();
+}
+async function stSaveSpots() {
+  const ids = [...ST.dirty]; ST.dirty.clear(); const zs = ids.map(stT).filter(Boolean); if (!zs.length) return; const c = await sb();
+  const rs = await Promise.all(zs.map(z => c.from('guest_tables').update({ x: z.x, y: z.y }).eq('id', z.id)));
+  const e = rs.find(r => r.error); if (e) toast(tt('Couldn’t save: {e}', { e: pubWhy(e.error) }));
 }
 function stKey(e) {
   if (!G || G.tab !== 'seat') return; const el = e.target;
@@ -10487,9 +10531,7 @@ function stKey(e) {
   if (el.dataset && el.dataset.stFt) {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stEditDlg(el.dataset.stFt); return; }
     const k = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] }[e.key]; if (!k) return; e.preventDefault();
-    const t = stT(el.dataset.stFt); const [x, y] = stPos(t, G.ts.indexOf(t));
-    clearTimeout(ST.kt); const nx = Math.max(0, Math.min(ST_W, x + k[0])), ny = Math.max(0, Math.min(ST_H, y + k[1])); t.x = nx; t.y = ny;
-    el.style.left = nx / 10 + '%'; el.style.top = (ny / ST_H) * 100 + '%'; ST.kt = setTimeout(() => stPlace(t, nx, ny), 500);
+    const t = stT(el.dataset.stFt); const [x, y] = stLayout().get(t.id); stPlace(t, x + k[0], y + k[1], k);
   }
 }
 function stWire() {
@@ -10509,7 +10551,7 @@ function stWire() {
     if (d.stAdd != null) { stEditDlg(null); return; }
     if (d.stAdd10 != null) { b.disabled = true; await stAdd10(); return; }
     if (d.stView) { G.st.view = d.stView; LS.set('stv:' + G.eid, d.stView); stRepaint(); return; }
-    if (d.stFold != null) { G.st.fold = !G.st.fold; stRepaint(); return; }
+    if (d.stFold != null) { G.st.fold = !stFolded(); G.st.foldK = stAllSeated(); stRepaint(); return; }
     if (d.stGrp != null) { G.st.grp = d.stGrp; stRepaint(); return; }
     if (d.stEdit) { stEditDlg(d.stEdit); return; }
     if (d.stPick) { const p = G.ps.find(x => x.id === d.stPick); if (p) stPickDlg([p.id], t(stSeated(p) ? 'Move {n}' : 'Seat {n}', { n: stName(p) }), p.id); return; }
@@ -10579,5 +10621,5 @@ window.addEventListener('hashchange', route);
 rtWatch();
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { lists: { B: () => B, G: () => G, setG: (g) => { G = g; }, buildForm, glMount, glPaint, conflictDlg, partName, glImportDlg, glEditDlg, stPickDlg, stEditDlg, stPrint, t }, cfgMerge3, cfgTakeTheirs, glParse, glGroupRows, joinFirst, rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtModel, rtSer, rtRead, rtEdToggle, rtSelect, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { lists: { B: () => B, G: () => G, setG: (g) => { G = g; }, buildForm, glMount, glPaint, conflictDlg, partName, glImportDlg, glEditDlg, stPickDlg, stEditDlg, stPrint, t, stLayout, stPlace, stAdd10, stFolded, FT: [FT_W, FT_H] }, cfgMerge3, cfgTakeTheirs, glParse, glGroupRows, joinFirst, rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtModel, rtSer, rtRead, rtEdToggle, rtSelect, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

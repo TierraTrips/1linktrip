@@ -1905,6 +1905,8 @@ dialog.gl-dlg { width: min(560px, calc(100vw - 16px)); max-height: min(90vh, 900
 .st-uh h3 { margin: 0; font: 600 1.05rem var(--brand); display: flex; align-items: baseline; gap: 8px; } .st-uh h3 span { font: 600 .72rem var(--mono); color: var(--slate); }
 .st-ub { overflow: auto; overscroll-behavior: contain; padding: 0 18px 14px; display: grid; gap: 8px; align-content: start; }
 .st-un.fold .st-ub { display: none; }
+.st-un::before { content: ''; align-self: center; width: 36px; height: 4px; border-radius: 2px; background: var(--contour); margin-top: 7px; } /* the handle */
+.st-un.fold .st-uh { padding: 4px 18px 8px; }
 .st-q { min-height: 40px; border: 1.5px solid var(--rule); border-radius: 10px; padding: 0 .7em; font-size: 16px; background: var(--field); width: 100%; box-sizing: border-box; }
 .st-gchips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; } .st-gchips::-webkit-scrollbar { display: none; }
 .st-gchips .chip { flex: none; min-height: 32px; } .st-gchips .chip.on { background: var(--ink); color: #fff; }
@@ -1965,12 +1967,14 @@ body.st-dragging, body.st-dragging * { cursor: grabbing !important; user-select:
 .st-un.st-hot { box-shadow: inset 0 0 0 2.5px var(--forest), 0 -10px 30px -14px rgba(15,74,80,.45); }
 /* floor plan (wide screens) */
 .st-floor > p { margin: 0 0 6px; }
-.st-room { position: relative; aspect-ratio: 1000 / 640; border-radius: 18px; background: var(--paper) radial-gradient(circle, var(--contour) 1px, transparent 1.5px) 0 0 / 24px 24px; box-shadow: inset 0 0 0 1.5px var(--rule); }
-.st-ft { position: absolute; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 1px; padding: 6px; border-radius: 14px; cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none; }
-.st-ft b { font: 600 .82rem/1.1 var(--brand); white-space: nowrap; } .st-ft span { font: 600 .66rem var(--mono); color: var(--slate); } .st-ft.over span { color: var(--route-ink); }
+.st-floor { overflow-x: auto; } /* the room never draws tables below ~64% size: it scrolls sideways instead */
+.st-room { position: relative; min-width: 640px; aspect-ratio: 1000 / 640; border-radius: 18px; background: var(--paper) radial-gradient(circle, var(--contour) 1px, transparent 1.5px) 0 0 / 24px 24px; box-shadow: inset 0 0 0 1.5px var(--rule); }
+.st-ft { position: absolute; transform: translate(-50%, -50%) scale(var(--k, .9)); display: grid; width: 130px; box-sizing: border-box; justify-items: center; gap: 1px; padding: 6px; border-radius: 14px; cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none; }
+.st-ft b { font: 600 .9rem/1.15 var(--brand); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; } .st-ft span { font: 600 .66rem var(--mono); color: var(--slate); } .st-ft.over span { color: var(--route-ink); }
 .st-ft.over .st-plate::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; box-shadow: 0 0 0 2px var(--route); }
 .st-ft:focus-visible { outline: 2.5px solid var(--forest); }
 .st-ft.st-lift { opacity: .85; z-index: 3; }
+.st-ft.st-clash { outline: 2px dashed var(--route); outline-offset: 2px; } /* dropped here it moves to the nearest free spot */
 /* export + guests' view */
 .st-out { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; background: var(--paper); border-radius: 14px; padding: 12px 14px; }
 .st-show { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; } .st-show .tool { background: var(--tint); }
@@ -1978,7 +1982,7 @@ body.st-dragging, body.st-dragging * { cursor: grabbing !important; user-select:
 @media (min-width: 900px) {
   .st-main { display: grid; grid-template-columns: 300px minmax(0, 1fr); align-items: start; }
   .st-un { order: 0; position: sticky; top: 12px; bottom: auto; margin: 0; border-radius: 16px; box-shadow: none; max-height: calc(100vh - 24px); }
-  .st-un.fold .st-ub { display: grid; } .st-fold { display: none; }
+  .st-un.fold .st-ub { display: grid; } .st-fold { display: none; } .st-un::before { display: none; }
   .st-un .st-ps .st-p { cursor: grab; }
 }
 @media (max-width: 899px) { .st-out { margin-bottom: 8px; } }
