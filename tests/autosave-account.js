@@ -28,7 +28,7 @@ const PUB = 'sb_publishable_JHJJ_LFXQUBClNc68Eyi_A_b6se1P_a';
   const until = async (fn, ms = 15000) => { const t0 = Date.now(); for (;;) { const v = await fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise(r => setTimeout(r, 500)); } };
   const u = await (await admin('/auth/v1/admin/users', { method: 'POST', body: JSON.stringify({ email: EMAIL, password: PASS, email_confirm: true }) })).json();
   var USER_ID = u.id; ok(!!USER_ID, 'throwaway user created');
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(); require("./_open-settings")(browser);
   try {
     const mk = async () => {
       const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
@@ -85,7 +85,8 @@ const PUB = 'sb_publishable_JHJJ_LFXQUBClNc68Eyi_A_b6se1P_a';
     await A.page.click('.vbar [data-save-mine]'); await A.page.waitForURL(/\?e=/, { timeout: 30000 }); await A.page.waitForSelector('.ev-hero');
     rs = await rows(); const r4 = rs.find(r => r.config.title === LCFG.title);
     ok(!!r4 && A.page.url().endsWith('?e=' + r4.slug) && r4.published === false, 'Save to My pages → account copy, URL switched to its short link (not shared: it isn’t this user’s page) ' + A.page.url());
-    ok(/Only you can see this page/.test(await A.page.textContent('.viewer')) && /Edit page/.test(await A.page.textContent('.vbar')), 'its owner sees it at the short link: Only you can see this page, Edit page');
+    await A.page.waitForSelector('.builder #preview .ev', { timeout: 15000 }).catch(() => {}); // tap-to-edit (4968f9b): the owner's own ?e= opens their editable page, not the guest view
+    ok(!!(await A.page.$('.builder #preview .ev')) && !(await A.page.$('.viewer')), 'its owner gets their editable page at the short link (tap-to-edit), not the guest view');
     // the owner's own page shared earlier as a long link from browser B
     const own = await B.page.evaluate(() => JSON.parse(localStorage.getItem('ep:pages')).find(x => x.pid === 'pdev').cfg);
     const ownLong = await B.page.evaluate((c) => location.origin + location.pathname + '#e=' + window.__ep.packEvent(c), own);

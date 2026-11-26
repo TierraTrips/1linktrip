@@ -202,6 +202,8 @@ const ymd = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.ge
 const addDays = (s, n) => { const d = asUTC(s.slice(0, 10)); d.setUTCDate(d.getUTCDate() + n); return ymd(d); };
 const todayYMD = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const daysBetween = (a, b) => Math.round((asUTC(b.slice(0, 10)) - asUTC(a.slice(0, 10))) / 864e5);
+// a number in the interface language (1.5 / 1,5)
+const nfix = (x, d) => { try { return Number(x).toLocaleString(LOCALES[LANG] || 'en-US', { minimumFractionDigits: d, maximumFractionDigits: d }); } catch { return Number(x).toFixed(d); } };
 const fmtTime = (hm) => { if (!hm) return ''; const [h, m] = hm.split(':').map(Number); return LANG === 'en' ? `${((h + 11) % 12) + 1}:${pad(m)} ${h < 12 ? 'AM' : 'PM'}` : `${pad(h)}:${pad(m)}`; };
 
 function dateRange(start, end) {
@@ -245,8 +247,8 @@ function distM(a1, o1, a2, o2) {
 }
 const IMPERIAL = new Set(['us', 'gb', 'lr', 'mm']);
 function fmtDist(m, cc) {
-  if (IMPERIAL.has(cc)) { const mi = m / 1609.34; return mi < 0.1 ? `${Math.round(m * 3.281 / 10) * 10} ft` : `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi`; }
-  return m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`;
+  if (IMPERIAL.has(cc)) { const mi = m / 1609.34; return mi < 0.1 ? `${Math.round(m * 3.281 / 10) * 10} ft` : `${mi < 10 ? nfix(mi, 1) : Math.round(mi)} mi`; }
+  return m < 1000 ? `${Math.round(m / 10) * 10} m` : `${nfix(m / 1000, m < 10000 ? 1 : 0)} km`;
 }
 const walkMin = (m) => Math.max(1, Math.round(m * 1.25 / 80)); // straight-line x1.25 detour, 80 m/min
 const walkTxt = (m) => t('{n} min walk', { n: walkMin(m) });
@@ -1207,7 +1209,7 @@ function sightsHTML(cfg, data) {
   if (!xs.length) return `<p class="muted">${t('No museums, viewpoints or attractions are mapped within 3 km of the venue.')}</p>${ext(L.place('things to do', placeLabel(v)), t('Search on Google Maps'), 'btn')}`;
   const art = data.__art;
   if (art) return nearListRegister(art, 'sights', cfg, xs.slice(0, 30).map(x => ({ ...x, rating: (x.g && x.g.rating) || 0, count: (x.g && x.g.count) || 0 })), (x, fold) => `<li${fold ? ' class="more"' : ''}>
-    <div><b>${esc(x.name)}</b><span>${esc([t(x.kind), x.rating ? `★ ${x.rating.toFixed(1)}` : ''].filter(Boolean).join(' · '))}</span>
+    <div><b>${esc(x.name)}</b><span>${esc([t(x.kind), x.rating ? `★ ${nfix(x.rating, 1)}` : ''].filter(Boolean).join(' · '))}</span>
       <div class="mini"><button type="button" class="mini-b" ${x.g && x.g.gid ? `data-gpid="${esc(x.g.gid)}"` : `data-place="${esc(placeKey(x))}"`}>${t('Details')}</button>${x.website ? ext(x.website, t('Website'), 'mini-b') : ''}</div></div>
     <span class="dist">${esc(fmtDist(x.d, v.cc))}<small>${x.d < 2000 ? walkTxt(x.d) : t('from the venue')}</small></span></li>`, { more: 8, walkLabel: t('Walking distance') });
   return `<ul class="plist rich">${xs.slice(0, 8).map(x => `<li>
@@ -1326,7 +1328,7 @@ function hotelsHTML(cfg, data) {
   if (!data.hotels.length) return `<p class="muted">${t('No hotels are mapped within 3 km of the venue. Try the searches above.')}</p>`;
   const art = data.__art; const rows0 = data.hotels.slice(0, 30).map(h => ({ ...h, rating: (h.g && h.g.rating) || h.rating || 0, count: (h.g && h.g.count) || h.count || 0, price: (h.g && h.g.price) || h.price || '' }));
   if (art) return nearListRegister(art, 'hotels', cfg, rows0, (h, fold) => `<li${fold ? ' class="more"' : ''}>
-    <div><b>${esc(h.name)}</b><span>${esc([t(h.kind), h.stars ? `${h.stars}★` : '', h.rating ? `★ ${h.rating.toFixed(1)}` : '', h.price].filter(Boolean).join(' · '))}</span>
+    <div><b>${esc(h.name)}</b><span>${esc([t(h.kind), h.stars ? `${h.stars}★` : '', h.rating ? `★ ${nfix(h.rating, 1)}` : '', h.price].filter(Boolean).join(' · '))}</span>
       <div class="mini">${cfg.tools.mytrip ? hsSlotHTML(cfg, hsPlace(h), true) : ''}${hotelPrices(cfg, h)}${brandBook(cfg, h)}<button type="button" class="mini-b" ${h.g && h.g.gid ? `data-gpid="${esc(h.g.gid)}"` : `data-place="${esc(placeKey(h))}"`}>${t('Details')}</button>${h.website ? ext(h.website, t('Website'), 'mini-b') : ''}</div></div>
     <span class="dist">${esc(fmtDist(h.d, v.cc))}<small>${h.d < 2000 ? walkTxt(h.d) : t('from the venue')}</small></span></li>`, { more: 3, walkLabel: t('Walking distance'), hotel: true });
   const hs = data.hotels.slice(0, 8);
@@ -1368,7 +1370,7 @@ function weatherHTML(w, cfg) {
     const [label, ic] = w.kind === 'typical' ? (d.wet / (d.of || 1) >= 0.5 ? ['Often wet', 'rain'] : d.wet ? ['Mostly dry', 'part'] : ['Usually dry', 'sun']) : WMO(d.code);
     return `<div class="wx-d"><span class="wx-date">${esc(fmt(d.date, { weekday: 'short' }))}<small>${esc(fmt(d.date, { month: 'short', day: 'numeric' }))}</small></span>${icon(ic)}
       <span class="wx-t"><b>${fmtTemp(d.hi, u)}°</b><span>${fmtTemp(d.lo, u)}°${u}</span></span>
-      <span class="wx-x">${w.kind === 'typical' ? t('Rain {n} of {m} yrs', { n: d.wet, m: d.of }) : w.kind === 'past' ? `${d.precip ? (u === 'C' ? (d.precip * 25.4).toFixed(d.precip * 25.4 < 10 ? 1 : 0) + ' mm' : d.precip.toFixed(2) + ' in') : t('Dry')}` : d.pop != null ? t('{n}% rain', { n: d.pop }) : esc(t(label))}</span>
+      <span class="wx-x">${w.kind === 'typical' ? t('Rain {n} of {m} yrs', { n: d.wet, m: d.of }) : w.kind === 'past' ? `${d.precip ? (u === 'C' ? nfix(d.precip * 25.4, d.precip * 25.4 < 10 ? 1 : 0) + ' mm' : nfix(d.precip, 2) + ' in') : t('Dry')}` : d.pop != null ? t('{n}% rain', { n: d.pop }) : esc(t(label))}</span>
       <span class="wx-l">${esc(t(label))}</span></div>`;
   }).join('')}</div>`;
 }
@@ -4615,14 +4617,14 @@ function placesBar(cfg, data, art, box) {
     eat && cuisTop.length ? `<div class="cc-g cc-sels"><label class="field"><span>${t('Cuisine')}</span><select data-pf="cuisine"><option value="">${t('Any cuisine')}</option>${cuisTop.map(([c, k]) => `<option value="${esc(c)}" ${f.cuisine === c ? 'selected' : ''}>${esc(cuisineLabel(c))} (${k})</option>`).join('')}</select></label></div>` : '',
     ccGroup(t('Hours'), ccChip(f.open, 'data-pf-open', esc(t('Open now')))),
     ccGroup(t('Distance'), DISTS.slice(1).map(([m, l]) => ccChip(+f.dist === m, `data-pf-dist="${m}"`, esc(t(l)))).join('')),
-    rated ? ccGroup(t('Rating'), [4, 4.5].map(x => ccChip(f.stars === x, `data-pf-stars="${x}"`, `★ ${x.toFixed(1)}+`)).join('')) : '',
+    rated ? ccGroup(t('Rating'), [4, 4.5].map(x => ccChip(f.stars === x, `data-pf-stars="${x}"`, `★ ${nfix(x, 1)}+`)).join('')) : '',
     eat ? ccGroup(t('Dietary'), DIETS.map(([k, l]) => { const c = dietCount(k); const on = f.diet.includes(k); return c || on ? ccChip(on, `data-pf-diet="${k}"`, `${esc(t(l))} <span>${c}</span>`) : ''; }).join('')) : '',
     prices.length > 1 ? ccGroup(t('Price'), prices.map(pr => ccChip(f.price === pr, `data-pf-price="${esc(pr)}"`, esc(pr))).join('')) : '',
   ].join('');
   const ps = [];
   if (f.cuisine) ps.push(['cuisine', cuisineLabel(f.cuisine)]); f.diet.forEach(k => ps.push(['diet:' + k, t((DIETS.find(x => x[0] === k) || [0, k])[1])]));
   if (f.open) ps.push(['open', t('Open now')]); if (f.dist) ps.push(['dist', t((DISTS.find(x => x[0] === +f.dist) || [0, ''])[1])]);
-  if (f.stars) ps.push(['stars', `★ ${f.stars.toFixed(1)}+`]); if (f.price) ps.push(['price', f.price]);
+  if (f.stars) ps.push(['stars', `★ ${nfix(f.stars, 1)}+`]); if (f.price) ps.push(['price', f.price]);
   ccFill(box, {
     row: (ss.length ? ccTabs({ key: 'city', aria: t('City'), value: String(art._stop || 0), ph: t('City'), cls: 'dd-city', opts: ss.map(c => ({ v: String(c.i), l: c.l })) }) : '')
       + ccChips({ key: 'cat', aria: t('Category'), value: f.cat, ph: t('Category'), cls: 'dd-cat', opts: PLACE_CATS.filter(([k]) => counts[k] || f.cat === k).map(([k, l]) => ({ v: k, l: t(l), ic: OSM_CC[k], n: counts[k] || 0 })) }),
@@ -4776,7 +4778,7 @@ function gDetails(p) {
   });
 }
 const gPhotoURL = (name) => `https://places.googleapis.com/v1/${name}/media?maxWidthPx=800&key=${enc(GKEY)}`;
-const gStars = (r) => `<span class="stars" aria-label="${esc(t('{r} out of 5 stars', { r: r.toFixed(1) }))}">★ ${r.toFixed(1)}</span>`;
+const gStars = (r) => `<span class="stars" aria-label="${esc(t('{r} out of 5 stars', { r: nfix(r, 1) }))}">★ ${nfix(r, 1)}</span>`;
 const gRatingHTML = (g) => g && g.rating ? `${gStars(g.rating)}${g.count ? ` <small>(${g.count.toLocaleString(LOCALES[LANG] || 'en-US')})</small>` : ''}` : '';
 
 // ================= maps: Google Maps when a key is set, Leaflet + OpenStreetMap otherwise or if Google fails =================
@@ -5378,7 +5380,7 @@ function gpSheetHTML(cfg, f, n) {
   const body = [
     ccGroup(t('Sort by'), [['dist', t('Distance')], ['rating', t('Rating')], ['name', t('Name')]].map(([k, l]) => ccChip((f.sort || 'dist') === k, `data-gp-sort="${k}"`, esc(l))).join('')),
     ccGroup(t('Hours'), ccChip(f.open, 'data-gp-open', esc(t('Open now')))),
-    ccGroup(t('Rating'), [4, 4.5].map(x => ccChip(f.stars === x, `data-gp-stars="${x}"`, `★ ${x.toFixed(1)}+`)).join('')),
+    ccGroup(t('Rating'), [4, 4.5].map(x => ccChip(f.stars === x, `data-gp-stars="${x}"`, `★ ${nfix(x, 1)}+`)).join('')),
     priced ? ccGroup(t('Price'), ['$', '$$', '$$$', '$$$$'].map(pr => ccChip(f.price === pr, `data-gp-price="${pr}"`, esc(priceSym(cfg, pr)))).join('')) : '',
     ccGroup(t('Distance'), DISTS.slice(1).map(([m, l]) => ccChip(f.dist === m, `data-gp-dist="${m}"`, esc(t(l)))).join('')),
     food ? `<div class="cc-g cc-sels">${f.cat === 'restaurants' ? `<label class="field"><span>${t('Cuisine')}</span><select data-gp="cuisine" ${f.diet ? 'disabled' : ''}><option value="">${t('Any cuisine')}</option>${GP_CUISINES.map(c => `<option value="${c}" ${f.cuisine === c ? 'selected' : ''}>${esc(cuisineLabel(c))}</option>`).join('')}</select></label>` : ''}
@@ -5389,7 +5391,7 @@ function gpSheetHTML(cfg, f, n) {
 function gpPills(cfg, f) {
   const ps = [];
   if (f.cuisine) ps.push(['cuisine', cuisineLabel(f.cuisine)]); if (f.diet) ps.push(['diet', t((GP_DIETS.find(x => x[0] === f.diet) || [0, f.diet])[1])]);
-  if (f.open) ps.push(['open', t('Open now')]); if (f.stars) ps.push(['stars', `★ ${f.stars.toFixed(1)}+`]); if (f.price) ps.push(['price', priceSym(cfg, f.price)]);
+  if (f.open) ps.push(['open', t('Open now')]); if (f.stars) ps.push(['stars', `★ ${nfix(f.stars, 1)}+`]); if (f.price) ps.push(['price', priceSym(cfg, f.price)]);
   if (f.dist) ps.push(['dist', t((DISTS.find(x => x[0] === f.dist) || [0, ''])[1])]); if (f.sort === 'rating') ps.push(['sort', t('Top rated')]); if (f.sort === 'name') ps.push(['sort', t('A–Z')]);
   return ccPills(ps, 'data-gp-clear');
 }
@@ -7907,7 +7909,7 @@ function carCountersHTML(cfg, ap, rows, art) {
   rows = rows.filter(r => r.where !== 'town');
   return `<h3 class="sub-h">${esc(t('Rental counters at {a}', { a: ap.iata }))}</h3><div class="row-links">${rows.map(r => { const deep = r.brand && carBrandURL(r.brand, ap); const own = r.web && r.brand && hostOf(r.web).replace(/^www\./, '').endsWith(r.brand + '.com') ? r.web.replace(/[?#].*$/, '') : '';
     const url = r.brand ? (deep !== CAR_HOME[r.brand] ? deep : own || deep) : r.web; if (!url) return ''; // no prefilled page: the counter's own listing page
-    return ext(url, `${esc(r.brand ? (CAR_BRANDS.find(b => b[0] === r.brand) || [])[1] : r.name)}${r.rating ? ` <small>★ ${r.rating.toFixed(1)}</small>` : ` <small>${esc(hostOf(url))}</small>`}`, 'row-link'); }).join('')}</div>`;
+    return ext(url, `${esc(r.brand ? (CAR_BRANDS.find(b => b[0] === r.brand) || [])[1] : r.name)}${r.rating ? ` <small>★ ${nfix(r.rating, 1)}</small>` : ` <small>${esc(hostOf(url))}</small>`}`, 'row-link'); }).join('')}</div>`;
 }
 
 // ================= "Ask AI to edit" (ai-import mode:"edit"; shown only when the deployed function lists it) =================
@@ -8077,7 +8079,7 @@ async function docRemoteDelete(f) { // best effort: only files under this user's
     const c = await sb(); await c.storage.from(DOC_BUCKET).remove([path]); } catch { /* the page no longer links it */ }
 }
 const fileEntry = (f, sec) => ({ id: f.id, sec, name: f.name, url: f.url, type: f.type, size: f.size }); // same key order as normFiles
-const fmtSize = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+const fmtSize = (n) => n >= 1048576 ? nfix(n / 1048576, 1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
 
 // ---- photos: cover (Design) and a custom section's photo — Upload / drop / link ----
 const PH_LIMIT = { cover: [500e3, 1600], cs: [300e3, 1600] };

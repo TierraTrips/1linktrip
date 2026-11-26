@@ -39,7 +39,7 @@ function fakeSupabase() {
 
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(); require("./_open-settings")(browser);
   const mk = async (w) => {
     const ctx = await browser.newContext({ viewport: { width: w, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
     await ctx.addInitScript(fakeSupabase);

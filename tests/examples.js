@@ -12,7 +12,7 @@ const SHOTS = process.env.SHOTS || '';
 const fails = []; const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m}`); if (!c) fails.push(m); };
 const overflow = (page) => page.evaluate(() => { const cw = document.documentElement.clientWidth; return [...document.querySelectorAll('body *')].filter(e => { for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) if (getComputedStyle(a).overflowX !== 'visible') return false; const r = e.getBoundingClientRect(); return r.width && r.right > cw + 1; }).map(e => e.className).slice(0, 3); });
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(); require("./_open-settings")(browser); // the page-wide editors live in Settings (tap-to-edit, 4968f9b)
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
   const page = await ctx.newPage(); const errors = []; page.on('pageerror', e => errors.push(String(e))); let ai = 0;
   await page.route(/open-meteo|overpass|nominatim|googleapis|tile\.openstreetmap|timeapi|photon|maps\.mail\.ru/, r => r.abort());
