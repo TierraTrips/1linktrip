@@ -38,6 +38,8 @@ const DEF = {
   event_messages: () => ({ from_host: false, guest_email: null, guest_name: null }),
   guest_travel: () => ({ updated_by: 'planner' }),
   guest_seating: () => ({ show_guests: false }),
+  volunteer_slots: () => ({ shift: '', day: null, starts: null, ends: null, capacity: 1, notes: null, sort: 0 }),
+  volunteer_signups: () => ({ email: null, phone: null }),
 };
 const UNIQUE = { event_groups: (a, b) => a.event_id === b.event_id && String(a.name).trim().toLowerCase() === String(b.name).trim().toLowerCase(),
   page_planners: (a, b) => a.event_id === b.event_id && a.email === b.email, events: (a, b) => a.slug === b.slug };
@@ -45,7 +47,7 @@ const UNIQUE = { event_groups: (a, b) => a.event_id === b.event_id && String(a.n
 const CASCADE = {
   guest_households: [['guest_people', 'household_id'], ['guest_travel', 'household_id'], ['invite_sends', 'household_id'], ['rsvps', 'household_id']],
   guest_people: [['guest_people', 'plus_of'], ['guest_field_values', 'person_id'], ['shuttle_riders', 'person_id'], ['rsvps', 'person_id']],
-  shuttle_runs: [['shuttle_riders', 'run_id']], guest_fields: [['guest_field_values', 'field_id']],
+  shuttle_runs: [['shuttle_riders', 'run_id']], guest_fields: [['guest_field_values', 'field_id']], volunteer_slots: [['volunteer_signups', 'slot_id']],
 };
 const NULLIFY = { guest_tables: [['guest_people', 'table_id']], event_groups: [['guest_households', 'group_id'], ['guest_people', 'group_id']] };
 const col = (r, c) => { const m = c.match(/^(\w+)->>(\w+)$/); if (m) { const o = r[m[1]]; return o && o[m[2]] != null ? String(o[m[2]]) : null; } return r[c]; };
@@ -61,6 +63,8 @@ function fakeClient(S, files) {
     if (r.created_at == null) r.created_at = iso(Date.now());
     if (t === 'events') { r.owner = r.owner || S.me.id; r.updated_at = iso(Date.now()); }
     if (!r.event_id && r.household_id) { const h = T('guest_households').find(x => x.id === r.household_id); if (h) r.event_id = h.event_id; }
+    if (!r.event_id && r.field_id) { const f = T('guest_fields').find(x => x.id === r.field_id); if (f) r.event_id = f.event_id; } // as the triggers do
+    if (!r.event_id && r.slot_id) { const v = T('volunteer_slots').find(x => x.id === r.slot_id); if (v) r.event_id = v.event_id; }
     if (t === 'invite_sends' && r.channel === 'text') { r.status = 'sent'; r.sent_at = iso(Date.now()); }
     if (t === 'invite_sends') { const h = T('guest_households').find(x => x.id === r.household_id); if (h && r.channel === 'email') r.to_email = h.email; }
     if (t === 'page_planners' && r.email) r.email = String(r.email).toLowerCase().trim();
@@ -205,10 +209,16 @@ function build(D, cfg, X) {
   const users = [me, ...D.planners.filter(p => p.joined).map(p => ({ id: sid('user'), name: p.name, email: p.email }))];
   const db = { events: [], guest_households: [], guest_people: [], rsvps: [], event_groups: [], guest_tables: [], guest_seating: [], invitations: [], invite_sends: [], guest_travel: [],
     shuttle_runs: [], shuttle_riders: [], guest_fields: [], guest_field_values: [], page_planners: [], page_activity: [], page_opens: [], announcements: [], event_messages: [], event_group_members: [],
-    event_private: [], page_names: [], trip_items: [], trip_shares: [], arrival_shares: [], inbound_page_tokens: [] };
+    event_private: [], page_names: [], trip_items: [], trip_shares: [], arrival_shares: [], inbound_page_tokens: [], volunteer_slots: [], volunteer_signups: [] };
   const S = { db, me, users, eid, hotels: new Map(), trips: [], notified: [] };
   // the page: the example, with the organizer's RSVP questions and guest languages
   Object.assign(cfg, D.cfg || {}); if (D.rsvpq) cfg.rsvpq = D.rsvpq; cfg.ek = cfg.ek || ('ek:' + D.key + '-demo');
+  if (D.x) cfg.x = { ...(cfg.x || {}), [cfg.type]: { ...((cfg.x || {})[cfg.type] || {}), ...D.x } }; // the page's own race-weekend details
+  if (D.year) { // the organizer demo runs a year later than the guest example, so its arrivals and shuttles are still ahead
+    const y = (v) => (typeof v === 'string' ? v.replace(/^(\d{4})/, (m) => String(+m + D.year)) : v);
+    cfg.start = y(cfg.start); cfg.end = y(cfg.end); (cfg.schedule || []).forEach(x => { x.date = y(x.date); });
+    Object.values(cfg.x || {}).forEach(o => Object.keys(o).forEach(k => { if (/When$/.test(k)) o[k] = y(o[k]); }));
+  }
   const updated = ago(0.02);
   db.events.push({ id: eid, slug: D.slug, owner: me.id, config: cfg, published: true, created_at: ago(D.created), updated_at: updated });
   // groups
@@ -279,6 +289,10 @@ function build(D, cfg, X) {
   (D.messages || []).forEach(([gname, email, thread]) => { const guest = sid('guest');
     thread.forEach(([fromHost, body, d]) => db.event_messages.push({ id: sid('msg'), event_id: eid, guest, from_host: fromHost, guest_email: email, guest_name: gname, body, notified_at: null, created_at: ago(d) })); });
   if (D.vendors) db.event_private.push({ event_id: eid, data: { cur: D.vendors.cur, on: true, t: NOW - 2 * DAY, vendors: D.vendors.list.map((v, i) => ({ id: 'v' + i, ...v, pays: (v.pays || []).map((p, j) => ({ id: 'v' + i + 'p' + j, ...p })) })) }, updated_at: ago(2), created_at: ago(30) });
+  // volunteer shifts and who took them: [task, shift, day, from, to, needed, [names]]
+  (D.vol || []).forEach(([task, shift, day, a, b, cap, names], i) => { const id = sid('vslot');
+    db.volunteer_slots.push({ id, event_id: eid, task, shift, day, starts: a, ends: b, capacity: cap, notes: null, sort: i, created_at: ago(20) });
+    (names || []).forEach((nm, j) => db.volunteer_signups.push({ id: sid('vsign'), slot_id: id, event_id: eid, name: nm, email: nm.toLowerCase().replace(/[^a-z]+/g, '.') + '@example.com', phone: null, created_at: ago(15 - j * 0.7) })); });
   S.priv = D.vendors ? db.event_private[0].data : null; S.slug = D.slug; S.cfg = cfg;
   return S;
 }
@@ -438,63 +452,123 @@ const CONFERENCE = {
     { cat: 'Transport', name: 'Metro Sprinter Service', total: 3800, notes: 'Airport pickups Nov 17, hotel coach Nov 18.' },
     { cat: 'Other', name: 'Stagecraft AV', total: 22400, pays: [{ amt: 11200, due: '2026-09-15', paid: '2026-09-15' }] }] },
 };
+// a seeded random stream: the same demo every time it opens
+const rnd = (seed) => { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let x = Math.imul(a ^ (a >>> 15), 1 | a); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; }; };
+const FIRST = ['Maya', 'Chris', 'Priya', 'Tom', 'Andre', 'Kim', 'Luis', 'Emily', 'Chidi', 'Ada', 'Marta', 'Ryo', 'Ashley', 'Ben', 'Carlos', 'Hannah', 'Jordan', 'Megan', 'Sara', 'Diego',
+  'Nina', 'Greg', 'Rosa', 'Leah', 'Sam', 'Alicia', 'Owen', 'Grace', 'Mateo', 'Zoe', 'Ethan', 'Aisha', 'Noah', 'Lena', 'Victor', 'Hana', 'Jake', 'Tess', 'Omar', 'Clara',
+  'Ivan', 'Sofia', 'Marcus', 'Julia', 'Kofi', 'Elena', 'Ravi', 'Mia', 'Pablo', 'Erin', 'Felix', 'Yuki', 'Dana', 'Liam', 'Fatima', 'Jonah', 'Paige', 'Arjun', 'Lucy', 'Theo'];
+const LAST = ['Patel', 'Alvarez', 'Shah', 'Novak', 'Wilson', 'Nguyen', 'Ortega', 'Carter', 'Okafor', 'Kowalski', 'Yamamoto', 'Moore', 'Fischer', 'Mendoza', 'Schmidt', 'Lee', 'Doyle',
+  'Lindgren', 'Hernández', 'Russo', 'Hall', 'Díaz', 'Kim', 'Torres', 'Grant', 'Brennan', 'Walsh', 'Romero', 'Becker', 'Murphy', 'Haddad', 'Costa', 'Sato', 'Rivera', 'Bauer',
+  'Ito', 'Morgan', 'Reyes', 'Price', 'Mensah', 'Rossi', 'Iyer', 'Larsen', 'Dubois', 'Flores', 'Quinn', 'Silva', 'Adams', 'Byrne', 'Cho'];
+const unique = (r, n) => { const seen = new Set(); const out = []; while (out.length < n) { const nm = FIRST[Math.floor(r() * FIRST.length)] + ' ' + LAST[Math.floor(r() * LAST.length)]; if (!seen.has(nm)) { seen.add(nm); out.push(nm); } } return out; };
+const mail = (nm) => nm.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z]+/g, '.') + '@example.com';
+const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+// ================= Lakefront 10K: ~150 runners over three distances, waves, clubs, 4 in 10 from out of town =================
+const RACE_TOWNS = [['Madison, WI', 'MDW WN', 1], ['Milwaukee, WI', '', 0], ['Indianapolis, IN', '', 0], ['Minneapolis, MN', 'ORD DL', 1], ['Detroit, MI', 'ORD DL', 1], ['St. Louis, MO', 'MDW WN', 1],
+  ['Toronto, ON', 'ORD AC', 1], ['Denver, CO', 'ORD UA', 1], ['Austin, TX', 'ORD AA', 1], ['New York, NY', 'ORD AA', 1], ['Boston, MA', 'ORD B6', 1], ['Columbus, OH', 'MDW WN', 1],
+  ['Des Moines, IA', '', 0], ['Mexico City, Mexico', 'ORD AM', 1], ['Atlanta, GA', 'MDW WN', 1], ['Nashville, TN', 'MDW WN', 1]];
+const RACE_HOTELS = ['Hilton Chicago', 'Hilton Chicago', 'Palmer House Hilton', 'Hotel Blake', 'Congress Plaza Hotel', 'Hyatt Regency Chicago'];
+const RACE_CLUBS = ['Lakeview Runners', 'South Loop Striders', 'Lincoln Park Pacers', 'Fleet Feet Racing', 'Windy City Women Run'];
+// distance → its waves [wave, start] and first bib
+const RACE_DIST = [['Half marathon', [['1', '06:45'], ['2', '06:55']], 1, 42], ['10K', [['A', '07:15'], ['B', '07:25'], ['C', '07:35']], 2001, 64], ['5K', [['D', '08:00'], ['E', '08:10']], 5001, 46]];
+function raceRunners() {
+  const r = rnd(1016); const names = unique(r, RACE_DIST.reduce((n, d) => n + d[3], 0)); const out = []; let k = 0;
+  RACE_DIST.forEach(([dist, waves, bib0, n]) => {
+    for (let i = 0; i < n; i++) {
+      const nm = names[k++]; const [wave, start] = waves[Math.min(waves.length - 1, Math.floor(i * waves.length / n))];
+      const away = r() < 0.4; const town = away ? RACE_TOWNS[Math.floor(r() * RACE_TOWNS.length)] : null; const club = r() < 0.35 ? RACE_CLUBS[Math.floor(r() * RACE_CLUBS.length)] : '';
+      const f = { Bib: String(bib0 + i), Distance: dist, Wave: wave, 'Start time': start, Hometown: town ? town[0] : 'Chicago, IL', ...(club ? { Club: club } : {}) };
+      const o = { email: mail(nm), ...(r() < 0.12 ? { lang: 'es' } : {}) };
+      if (r() < 0.7) o.open = [Math.round(2 + r() * 20), 1 + Math.floor(r() * 4)];
+      const p = { f };
+      if (town) {
+        const stay = RACE_HOTELS[Math.floor(r() * RACE_HOTELS.length)]; const day = r() < 0.6 ? '2027-05-15' : '2027-05-14';
+        if (town[2] && r() < 0.8) { const [ap, al] = town[1].split(' '); const t1 = 540 + Math.floor(r() * 9) * 60 + (r() < 0.5 ? 25 : 50); const no = Math.floor(100 + r() * 2800);
+          o.tr = `${day} ${hhmm(t1)} ${ap} ${al} ${no} | 2027-05-${r() < 0.7 ? '16' : '17'} ${hhmm(900 + Math.floor(r() * 6) * 60 + 10)} ${ap} ${al} ${no + 1} | ${stay}`; o.hotel = true; o.trip = r() < 0.2; }
+        else if (r() < 0.6) { o.tr = ` |  | ${stay}`; o.hotel = true; }
+        else o.hotel = r() < 0.3;
+        if (o.tr && /Hilton Chicago|Palmer House/.test(o.tr)) p.sh = [/Palmer/.test(o.tr) ? 'am2' : 'am1', 'fin'];
+        if (o.tr && /ORD/.test(o.tr) && dist === 'Half marathon' && wave === '1' && r() < 0.6) p.sh = ['ord'].concat(p.sh || []);
+      }
+      out.push([nm, '', o, [[nm, '', p]]]);
+    }
+  });
+  return out;
+}
 const RACE = {
   key: 'race', slug: 'lakefront-10k-demo', created: 80,
   me: ['Ray Delgado', 'ray@lakefrontrc.example'],
   planners: [{ name: 'Tess Morgan', email: 'tess@lakefrontrc.example', joined: true }, { name: 'Ken Ito', email: 'ken@lakefrontrc.example', joined: true }],
-  cfg: { langs: ['es'], guestMessages: true },
-  // seating for the awards brunch after the race
-  tables: [['spn', 'Sponsors', 'rect', 8, 500, 100, true], ['fin', 'Finish line', 'round', 8, 250, 330], ['lake', 'Lakefront', 'round', 8, 500, 330], ['mus', 'Museum Campus', 'round', 8, 750, 330]],
-  rsvpq: { meal: false, meals: [], diet: false, plus: false, events: true, evOff: [], qs: false, q: ['', ''] },
-  groups: [['el', 'Elite field'], ['cl', 'Running clubs'], ['op', 'Open'], ['vo', 'Volunteers'], ['spn', 'Sponsors']],
-  shuttles: [['ord', 'O’Hare elite pickup', 'ORD', 'Hilton Chicago', '2027-05-15', '13:00', 8, 'Van', 'Terminal 1, door 1E', 'Elite athletes and pacers'],
+  // a race page starts lean (travel, runners, race weekend, updates); this one has Volunteers and Shuttles turned on
+  cfg: { langs: ['es'], guestMessages: true, org: { mods: { vol: true, shut: true, rsvp: false, groups: false, seat: false, inv: false, fld: false, diet: false, badge: false } } },
+  x: { packetHours: 'Fri May 14, 12–7 PM\nSat May 15, 9 AM–5 PM', packetBring: 'Photo ID and your bib number (it’s in your confirmation email). Picking up for a friend? Bring a photo of their ID.',
+    gearCheck: 'White tents behind the start corrals on Columbus Dr. Use the clear bag from your packet; closes 15 minutes before your wave.', meetup: 'Family reunion area on Columbus Dr south of Balbo, letters A–Z by last name.',
+    spots: 'Museum Campus (mile 1 and 5)\nNortherly Island (turnaround)\nFinish straight on Columbus Dr' },
+  groups: [['half', 'Half marathon'], ['10k', '10K'], ['5k', '5K']],
+  shuttles: [['ord', 'O’Hare pickup · half marathon wave 1', 'ORD', 'Hilton Chicago', '2027-05-15', '13:00', 8, 'Van', 'Terminal 1, door 1E', 'For wave 1 runners arriving Saturday'],
     ['am1', 'Race morning · Hilton Chicago', 'Hilton Chicago', 'Buckingham Fountain', '2027-05-16', '05:45', 40, 'Coach', 'Michigan Ave entrance', 'Gear check is next to the start corrals'],
     ['am2', 'Race morning · Palmer House', 'Palmer House Hilton', 'Buckingham Fountain', '2027-05-16', '05:50', 40, 'Coach', 'Monroe St entrance', ''],
     ['fin', 'Finish back to hotels', 'Adler Planetarium', 'Hilton Chicago', '2027-05-16', '09:45', 40, 'Coach', 'Finish area, Solidarity Dr', 'Loops every 20 minutes until 11:00']],
-  fields: [['Bib', 'number', [], 'guest'], ['Wave', 'choice', ['Elite', 'A', 'B', 'C', 'D'], 'guest'], ['Shirt', 'choice', ['XS', 'S', 'M', 'L', 'XL'], 'guest'], ['Emergency contact', 'text', [], 'planners']],
-  invites: [['invitation', 'race', {}]],
-  households: [
-    ['Kiplagat Rono', 'el', { email: 'k.rono@example.com', open: [20, 4], sent: ['delivered', 25], hotel: true, tr: '2027-05-15 11:40 ORD QR 725 | 2027-05-17 16:05 ORD QR 726 | Hilton Chicago' },
-      [['Kiplagat Rono', 'y', { table: 'spn', sh: ['ord', 'am1'], f: { Bib: 1, Wave: 'Elite', Shirt: 'S', 'Emergency contact': 'Agent: M. Kiprop' } }]]],
-    ['Sara Lindgren', 'el', { email: 'sara.lindgren@example.com', open: [19, 3], sent: ['delivered', 25], hotel: true, tr: '2027-05-15 12:30 ORD SK 943 | 2027-05-17 17:40 ORD SK 944 | Hilton Chicago', trip: true },
-      [['Sara Lindgren', 'y', { table: 'spn', sh: ['ord', 'am1'], f: { Bib: 2, Wave: 'Elite', Shirt: 'XS' } }]]],
-    ['Diego Hernández', 'el', { lang: 'es', email: 'diego.hernandez@example.com', open: [18, 2], sent: ['delivered', 25], hotel: true, tr: '2027-05-15 10:55 ORD AM 680 | 2027-05-17 14:20 ORD AM 681 | Hilton Chicago' },
-      [['Diego Hernández', 'y', { table: 'spn', sh: ['ord', 'am1'], f: { Bib: 3, Wave: 'Elite', Shirt: 'M', 'Emergency contact': 'Lucía Hernández' } }]]],
-    ['Lincoln Park Pacers', 'cl', { email: 'captain@lppacers.example', open: [22, 9], sent: ['delivered', 25], hotel: false },
-      [['Megan Doyle', 'y', { table: 'fin', f: { Bib: 214, Wave: 'A', Shirt: 'S' } }], ['Chris Alvarez', 'y', { table: 'fin', f: { Bib: 215, Wave: 'A', Shirt: 'L' } }], ['Priya Shah', 'y', { table: 'fin', f: { Bib: 216, Wave: 'B', Shirt: 'S' } }],
-        ['Tom Novak', 'y', { table: 'fin', f: { Bib: 217, Wave: 'B', Shirt: 'XL' } }], ['Jenna Brooks', 'n', { note: 'Injured — deferring to next year.' }]]],
-    ['South Loop Striders', 'cl', { email: 'run@southloopstriders.example', open: [16, 5], sent: ['delivered', 25], hotel: false },
-      [['Andre Wilson', 'y', { table: 'fin', f: { Bib: 301, Wave: 'B', Shirt: 'M' } }], ['Kim Nguyen', 'y', { table: 'fin', f: { Bib: 302, Wave: 'C', Shirt: 'S' } }], ['Luis Ortega', 'y', { table: 'fin', f: { Bib: 303, Wave: 'C', Shirt: 'L' } }]]],
-    ['Emily Carter', 'op', { email: 'emily.carter@example.com', open: [15, 2], sent: ['delivered', 25], hotel: true, tr: '2027-05-15 09:20 MDW WN 2208 | 2027-05-16 15:10 MDW WN 2215 | Palmer House Hilton' },
-      [['Emily Carter', 'y', { table: 'lake', sh: ['am2'], f: { Bib: 1042, Wave: 'C', Shirt: 'M', 'Emergency contact': 'Mark Carter' } }]]],
-    ['The Okafors', 'op', { email: 'okafor.family@example.com', names: true, open: [14, 3], sent: ['delivered', 25], hotel: true, tr: '2027-05-14 18:45 ORD UA 2032 | 2027-05-17 08:30 ORD UA 2041 | Hilton Chicago' },
-      [['Chidi Okafor', 'y', { table: 'lake', sh: ['am1', 'fin'], f: { Bib: 1110, Wave: 'B', Shirt: 'L' } }], ['Ada Okafor', 'y', { table: 'lake', sh: ['am1', 'fin'], f: { Bib: 1111, Wave: 'C', Shirt: 'S' } }],
-        ['Zara Okafor', 'y', { table: 'lake', age: 'child', skip: ['First wave starts'], f: { Shirt: 'XS' } }]]],
-    ['Marta Kowalski', 'op', { email: 'marta.k@example.com', open: [12, 1], sent: ['delivered', 25], hotel: true, tr: '2027-05-15 14:05 MDW WN 677 | 2027-05-16 18:25 MDW WN 1490 | Hotel Blake' },
-      [['Marta Kowalski', 'y', { f: { Bib: 1203, Wave: 'D', Shirt: 'M' } }]]],
-    ['Ryo Yamamoto', 'op', { lang: 'ja', email: 'ryo.yamamoto@example.com', open: [11, 2], sent: ['delivered', 25], hotel: true, tr: '2027-05-14 09:30 ORD NH 12 | 2027-05-18 11:20 ORD NH 11 | Palmer House Hilton' },
-      [['Ryo Yamamoto', 'y', { table: 'lake', sh: ['am2'], f: { Bib: 1250, Wave: 'B', Shirt: 'M' } }]]],
-    ['Ashley Moore', 'op', { email: 'ashley.moore@example.com', open: [9, 1], sent: ['delivered', 25], hotel: true, tr: '2027-05-15 16:50 ORD AA 1129 | 2027-05-16 17:55 ORD AA 1166 | Congress Plaza Hotel' },
-      [['Ashley Moore', 'y', { f: { Bib: 1301, Wave: 'D', Shirt: 'S' } }]]],
-    ['Ben Fischer', 'op', { email: 'ben.fischer@example.com', open: [5, 1], sent: ['delivered', 25] }, [['Ben Fischer', '', { f: { Bib: 1302 } }]]],
-    ['Carlos Mendoza', 'op', { lang: 'es', email: 'carlos.mendoza@example.com', sent: ['delivered', 25] }, [['Carlos Mendoza', '', { f: { Bib: 1303 } }]]],
-    ['Hannah Schmidt', 'op', { email: 'hannah.schmidt@exmaple.com', sent: ['bounced', 25] }, [['Hannah Schmidt', '', { f: { Bib: 1304 } }]]],
-    ['Jordan Lee', 'op', { email: 'jordan.lee@example.com', open: [7, 2], sent: ['delivered', 25], hotel: false }, [['Jordan Lee', 'n', { note: 'Work travel that weekend. Can I transfer my bib?' }]]],
-    ['Course marshals', 'vo', { email: 'marshals@lakefrontrc.example', open: [10, 6], sent: ['delivered', 12] },
-      [['Dave Russo', 'y', { table: 'mus', f: { Shirt: 'XL', 'Emergency contact': '312-555-0144' } }], ['Nina Patel', 'y', { table: 'mus', f: { Shirt: 'S' } }], ['Greg Hall', 'y', { table: 'mus', f: { Shirt: 'L' } }], ['Rosa Díaz', 'y', { table: 'mus', f: { Shirt: 'M' } }]]],
-    ['Water station 3', 'vo', { email: 'ws3@lakefrontrc.example', open: [8, 2], sent: ['delivered', 12] }, [['Leah Kim', 'y', { table: 'mus', f: { Shirt: 'S' } }], ['Sam Torres', 'y', { table: 'mus', f: { Shirt: 'M' } }]]],
-    ['Windy City Sports Drinks', 'spn', { email: 'events@windycitydrinks.example', open: [6, 1], sent: ['delivered', 12] }, [['Alicia Grant', 'y', { table: 'spn', f: { Shirt: 'M' } }]]],
-  ],
+  fields: [['Bib', 'text', [], 'guest'], ['Distance', 'text', [], 'guest'], ['Wave', 'text', [], 'guest'], ['Start time', 'text', [], 'guest'], ['Hometown', 'text', [], 'planners'], ['Club', 'text', [], 'planners']],
+  households: raceRunners().map(h => { h[1] = { 'Half marathon': 'half', '10K': '10k', '5K': '5k' }[h[3][0][2].f.Distance]; return h; }),
+  vol: [['Packet pickup', 'Friday early', '2027-05-14', '12:00', '15:30', 6, ['Dave Russo', 'Nina Patel', 'Greg Hall', 'Rosa Díaz', 'Owen Walsh', 'Clara Reyes']],
+    ['Packet pickup', 'Friday late', '2027-05-14', '15:30', '19:00', 6, ['Leah Kim', 'Sam Torres', 'Jonah Price']],
+    ['Packet pickup', 'Saturday', '2027-05-15', '09:00', '13:00', 8, ['Alicia Grant', 'Paige Byrne', 'Felix Bauer', 'Hana Sato', 'Ivan Rossi']],
+    ['Course marshals', 'Race morning', '2027-05-16', '05:30', '10:00', 14, ['Marcus Quinn', 'Julia Costa', 'Kofi Mensah', 'Erin Murphy', 'Victor Silva', 'Lucy Adams', 'Arjun Iyer', 'Tess Larsen', 'Jake Dubois']],
+    ['Water station 2 (mile 2)', 'Race morning', '2027-05-16', '06:00', '09:30', 8, ['Zoe Flores', 'Noah Cho', 'Mia Becker', 'Liam Brennan', 'Grace Romero', 'Ethan Walsh', 'Sofia Rivera', 'Pablo Ito']],
+    ['Water station 4 (mile 4.5)', 'Race morning', '2027-05-16', '06:15', '10:00', 8, ['Aisha Haddad', 'Theo Larsen', 'Yuki Morgan']],
+    ['Finish line medals', 'Race morning', '2027-05-16', '07:30', '11:00', 10, ['Dana Price', 'Omar Novak', 'Lena Shah', 'Mateo Hall', 'Elena Moore', 'Ravi Cho']],
+    ['Gear check', 'Race morning', '2027-05-16', '05:30', '11:00', 6, ['Fatima Lee', 'Chris Nguyen']]],
   activity: [['Tess Morgan', ['f:x'], 0.8], ['Ken Ito', ['sc:First wave starts'], 2.5]],
   opens: [[30, 41], [20, 33], [10, 28], [4, 19], [1, 7]],
-  updates: [['Packet pickup is Saturday 10 AM – 5 PM at Lower Hutchinson Field. Bring a photo ID.', 4], ['Volunteers: briefing Friday 6 PM at the club house.', 2, ['vo']]],
-  messages: [['Jordan Lee', 'jordan.lee@example.com', [[false, 'Can I transfer my bib to a friend?', 6], [true, 'Yes — send us their name and email by May 1 and we’ll move it over.', 5.5]]]],
+  updates: [['Packet pickup: Friday 12–7 PM and Saturday 9 AM–5 PM at Lower Hutchinson Field. Bring a photo ID.', 4], ['Half marathoners: wave 1 starts at 6:45 sharp. Corrals close at 6:35.', 2, ['half']]],
+  messages: [['Jordan Lee', 'jordan.lee@example.com', [[false, 'Can I switch from the 10K to the half?', 6], [true, 'Yes, until May 1. We’ll move your bib to wave 2 of the half.', 5.5]]]],
   vendors: { cur: 'USD', list: [
     { cat: 'Venue', name: 'Chicago Park District permit', total: 4200, pays: [{ amt: 4200, due: '2027-02-01', paid: '' }] },
     { cat: 'Other', name: 'LakeTime chip timing', contact: 'Ken Ito', total: 6800, pays: [{ amt: 2000, due: '2026-12-15', paid: '' }] },
     { cat: 'Transport', name: 'Loop Coach Lines', total: 3600, notes: 'Two coaches race morning + finish loop.' },
     { cat: 'Rentals', name: 'Barricades and finish arch', total: 2900 }] },
 };
+// ================= Signal & Noise (organizer demo a year on: Nov 18–19, 2027): attendees, speakers, sponsors, badges =================
+const CONF_HOME = { 'Amara Okafor': 'Lagos, Nigeria', 'Julien Moreau': 'Paris, France', 'Haruto Sato': 'Tokyo, Japan', 'Elena Vasquez': 'Mexico City, Mexico', 'Sam Whitaker': 'Boston, MA',
+  'Grace Liu': 'San Francisco, CA', 'Rachel Kim': 'Seattle, WA', 'Omar Haddad': 'Seattle, WA', 'Lena Fischer': 'Seattle, WA', 'Marcus Bell': 'Atlanta, GA', 'Ana Costa': 'Atlanta, GA',
+  'Priyanka Desai': 'Chicago, IL', 'Lucas Ferreira': 'São Paulo, Brazil', 'Kevin Park': 'Denver, CO', 'Maria Santos': 'Denver, CO', 'Sophie Wagner': 'Berlin, Germany', 'Fatima Zahra': 'Casablanca, Morocco' };
+const CONF_CO = ['Harbor Bank', 'Brightline Health', 'Civic Data Co.', 'Northwind Analytics', 'Tidewater Cloud', 'Atlas Insurance', 'Greenleaf Foods', 'Metro Transit Authority', 'Lumen Labs', 'Parsec Media', 'Kestrel Robotics', 'Bluefin Retail'];
+const CONF_TOWNS = [['New York, NY', ''], ['New York, NY', ''], ['New York, NY', ''], ['Jersey City, NJ', ''], ['Boston, MA', 'LGA DL'], ['Chicago, IL', 'LGA UA'], ['Toronto, ON', 'LGA AC'], ['Washington, DC', 'LGA AA'], ['Austin, TX', 'JFK B6'],
+  ['San Francisco, CA', 'JFK UA'], ['London, UK', 'JFK BA'], ['Philadelphia, PA', ''], ['Atlanta, GA', 'LGA DL'], ['Seattle, WA', 'EWR AS']];
+const CONF_HOTELS = ['Hilton Garden Inn Times Square Central', 'Hilton Garden Inn Times Square Central', 'Pod Times Square', 'Equinox Hotel New York', 'Hyatt Place New York Chelsea'];
+function confPeople(base) {
+  const sh = (v) => (typeof v === 'string' ? v.replace(/2026-11-/g, '2027-11-') : v);
+  // one attendee per row (badges are per person), the old Badge field is the attendee Type, everything a year on
+  const out = []; base.forEach(([hname, gk, o, people]) => people.forEach(([nm, rep, po = {}], i) => { if (rep === 'n') return;
+    const f = { ...(po.f || {}) }; if (f.Badge) { f.Type = f.Badge; delete f.Badge; } if (!f.Type) f.Type = { sp: 'Speaker', spo: 'Sponsor', st: 'Staff', at: 'Attendee', pr: 'Press' }[gk] || 'Attendee';
+    f.Hometown = CONF_HOME[nm] || 'New York, NY'; delete f.Workshop; delete f['T-shirt'];
+    const oo = { ...o, email: i === 0 && people.length === 1 ? o.email : mail(nm), tr: sh(o.tr) }; delete oo.sent; out.push([nm, gk, oo, [[nm, '', { sh: po.sh, f }]]]); }));
+  const r = rnd(1118); const names = unique(r, 70).filter(nm => !out.some(x => x[0] === nm)).slice(0, 46);
+  names.forEach((nm, i) => { const town = CONF_TOWNS[Math.floor(r() * CONF_TOWNS.length)]; const kind = i < 7 ? 'Speaker' : i < 11 ? 'Sponsor' : i < 13 ? 'Press' : 'Attendee';
+    const o = { email: mail(nm), ...(r() < 0.75 ? { open: [Math.round(2 + r() * 25), 1 + Math.floor(r() * 3)] } : {}) };
+    if (town[1]) { const [ap, al] = town[1].split(' '); const no = Math.floor(100 + r() * 2500); const stay = CONF_HOTELS[Math.floor(r() * CONF_HOTELS.length)];
+      if (r() < 0.75) { o.tr = `2027-11-17 ${hhmm(600 + Math.floor(r() * 10) * 60 + 15)} ${ap} ${al} ${no} | 2027-11-19 ${hhmm(1080 + Math.floor(r() * 4) * 60)} ${ap} ${al} ${no + 1} | ${stay}`; o.hotel = true; } else o.hotel = r() < 0.4; }
+    const p = { f: { Type: kind, Company: CONF_CO[Math.floor(r() * CONF_CO.length)], Hometown: town[0] } };
+    if (o.tr && /Hilton Garden/.test(o.tr)) p.sh = (/JFK/.test(o.tr) ? ['jfk'] : /LGA/.test(o.tr) ? ['lga'] : ['ewr']).concat(['d1']);
+    out.push([nm, { Speaker: 'sp', Sponsor: 'spo', Press: 'pr' }[kind] || 'at', o, [[nm, '', p]]]); });
+  return out;
+}
+Object.assign(CONFERENCE, {
+  year: 1,
+  // lean: travel, attendees, agenda, updates — with Badges & check-in and Shuttles turned on
+  cfg: { title: 'Signal & Noise 2027', langs: ['es', 'fr', 'ja'], guestMessages: true, org: { mods: { badge: true, shut: true, rsvp: false, groups: false, seat: false, inv: false, fld: false, diet: false, vol: false } } },
+  x: { speakers: '' },
+  groups: [['sp', 'Speakers'], ['spo', 'Sponsors'], ['st', 'Staff'], ['at', 'Attendees'], ['pr', 'Press']],
+  tables: [], invites: [], showSeats: false,
+  shuttles: CONFERENCE.shuttles.map(x => x.map(v => (typeof v === 'string' ? v.replace(/2026-11-/g, '2027-11-') : v))),
+  fields: [['Type', 'text', [], 'guest'], ['Company', 'text', [], 'guest'], ['Hometown', 'text', [], 'planners']],
+  households: confPeople(CONFERENCE.households),
+  updates: [['Badge pickup opens at 8:00 AM on the North Concourse. Bring a photo ID.', 7], ['Speakers: tech check is Wednesday at 4 PM in Hall 1A.', 9, ['sp']]],
+});
+// the wedding keeps the full set: guest list & RSVP, dietary, seating, invitations, shuttles (and groups + fields, one tap away)
+WEDDING.cfg = { ...WEDDING.cfg, org: { mods: { rsvp: true, diet: true, seat: true, inv: true, shut: true, groups: false, fld: false, vol: false, badge: false } } };
 window.ORG_DEMOS = { wedding: WEDDING, conference: CONFERENCE, race: RACE };
 window.ORG_DEMO = { build, fakeClient, fakeNotify };
 })();

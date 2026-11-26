@@ -27,25 +27,36 @@ const overflow = (page) => page.evaluate(() => { const cw = document.documentEle
   const tab = async (page, k) => { await page.click(`[data-gl-tab="${k}"]`); await page.waitForTimeout(350); };
   const count = (page, sel) => page.$$eval(sel, xs => xs.length);
 
-  for (const [k, title, min] of [['wedding', 'Maya & Theo', { hs: 25, ppl: 40, tables: 8, runs: 4, fields: 3 }], ['conference', 'Signal & Noise 2026', { hs: 18, ppl: 25, tables: 4, runs: 4, fields: 4 }], ['race', 'Lakefront 10K', { hs: 15, ppl: 25, tables: 4, runs: 4, fields: 4 }]]) {
+  const mods = async (page, on) => { await page.click('[data-mod-open]'); await page.waitForSelector('dialog[open] [data-mod]');
+    for (const k of on) { const c = await page.$(`dialog[open] [data-mod="${k}"]`); if (c && !(await c.isChecked())) { await c.evaluate(x => x.click()); await page.waitForTimeout(250); } }
+    await page.click('dialog[open] [data-gl-x]'); await page.waitForTimeout(250); };
+
+  // 11/26: every type opens travel-first (Travel, its people, its own tab, Updates + the features it has on). The wedding demo
+  // has Guest list & RSVP, Dietary, Seating, Invitations and Shuttles on; race and conference are checked in tests/org-types.js.
+  for (const [k, title, min] of [['wedding', 'Maya & Theo', { hs: 25, ppl: 40, tables: 8, runs: 4, fields: 3 }], ['conference', 'Signal & Noise 2027', { runs: 4 }], ['race', 'Lakefront 10K', { runs: 4 }]]) {
     for (const w of [390, 1280]) {
       const { ctx, page, net, errors } = await open(w);
-      await page.goto(`${BASE}?demo=${k}&view=organizer`); await page.waitForSelector('.gl-h', { timeout: 30000 }); await page.waitForTimeout(500);
+      await page.goto(`${BASE}?demo=${k}&view=organizer`); await page.waitForSelector('[data-gl-tab]', { timeout: 30000 }); await page.waitForTimeout(500);
       const L = `${k} ${w}:`;
-      ok(/#guests\/[\w-]+$/.test(page.url()) && (await page.textContent('#org-bar')).includes(title), `${L} opens the guest list under the Demo bar`);
-      const sum = await page.$$eval('[data-gl-sum] div', ds => Object.fromEntries(ds.map(d => [d.querySelector('small').textContent, d.querySelector('b').textContent])));
-      ok(+sum.Invites >= min.hs && +sum.Guests >= min.ppl && /^\d+\/\d+$/.test(sum.Opened) && +sum.Coming > 10, `${L} dashboard filled in (${JSON.stringify(sum)})`);
-      ok((await count(page, '.gl-trail li.on')) > 20 && (await count(page, '.gl-trail li.off')) > 0, `${L} households at different steps (sent / opened / replied / hotel)`);
-      if (SHOTS) await page.screenshot({ path: `${SHOTS}/${k}-${w}-guests.png` });
-      await tab(page, 'diet'); ok((await count(page, '.gl-tiles div')) >= 4, `${L} dietary tiles`);
-      await tab(page, 'groups'); ok((await count(page, '.gl-groups li')) >= 5, `${L} groups with counts`);
-      await tab(page, 'seat'); ok((await count(page, '[data-drop]')) >= min.tables, `${L} seating: tables arranged`);
-      await tab(page, 'inv'); await page.waitForTimeout(300);
-      ok(await page.$eval('.iv-card img', i => i.complete && i.naturalWidth > 100).catch(() => false), `${L} invitations: the designed picture shows`);
-      ok(/Sent|Delivered|Bounced|Queued/.test(await page.textContent('.iv-send')), `${L} invitations: send history`);
-      await tab(page, 'arr'); ok((await count(page, '.ar-tag')) >= 5, `${L} arrivals board`);
+      ok(/#guests\/[\w-]+$/.test(page.url()) && (await page.textContent('#org-bar')).includes(title), `${L} opens the organizer screen under the Demo bar`);
+      ok(await page.$eval('[data-gl-tab="trav"]', b => b.classList.contains('on')), `${L} opens on Travel`);
+      await tab(page, 'trav'); ok((await count(page, '.ar-tag')) >= 5, `${L} travel: arrivals board`);
       await tab(page, 'shut'); ok((await page.textContent('.gl')).match(/\d+ runs · \d+ riders/) && !(await page.textContent('.gl')).includes(' 0 riders'), `${L} shuttle runs with riders`);
-      await tab(page, 'fld'); ok((await count(page, '[data-fd-edit]')) >= min.fields && (await count(page, '[data-fd-cell]')) > 20, `${L} fields`);
+      if (k === 'wedding') {
+        await tab(page, 'list'); await page.waitForSelector('.gl-h');
+        const sum = await page.$$eval('[data-gl-sum] div', ds => Object.fromEntries(ds.map(d => [d.querySelector('small').textContent, d.querySelector('b').textContent])));
+        ok(+sum.Invites >= min.hs && +sum.Guests >= min.ppl && /^\d+\/\d+$/.test(sum.Opened) && +sum.Coming > 10, `${L} dashboard filled in (${JSON.stringify(sum)})`);
+        ok((await count(page, '.gl-trail li.on')) > 20 && (await count(page, '.gl-trail li.off')) > 0, `${L} households at different steps (sent / opened / replied / hotel)`);
+        if (SHOTS) await page.screenshot({ path: `${SHOTS}/${k}-${w}-guests.png` });
+        await tab(page, 'diet'); ok((await count(page, '.gl-tiles div')) >= 4, `${L} dietary tiles`);
+        await tab(page, 'seat'); ok((await count(page, '[data-drop]')) >= min.tables, `${L} seating: tables arranged`);
+        await tab(page, 'inv'); await page.waitForTimeout(300);
+        ok(await page.$eval('.iv-card img', i => i.complete && i.naturalWidth > 100).catch(() => false), `${L} invitations: the designed picture shows`);
+        ok(/Sent|Delivered|Bounced|Queued/.test(await page.textContent('.iv-send')), `${L} invitations: send history`);
+        await mods(page, ['groups', 'fld']);
+        await tab(page, 'groups'); ok((await count(page, '.gl-groups li')) >= 5, `${L} groups (turned on in Add features) with counts`);
+        await tab(page, 'fld'); ok((await count(page, '[data-fd-edit]')) >= min.fields && (await count(page, '[data-fd-cell]')) > 20, `${L} fields (turned on in Add features)`);
+      }
       ok((await overflow(page)).length === 0, `${L} no sideways overflow`);
       if (w === 1280 && k === 'wedding') {
         // change things everywhere: all of it stays here
@@ -63,7 +74,7 @@ const overflow = (page) => page.evaluate(() => { const cw = document.documentEle
         await page.fill('#an-body', 'Bring sunscreen for the ceremony.'); await page.click('[data-an="post"]'); await page.waitForTimeout(800);
         ok((await page.textContent('.ann-list')).includes('Bring sunscreen'), 'sandbox: an update posts');
         ok((await page.textContent('#mine-msgs')).includes('Grace Kim'), 'messages: guest threads');
-        await page.click('.org-nav a:nth-child(2)'); await page.waitForSelector('.builder', { timeout: 30000 }); await page.waitForTimeout(1500);
+        await page.click('.org-nav a[href^="#page="]'); await page.waitForSelector('.builder', { timeout: 30000 }); await page.waitForTimeout(1500);
         ok((await count(page, '.ed-by')) >= 2, 'page: "Edited by" a co-planner');
         await page.click('.b-top [data-act="settings"]'); await page.waitForTimeout(500);
         await page.evaluate(() => { const d = document.querySelector('details[data-acc="team"]'); if (d) d.open = true; }); await page.waitForTimeout(300);

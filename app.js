@@ -827,7 +827,9 @@ const TYPE_FIELDS = {
   Race: { name: 'Race day', fields: [
     ['startAt', 'Start', 'place', 'Start line location'], ['finishAt', 'Finish', 'place', 'Finish line location'],
     ['packet', 'Packet pickup', 'text', 'Where'], ['packetWhen', 'Packet pickup time', 'datetime'],
+    ['packetHours', 'Packet pickup days and hours', 'lines', 'One per line: Fri May 14, 12–7 PM'], ['packetBring', 'What to bring to packet pickup', 'text', 'Photo ID and your bib number'],
     ['course', 'Course map', 'url', 'Link, GPX or image URL'], ['spots', 'Spectator spots', 'lines', 'One per line'],
+    ['gearCheck', 'Gear check', 'text', 'Where, and which bag to use'], ['meetup', 'Finish meet-up point', 'text', 'Where to find your people after'],
     ['closures', 'Road closures', 'text', 'Which roads, and when'], ['closuresUrl', 'Road closures link', 'url', 'https://…']] },
   Concert: { name: 'Show info', fields: [
     ['doors', 'Doors', 'time'], ['opener', 'Opener', 'text', 'Act name'], ['openerAt', 'Opener on at', 'time'],
@@ -928,12 +930,12 @@ function typeInfoHTML(cfg, opt = {}) {
   if (ONP) tl.forEach(x => { x[2] = ['callTime', 'doors', 'showtime', 'wave', 'openerAt', 'headlinerAt'].find(k => has(k) && d[k] === x[0]) || (x[1] === d.opener ? 'opener' : x[1] === d.headliner ? 'headliner' : 'doors'); });
   if (tl.length) out.push(`<ol class="tl">${tl.sort((a, b) => (a[0] || '99').localeCompare(b[0] || '99')).map(([tm, n, ek]) => `<li${ek ? edA('x:' + ek) : ''}><time>${esc(fmtTime(tm)) || '—'}</time><div><b>${esc(n)}</b></div></li>`).join('')}</ol>`);
   for (const [k, label, kind] of sp.fields) {
-    if (['stops', 'doors', 'opener', 'openerAt', 'headliner', 'headlinerAt', 'rsvp', 'rsvpBy', 'blockHotel', 'blockUrl', 'blockCode', 'blockBy', 'packetWhen', 'badgeWhen', 'checkinWhen', 'callTime', 'showtime', 'wave', 'closuresUrl', 'spots', 'speakers'].includes(k) || !filled(kind, d[k])) continue;
+    if (['stops', 'doors', 'opener', 'openerAt', 'headliner', 'headlinerAt', 'rsvp', 'rsvpBy', 'blockHotel', 'blockUrl', 'blockCode', 'blockBy', 'packetWhen', 'packetHours', 'badgeWhen', 'checkinWhen', 'callTime', 'showtime', 'wave', 'closuresUrl', 'spots', 'speakers'].includes(k) || !filled(kind, d[k])) continue;
     const val = d[k]; const r0 = rows.length, o0 = out.length;
     if (k === 'course' && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(val)) out.push(`<a class="course-img" href="${esc(val)}" target="_blank" rel="noopener noreferrer"><img src="${esc(val)}" alt="${t('Course map')}" loading="lazy" referrerpolicy="no-referrer"></a>`);
     else if (k === 'course') rows.push(linkRow('Course map', val, /\.gpx(\?|$)/i.test(val) ? t('GPX file') : ''));
     else if (k === 'closures') rows.push(d.closuresUrl ? linkRow('Road closures', d.closuresUrl, val) : noteRow('Road closures', val));
-    else if (k === 'packet' || k === 'badge' || k === 'checkin') { const w = d[k + 'When']; rows.push(`<li><a href="${esc(L.place(val, v ? placeLabel(v) : ''))}" target="_blank" rel="noopener noreferrer"><b>${esc(t(label))}</b><span>${esc([val, dt(w)].filter(Boolean).join(' · '))}</span>${arrow}</a></li>`); }
+    else if (k === 'packet' || k === 'badge' || k === 'checkin') { const w = d[k + 'When']; const hrs = k === 'packet' ? String(d.packetHours || '').split('\n').map(x => x.trim()).filter(Boolean).join(' · ') : ''; rows.push(`<li><a href="${esc(L.place(val, v ? placeLabel(v) : ''))}" target="_blank" rel="noopener noreferrer"><b>${esc(t(label))}</b><span>${esc([val, hrs || dt(w)].filter(Boolean).join(' · '))}</span>${arrow}</a></li>`); }
     else if (kind === 'place') rows.push(`<li><a href="${esc(placeURL(val))}" target="_blank" rel="noopener noreferrer"><b>${esc(t(label))}</b><span>${esc(val.q)}</span>${arrow}</a></li>`);
     else if (kind === 'links') val.filter(l => l.label && l.url).forEach(l => rows.push(linkRow(label === 'Teams' || l.label.toLowerCase() === label.toLowerCase() ? l.label : `${label} · ${l.label}`, l.url)));
     else if (kind === 'url') rows.push(linkRow(label, val));
@@ -941,7 +943,7 @@ function typeInfoHTML(cfg, opt = {}) {
     if (ONP) { for (let j = r0; j < rows.length; j++) rows[j] = rows[j].replace(/^<li/, '<li' + edA('x:' + k)); for (let j = o0; j < out.length; j++) out[j] = out[j].replace(/^<a/, '<a' + edA('x:' + k)); }
   }
   const tagLast = (k) => { if (ONP) rows[rows.length - 1] = rows[rows.length - 1].replace(/^<li/, '<li' + edA('x:' + k)); };
-  if (!has('packet') && has('packetWhen')) { rows.push(noteRow('Packet pickup', dt(d.packetWhen))); tagLast('packetWhen'); }
+  if (!has('packet') && (has('packetWhen') || has('packetHours'))) { rows.push(noteRow('Packet pickup', String(d.packetHours || '').split('\n').map(x => x.trim()).filter(Boolean).join(' · ') || dt(d.packetWhen))); tagLast(has('packetHours') ? 'packetHours' : 'packetWhen'); }
   if (!has('badge') && has('badgeWhen')) { rows.push(noteRow('Badge pickup', dt(d.badgeWhen))); tagLast('badgeWhen'); }
   if (!has('checkin') && has('checkinWhen')) { rows.push(noteRow('Check-in and wristband pickup', dt(d.checkinWhen))); tagLast('checkinWhen'); }
   // RSVP (any type): the organizer's own link, or the reply-by date when replies come in through the form
@@ -1954,8 +1956,8 @@ const TYPE_CARDS = {
   Trip: [['route', 'Route', 'Cities and dates', []], ['companions', 'Travelling together', 'Who is coming', ['companions']]],
   Wedding: [['block', 'Room block', 'Hotel, code, deadline', ['blockHotel', 'blockUrl', 'blockCode', 'blockBy']],
     ['dress', 'Dress code', 'Attire', ['dress']], ['registry', 'Registry', 'Links', ['registry']]],
-  Race: [['startfinish', 'Start and finish', 'Map pins', ['startAt', 'finishAt']], ['packet', 'Packet pickup', 'Where and when', ['packet', 'packetWhen']],
-    ['course', 'Course map', 'Link, GPX or image', ['course']], ['spots', 'Spectator spots', 'Where to cheer', ['spots']], ['closures', 'Road closures', 'Roads, times', ['closures', 'closuresUrl']]],
+  Race: [['startfinish', 'Start and finish', 'Map pins', ['startAt', 'finishAt']], ['packet', 'Packet pickup', 'Where and when', ['packet', 'packetWhen', 'packetHours', 'packetBring']],
+    ['course', 'Course map', 'Link, GPX or image', ['course']], ['spots', 'Spectator spots', 'Where to cheer', ['spots']], ['gear', 'Gear check and meet-up', 'Bag drop, finding your people', ['gearCheck', 'meetup']], ['closures', 'Road closures', 'Roads, times', ['closures', 'closuresUrl']]],
   Concert: [['settimes', 'Set times', 'Doors, opener, headliner', ['doors', 'opener', 'openerAt', 'headliner', 'headlinerAt']], ['bags', 'Bag policy', 'What’s allowed', ['bags']],
     ['parking', 'Parking and pickup', 'Lots, rideshare', ['parking', 'pickup']], ['setlist', 'Setlist', 'Link', ['setlist']]],
   'Sporting event': [['seating', 'Seating chart', 'Link', ['seating']], ['teams', 'Teams', 'Links', ['teams']], ['tailgate', 'Tailgating and parking', 'Lots and times', ['tailgate', 'parking']], ['bags', 'Bag policy', 'What’s allowed', ['bags']]],
@@ -2067,6 +2069,8 @@ function normalize(c) {
   { const seen = new Set(); c.stops.forEach((x, i) => { if (seen.has(x.id)) x.id += '-' + i; seen.add(x.id); }); }
   sortStops(c); // stops are in date order everywhere (an old page could keep a stop added later at the end); ids go with them
   if (c.shifts !== undefined) { c.shifts = Array.isArray(c.shifts) ? c.shifts.filter(x => x && typeof x.id === 'string' && /^[\w-]{1,40}$/.test(x.id) && Number.isInteger(x.d) && Math.abs(x.d) <= 800 && (x.from === '' || isoDay(x.from))).map(x => ({ id: x.id, from: x.from, d: x.d })).slice(-20) : []; if (!c.shifts.length) delete c.shifts; } // Move trip dates: guests' saved places follow
+  if (c.site !== undefined && !(typeof c.site === 'string' && /^https?:\/\/[^\s"<>]+$/i.test(c.site) && c.site.length < 500)) delete c.site; // the event's own website (travel-only pages link back to it)
+  if (c.travelOnly !== undefined && c.travelOnly !== true) delete c.travelOnly;
   if (c.logo !== undefined && !(typeof c.logo === 'string' && /^https:\/\/\S+$/.test(c.logo) && c.logo.length < 2000)) delete c.logo; // brand logo (Design → Match your brand)
   if (c.flyInto !== undefined) { const f = typeof c.flyInto === 'string' ? c.flyInto.trim().toUpperCase() : ''; if (f === 'NONE') c.flyInto = 'none'; else if (/^[A-Z]{3}$/.test(f) && c.venue && (!window.AIRPORTS || airportByCode(f))) c.flyInto = f; else delete c.flyInto; } // the organizer's "Fly into" airport (builder → When and where)
   if (c.rsvpq !== undefined) c.rsvpq = normRsvpq(c.rsvpq); // RSVP form questions (builder → RSVP)
@@ -2299,9 +2303,18 @@ function eventTabHTML(cfg) {
     schedule: () => `<div data-slot="schedule-wrap">${scheduleSecHTML(cfg)}</div>`,
     weather: () => cfg.venue && cfg.start && cfg.tools.weather ? sec('weather', t('Weather'), `<div data-slot="weather"><div class="skel" role="status"><span></span><span></span><em>${t('Loading weather…')}</em></div></div>`) : '',
   };
+  // "Already have a website? Use 1LinkTrip just for travel": the event's own site has the rest
+  if (cfg.travelOnly) return siteCardHTML(cfg, true) + parts.weather();
+  const site = cfg.site ? siteCardHTML(cfg, false) : '';
   // trips: the route lives inside the Itinerary, which takes whichever of the two slots comes first
   const o = sectionOrder(cfg); if (routeInItin(cfg) && o.indexOf('route') < o.indexOf('schedule')) { o.splice(o.indexOf('schedule'), 1); o.splice(o.indexOf('route'), 1, 'schedule'); }
-  return o.map(id => parts[id] ? parts[id]() : customSecHTML(cfg, id)).join('');
+  return site + o.map(id => parts[id] ? parts[id]() : customSecHTML(cfg, id)).join('');
+}
+function siteCardHTML(cfg, only) {
+  const go = only ? TABS.filter(([k]) => k !== 'event' && tabsFor(cfg).some(x => x[0] === k)) : [];
+  return `<section class="ev-sec to-card${only ? ' only' : ''}">${only ? `<p>${t('Everything about the event is on its website. Here: getting there, where to stay, what’s nearby and your own trip.')}</p>` : ''}
+    ${cfg.site ? `<a class="btn ${only ? 'primary' : ''} to-site" href="${esc(cfg.site)}" target="_blank" rel="noopener noreferrer">${t('Event website')} <span aria-hidden="true">↗</span><small>${esc(hostOf(cfg.site))}</small></a>` : ''}
+    ${go.length ? `<div class="to-go">${go.map(([k, l]) => `<button type="button" class="btn" data-tab-go="${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${TAB_ICONS[k]}</svg>${t(l)}</button>`).join('')}</div>` : ''}</section>`;
 }
 // A trip whose destination is a country or region ("Japan") has no useful point for maps, searches or airports: use the
 // first route stop's point instead (the destination name stays as written). Stops without a map point are found by city.
@@ -2426,7 +2439,7 @@ function renderEvent(cfg, root, opts = {}) {
         </div>
       </header>
       ${ticketHTML(cfg, air, opts)}
-      <div class="ev-body">${mineOn(cfg) ? `<div class="mi-wrap" data-slot="mine">${mineBarHTML(cfg, null, !!opts.onpage)}</div>` : ''}${eventTabHTML(cfg)}</div>
+      <div class="ev-body">${cfg.travelOnly ? eventTabHTML(cfg) : ''}${mineOn(cfg) ? `<div class="mi-wrap" data-slot="mine">${mineBarHTML(cfg, null, !!opts.onpage)}</div>` : ''}${cfg.travelOnly ? '' : eventTabHTML(cfg)}</div>
     </div>
     ${tabs.some(x => x[0] === 'travel') ? panel('travel', travelTabHTML(cfg, air), tabHead('travel')) : ''}
     ${tabs.some(x => x[0] === 'nearby') ? panel('nearby', nearbyTabHTML(cfg), tabHead('nearby')) : ''}
@@ -2864,7 +2877,7 @@ function renderViewer(cfg, { exampleId, tab } = {}) {
   // the short link that always shows the latest version; other guests see the page as before
   const own = exampleId ? null : ownLongPage(cfg, packed);
   const canSave = !exampleId && SB && (own || LS.get('signedIn'));
-  $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#">${BRAND}</a>${exampleId ? `<span class="vbar-note">${t('Example page')}</span>` : ''}${canSave ? `<button type="button" class="btn sm primary" data-save-mine>${t('Save to My pages')}</button>` : vbarEditHTML(editHref, exampleId ? t('Customize this') : t('Edit a copy'))}</div><div id="ev-root"></div></div>`;
+  $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#">${BRAND}</a>${exampleId ? `<a class="vbar-note" href="${esc(location.origin + APP_ROOT)}#examples">← ${t('Examples')}</a>` : ''}${canSave ? `<button type="button" class="btn sm primary" data-save-mine>${t('Save to My pages')}</button>` : vbarEditHTML(editHref, exampleId ? t('Customize this') : t('Edit a copy'))}</div><div id="ev-root"></div></div>`;
   $('.vbar').insertAdjacentHTML('beforeend', langPillsHTML(cfg) + langSelectHTML(cfg));
   requestAnimationFrame(pillInView);
   $('[data-save-mine]')?.addEventListener('click', (e) => saveLongToMine(packed, e.currentTarget));
@@ -2887,7 +2900,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   $('#app').innerHTML = `
   <div class="builder" data-set="0">
     <header class="b-top">
-      <a class="brand sm" href="#">${BRAND}</a>
+      <a class="brand sm" href="${esc(homeHref())}" aria-label="${esc(t('Home'))}">${BRAND}</a>
       <button type="button" class="btn sm ghost b-gear" data-act="settings" aria-expanded="false" aria-controls="b-set">${GEAR_IC}<span>${t('Settings')}</span></button>
       <button class="btn primary sm" data-act="publish">${t('Share')}</button>
       <div class="b-save" data-save role="status" aria-live="polite"></div>
@@ -3047,6 +3060,8 @@ function buildForm() {
     ${fieldWrap('Event type', `<select id="f-type" data-f="type">${TYPES.map(x => `<option value="${x}" ${x === c.type ? 'selected' : ''}>${esc(t(TYPE_LABEL[x] || x))}</option>`).join('')}</select>`, 'f-type')}
     ${fieldWrap('Title', `<input id="f-title" data-f="title" value="${esc(c.title)}" maxlength="80">`, 'f-title')}
     ${fieldWrap('Tagline', `<input id="f-tagline" data-f="tagline" value="${esc(c.tagline)}" maxlength="140" placeholder="${t('Optional')}">`, 'f-tagline')}
+    ${fieldWrap('Event website', `<input id="f-site" type="url" inputmode="url" data-site value="${esc(c.site || '')}" maxlength="400" placeholder="${t('Optional')} · https://…">`, 'f-site')}
+    <label class="tool to-sw"><input type="checkbox" data-travel-only${c.travelOnly ? ' checked' : ''}><span class="sw" aria-hidden="true"></span><span><b>${t('Just for travel')}</b><small>${t('Your website has the event details; this page has getting there, hotels, nearby and each guest’s trip.')}</small></span></label>
   </div></details>
   <details class="acc" data-acc="when" ${open.has('when') ? 'open' : ''}><summary><span class="st ${whenOk ? 'ok' : ''}" aria-hidden="true"></span><b>${t('When and where')}</b><small>${esc([c.start ? fmt(c.start.slice(0, 10), { month: 'short', day: 'numeric', year: 'numeric' }) : '', c.venue ? c.venue.name : ''].filter(Boolean).join(' · '))}</small></summary><div class="acc-b">
     ${whenFieldsHTML(c, 'f')}
@@ -3149,6 +3164,8 @@ function wireInputs(root) {
     else if (d.x) { xd()[d.x] = i.value; changed(); }
     else if (d.xl) { xd()[d.xl][+d.i][d.k] = i.value; changed(); }
     else if (d.xp) { xd()[d.xp] = i.value ? { q: i.value } : null; const fb = root.querySelector(`[data-xfind="${d.xp}"]`); if (fb) fb.textContent = t('Pin on map'); changed(); }
+    else if (d.site != null) { const u = normSite(i.value); if (u) cfg.site = u; else delete cfg.site; changed(); }
+    else if (d.travelOnly != null) { if (i.checked) cfg.travelOnly = true; else delete cfg.travelOnly; changed(); }
     else if (d.f) { cfg[d.f] = i.value; if (d.f === 'start' && cfg.end && cfg.end < cfg.start) { cfg.end = ''; const en = root.querySelector('[data-f="end"]'); if (en) en.value = ''; } changed(d.f === 'type'); }
     else if (d.v) { cfg.venue[d.v] = i.value; changed(); }
     else if (d.t) { cfg.theme[d.t] = i.value; $$('.sw', root).forEach(s => s.classList.remove('on')); changed(); }
@@ -3640,7 +3657,9 @@ function suRender() {
   } else if (n === 1) {
     h = t('What’s it called, and when?');
     body = `<div class="field"><label for="su-title">${t('Name')}</label><input id="su-title" data-su-f="title" value="${esc(c.title)}" maxlength="80" autocomplete="off"></div>
-      ${whenFieldsHTML(c, 'su', !SU.dated, true)}`;
+      ${whenFieldsHTML(c, 'su', !SU.dated, true)}
+      <label class="tool to-sw su-to"><input type="checkbox" data-su-tonly2${c.travelOnly ? ' checked' : ''}><span class="sw" aria-hidden="true"></span><span><b>${t('Already have a website?')}</b><small>${t('Use 1LinkTrip just for travel: getting there, hotels, nearby and each guest’s trip.')}</small></span></label>
+      <div class="field" data-su-sitebox${c.travelOnly ? '' : ' hidden'}><label for="su-site">${t('Event website')}</label><input id="su-site" type="url" inputmode="url" value="${esc(c.site || '')}" maxlength="400" placeholder="https://…"></div>`;
     cta = `<button type="button" class="btn primary big" data-su="next" ${c.title.trim() && SU.dated ? '' : 'disabled'}>${t('Continue')}</button>`;
   } else if (n === 2) {
     h = t(isTrip(c) ? 'Where are you going?' : 'Where is it?');
@@ -3711,6 +3730,8 @@ document.addEventListener('input', (e) => {
   if (!SU || !e.target.closest('.setup')) return;
   const i = e.target; const c = SU.cfg; const f = i.dataset.suF;
   if (i.id === 'su-q') { SU.q = i.value; return; }
+  if (i.dataset.suTonly2 != null) { if (i.checked) c.travelOnly = true; else delete c.travelOnly; const bx = $('[data-su-sitebox]'); if (bx) bx.hidden = !i.checked; LS.set('draft', c); pageSave(LS.get('draftId'), { cfg: c }); suPreview(); return; }
+  if (i.id === 'su-site') { const u = normSite(i.value); if (u) c.site = u; else delete c.site; LS.set('draft', c); pageSave(LS.get('draftId'), { cfg: c }); suPreview(); return; }
   if (i.dataset.when) { if (i.dataset.when === 'sd') SU.dated = !!i.value; whenInput(c, i.dataset.when, i.value); }
   else if (!f) return;
   if (f === 'title') c.title = i.value;
@@ -3970,6 +3991,8 @@ const SB = window.EP_SUPABASE && window.EP_SUPABASE.url ? window.EP_SUPABASE : n
 const SB_JS = { src: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js', integrity: 'sha384-uteMfOloLDGt042uDz+xHGF3ym63/WQ6rFq7murQRG8Ih7QrXGEGNtWd8688sb4O' };
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,46}[a-z0-9]$/;
 const siteBase = () => location.origin + APP_ROOT + (ORG ? ORG.q : ''); // the app itself (a /<name> address is a page, not the app); a demo stays a demo
+// the logo: the real home page from anywhere (a demo, a ?e= or /<name> address); inside the app it stays a hash link
+const homeHref = () => (ORG || location.search || PATH ? location.origin + APP_ROOT : '#');
 // a hosted page's link: the pretty one when the page has a name, else ?e=<slug> (a demo's: its guest-side example)
 const shortURL = (slug) => ORG ? location.origin + APP_ROOT + '?demo=' + ORG.k : pnName(slug) ? siteBase() + pnName(slug) : `${siteBase()}?e=${slug}`;
 const linkText = (slug) => ORG ? location.host + APP_ROOT + '?demo=' + ORG.k : pnName(slug) ? location.host + APP_ROOT + pnName(slug) : '?e=' + slug;
@@ -4147,7 +4170,7 @@ async function renderHosted(slug, tab) {
   }
   if (shArrived && !cfg.demoTrip) { const k = syncKey(cfg); const was = LS.get('shIn:' + k); if (was && was !== sq) shareUnfollow(cfg); if ((LS.get('shOut:' + k) || {}).tok !== sq) LS.set('shIn:' + k, sq); }
   if (LS.get('shIn:' + syncKey(cfg))) { await shareFollow(cfg, hosted, shArrived); if (shArrived && !tab && cfg.tools && cfg.tools.mytrip && tabsFor(cfg).some(x => x[0] === 'mytrip')) tab = 'mytrip'; }
-  $('.vbar').insertAdjacentHTML('beforeend', `${langPillsHTML(cfg)}${langSelectHTML(cfg)}${vbarEditHTML(`#edit=${packEvent(cfg)}`, t('Edit a copy'))}`);
+  $('.vbar').insertAdjacentHTML('beforeend', `${LS.get('signedIn') && !hosted.hh ? `<a class="btn sm vbar-mine" href="${esc(location.origin + APP_ROOT)}#mine">${t('My pages')}</a>` : ''}${langPillsHTML(cfg)}${langSelectHTML(cfg)}${vbarEditHTML(`#edit=${packEvent(cfg)}`, t('Edit a copy'))}`);
   requestAnimationFrame(pillInView);
   if (row.published === false) $('.viewer').insertAdjacentHTML('beforeend', `<div class="own-stale" role="status"><span>${t('Only you can see this page.')}</span></div>`);
   guestRender(cfg, $('#ev-root'), { tab, hosted, shareUrl: hosted.url });
@@ -4274,15 +4297,16 @@ function wireHosted(cfg, art, hosted, opts = {}) {
   const src = opts.src || cfg;
   const body = art.querySelector('.ev-panel[data-panel="event"] .ev-body'); if (!body) return;
   body.insertAdjacentHTML('afterbegin', '<div data-slot="ann"></div>');
-  const R = rsvpOf(cfg); const HH = !!(hosted.hh && !isTrip(cfg));
-  if ((R.on && R.via === 'form') || HH) {
-    const html = sec('rsvp', t('RSVP'), `<div data-slot="rsvp">${HH ? hhFormHTML(cfg, src, hosted) : rsvpFormHTML(cfg, hosted, src)}</div>`);
+  const R = rsvpOf(cfg); const HH = !!(hosted.hh && !isTrip(cfg)); const INFO = HH && otGuestNoRsvp(src);
+  if ((R.on && R.via === 'form' && !src.travelOnly && !otGuestNoRsvp(src)) || HH) {
+    const html = INFO ? sec('rsvp', otYour(src), `<div data-slot="rsvp">${hhInfoHTML(cfg, hosted.hh)}</div>`) : sec('rsvp', t('RSVP'), `<div data-slot="rsvp">${HH ? hhFormHTML(cfg, src, hosted) : rsvpFormHTML(cfg, hosted, src)}</div>`);
     const wrap = body.querySelector('[data-slot="rsvp-wrap"]');
     if (wrap) wrap.innerHTML = html; else body.querySelector('[data-slot="ann"]').insertAdjacentHTML('afterend', html);
     if (art._cx) art._cx(); // its title folds like the others
   }
   if (opts.preview) { art.querySelectorAll('.rsvp input, .rsvp textarea, .rsvp select, .rsvp button').forEach(x => { x.disabled = true; }); return; }
-  if (HH) wireHousehold(cfg, art, hosted, src);
+  if (HH) wireHousehold(cfg, art, hosted, src, INFO);
+  vlBoardMount(src, art, hosted).catch(() => {});
   // groups guests can pick at RSVP, and messages (both hidden until schema-3 is installed)
   art._fillPick = () => { const g = art.querySelector('[data-rsvp-group]'); const P = art._gm; if (g && P && P.picks.length) g.innerHTML = groupPickHTML(P.picks, (LS.get('rsvp:' + hosted.id) || {}).group || ''); };
   if (!hosted.demo) wireGuestMsgs(cfg, art, hosted);
@@ -5373,8 +5397,8 @@ function myPagesHTML() {
 }
 // ---------- organizer demos (see ORG at the top): boot, the demo bar, the cards on #examples ----------
 const ORG_LIST = [['wedding', 'tulum-wedding', 'For wedding planners', 'Households, plus-ones, seating, invitations, shuttles'],
-  ['conference', 'nyc-conference', 'For conference teams', 'Speakers and sponsors, badges, speaker dinner, airport pickups'],
-  ['race', 'chicago-10k', 'For race directors', 'Runners and clubs, bibs and waves, race-morning shuttles']];
+  ['conference', 'nyc-conference', 'For conference teams', 'Attendees and speakers, agenda, badges, airport pickups'],
+  ['race', 'chicago-10k', 'For race directors', 'Runners, waves, race weekend, volunteers, shuttles']];
 const loadScript = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => { s.remove(); rej(new Error('load')); }; document.head.appendChild(s); });
 async function orgBoot() {
   LANG = uiLang(); document.documentElement.lang = LANG;
@@ -5408,11 +5432,11 @@ function orgBar(h) {
   const on = h.startsWith('guests/') ? 'g' : h.startsWith('mine/') ? 'm' : h.startsWith('page=') || h === 'new' ? 'p' : '';
   const a = (k, href, label) => `<a href="${esc(href)}"${on === k ? ' aria-current="page"' : ''}>${esc(label)}</a>`;
   bar.innerHTML = `<div class="org-in"><span class="org-tag">${t('Demo')}</span><span class="org-t" title="${esc(t('Sample data. Changes stay in this tab and nothing is sent.'))}"><b>${esc(ORG.title || '')}</b> <span>${t('Sample data. Changes stay in this tab and nothing is sent.')}</span></span>
-    <nav class="org-nav" aria-label="${esc(t('Organizer view'))}">${a('g', '#guests/' + ORG.eid, t('Guest list'))}${a('p', '#page=' + ORG.pid, t('Page'))}${a('m', '#mine/' + ORG.eid, t('Messages'))}<a href="${esc(APP_ROOT)}?demo=${esc(ORG.k)}" target="_blank" rel="noopener">${t('Guest view')} <span aria-hidden="true">↗</span></a></nav>
+    <nav class="org-nav" aria-label="${esc(t('Organizer view'))}"><a class="org-back" href="${esc(APP_ROOT)}#examples">← ${t('Examples')}</a>${a('g', '#guests/' + ORG.eid, t({ wedding: 'Guest list', conference: 'Attendees', race: 'Runners' }[ORG.k] || 'Guest list'))}${a('p', '#page=' + ORG.pid, t('Page'))}${a('m', '#mine/' + ORG.eid, t('Messages'))}<a href="${esc(APP_ROOT)}?demo=${esc(ORG.k)}" target="_blank" rel="noopener">${t('Guest view')} <span aria-hidden="true">↗</span></a></nav>
     <a class="btn sm primary org-cta" href="${esc(APP_ROOT)}#setup">${t('Create your own')}</a></div>`;
 }
 function orgSamplesHTML() {
-  return `<section class="land-ex org-ex" id="for-planners"><h2>${t('For planners: the organizer view')}</h2><p class="muted org-lede">${t('See a sample event from the organizer’s side: guest list, seating, invitations, arrivals and shuttles. No sign-up; changes stay in your browser.')}</p>
+  return `<section class="land-ex org-ex" id="for-planners"><h2>${t('For planners: the organizer view')}</h2><p class="muted org-lede">${t('See a sample event from the organizer’s side: travel first (where people come from, arrivals, hotels), plus the features each kind of event needs. No sign-up; changes stay in your browser.')}</p>
     <div class="ex-grid">${ORG_LIST.map(([k, id, who, what]) => { const e = normalize(clone(window.EXAMPLES[id])); return `<div class="ex-card org-card" style="${themeStyle(e.theme)}"><a class="ex-hit" href="?demo=${k}&amp;view=organizer" aria-label="${esc(t('Open {n}', { n: e.title }) + ' · ' + t('Organizer view'))}"></a>
         <span class="ex-img" style="background-image:url('${esc(e.cover)}')"></span>
         <span class="ex-body"><span class="lbl">${esc(t(who))}</span><b>${esc(e.title)}</b><span>${esc(t(what))}</span></span>
@@ -7297,6 +7321,7 @@ async function startFromWebsite(url, msgEl, type) {
   if (type && TYPES.includes(type)) { j.data = j.data || {}; if (j.data.type !== type) { j.data.type = type; } }
   const cfg = aiEventToCfg(j.data || {});
   if (!cfg.title) cfg.title = hostOf(url);
+  cfg.site = url; if (document.querySelector('[data-su-tonly]:checked')) cfg.travelOnly = true; // the event's own site: linked from the page (travel-only pages lead with it)
   say('Finding the venue…');
   const v = await aiResolveVenue(j.data.venue_name, j.data.venue_address);
   if (v) { cfg.venue = { name: v.name, address: v.address, lat: v.lat, lon: v.lon, city: v.city, region: v.region, country: v.country, cc: v.cc }; try { cfg.tz = await lookupTZ(v.lat, v.lon); } catch { /* floating */ } }
@@ -7312,6 +7337,7 @@ function suAIHTML() {
     <div class="su-ai-form" hidden><p class="hint" data-su-ai-type></p>
       <div class="search"><input id="su-ai-url" type="url" inputmode="url" placeholder="https://yourwedding.com" autocomplete="off"><button type="button" class="btn primary" data-su="ai-go">${t('Fill in')}</button></div>
       <label class="chk su-ai-brand"><input type="checkbox" data-su-brand ${LS.get('aiBrand') === false ? '' : 'checked'}> ${t('Use the site’s colors and logo')}</label>
+      <label class="chk su-ai-brand"><input type="checkbox" data-su-tonly> ${t('Use 1LinkTrip just for travel (my site has the rest)')}</label>
       <p class="hint" data-su-ai-msg role="status" aria-live="polite"></p><div data-su-ai-signin></div></div>
     <div class="su-doc-form" hidden><p class="hint" data-su-ai-type></p>
       <label class="su-doc-drop" data-su-doc-drop><input type="file" id="su-doc-file" accept="application/pdf,.pdf,image/*" hidden><b>${t('Choose a PDF or photo')}</b><span>${t('or drop it here · an itinerary, invitation or booking confirmation')}</span></label>
@@ -9880,9 +9906,9 @@ function hhCollect(slot, src) {
   });
   return bad ? { bad } : { replies: out };
 }
-function wireHousehold(cfg, art, hosted, src) {
+function wireHousehold(cfg, art, hosted, src, info) {
   const slot = art.querySelector('[data-slot="rsvp"]'); if (!slot || slot._hh) return; slot._hh = true; let n = 0; const H = hosted.hh;
-  const paint = () => { slot.innerHTML = hhFormHTML(cfg, src, hosted); };
+  const paint = () => { slot.innerHTML = info ? hhInfoHTML(cfg, H) : hhFormHTML(cfg, src, hosted); };
   slot.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const fs = b.closest('.hh-p');
@@ -9896,6 +9922,10 @@ function wireHousehold(cfg, art, hosted, src) {
       const extra = $$('.hh-p[data-hh-p^="n"]', slot).map(f => ({ added_by: 'guest', plus_of: f.dataset.plusOf || null }));
       const gone = new Set($$('.hh-p[data-rm]', slot).map(f => f.dataset.hhP)); slot.querySelector('.hh-adds').innerHTML = hhAddersHTML({ ...H, people: (H.people || []).filter(p => !gone.has(p.id)) }, extra); return; }
     if (b.dataset.hh === 'edit') { H.editing = true; H.msg = ''; paint(); return; }
+    if (b.dataset.hh === 'travel') { // a runner / attendee link: travel on its own (no replies)
+      const msg = slot.querySelector('.rsvp-msg'); b.disabled = true; msg.textContent = t('Saving…');
+      try { const k2 = await hhRpc('household_travel', { s: hosted.slug, tok: H.tok, t: arRead(slot, 'hht') }); if (k2) Object.assign(H, { travel: k2.travel, msg: t('Saved') }); paint(); }
+      catch (err) { b.disabled = false; msg.textContent = t('Couldn’t save. Check your connection and try again.'); } return; }
     if (b.dataset.hh !== 'send') return;
     const msg = slot.querySelector('.rsvp-msg'); const rm = $$('.hh-p[data-rm]', slot).map(f => ({ person_id: f.dataset.hhP, remove: true }));
     $$('.hh-p[data-rm]', slot).forEach(f => f.remove()); const r = hhCollect(slot, src);
@@ -10012,21 +10042,29 @@ function glGroupsHTML() {
       <p class="gl-gst">${glNum(t('{n} invited', { n: ppl.length }), ppl.length)}${glNum(t('{n}/{m} opened', { n: hs.filter(h => h.first_opened_at).length, m: hs.length }), hs.filter(h => h.first_opened_at).length)}${glNum(t('{n} coming', { n: ppl.filter(p => (G.rep.get(p.id) || {}).attending).length }), ppl.filter(p => (G.rep.get(p.id) || {}).attending).length)}</p></li>`; };
   return `<ul class="gl-groups">${G.gs.map(row).join('')}</ul><div class="search gl-gadd"><input id="gl-gnew" maxlength="60" placeholder="${esc(t('New group'))}" aria-label="${esc(t('New group'))}"><button type="button" class="btn sm" data-gl-gadd>${t('Add group')}</button></div>`;
 }
+// the dashboard: with Guest list & RSVP on, the invitation funnel; otherwise travel first (who's coming from out of town)
+function glSumTiles(S, ppl) {
+  const T = OT();
+  if (modOn('rsvp')) return [['Invites', G.hs.length], ['Guests', ppl], ...(G.ivOff || !modOn('inv') ? [] : [['Sent', `${G.hs.filter(h => ivLast(h.id)).length}/${G.hs.length}`]]), ['Opened', `${G.hs.filter(h => h.first_opened_at).length}/${G.hs.length}`], ['Coming', S.reduce((n, s) => n + s.coming, 0)], ['No reply', S.filter(s => s.noReply).length]];
+  const v = otTrav(); const kf = T === OT_CONF && otField('kind');
+  return [[T.who, ppl], ...(kf ? [['Speakers', G.ps.filter(p => /speak|ponent|orat|intervenant|redner|relat|登壇|講演/i.test(fdVal(kf.id, p.id))).length]] : []), ['Out of town', v.out], ['Arrivals shared', v.arr], ['Hotel chosen', v.hotel],
+    ...(modOn('vol') ? [['Volunteers', `${vlTotals().got}/${vlTotals().need}`]] : [])];
+}
 function glPaint() {
   const m = $('.gl'); if (!m) return; glReplies();
   const S = G.hs.map(glStat); const ppl = S.reduce((n, s) => n + s.ps.length, 0);
-  $('[data-gl-sum]', m).innerHTML = [['Invites', G.hs.length], ['Guests', ppl], ...(G.ivOff ? [] : [['Sent', `${G.hs.filter(h => ivLast(h.id)).length}/${G.hs.length}`]]), ['Opened', `${G.hs.filter(h => h.first_opened_at).length}/${G.hs.length}`], ['Coming', S.reduce((n, s) => n + s.coming, 0)], ['No reply', S.filter(s => s.noReply).length]].map(([l, v]) => `<div><small>${esc(t(l))}</small><b>${v}</b></div>`).join('');
+  $('[data-gl-sum]', m).innerHTML = glSumTiles(S, ppl).map(([l, v]) => `<div><small>${esc(t(l))}</small><b>${v}</b></div>`).join('');
   $('[data-gl-plain]').textContent = G.opens ? t(G.opens === 1 ? 'Plain link opened once' : 'Plain link opened {n} times', { n: G.opens }) : '';
+  if (!glTabList().some(x => x[0] === G.tab)) { G.tab = 'trav'; glMountTabs(); }
   $$('[data-gl-tab]', m).forEach(b => { const on = b.dataset.glTab === G.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
-  if (G.stOff && G.tab === 'seat') G.tab = 'list'; const sb2 = $('[data-gl-seat]', m); if (sb2) sb2.hidden = !!G.stOff;
-  if (G.ivOff && G.tab === 'inv') G.tab = 'list'; const ib = $('[data-gl-inv]', m); if (ib) ib.hidden = !!G.ivOff; m.closest('.gl-page').classList.toggle('iv-wide', G.tab === 'inv');
-  m.closest('.gl-page').classList.toggle('st-wide', G.tab === 'seat');
-  if (G.arrOff && G.tab === 'arr') G.tab = 'list'; const ab = $('[data-gl-arr]', m); if (ab) ab.hidden = !!G.arrOff; m.closest('.gl-page').classList.toggle('ar-wide', G.tab === 'arr' || G.tab === 'shut');
-  if ((G.shOff || G.arrOff) && G.tab === 'shut') G.tab = 'list'; const shb = $('[data-gl-shut]', m); if (shb) shb.hidden = !!(G.shOff || G.arrOff);
-  if (G.fdOff && G.tab === 'fld') G.tab = 'list'; const fdb = $('[data-gl-fld]', m); if (fdb) fdb.hidden = !!G.fdOff; m.closest('.gl-page').classList.toggle('fd-wide', G.tab === 'fld');
-  $('[data-gl-body]', m).innerHTML = G.tab === 'diet' ? glDietHTML() : G.tab === 'groups' ? glGroupsHTML() : G.tab === 'seat' ? stHTML() : G.tab === 'inv' ? ivTabHTML() : G.tab === 'arr' ? arHTML() : G.tab === 'shut' ? shHTML() : G.tab === 'fld' ? fdHTML() : glListHTML();
+  const pg = m.closest('.gl-page'); const ro = G.tab === 'list' && !modOn('rsvp');
+  pg.classList.toggle('iv-wide', G.tab === 'inv'); pg.classList.toggle('st-wide', G.tab === 'seat'); pg.classList.toggle('fd-wide', G.tab === 'fld' || ro);
+  pg.classList.toggle('ar-wide', ['trav', 'shut', 'info', 'vol', 'badge'].includes(G.tab));
+  const ad = $('[data-gl-add]', m); if (ad) { ad.hidden = G.tab !== 'list' || (ro && !G.hs.length); ad.style.display = ad.hidden ? 'none' : ''; ad.textContent = t(modOn('rsvp') ? 'Add guests' : OT().add); }
+  $('[data-gl-body]', m).innerHTML = G.tab === 'trav' ? otTravHTML() : G.tab === 'info' ? otInfoHTML() : G.tab === 'upd' ? otUpdHTML() : G.tab === 'vol' ? vlHTML() : G.tab === 'badge' ? bdHTML()
+    : G.tab === 'diet' ? glDietHTML() : G.tab === 'groups' ? glGroupsHTML() : G.tab === 'seat' ? stHTML() : G.tab === 'inv' ? ivTabHTML() : G.tab === 'shut' ? shHTML() : G.tab === 'fld' ? fdHTML() : ro ? roHTML() : glListHTML();
   stFit();
-  const bar = $('[data-gl-bar]', m); const n = G.sel.size; bar.hidden = !n || G.tab !== 'list';
+  const bar = $('[data-gl-bar]', m); const n = G.sel.size; bar.hidden = !n || G.tab !== 'list' || !modOn('rsvp');
   if (n) bar.innerHTML = `<b>${esc(t('{n} selected', { n }))}</b><select data-gl-bulkgrp aria-label="${esc(t('Set group'))}"><option value="">${t('Set group…')}</option>${G.gs.map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}<option value="none">${t('No group')}</option></select><button type="button" class="btn sm" data-gl-bulkcopy>${t('Copy links')}</button><button type="button" class="btn sm" data-gl-bulkmail>${t(G.ivOff ? 'Email invitations' : 'Send invitation')}</button><button type="button" class="link" data-gl-clear>${t('Clear')}</button>`;
   ivAfterPaint();
 }
@@ -10045,6 +10083,8 @@ async function glLoad() {
   await arLoad().catch(() => { G.arrOff = true; });
   await shLoad().catch(() => { G.shOff = true; });
   await fdLoad().catch(() => { G.fdOff = true; });
+  await vlLoad().catch(() => { G.vlOff = true; G.vs = []; G.vu = []; });
+  await otAnnLoad().catch(() => { G.anns = []; });
 }
 async function renderGuests(eid) {
   LANG = uiLang(); document.documentElement.lang = LANG; document.documentElement.dir = 'ltr'; document.title = t('Guest list') + ' · 1LinkTrip';
@@ -10055,34 +10095,34 @@ async function renderGuests(eid) {
   if (!user) { LS.del('signedIn'); LS.set('afterSignIn', '#guests/' + eid); return renderMine('', t('Sign in to see your guest list.')); }
   const c = await sb(); const { data: ev } = await c.from('events').select('id,slug,config,published,owner').eq('id', eid).maybeSingle();
   if (!ev) return shell(`<h1>${t('Guest list')}</h1><p>${t('Only the page’s organizers can see its guest list.')}</p><p><a href="#mine">${t('Back to My pages')}</a></p>`);
-  G = { eid, ev, cfg: normalize(ev.config), filter: 'all', grp: '', by: false, sel: new Set(), tab: /^seat/.test(location.hash.split('&t=')[1] || '') ? 'seat' : /^inv/.test(location.hash.split('&t=')[1] || '') ? 'inv' : /^arr/.test(location.hash.split('&t=')[1] || '') ? 'arr' : /^shut/.test(location.hash.split('&t=')[1] || '') ? 'shut' : /^fld/.test(location.hash.split('&t=')[1] || '') ? 'fld' : 'list', iv: null, hs: [], ps: [], rs: [], gs: [], hot: new Map(), opens: 0,
+  G = { eid, ev, cfg: normalize(ev.config), filter: 'all', grp: '', by: false, sel: new Set(), tab: ((location.hash.split('&t=')[1] || '').match(/^(list|info|upd|diet|groups|seat|inv|shut|fld|vol|badge)\b/) || [, 'trav'])[1], iv: null, hs: [], ps: [], rs: [], gs: [], hot: new Map(), opens: 0,
     ts: [], seat: { show: false }, st: { pend: !!LS.get('stp:' + eid), grp: '', q: '', hh: false, fold: false, view: LS.get('stv:' + eid) || 'cards' } };
   try { await glLoad(); } catch (e) { return shell(`<h1>${t('Guest list')}</h1><p>${t('Couldn’t load it.')} ${esc(pubWhy(e))}</p>`); }
   // first visit: the usual groups for this kind of event (renameable, removable)
-  if (!G.gs.length && !G.hs.length && !LS.get('glSeed:' + eid) && GL_PRESETS[G.cfg.type]) {
+  if (!G.gs.length && !G.hs.length && !LS.get('glSeed:' + eid) && GL_PRESETS[G.cfg.type] && modOn('groups')) {
     LS.set('glSeed:' + eid, 1); const ins = await c.from('event_groups').insert(GL_PRESETS[G.cfg.type].map((name, i) => ({ event_id: eid, name: t(name), sort: i }))).select('id,name,sort,self_pick');
     if (!ins.error) G.gs = ins.data || [];
   }
-  glMount();
+  document.title = glTitle() + ' · 1LinkTrip'; glMount();
   if (G.tab === 'seat') stPoll();
   const local = LS.get(guestListKey(eid), []) || []; // the old on-this-device list from My pages
   if (local.length && !G.hs.length) toast(t('Add your {n} saved names with Add guests', { n: local.length }));
 }
-function glShell(inner) { $('#app').innerHTML = `<main class="mine gl-page"><header class="land-top"><a class="brand" href="#">${BRAND}</a><nav class="mine-nav"><a href="#mine">${t('My pages')}</a></nav></header><div class="mine-in">${inner}</div></main>`; }
+function glShell(inner) { $('#app').innerHTML = `<main class="mine gl-page"><header class="land-top"><a class="brand" href="${esc(homeHref())}">${BRAND}</a><nav class="mine-nav">${ORG ? '' : `<a href="#mine">${t('My pages')}</a>`}</nav></header><div class="mine-in">${inner}</div></main>`; }
 // the guest list screen for the loaded G (also what tests/i18n-coverage.js renders from made-up data, offline)
 function glMount() {
   const own = pagesAll().find(x => x.hosted && x.hosted.id === G.eid);
   glShell(`<p><a href="${own ? '#page=' + esc(own.pid) : esc(shortURL(G.ev.slug))}">← ${esc(G.cfg.title || t('Your page'))}</a></p>
-    <div class="mine-h"><h1>${t('Guest list')}</h1><span class="muted small" data-gl-plain></span></div>
+    <div class="mine-h"><h1>${esc(glTitle())}</h1><span class="muted small" data-gl-plain></span></div>
     <section class="gl">
       <div class="gl-sum" data-gl-sum></div>
       ${G.ev.published ? '' : `<p class="b-note">${t('Share the page first: personal links open only once it’s shared.')}</p>`}
-      <div class="gl-head"><div class="seg2 gl-tabs" role="tablist"><button type="button" role="tab" data-gl-tab="list">${tCtx('tab', 'Guests')}</button><button type="button" role="tab" data-gl-tab="diet">${t('Dietary')}</button><button type="button" role="tab" data-gl-tab="groups">${t('Groups')}</button><button type="button" role="tab" data-gl-tab="seat" data-gl-seat>${t('Seating')}</button><button type="button" role="tab" data-gl-tab="inv" data-gl-inv>${t('Invitations')}</button><button type="button" role="tab" data-gl-tab="arr" data-gl-arr>${t('Arrivals')}</button><button type="button" role="tab" data-gl-tab="shut" data-gl-shut>${t('Shuttles')}</button><button type="button" role="tab" data-gl-tab="fld" data-gl-fld>${t('Fields')}</button></div>
-        <button type="button" class="btn sm primary" data-gl-add>${t('Add guests')}</button></div>
+      <div class="gl-head"><div class="seg2 gl-tabs" role="tablist" data-gl-tabs></div>
+        <button type="button" class="btn sm ghost gl-more" data-mod-open>+ ${t('Add features')}</button><button type="button" class="btn sm primary" data-gl-add>${t('Add guests')}</button></div>
       <div data-gl-body></div>
       <div class="gl-bar" data-gl-bar hidden></div>
     </section>`);
-  glPaint(); glWire(); stWire(); { const m = $('.gl'); if (m && !m._iw) { m._iw = true; ivWire(m); arWire(m); shWire(m); fdWire(m); } }
+  glMountTabs(); glPaint(); glWire(); stWire(); { const m = $('.gl'); if (m && !m._iw) { m._iw = true; ivWire(m); arWire(m); shWire(m); fdWire(m); otWire(m); } }
 }
 function glCSV(rows, name) {
   const blob = new Blob(['﻿' + rows.map(l => l.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -10092,7 +10132,7 @@ function glWire() {
   const m = $('.gl'); if (!m || m._w) return; m._w = true;
   m.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset; const c = await sb();
-    if (d.glTab) { G.tab = d.glTab; glPaint(); if (G.tab === 'seat') { stPoll(); stSync(); } try { history.replaceState(history.state, '', '#guests/' + G.eid + (['seat', 'inv', 'arr', 'shut', 'fld'].includes(G.tab) ? '&t=' + G.tab : '')); } catch { /* fine */ } return; }
+    if (d.glTab) { G.tab = d.glTab; glPaint(); if (G.tab === 'seat') { stPoll(); stSync(); } try { history.replaceState(history.state, '', '#guests/' + G.eid + (G.tab !== 'trav' ? '&t=' + G.tab : '')); } catch { /* fine */ } return; }
     if (d.glF) { G.filter = d.glF; glPaint(); return; }
     if (d.glGrp != null) { G.grp = d.glGrp; glPaint(); return; }
     if (d.glCopy) { const h = G.hs.find(x => x.id === d.glCopy); if (h) copy(glLink(h)); return; }
@@ -10114,7 +10154,7 @@ function glWire() {
     }
     if (d.glGadd != null) { const v = ($('#gl-gnew').value || '').trim().slice(0, 60); if (!v) return; const { error } = await c.from('event_groups').insert({ event_id: G.eid, name: v, sort: G.gs.length }); if (error) { toast(error.code === '23505' ? t('That group exists') : error.message); return; } await glLoad(); glPaint(); return; }
     if (d.glGdel) { const g = glGroup(d.glGdel); if (!g || !await confirmDlg({ title: t('Delete “{n}”?', { n: g.name }), body: t('Households in it stay on the list, without a group.'), ok: t('Delete'), cancel: t('Cancel') })) return; await c.from('event_groups').delete().eq('id', g.id); await glLoad(); glPaint(); return; }
-    if (d.glAdd != null) { glImportDlg(); return; }
+    if (d.glAdd != null) { if (modOn('rsvp')) glImportDlg(); else roImportDlg(); return; }
     if (d.glEdit) { glEditDlg(d.glEdit); return; }
   });
   m.addEventListener('change', async (e) => {
@@ -10125,6 +10165,429 @@ function glWire() {
     if (i.dataset.glBulkgrp != null && i.value) { const gid = i.value === 'none' ? null : i.value; const ids = [...G.sel];
       const { error } = await c.from('guest_households').update({ group_id: gid }).in('id', ids); if (error) { toast(error.message); return; }
       G.hs.forEach(h => { if (G.sel.has(h.id)) h.group_id = gid; }); toast(t('{n} moved to {g}', { n: ids.length, g: gid ? glGroup(gid).name : t('No group') })); G.sel.clear(); glPaint(); }
+  });
+}
+
+// ================= organizer layouts by event type + opt-in features (Dylan 11/26) =================
+// "Why is the race layout similar to the wedding?" · "lots of optional features you can add … but it shouldn't be the default"
+// · "it's still primarily a travel site for guests at events". One map drives the organizer screen (#guests/<id>) for every
+// type: what its people are called, the roster columns (kept as guest_fields, so each person's own link shows theirs), the
+// type's info tab and which add-on features are suggested first. Every page starts travel-first — Travel, its people,
+// (Race weekend | Agenda), Updates — and "Add features" turns on the rest per page (events.config.org.mods). A feature
+// that already holds data on a page stays on unless the organizer turns it off, so nobody's guest list or seating vanishes.
+const OT_COL = { bib: ['Bib', 'guest'], dist: ['Distance', 'guest'], wave: ['Wave', 'guest'], start: ['Start time', 'guest'], home: ['Hometown', 'planners'], club: ['Club', 'planners'],
+  kind: ['Type', 'guest'], company: ['Company', 'guest'] };
+const OT_RACE = { k: 'race', who: 'Runners', add: 'Add runners', find: 'Find a runner', cols: ['bib', 'dist', 'wave', 'start', 'home', 'club'], seg: 'dist', info: 'Race weekend', sug: ['vol', 'shut', 'groups', 'fld'] };
+const OT_CONF = { k: 'conf', who: 'Attendees', add: 'Add attendees', find: 'Find an attendee', cols: ['kind', 'company', 'home'], seg: 'kind', info: 'Agenda', sug: ['badge', 'shut', 'fld', 'groups'] };
+const OT_GUEST = { k: 'guest', who: 'Guests', add: 'Add guests', find: 'Find a guest', cols: ['home'], seg: '', info: '', sug: ['rsvp', 'shut', 'groups', 'fld'] };
+const OT_WED = { ...OT_GUEST, k: 'wed', sug: ['rsvp', 'diet', 'seat', 'inv', 'shut', 'groups', 'fld'] };
+const OT_BY = { Race: OT_RACE, Hyrox: OT_RACE, Conference: OT_CONF, Meetup: OT_CONF, Wedding: OT_WED, Party: OT_WED, Birthday: OT_WED, 'Bachelor party': OT_WED, 'Bachelorette party': OT_WED, Reunion: OT_WED, Retreat: OT_WED };
+const otOf = (cfg) => OT_BY[cfg && cfg.type] || OT_GUEST;
+const OT = () => otOf(G.cfg);
+// add-on features: [key, name, what it is]
+const ORG_MODS = [['rsvp', 'Guest list & RSVP', 'Households, plus-ones and replies'], ['diet', 'Dietary', 'Meals and allergies from replies'], ['seat', 'Seating', 'Tables and a floor plan'],
+  ['inv', 'Invitations', 'Design and email invitations'], ['shut', 'Shuttles', 'Rides from the airport or hotel'], ['groups', 'Groups', 'Sort people into groups, send updates to one'],
+  ['fld', 'Custom fields', 'Your own columns, like shirt size or room'], ['vol', 'Volunteers', 'Shifts people sign up for with a link'], ['badge', 'Badges & check-in', 'Printable name badges and a check-in list']];
+const MOD_TAB = { diet: 'Dietary', seat: 'Seating', inv: 'Invitations', shut: 'Shuttles', groups: 'Groups', fld: 'Fields', vol: 'Volunteers', badge: 'Badges' };
+const OT_SINCE = '2026-11-27'; // guest lists made before per-type layouts keep their household view
+const modSet = (cfg) => (cfg && cfg.org && cfg.org.mods && typeof cfg.org.mods === 'object' ? cfg.org.mods : {});
+const otRosterKeys = () => new Set(OT().cols.map(k => (otField(k) || {}).id).filter(Boolean));
+const otCustom = () => (G.fd || []).filter(f => !otRosterKeys().has(f.id));
+function modData(k) {
+  const T = OT(); const seg = T === OT_RACE || T === OT_CONF;
+  if (k === 'rsvp') return G.rs.some(r => r.person_id || r.household_id) || G.hs.some(h => (h.plus_ones || 0) > 0 || String(h.created_at || '') < OT_SINCE)
+    || G.ps.some(p => (p.plus_ones || 0) > 0 || p.added_by === 'guest') || (!seg && G.hs.some(h => glPeople(h.id).length > 1)) || !!(G.iv && (G.iv.sends || []).length);
+  if (k === 'diet') return modData('rsvp') && G.rs.some(r => { const x = rqParse(r.note).x || {}; return (x.diets || []).length || x.diet || x.meal; });
+  if (k === 'groups') return !seg && (G.hs.some(h => h.group_id) || G.ps.some(p => p.group_id));
+  if (k === 'seat') return (G.ts || []).length > 0;
+  if (k === 'inv') return !!(G.iv && ((G.iv.rows || []).length || (G.iv.sends || []).length));
+  if (k === 'shut') return (G.sr || []).length > 0;
+  if (k === 'fld') return otCustom().length > 0;
+  if (k === 'vol') return (G.vs || []).length > 0;
+  return false;
+}
+const modAvail = (k) => !((k === 'seat' && G.stOff) || (k === 'inv' && G.ivOff) || (k === 'shut' && (G.shOff || G.arrOff)) || (k === 'fld' && G.fdOff) || (k === 'vol' && G.vlOff) || (k === 'diet' && !modOn('rsvp')));
+function modOn(k) { const m = modSet(G.cfg); return (typeof m[k] === 'boolean' ? m[k] : modData(k)) && modAvail(k); }
+// the page's own copy of which features are on (read fresh, so another planner's change isn't undone)
+async function modSave(k, on) {
+  const c = await sb(); const { data: ev, error: e0 } = await c.from('events').select('config').eq('id', G.eid).maybeSingle();
+  if (e0 || !ev) { toast(t('Couldn’t save: {e}', { e: pubWhy(e0 || new Error('')) })); return false; }
+  const cfg = ev.config || {}; const org = { ...(cfg.org || {}), mods: { ...modSet(cfg), [k]: on } };
+  const { error } = await c.from('events').update({ config: { ...cfg, org } }).eq('id', G.eid);
+  if (error) { toast(t('Couldn’t save: {e}', { e: pubWhy(error) })); return false; }
+  G.cfg.org = org; G.ev.config = { ...cfg, org }; devPatchHosted(G.eid, { org }); return true;
+}
+function glTabList() {
+  const T = OT(); const xs = [['trav', 'Travel'], ['list', T.who]]; if (T.info) xs.push(['info', T.info]);
+  ['diet', 'groups', 'seat', 'inv', 'shut', 'vol', 'badge', 'fld'].forEach(k => { if (modOn(k)) xs.push([k, MOD_TAB[k]]); });
+  xs.push(['upd', 'Updates']); return xs;
+}
+const glTabLabel = (k, l) => (k === 'list' && l === 'Guests' ? tCtx('tab', 'Guests') : t(l));
+const glTitle = () => (modOn('rsvp') ? t('Guest list') : t(OT().who));
+
+// ---------- the roster columns: the page's guest_fields, found by their name in any interface language ----------
+const otNames = (label) => new Set([label, ...Object.values(I18N).map(m => m && m[label]).filter(Boolean)].map(normName));
+function otField(k) { const L = OT_COL[k]; if (!L) return null; const ns = otNames(L[0]); return (G.fd || []).find(f => ns.has(normName(f.label))) || null; }
+const otVal = (k, pid) => { const f = otField(k); return f && pid ? fdVal(f.id, pid) : ''; };
+async function otEnsure(keys) {
+  const need = keys.filter(k => OT_COL[k] && !otField(k)); if (!need.length) return true;
+  if ((G.fd || []).length + need.length > 40) { toast(t('A page can have up to 40 fields.')); return false; }
+  const c = await sb(); const base = (G.fd || []).reduce((n, f) => Math.max(n, f.sort || 0), 0);
+  const { data, error } = await c.from('guest_fields').insert(need.map((k, i) => ({ event_id: G.eid, label: t(OT_COL[k][0]), kind: 'text', choices: [], visible: OT_COL[k][1], sort: base + i + 1 }))).select('*');
+  if (error) { toast(error.message); return false; } G.fd = (G.fd || []).concat(data || []); return true;
+}
+const otPeople = (n) => { const k = OT().k; return t(n === 1 ? (k === 'race' ? '1 runner' : k === 'conf' ? '1 attendee' : '1 guest') : (k === 'race' ? '{n} runners' : k === 'conf' ? '{n} attendees' : '{n} guests'), { n }); };
+const otPageHref = () => { const own = pagesAll().find(x => x.hosted && x.hosted.id === G.eid); return own ? '#page=' + own.pid : shortURL(G.ev.slug); };
+
+// ---------- travel: who comes from out of town, where they come from, where they stay ----------
+function otTrav() {
+  const city = normName(String((G.cfg.venue && (G.cfg.venue.city || '')) || '').split(',')[0]); const homeF = otField('home');
+  const rows = new Map(arRows().filter(r => r.h).map(r => [r.id, r])); const from = new Map(), stays = new Map(); let out = 0, arr = 0, hotel = 0, noStay = 0, known = 0;
+  G.hs.forEach(h => {
+    const ps = glPeople(h.id); const n = ps.length || 1; const r = rows.get(h.id) || {}; const home = homeF && ps[0] ? fdVal(homeF.id, ps[0].id) : '';
+    const hc = normName(home.split(',')[0]); const hasArr = !!(r.arr && (r.arr.date || r.arr.place || r.arr.no)); const away = (hc && city ? hc !== city : false) || hasArr;
+    if (home) known += n;
+    if (away) { out += n; if (home) { const k = normName(home); const e = from.get(k) || [home, 0]; e[1] += n; from.set(k, e); } }
+    if (hasArr) arr += n;
+    const st = r.stay || ''; if (G.hot.get(h.id) === true || st) hotel += n;
+    if (st) { const k = normName(st); const e = stays.get(k) || [st, 0]; e[1] += n; stays.set(k, e); } else if (away && G.hot.get(h.id) !== true) noStay += n;
+  });
+  return { out, arr, hotel, noStay, known, from: [...from.values()].sort((a, b) => b[1] - a[1]), stays: [...stays.values()].sort((a, b) => b[1] - a[1]) };
+}
+const otBars = (xs, total, max = 8) => `<ul class="gl-bars">${xs.slice(0, max).map(([l, n]) => `<li><span>${esc(l)}</span><i style="--w:${Math.round(100 * n / Math.max(1, total))}%" aria-hidden="true"></i><b>${n}</b></li>`).join('')}</ul>${xs.length > max ? `<p class="muted small ot-more">${esc(t('+{n} more', { n: xs.length - max }))}</p>` : ''}`;
+function otTravHTML() {
+  const v = otTrav(); const top = v.from.length ? v.from[0][1] : 1; const stays = v.stays.concat(v.noStay ? [[t('No hotel yet'), v.noStay]] : []); const topS = stays.length ? Math.max(...stays.map(x => x[1])) : 1;
+  return `<div class="ot-two">
+      ${otField('home') ? `<section class="ot-card"><h3>${t('Coming from')}</h3>${v.from.length ? otBars(v.from, top) : `<p class="muted small">${t('Everyone so far is local.')}</p>`}</section>` : ''}
+      <section class="ot-card"><h3>${t('Where they’re staying')}</h3>${stays.length ? otBars(stays, topS) : `<p class="muted small">${t('Nobody has said where they’re staying yet.')}</p>`}</section>
+    </div>${arHTML()}`;
+}
+// ---------- the people: a plain roster (no RSVP) — or, with Guest list & RSVP on, the household list ----------
+function roRows() {
+  if (!G.ro) G.ro = { q: '', seg: '' }; const T = OT(); const q = normName(G.ro.q);
+  const segF = T.seg && otField(T.seg);
+  return G.hs.map(h => { const ps = glPeople(h.id); const p = ps[0]; return { h, ps, p, seg: segF && p ? fdVal(segF.id, p.id) : '' }; })
+    .filter(r => (!G.ro.seg || r.seg === G.ro.seg) && (!q || normName([r.h.name, r.h.email || '', ...r.ps.map(x => x.name), ...T.cols.map(k => otVal(k, r.p && r.p.id))].join(' ')).includes(q)));
+}
+function roHTML() {
+  const T = OT(); const cols = T.cols.filter(k => otField(k)); const rows = roRows(); const segF = T.seg && otField(T.seg);
+  const segs = segF ? [...G.hs.reduce((m, h) => { const p = glPeople(h.id)[0]; const v = p ? fdVal(segF.id, p.id) : ''; if (v) m.set(v, (m.get(v) || 0) + 1); return m; }, new Map())].sort((a, b) => String(a[0]).localeCompare(String(b[0]), undefined, { numeric: true })) : [];
+  const cell = (r, k) => { const v = otVal(k, r.p && r.p.id); return `<span class="ro-c ro-${k}" role="cell" data-l="${esc(t(OT_COL[k][0]))}">${v ? esc(v) : '<span class="muted">—</span>'}</span>`; };
+  const shown = rows.slice(0, 400);
+  return `<div class="ro" style="--ro-n:${cols.length}">
+    ${G.hs.length ? `<div class="ro-bar"><div class="search ro-q"><input data-ro-q value="${esc(G.ro.q)}" placeholder="${esc(t(T.find))}" aria-label="${esc(t(T.find))}"></div><button type="button" class="btn sm" data-ro-csv>${t('Download CSV')}</button></div>` : ''}
+    ${segs.length > 1 ? `<div class="chips ro-segs" role="group" aria-label="${esc(t(OT_COL[T.seg][0]))}"><button type="button" class="chip ${!G.ro.seg ? 'on' : ''}" data-ro-seg="">${t('All')} <span>${G.hs.length}</span></button>${segs.map(([v, n]) => `<button type="button" class="chip ${G.ro.seg === v ? 'on' : ''}" data-ro-seg="${esc(v)}">${esc(v)} <span>${n}</span></button>`).join('')}</div>` : ''}
+    ${G.hs.length ? `<div class="ro-t" role="table" aria-label="${esc(t(T.who))}"><div class="ro-r ro-h" role="row"><span role="columnheader">${t('Name')}</span>${cols.map(k => `<span role="columnheader" class="ro-${k}">${esc(t(OT_COL[k][0]))}</span>`).join('')}<span role="columnheader"></span></div>
+      ${shown.map(r => `<div class="ro-r" role="row" data-h="${esc(r.h.id)}"><span class="ro-n" role="cell"><b>${esc(r.h.name)}</b>${r.ps.length > 1 ? `<small>${esc(r.ps.map(p => p.name).join(', '))}</small>` : r.h.email ? `<small>${esc(r.h.email)}</small>` : ''}</span>${cols.map(k => cell(r, k)).join('')}<span class="ro-m">${esc(cols.map(k => { const v = otVal(k, r.p && r.p.id); return v ? (k === 'bib' ? '#' + v : k === 'wave' ? t('Wave {w}', { w: v }) : k === 'start' ? otStartTxt(v) : v) : ''; }).filter(Boolean).join(' · '))}</span>
+        <span class="ro-a" role="cell"><button type="button" class="btn sm ghost" data-gl-copy="${esc(r.h.id)}">${t('Copy link')}</button><button type="button" class="btn sm ghost" data-ro-edit="${esc(r.h.id)}" aria-label="${esc(t('Edit {n}', { n: r.h.name }))}">${t('Edit')}</button></span></div>`).join('')}
+      </div>${rows.length > shown.length ? `<p class="muted small">${esc(t('+{n} more', { n: rows.length - shown.length }))}</p>` : ''}${!rows.length ? `<p class="muted gl-empty">${t('No one matches.')}</p>` : ''}`
+    : `<div class="ot-empty"><p>${t(T.k === 'race' ? 'Paste or import your registration list: names, bibs, distances, waves.' : T.k === 'conf' ? 'Paste or import your registration list: names, types, companies.' : 'Add the people coming, and each gets a personal link with their travel.')}</p><button type="button" class="btn primary" data-gl-add>${t(T.add)}</button></div>`}
+    <p class="muted small ro-note">${t('Each person gets a personal link: their details, the event info and their own travel.')}</p>
+  </div>`;
+}
+// import: a registration export (RunSignup, Race Roster, Eventbrite…) or pasted rows; columns matched by their names
+const RO_GUESS = [['first', /first|given|vorname|prénom|prenom|^nombre$/], ['last', /last|surname|family name|nachname|apellido|^nom$/],
+  ['name', /^(full )?name$|^(participant|runner|attendee|guest)( name)?$|^nombre completo$|^nom complet$/], ['email', /e-?mail|correo|courriel/], ['phone', /phone|mobile|cell|^tel/],
+  ['bib', /bib|dorsal|startnummer/], ['start', /start ?time|wave time|heure de départ|hora de salida/], ['wave', /wave|corral|vague|ola|startblock/],
+  ['dist', /distance|^event$|^race$|race name|event name|^course$|division|category|categor[ií]a|catégorie/], ['club', /club|team|equipo|équipe|verein/],
+  ['state', /^state|province|region|^st$/], ['home', /city|hometown|town|ciudad|ville|stadt|cidade|città/], ['company', /company|organi[sz]ation|employer|affiliation|firma|empresa|entreprise/],
+  ['kind', /ticket|registration type|attendee type|^type$|^role$|badge|category|tipo/], ['country', /^country|país|pays|land$/]];
+const RO_BASE = ['first', 'last', 'name', 'email', 'phone', 'state', 'country'];
+function roGuess(head, T) {
+  const used = new Set();
+  return head.map(h => { const x = String(h || '').toLowerCase().trim(); const hit = RO_GUESS.find(([k, re]) => (RO_BASE.includes(k) || T.cols.includes(k)) && !used.has(k) && re.test(x)); if (hit) used.add(hit[0]); return hit ? hit[0] : ''; });
+}
+function roParse(text, T, map) {
+  const rows = fdParseCSV(text); if (!rows.length) return { head: [], map: [], recs: [] };
+  const guess = roGuess(rows[0], T); const hasHead = guess.filter(Boolean).length >= 1 && !rows[0].some(c => /@/.test(c));
+  const head = hasHead ? rows[0] : rows[0].map((_, i) => (i === 0 ? t('Name') : t('Column {n}', { n: i + 1 })));
+  const m = map && map.length === head.length ? map : hasHead ? guess : rows[0].map((c, i) => (i === 0 ? 'name' : /@/.test(c) ? 'email' : ''));
+  const recs = (hasHead ? rows.slice(1) : rows).map(r => {
+    const o = { vals: {} }; const get = (k) => { const i = m.indexOf(k); return i < 0 ? '' : String(r[i] || '').trim(); };
+    o.name = (get('name') || [get('first'), get('last')].filter(Boolean).join(' ')).replace(/\s+/g, ' ').slice(0, 120);
+    o.email = get('email').toLowerCase().slice(0, 254); o.phone = get('phone').slice(0, 40);
+    T.cols.forEach(k => { let v = get(k); if (k === 'home' && v) { const st = get('state'), co = get('country'); v = [v, st || (co && !/^(us|usa|united states)$/i.test(co) ? co : '')].filter(Boolean).join(', '); } if (v) o.vals[k] = v.slice(0, 200); });
+    return o;
+  }).filter(o => o.name);
+  return { head, map: m, recs };
+}
+async function roInsert(recs) {
+  const T = OT(); const c = await sb(); const have = new Set(G.hs.flatMap(h => [h.email || '', normName(h.name)]).filter(Boolean));
+  const fresh = recs.filter(r => !(r.email && have.has(r.email)) && !have.has(normName(r.name)) && (have.add(r.email || normName(r.name)), have.add(normName(r.name)), true));
+  const keys = T.cols.filter(k => fresh.some(r => r.vals[k])); if (!(await otEnsure(keys))) throw new Error(t('A page can have up to 40 fields.'));
+  // the distance (race) or type (conference) is also a group, so an update can go to just the half-marathoners or the speakers
+  const gid = new Map(G.gs.map(g => [normName(g.name), g.id]));
+  if (T.seg) { const want = [...new Set(fresh.map(r => r.vals[T.seg]).filter(Boolean))].filter(v => !gid.has(normName(v))).slice(0, 30);
+    if (want.length) { const { data } = await c.from('event_groups').insert(want.map((name, i) => ({ event_id: G.eid, name: name.slice(0, 60), sort: G.gs.length + i }))).select('id,name,sort,self_pick'); (data || []).forEach(g => { G.gs.push(g); gid.set(normName(g.name), g.id); }); } }
+  const H = [], P = [], V = []; let sort = G.hs.reduce((n, h) => Math.max(n, h.sort || 0), 0);
+  fresh.forEach(r => { const id = crypto.randomUUID(), pid = crypto.randomUUID();
+    H.push({ id, event_id: G.eid, name: r.name, email: EMAIL_RE.test(r.email) ? r.email : null, phone: r.phone || null, lang: '', group_id: (T.seg && gid.get(normName(r.vals[T.seg] || ''))) || null, sort: ++sort });
+    P.push({ id: pid, household_id: id, name: r.name, age: 'adult', sort: 0 });
+    Object.entries(r.vals).forEach(([k, v]) => { const f = otField(k); if (f) V.push({ field_id: f.id, person_id: pid, value: v }); }); });
+  for (let i = 0; i < H.length; i += 200) { const { error } = await c.from('guest_households').insert(H.slice(i, i + 200)); if (error) throw error; }
+  for (let i = 0; i < P.length; i += 500) { const { error } = await c.from('guest_people').insert(P.slice(i, i + 500)); if (error) throw error; }
+  for (let i = 0; i < V.length; i += 500) { const { error } = await c.from('guest_field_values').upsert(V.slice(i, i + 500), { onConflict: 'field_id,person_id' }); if (error) throw error; }
+  return { added: fresh.length, skipped: recs.length - fresh.length };
+}
+const RO_SAMPLE = { race: 'First Name,Last Name,Email,Bib,Event,Wave,City,State,Team\nMaya,Patel,maya@example.com,1042,10K,B,Madison,WI,Lakeview Runners', conf: 'First Name,Last Name,Email,Ticket Type,Company,City\nAmara,Okafor,amara@example.com,Speaker,Northwind Labs,Lagos', guest: 'Name,Email,City\nAna Garcia,ana@example.com,Madrid' };
+function roImportDlg() {
+  const T = OT(); const sample = RO_SAMPLE[T.k] || RO_SAMPLE.guest; let P = { head: [], map: [], recs: [] }; let text = '';
+  const opts = (sel) => [['', t('Skip')], ['name', t('Name')], ['first', t('First name')], ['last', t('Last name')], ['email', t('Email')], ['phone', t('Phone')], ...T.cols.map(k => [k, t(OT_COL[k][0])]), ...(T.cols.includes('home') ? [['state', t('State or region')]] : [])]
+    .map(([k, l]) => `<option value="${k}"${sel === k ? ' selected' : ''}>${esc(l)}</option>`).join('');
+  const d = glDlg(`<h2>${t(T.add)}</h2>
+    <p class="muted small">${t('Paste rows from your registration export or import the CSV. The first row should be the column names.')}</p>
+    <textarea id="ro-paste" rows="6" placeholder="${esc(sample)}" aria-label="${esc(t(T.add))}"></textarea>
+    <div class="btns"><label class="btn sm file-btn">${t('Import CSV')}<input type="file" data-ro-file accept=".csv,.txt,text/csv,text/plain"></label><button type="button" class="btn sm" data-ro-one>${t('Add one by hand')}</button></div>
+    <div data-ro-map></div>
+    <div class="btns cf-b"><button type="button" class="btn ghost" data-gl-x>${t('Cancel')}</button><button type="button" class="btn primary" data-ro-go disabled>${t('Add')}</button></div>`);
+  const paint = () => { const box = $('[data-ro-map]', d); const n = P.recs.length;
+    box.innerHTML = P.head.length ? `<p class="grp">${esc(otPeople(n))}</p><div class="ro-map">${P.head.map((h, i) => `<label><span>${esc(h)}</span><select data-ro-col="${i}" aria-label="${esc(h)}">${opts(P.map[i])}</select></label>`).join('')}</div>
+      ${n ? `<ul class="gl-prev">${P.recs.slice(0, 5).map(r => `<li><b>${esc(r.name)}</b><span>${esc(T.cols.map(k => r.vals[k]).filter(Boolean).join(' · '))}</span></li>`).join('')}${n > 5 ? `<li class="muted">${esc(t('+{n} more', { n: n - 5 }))}</li>` : ''}</ul>` : ''}` : '';
+    const go = $('[data-ro-go]', d); go.disabled = !n; go.textContent = n ? t('Add {n}', { n }) : t('Add'); };
+  const set = (tx, map) => { text = tx; P = roParse(tx, T, map); paint(); };
+  d.oninput = (e) => { if (e.target.id === 'ro-paste') set(e.target.value); };
+  d.onchange = (e) => { const i = e.target;
+    if (i.dataset.roFile != null && i.files[0]) i.files[0].text().then(tx => { $('#ro-paste', d).value = tx; set(tx); });
+    if (i.dataset.roCol != null) { const m = P.map.slice(); m[+i.dataset.roCol] = i.value; set(text, m); } };
+  d.onclick = async (e) => {
+    if (e.target === d) { d.close(); return; } const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.glX != null) d.close();
+    if (b.dataset.roOne != null) { d.close(); roEditDlg(null); }
+    if (b.dataset.roGo != null) { b.disabled = true; b.textContent = t('Adding…');
+      try { const r = await roInsert(P.recs); d.close(); await glLoad(); glPaint(); toast(otPeople(r.added) + (r.skipped ? ' · ' + t('{n} already on the list', { n: r.skipped }) : '')); }
+      catch (err) { b.disabled = false; b.textContent = t('Add'); toast(t('Couldn’t add: {e}', { e: pubWhy(err) })); } }
+  };
+}
+function roEditDlg(hid) {
+  const T = OT(); const h = hid ? G.hs.find(x => x.id === hid) : null; if (hid && !h) return; const p = h ? glPeople(h.id)[0] : null;
+  const vals = (k) => { const f = otField(k); return f ? [...new Set((G.fv || []).filter(v => v.field_id === f.id).map(v => v.value))].slice(0, 30) : []; };
+  const d = glDlg(`<h2>${h ? esc(h.name) : t(T.add)}</h2>
+    <div class="field"><label for="ro-name">${t('Name')}</label><input id="ro-name" value="${esc(h ? h.name : '')}" maxlength="120"></div>
+    <div class="two"><div class="field"><label for="ro-email">${t('Email')}</label><input id="ro-email" type="email" value="${esc((h && h.email) || '')}" maxlength="254"></div><div class="field"><label for="ro-phone">${t('Phone')}</label><input id="ro-phone" type="tel" value="${esc((h && h.phone) || '')}" maxlength="40"></div></div>
+    <div class="ro-ed">${T.cols.map(k => `<div class="field"><label for="ro-f-${k}">${esc(t(OT_COL[k][0]))}</label><input id="ro-f-${k}" data-ro-f="${k}" value="${esc(otVal(k, p && p.id))}" maxlength="200" list="ro-l-${k}"><datalist id="ro-l-${k}">${vals(k).map(v => `<option value="${esc(v)}">`).join('')}</datalist></div>`).join('')}</div>
+    <div class="btns cf-b">${h ? `<button type="button" class="link gl-del" data-ro-del>${t('Delete')}</button>` : ''}<button type="button" class="btn ghost" data-gl-x>${t('Cancel')}</button><button type="button" class="btn primary" data-ro-save>${t('Save')}</button></div>`);
+  d.oninput = null; d.onchange = null;
+  d.onclick = async (e) => {
+    if (e.target === d) { d.close(); return; } const b = e.target.closest('button'); if (!b) return; const c = await sb();
+    if (b.dataset.glX != null) { d.close(); return; }
+    if (b.dataset.roDel != null) { if (!await confirmDlg({ title: t('Delete {n}?', { n: h.name }), body: t('Their personal link stops working.'), ok: t('Delete'), cancel: t('Cancel') })) return;
+      const { error } = await c.from('guest_households').delete().eq('id', h.id); if (error) { toast(error.message); return; } d.close(); await glLoad(); glPaint(); toast(t('Deleted {n}', { n: h.name })); return; }
+    if (b.dataset.roSave == null) return;
+    const v = (id) => ($('#' + id, d).value || '').trim(); const name = v('ro-name').slice(0, 120); const email = v('ro-email').toLowerCase();
+    if (!name) { $('#ro-name', d).focus(); return; } if (email && !EMAIL_RE.test(email)) { toast(t('That email doesn’t look right')); return; }
+    b.disabled = true;
+    try {
+      const fv = Object.fromEntries($$('[data-ro-f]', d).map(i => [i.dataset.roF, i.value.trim()]));
+      if (!h) { const r = await roInsert([{ name, email, phone: v('ro-phone'), vals: Object.fromEntries(Object.entries(fv).filter(([, x]) => x)) }]); if (!r.added) { toast(t('{n} already on the list', { n: 1 })); b.disabled = false; return; } }
+      else {
+        const { error } = await c.from('guest_households').update({ name, email: email || null, phone: v('ro-phone') || null }).eq('id', h.id); if (error) throw error;
+        if (p && p.added_by === 'host' && glPeople(h.id).length === 1 && p.name !== name) { const { error: e2 } = await c.from('guest_people').update({ name }).eq('id', p.id); if (e2) throw e2; }
+        const keys = Object.keys(fv).filter(k => fv[k] !== otVal(k, p && p.id)); if (keys.length && !(await otEnsure(keys.filter(k => fv[k])))) throw new Error('fields');
+        for (const k of keys) { const f = otField(k); if (f && p) await fdSet(f.id, [p.id], fv[k]); }
+      }
+      d.close(); await glLoad(); glPaint(); toast(t('Saved'));
+    } catch (err) { b.disabled = false; toast(t('Couldn’t save: {e}', { e: pubWhy(err) })); }
+  };
+}
+function roCSV() {
+  const T = OT(); const rows = [[t('Name'), t('Email'), t('Phone'), ...T.cols.map(k => t(OT_COL[k][0])), t('Personal link')]];
+  G.hs.forEach(h => { const p = glPeople(h.id)[0]; rows.push([h.name, h.email || '', h.phone || '', ...T.cols.map(k => otVal(k, p && p.id)), glLink(h)]); });
+  glCSV(rows, normName(t(T.who)).replace(/\s+/g, '-') || 'people');
+}
+
+// ---------- the type's own tab: Race weekend (from the page's race details + the roster's waves) or Agenda ----------
+const OT_INFO = {
+  Race: [['Waves and start times', 'waves'], ['Packet pickup', ['packet', 'packetHours', 'packetWhen', 'packetBring']], ['Course', ['course', 'startAt', 'finishAt']],
+    ['Spectator spots', ['spots']], ['Gear check', ['gearCheck']], ['Finish meet-up', ['meetup']], ['Road closures', ['closures', 'closuresUrl']]],
+  Hyrox: [['Waves and start times', 'waves'], ['Check-in and wristband pickup', ['checkin', 'checkinWhen']], ['Bag drop', ['bagdrop']], ['Spectator info', ['spectators', 'parking']], ['Live results', ['results']]],
+};
+function otValHTML(type, k, val) {
+  const f = ((TYPE_FIELDS[type] || {}).fields || []).find(x => x[0] === k); const kind = f ? f[2] : 'text'; const label = ['packet', 'badge', 'checkin', 'bagdrop', 'gearCheck', 'meetup', 'spots', 'closures'].includes(k) ? '' : f ? t(f[1]) : k; const lb = label ? `<small>${esc(label)}</small>` : '';
+  if (kind === 'place') return val && val.q ? `<li>${lb}<a href="${esc(val.lat != null ? `https://www.google.com/maps/search/?api=1&query=${val.lat},${val.lon}` : L.place(val.q, ''))}" target="_blank" rel="noopener noreferrer">${esc(val.q)} ↗</a></li>` : '';
+  if (kind === 'url') return `<li>${lb}<a href="${esc(val)}" target="_blank" rel="noopener noreferrer">${esc(/\.gpx(\?|$)/i.test(val) ? t('GPX file') : hostOf(val))} ↗</a></li>`;
+  if (kind === 'lines') return `<li>${lb}<ul class="ot-lines">${String(val).split('\n').map(x => x.trim()).filter(Boolean).map(x => `<li>${esc(x)}</li>`).join('')}</ul></li>`;
+  if (kind === 'datetime') return `<li>${lb}<span>${esc(String(val).length > 10 ? `${fmt(String(val).slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' })}, ${fmtTime(String(val).slice(11, 16))}` : fmt(val, { weekday: 'short', month: 'short', day: 'numeric' }))}</span></li>`;
+  return `<li>${lb}<span>${esc(val)}</span></li>`;
+}
+function otWaves() {
+  const wf = otField('wave'); if (!wf) return []; const sf = otField('start'), df = otField('dist'); const m = new Map();
+  G.hs.forEach(h => glPeople(h.id).forEach(p => { const w = fdVal(wf.id, p.id); if (!w) return; const e = m.get(w) || { w, n: 0, starts: new Map(), dists: new Map() }; e.n++;
+    const s = sf ? fdVal(sf.id, p.id) : ''; if (s) e.starts.set(s, (e.starts.get(s) || 0) + 1); const dd = df ? fdVal(df.id, p.id) : ''; if (dd) e.dists.set(dd, (e.dists.get(dd) || 0) + 1); m.set(w, e); }));
+  const top = (mm) => [...mm].sort((a, b) => b[1] - a[1]).map(x => x[0]);
+  return [...m.values()].map(e => ({ w: e.w, n: e.n, start: top(e.starts)[0] || '', dists: top(e.dists) })).sort((a, b) => (a.start || '99').localeCompare(b.start || '99') || String(a.w).localeCompare(String(b.w), undefined, { numeric: true }));
+}
+const otStartTxt = (s) => (/^\d{1,2}:\d{2}$/.test(s) ? fmtTime(s.padStart(5, '0')) : s);
+function otInfoHTML() {
+  const T = OT(); const cfg = G.cfg; const d = (cfg.x && cfg.x[cfg.type]) || {}; const href = otPageHref();
+  const missing = `<p class="muted small">${t('Not on your page yet.')} <a href="${esc(href)}">${t('Add it')}</a></p>`;
+  const card = (title, body, wide) => `<section class="ot-card${wide ? ' wide' : ''}"><h3>${esc(t(title))}</h3>${body}</section>`;
+  if (T.k === 'race') {
+    const spec = OT_INFO[cfg.type] || OT_INFO.Race;
+    return `<p class="muted small ot-lede">${t('What runners need for race weekend. It comes from your page, so edit it there and both stay the same.')} <a href="${esc(href)}">${t('Open page')}</a></p><div class="ot-grid">${spec.map(([title, keys]) => {
+      if (keys === 'waves') { const ws = otWaves(); return card(title, ws.length ? `<ul class="ot-waves">${ws.map(w => `<li><b>${esc(w.w)}</b><span>${esc(otStartTxt(w.start)) || '—'}</span><em>${esc(otPeople(w.n))}</em><small>${esc(w.dists.join(' · '))}</small></li>`).join('')}</ul>` : `<p class="muted small">${t('Add Wave and Start time to your runners to see the start schedule.')}</p>`, true); }
+      const rows = keys.filter(k => d[k] && (typeof d[k] !== 'object' || d[k].q) && !(k === 'packetWhen' && d.packetHours)).map(k => otValHTML(cfg.type, k, d[k])).join('');
+      return card(title, rows ? `<ul class="ot-kv">${rows}</ul>` : missing);
+    }).join('')}</div>`;
+  }
+  // Agenda: the page's schedule by day, its speakers and badge pickup
+  const days = [...new Set((cfg.schedule || []).map(x => x.date || ''))].sort();
+  const sched = days.map(dd => `<li class="ot-day"><b>${esc(dd ? fmt(dd, { weekday: 'long', month: 'short', day: 'numeric' }) : t('Date not set'))}</b><ul>${(cfg.schedule || []).filter(x => (x.date || '') === dd).sort((a, b) => String(a.time || '99').localeCompare(String(b.time || '99'))).map(x => `<li><time>${esc(fmtTime(x.time || '')) || '—'}</time><span>${esc(x.title || '')}${x.place && x.place.name ? ` <small>${esc(x.place.name)}</small>` : x.where ? ` <small>${esc(x.where)}</small>` : ''}</span></li>`).join('')}</ul></li>`).join('');
+  const kindF = otField('kind'); const spk = kindF ? G.hs.flatMap(h => glPeople(h.id)).filter(p => /speak|ponent|orat|intervenant|redner|relat|登壇|講演/i.test(fdVal(kindF.id, p.id))) : [];
+  const lines = String(d.speakers || '').split('\n').map(x => x.trim()).filter(Boolean);
+  return `<p class="muted small ot-lede">${t('The agenda comes from your page’s schedule, so edit it there and both stay the same.')} <a href="${esc(href)}">${t('Open page')}</a></p><div class="ot-grid">
+    ${card('Agenda', sched ? `<ul class="ot-agenda">${sched}</ul>${d.agenda ? `<p><a href="${esc(d.agenda)}" target="_blank" rel="noopener noreferrer">${t('Full agenda')} ↗</a></p>` : ''}` : missing, true)}
+    ${card('Speakers', spk.length || lines.length ? `<ul class="ot-lines">${(spk.length ? spk.map(p => [p.name, otVal('company', p.id)].filter(Boolean).join(' · ')) : lines).map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : `<p class="muted small">${t('Attendees with the type Speaker show here.')}</p>`)}
+    ${card('Badge pickup', d.badge || d.badgeWhen ? `<ul class="ot-kv">${['badge', 'badgeWhen'].filter(k => d[k]).map(k => otValHTML(cfg.type, k, d[k])).join('')}</ul>` : missing)}
+  </div>`;
+}
+
+// ---------- Updates: the page's announcements, to everyone or a group (the same ones Messages shows) ----------
+async function otAnnLoad() {
+  const c = await sb(); let r = await c.from('announcements').select('id,body,created_at,group_ids').eq('event_id', G.eid).order('created_at', { ascending: false }).limit(200);
+  if (r.error) { r = await c.from('announcements').select('id,body,created_at').eq('event_id', G.eid).order('created_at', { ascending: false }).limit(200); G.annNoGrp = true; }
+  G.anns = r.data || [];
+}
+function otUpdHTML() {
+  if (!G.annTo) G.annTo = new Set(); const gs = G.annNoGrp ? [] : G.gs; const gName = (id) => (G.gs.find(g => g.id === id) || {}).name || '';
+  const cnt = (g) => G.hs.filter(h => h.group_id === g.id).reduce((n, h) => n + (glPeople(h.id).length || 1), 0);
+  return `<div class="ot-upd"><form class="ann-form" onsubmit="return false"><textarea id="ot-an" rows="3" maxlength="2000" placeholder="${esc(t(OT().k === 'race' ? 'Packet pickup opens Friday at noon. Bring a photo ID.' : 'Shuttle leaves the hotel at 4:30. Bring a jacket.'))}" aria-label="${esc(t('Updates'))}"></textarea>
+      ${gs.length ? `<div class="chips ot-to" role="group" aria-label="${esc(t('Send to'))}"><button type="button" class="chip ${!G.annTo.size ? 'on' : ''}" data-ot-to="">${t('Everyone')}</button>${gs.map(g => `<button type="button" class="chip ${G.annTo.has(g.id) ? 'on' : ''}" data-ot-to="${esc(g.id)}">${esc(g.name)} <span>${cnt(g)}</span></button>`).join('')}</div>` : ''}
+      <div class="btns"><button type="button" class="btn primary" data-ot-post>${t('Post update')}</button></div><p class="hint" role="status" aria-live="polite"></p></form>
+    ${(G.anns || []).length ? `<ul class="ann-list own">${G.anns.map(a => `<li><time>${esc(fmtStamp(a.created_at))}${(a.group_ids || []).length ? ' · ' + esc(a.group_ids.map(gName).filter(Boolean).join(', ')) : ''}</time><p>${esc(a.body)}</p><button type="button" class="link" data-ot-del="${esc(a.id)}">${t('Delete')}</button></li>`).join('')}</ul>` : `<p class="muted small">${t('No updates yet.')}</p>`}
+    <p class="muted small">${t('Updates show at the top of your page and on every personal link.')} <a href="#mine/${esc(G.eid)}">${t('Messages')} →</a></p></div>`;
+}
+async function otPost(b) {
+  const ta = $('#ot-an'); const hint = $('.ot-upd .hint'); const body = (ta.value || '').trim().slice(0, 2000); if (!body) { hint.textContent = t('Write something first.'); ta.focus(); return; }
+  const gids = [...(G.annTo || [])]; const c = await sb(); b.disabled = true;
+  const { data, error } = await c.from('announcements').insert({ event_id: G.eid, body, ...(gids.length ? { group_ids: gids } : {}) }).select('id').single();
+  if (error) { b.disabled = false; hint.textContent = t('Couldn’t post:') + ' ' + error.message; return; }
+  if (data) notifyEmail('announcement', data.id);
+  G.annTo = new Set(); await otAnnLoad(); glPaint(); toast(t('Posted'));
+}
+
+// ---------- Volunteers (schema-volunteers.sql): tasks × shifts with how many are needed; people sign up with a link ----------
+async function vlLoad() {
+  const c = await sb(); const [s, u] = await Promise.all([c.from('volunteer_slots').select('*').eq('event_id', G.eid).order('sort').order('day').order('starts').limit(200), c.from('volunteer_signups').select('*').eq('event_id', G.eid).order('created_at').limit(5000)]);
+  if (s.error) throw s.error; G.vs = s.data || []; G.vu = u.data || [];
+}
+const vlLink = () => withQ(shortURL(G.ev.slug), 'volunteer', '1');
+const vlWhen = (s) => [s.shift || '', s.day ? fmt(s.day, { weekday: 'short', month: 'short', day: 'numeric' }) : '', s.starts ? fmtTime(s.starts) + (s.ends ? '–' + fmtTime(s.ends) : '') : ''].filter(Boolean).join(' · ');
+const vlTotals = () => { const need = (G.vs || []).reduce((n, s) => n + s.capacity, 0); const got = (G.vs || []).reduce((n, s) => n + Math.min(s.capacity, (G.vu || []).filter(u => u.slot_id === s.id).length), 0); return { need, got }; };
+function vlHTML() {
+  const tasks = [...new Set((G.vs || []).map(s => s.task))]; const T = vlTotals();
+  return `<div class="vl"><div class="ar-bar"><button type="button" class="btn sm primary" data-vl-new>${t('Add a shift')}</button><button type="button" class="btn sm" data-vl-link>${t('Copy sign-up link')}</button>${T.need ? `<span class="muted small">${esc(t('{n} of {m} places filled', { n: T.got, m: T.need }))}</span>` : ''}</div>
+    ${tasks.length ? `<div class="ot-grid">${tasks.map(task => { const ss = G.vs.filter(s => s.task === task); return `<section class="ot-card"><h3>${esc(task)}</h3><ul class="vl-shifts">${ss.map(s => { const us = G.vu.filter(u => u.slot_id === s.id); const n = us.length;
+      return `<li class="${n >= s.capacity ? 'full' : ''}"><div class="vl-top"><span>${esc(vlWhen(s)) || '—'}</span><b>${n}/${s.capacity}</b><button type="button" class="link" data-vl-edit="${esc(s.id)}" aria-label="${esc(t('Edit {n}', { n: task }))}">${t('Edit')}</button></div><i class="vl-bar" style="--w:${Math.min(100, Math.round(100 * n / s.capacity))}%" aria-hidden="true"></i>
+        ${us.length ? `<p class="vl-who">${us.map(u => `<span>${esc(u.name)}<button type="button" class="link" data-vl-rm="${esc(u.id)}" aria-label="${esc(t('Remove {n}', { n: u.name }))}">×</button></span>`).join('')}</p>` : ''}</li>`; }).join('')}</ul></section>`; }).join('')}</div>`
+    : `<div class="ot-empty"><p>${t('Add the jobs you need help with and how many people each shift needs. Share the sign-up link; volunteers pick a shift, no account needed.')}</p></div>`}
+  </div>`;
+}
+function vlEditDlg(id) {
+  const s = id ? G.vs.find(x => x.id === id) : { task: '', shift: '', day: G.cfg.start ? String(G.cfg.start).slice(0, 10) : '', starts: '', ends: '', capacity: 4, notes: '' }; if (!s) return;
+  const tasks = [...new Set((G.vs || []).map(x => x.task))];
+  const d = glDlg(`<h2>${t(id ? 'Edit shift' : 'Add a shift')}</h2>
+    <div class="field"><label for="vl-task">${t('Job')}</label><input id="vl-task" value="${esc(s.task)}" maxlength="80" list="vl-tasks" placeholder="${esc(t('Water station 3'))}"><datalist id="vl-tasks">${tasks.map(x => `<option value="${esc(x)}">`).join('')}</datalist></div>
+    <div class="two"><div class="field"><label for="vl-shift">${t('Shift name')}</label><input id="vl-shift" value="${esc(s.shift || '')}" maxlength="80" placeholder="${esc(t('Optional'))}"></div><div class="field"><label for="vl-cap">${t('People needed')}</label><input id="vl-cap" type="number" min="1" max="500" value="${esc(s.capacity)}"></div></div>
+    <div class="two"><div class="field"><label for="vl-day">${t('Date')}</label><input id="vl-day" type="date" value="${esc(s.day || '')}"></div><div class="two"><div class="field"><label for="vl-from">${t('From')}</label><input id="vl-from" type="time" value="${esc(s.starts || '')}"></div><div class="field"><label for="vl-to">${t('To')}</label><input id="vl-to" type="time" value="${esc(s.ends || '')}"></div></div></div>
+    <div class="field"><label for="vl-notes">${t('Notes for volunteers')}</label><input id="vl-notes" value="${esc(s.notes || '')}" maxlength="300" placeholder="${esc(t('Optional'))}"></div>
+    <div class="btns cf-b">${id ? `<button type="button" class="link gl-del" data-vl-del>${t('Delete')}</button>` : ''}<button type="button" class="btn ghost" data-gl-x>${t('Cancel')}</button><button type="button" class="btn primary" data-vl-save>${t('Save')}</button></div>`);
+  d.oninput = null; d.onchange = null;
+  d.onclick = async (e) => {
+    if (e.target === d) { d.close(); return; } const b = e.target.closest('button'); if (!b) return; const c = await sb();
+    if (b.dataset.glX != null) { d.close(); return; }
+    if (b.dataset.vlDel != null) { if (!await confirmDlg({ title: t('Delete “{n}”?', { n: s.task }), body: t('Its sign-ups are deleted too.'), ok: t('Delete'), cancel: t('Cancel') })) return; await c.from('volunteer_slots').delete().eq('id', id); d.close(); await vlLoad(); glPaint(); return; }
+    if (b.dataset.vlSave == null) return;
+    const v = (x) => ($('#' + x, d).value || '').trim(); const task = v('vl-task'); if (!task) { $('#vl-task', d).focus(); return; }
+    const row = { task, shift: v('vl-shift'), day: v('vl-day') || null, starts: v('vl-from') || null, ends: v('vl-to') || null, capacity: Math.min(500, Math.max(1, parseInt(v('vl-cap'), 10) || 1)), notes: v('vl-notes') || null };
+    b.disabled = true; const { error } = id ? await c.from('volunteer_slots').update(row).eq('id', id) : await c.from('volunteer_slots').insert({ ...row, event_id: G.eid, sort: (G.vs || []).length });
+    if (error) { b.disabled = false; toast(error.message); return; } d.close(); await vlLoad(); glPaint(); toast(t('Saved'));
+  };
+}
+
+// ---------- Badges & check-in: printable name badges and an alphabetical check-in list ----------
+const BD_HUES = ['#0F4A50', '#E35B47', '#C98B2B', '#6B5CA5', '#3E7CB1', '#5E8C3A'];
+function bdPeople() { return G.hs.flatMap(h => glPeople(h.id).map(p => ({ p, h, kind: otVal('kind', p.id), co: otVal('company', p.id) }))).sort((a, b) => stLastFirst(a.p.name).localeCompare(stLastFirst(b.p.name))); }
+function bdHue(kind) { const ks = [...new Set(bdPeople().map(x => x.kind).filter(Boolean))].sort(); const i = ks.indexOf(kind); return i < 0 ? '#5B6770' : BD_HUES[i % BD_HUES.length]; }
+const bdCard = (x) => `<div class="bd-card" style="--g:${bdHue(x.kind)}"><b>${esc(x.p.name)}</b><span>${esc(x.co)}</span><em>${esc(x.kind || '')}</em><small>${esc(G.cfg.title || '')}</small></div>`;
+function bdHTML() {
+  const xs = bdPeople(); const kinds = [...new Set(xs.map(x => x.kind).filter(Boolean))].sort();
+  return `<div class="bd"><div class="ar-bar"><button type="button" class="btn sm primary" data-bd-print="badges">${t('Print badges')}</button><button type="button" class="btn sm" data-bd-print="list">${t('Print check-in list')}</button><span class="muted small">${esc(kinds.map(k => `${k} ${xs.filter(x => x.kind === k).length}`).join(' · '))}</span></div>
+    ${xs.length ? `<div class="bd-grid">${xs.slice(0, 10).map(bdCard).join('')}</div>${xs.length > 10 ? `<p class="muted small">${esc(t('+{n} more', { n: xs.length - 10 }))}</p>` : ''}` : `<p class="muted gl-empty">${t('No one on the list yet.')}</p>`}
+    <p class="muted small">${t('Badges use each person’s Type and Company. Print on letter or A4 paper, 6 to a page.')}</p></div>`;
+}
+function bdPrint(kind) {
+  const xs = bdPeople(); let el = $('#st-print'); if (!el) { el = document.createElement('div'); el.id = 'st-print'; document.body.appendChild(el); }
+  el.className = 'st-print bd-' + kind;
+  el.innerHTML = kind === 'badges' ? `<div class="bd-sheet">${xs.map(bdCard).join('')}</div>`
+    : `<header><p class="sp-k">${esc(t('Check-in list'))}</p><h1>${esc(G.cfg.title || '')}</h1><p class="sp-sum">${esc(otPeople(xs.length))}</p></header><table class="bd-list"><thead><tr><th></th><th>${t('Name')}</th><th>${t('Type')}</th><th>${t('Company')}</th></tr></thead><tbody>${xs.map(x => `<tr><td>☐</td><td>${esc(x.p.name)}</td><td>${esc(x.kind)}</td><td>${esc(x.co)}</td></tr>`).join('')}</tbody></table>`;
+  document.body.classList.add('st-printing'); const done = () => { document.body.classList.remove('st-printing'); window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done); setTimeout(() => window.print(), 60);
+}
+
+// ---------- Add features ----------
+function modDlg() {
+  const T = OT(); const rest = ORG_MODS.map(m => m[0]).filter(k => !T.sug.includes(k));
+  const row = (k) => { const m = ORG_MODS.find(x => x[0] === k); const dis = k === 'diet' && !modOn('rsvp');
+    return `<li><label class="tool md-r"><input type="checkbox" data-mod="${k}"${modOn(k) ? ' checked' : ''}${dis ? ' disabled' : ''}><span class="sw" aria-hidden="true"></span><span class="md-t"><b>${esc(t(m[1]))}</b><small>${esc(dis ? t('Turn on Guest list & RSVP first') : t(m[2]))}</small></span></label></li>`; };
+  const d = glDlg(`<h2>${t('Add features')}</h2><p class="muted small">${t('Your page starts simple: travel, your people and updates. Turn on only what you need; turning one off keeps its data.')}</p>
+    <p class="grp">${t('Suggested for this event')}</p><ul class="md-list">${T.sug.map(row).join('')}</ul>
+    <p class="grp">${t('More')}</p><ul class="md-list">${rest.map(row).join('')}</ul>
+    <div class="btns cf-b"><button type="button" class="btn primary" data-gl-x>${t('Done')}</button></div>`);
+  d.oninput = null;
+  d.onchange = async (e) => { const i = e.target; if (i.dataset.mod == null) return; i.disabled = true; const ok = await modSave(i.dataset.mod, i.checked); if (!ok) i.checked = !i.checked;
+    i.disabled = false; glMountTabs(); glPaint(); const dd = $('[data-mod="diet"]', d); if (dd) { const on = modOn('rsvp'); dd.disabled = !on; dd.checked = modOn('diet'); } };
+  d.onclick = (e) => { if (e.target === d || (e.target.closest('button') && e.target.closest('button').dataset.glX != null)) d.close(); };
+}
+function glMountTabs() {
+  const box = $('[data-gl-tabs]'); if (!box) return; const xs = glTabList(); if (!xs.some(x => x[0] === G.tab)) G.tab = 'trav';
+  box.innerHTML = xs.map(([k, l]) => `<button type="button" role="tab" data-gl-tab="${k}">${esc(glTabLabel(k, l))}</button>`).join('');
+  const h1 = $('.gl-page .mine-h h1'); if (h1) h1.textContent = glTitle();
+}
+function otWire(m) {
+  m.addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b || !G) return; const d = b.dataset;
+    if (d.modOpen != null) { modDlg(); return; }
+    if (d.roSeg != null) { G.ro.seg = d.roSeg; glPaint(); return; }
+    if (d.roEdit) { roEditDlg(d.roEdit); return; }
+    if (d.roCsv != null) { roCSV(); return; }
+    if (d.otTo != null) { if (!d.otTo) G.annTo = new Set(); else if (G.annTo.has(d.otTo)) G.annTo.delete(d.otTo); else G.annTo.add(d.otTo); const v = ($('#ot-an') || {}).value || ''; glPaint(); const ta = $('#ot-an'); if (ta) ta.value = v; return; }
+    if (d.otPost != null) { otPost(b); return; }
+    if (d.otDel) { if (!await confirmDlg({ title: t('Delete this update?'), ok: t('Delete'), cancel: t('Cancel') })) return; const c = await sb(); await c.from('announcements').delete().eq('id', d.otDel); await otAnnLoad(); glPaint(); return; }
+    if (d.vlNew != null) { vlEditDlg(null); return; }
+    if (d.vlEdit) { vlEditDlg(d.vlEdit); return; }
+    if (d.vlLink != null) { copy(vlLink()); return; }
+    if (d.vlRm) { const u = G.vu.find(x => x.id === d.vlRm); if (!u || !await confirmDlg({ title: t('Remove {n}?', { n: u.name }), ok: t('Remove'), cancel: t('Cancel') })) return; const c = await sb(); await c.from('volunteer_signups').delete().eq('id', u.id); await vlLoad(); glPaint(); return; }
+    if (d.bdPrint) { bdPrint(d.bdPrint); return; }
+  });
+  m.addEventListener('input', debounce((e) => { const i = e.target; if (!G || i.dataset.roQ == null) return; G.ro.q = i.value; glPaint(); const q = m.querySelector('[data-ro-q]'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 200));
+}
+
+// ---------- guest side: a runner's / attendee's personal link (no RSVP): their details, shuttle and travel ----------
+const otGuestNoRsvp = (cfg) => { const T = otOf(cfg); return (T === OT_RACE || T === OT_CONF) && modSet(cfg).rsvp !== true; };
+const otYour = (cfg) => t(otOf(cfg) === OT_RACE ? 'Your race' : otOf(cfg) === OT_CONF ? 'Your registration' : 'Your details');
+function hhInfoHTML(cfg, H) {
+  return `${hhFieldsHTML(H, '')}${hhShuttleHTML(H)}${H.trOff ? '' : `<form class="rsvp hh-rsvp hh-info" novalidate onsubmit="return false">${hhTravelHTML(H)}<p class="rsvp-msg" role="status" aria-live="polite">${H.msg ? esc(H.msg) : ''}</p><button type="button" class="btn primary" data-hh="travel">${t('Save my travel')}</button></form>`}`;
+}
+
+// ---------- guest side: the volunteer sign-up sheet (?volunteer=1 on the page's link) ----------
+async function vlBoardMount(cfg, art, hosted) {
+  if (!locQ().get('volunteer') || !hosted || !hosted.slug || hosted.demo) return;
+  const body = art.querySelector('.ev-panel[data-panel="event"] .ev-body'); if (!body) return;
+  body.insertAdjacentHTML('afterbegin', `<section class="ev-sec vl-sheet" id="sec-volunteer"><h2 class="sec-h">${t('Volunteer')}</h2><div data-vl-board><p class="muted small">${t('Loading…')}</p></div></section>`);
+  const box = body.querySelector('[data-vl-board]'); let rows = []; let open = ''; const mine = LS.get('vol:' + hosted.id, []) || [];
+  const paint = (msg) => { const tasks = [...new Set(rows.map(s => s.task))];
+    box.innerHTML = (msg ? `<p class="vl-ok" role="status">${esc(msg)}</p>` : '') + (rows.length ? tasks.map(task => `<h3 class="sub-h">${esc(task)}</h3><ul class="vl-pub">${rows.filter(s => s.task === task).map(s => { const left = s.capacity - (s.filled || 0);
+      return `<li><div><b>${esc(vlWhen(s)) || esc(task)}</b><small>${esc(left > 0 ? t('{n} of {m} places left', { n: left, m: s.capacity }) : t('Full'))}${s.notes ? ' · ' + esc(s.notes) : ''}</small></div>${mine.includes(s.id) ? `<em>${t('You’re in')}</em>` : left > 0 ? `<button type="button" class="btn sm" data-vl-pick="${esc(s.id)}">${t('Sign up')}</button>` : ''}
+        ${open === s.id ? `<form class="vl-form" onsubmit="return false"><input data-vl-n placeholder="${esc(t('Your name'))}" maxlength="120" aria-label="${esc(t('Your name'))}"><input data-vl-e type="email" placeholder="${esc(t('Email'))}" maxlength="254" aria-label="${esc(t('Email'))}"><input data-vl-p type="tel" placeholder="${esc(t('Phone (optional)'))}" maxlength="40" aria-label="${esc(t('Phone (optional)'))}"><button type="button" class="btn primary sm" data-vl-go="${esc(s.id)}">${t('Sign up')}</button></form>` : ''}</li>`; }).join('')}</ul>`).join('')
+      : `<p class="muted small">${t('No volunteer shifts yet.')}</p>`); };
+  try { rows = (await hhRpc('volunteer_board', { s: hosted.slug })) || []; paint(); } catch { box.innerHTML = `<p class="muted small">${t('Couldn’t load it.')}</p>`; return; }
+  box.addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.vlPick) { open = b.dataset.vlPick; paint(); const n = box.querySelector('[data-vl-n]'); if (n) n.focus(); return; }
+    if (b.dataset.vlGo) { const f = b.closest('form'); const nm = f.querySelector('[data-vl-n]').value.trim(); const em = f.querySelector('[data-vl-e]').value.trim(); const ph = f.querySelector('[data-vl-p]').value.trim();
+      if (!nm) { f.querySelector('[data-vl-n]').focus(); return; } if (em && !EMAIL_RE.test(em)) { toast(t('That email doesn’t look right')); return; }
+      b.disabled = true; try { rows = (await hhRpc('volunteer_signup', { s: hosted.slug, slot: b.dataset.vlGo, nm, em, ph })) || rows; mine.push(b.dataset.vlGo); LS.set('vol:' + hosted.id, mine); open = ''; paint(t('Thanks, {n}. You’re signed up.', { n: nm.split(/\s+/)[0] })); }
+      catch (err) { b.disabled = false; toast(pubWhy(err)); } }
   });
 }
 
@@ -11221,7 +11684,7 @@ function route() {
   }
   if (ORG) { // an organizer demo: its organizer screens only; anything else opens its guest list
     if (!ORG.eid) return; orgBar(h);
-    if (!/^(mine(\/.+)?|guests\/[\w-]+|page=[\w-]+|new)$/.test(h)) { const tb = tab || (h.startsWith('t=') ? h.slice(2) : ''); history.replaceState(null, '', siteBase() + '#guests/' + ORG.eid + (/^(seat|inv|arr|shut|fld)$/.test(tb) ? '&t=' + tb : '')); return route(); }
+    if (!/^(mine(\/.+)?|guests\/[\w-]+|page=[\w-]+|new)$/.test(h)) { const tb = tab || (h.startsWith('t=') ? h.slice(2) : ''); history.replaceState(null, '', siteBase() + '#guests/' + ORG.eid + (/^(list|info|upd|diet|groups|seat|inv|shut|fld|vol|badge)$/.test(tb) ? '&t=' + tb : '')); return route(); }
   }
   const qs = locQ(); const qe = qs.get('e'), qd = ORG ? null : qs.get('demo');
   if (qe && (h === '' || h.startsWith('t='))) { SU = null; return renderHosted(qe.toLowerCase(), h.startsWith('t=') ? h.slice(2) : tab); }
@@ -11302,7 +11765,7 @@ function arNoHTML(L) {
   return u ? `<a class="ar-no" href="${esc(u)}" target="_blank" rel="noopener" title="${esc(t('Flight status'))}">${esc(arFlight(L.no).replace(/^(..)/, '$1 '))}<span aria-hidden="true">↗</span></a>` : `<span class="ar-no">${esc(L.no)}</span>`;
 }
 const arSrcHTML = (r) => r.src.includes('trip') ? `<span class="ar-src" title="${esc(t('From their own bookings (they share their arrival with you)'))}">${t('Shared trip')}</span>` : '';
-const arPeople = (n) => t(n === 1 ? '1 guest' : '{n} guests', { n });
+const arPeople = (n) => (G && G.cfg ? otPeople(n) : t(n === 1 ? '1 guest' : '{n} guests', { n }));
 function arTagHTML(r, L) {
   return `<li class="ar-tag"><span class="ar-t">${L.time ? esc(fmtTime(L.time)) : '—'}</span><span class="ar-who"><b>${esc(r.name)}</b><small>${esc(arPeople(r.n))}${r.stay ? ' · ' + esc(r.stay) : ''}</small></span>${arNoHTML(L)}${arSrcHTML(r)}${r.h ? `<button type="button" class="link ar-ed" data-ar-edit="${esc(r.h.id)}" aria-label="${esc(t('Edit travel for {n}', { n: r.name }))}">${t('Edit')}</button>` : ''}</li>`;
 }
@@ -11321,7 +11784,7 @@ function arTimelineHTML(rows) {
 }
 function arListHTML(rows) {
   const leg = (L) => L ? `<span class="ar-when">${esc(arWhen(L)) || '—'}</span><span class="ar-pl">${esc(L.place || '')}</span>${arNoHTML(L)}` : '<span class="muted">—</span>';
-  return rows.length ? `<div class="ar-tbl" role="table" aria-label="${esc(t('Arrivals'))}"><div class="ar-tr ar-th" role="row"><span role="columnheader">${t('Household')}</span><span role="columnheader">${t('Arriving')}</span><span role="columnheader">${t('Departing')}</span><span role="columnheader">${t('Where they stay')}</span><span role="columnheader"></span></div>
+  return rows.length ? `<div class="ar-tbl" role="table" aria-label="${esc(t('Arrivals'))}"><div class="ar-tr ar-th" role="row"><span role="columnheader">${t(modOn('rsvp') ? 'Household' : 'Name')}</span><span role="columnheader">${t('Arriving')}</span><span role="columnheader">${t('Departing')}</span><span role="columnheader">${t('Where they stay')}</span><span role="columnheader"></span></div>
     ${rows.map(r => `<div class="ar-tr" role="row"><span role="cell" class="ar-hh"><b>${esc(r.name)}</b><small>${esc(arPeople(r.n))}</small>${arSrcHTML(r)}</span><span role="cell" class="ar-leg" data-l="${esc(t('Arriving'))}">${leg(r.arr)}</span><span role="cell" class="ar-leg" data-l="${esc(t('Departing'))}">${leg(r.dep)}</span><span role="cell" class="ar-st" data-l="${esc(t('Where they stay'))}">${esc(r.stay) || '<span class="muted">—</span>'}</span><span role="cell">${r.h ? `<button type="button" class="btn sm ghost" data-ar-edit="${esc(r.h.id)}">${t('Edit')}</button>` : ''}</span></div>`).join('')}</div>` : `<p class="muted gl-empty">${t('No households match.')}</p>`;
 }
 function arHTML() {
@@ -11338,7 +11801,7 @@ function arHTML() {
       <button type="button" class="btn sm" data-ar-csv>${t('Download CSV')}</button></div>
     <div class="chips ar-f" role="group" aria-label="${esc(t('Where'))}"><button type="button" class="chip ${!f.place && !f.none ? 'on' : ''}" data-ar-place="">${t('All places')}</button>${places.map(p => `<button type="button" class="chip ar-chip ${f.place === p ? 'on' : ''}" data-ar-place="${esc(p)}">${esc(p)} <span>${cnt(r => arPass(r, 'place') && arLegOf(r) && arKey(arLegOf(r).place) === p)}</span></button>`).join('')}${none ? `<button type="button" class="chip ${f.none ? 'on' : ''}" data-ar-none>${t('No info yet')} <span>${none}</span></button>` : ''}</div>
     ${days.length > 1 ? `<div class="chips ar-f" role="group" aria-label="${esc(t('When'))}"><button type="button" class="chip ${!f.day ? 'on' : ''}" data-ar-day="">${t('All days')}</button>${days.map(d => `<button type="button" class="chip ${f.day === d ? 'on' : ''}" data-ar-day="${d}">${esc(fmt(d, { weekday: 'short', month: 'short', day: 'numeric' }))} <span>${cnt(r => arPass(r, 'day') && arLegOf(r) && arLegOf(r).date === d)}</span></button>`).join('')}</div>` : ''}
-    <p class="muted small ar-note">${shared ? esc(t(shared === 1 ? '1 guest shares their own trip with you.' : '{n} guests share their own trips with you.', { n: shared })) + ' ' : ''}${t('Guests add travel on their RSVP, or share it from My trip.')}</p>
+    <p class="muted small ar-note">${shared && modOn('rsvp') ? esc(t(shared === 1 ? '1 guest shares their own trip with you.' : '{n} guests share their own trips with you.', { n: shared })) + ' ' : ''}${modOn('rsvp') ? t('Guests add travel on their RSVP, or share it from My trip.') : t('People add travel on their personal link, or share it from My trip.')}</p>
     ${f.none ? `<ul class="ar-plain">${rows.map(r => `<li><b>${esc(r.name)}</b><span class="muted small">${esc(arPeople(r.n))}</span>${r.h ? `<button type="button" class="link" data-ar-edit="${esc(r.h.id)}">${t('Add travel')}</button>` : ''}</li>`).join('') || `<li class="muted">${t('Everyone has added something.')}</li>`}</ul>` : f.view === 'list' ? arListHTML(rows) : arTimelineHTML(rows)}
   </div>`;
 }
@@ -11378,7 +11841,7 @@ async function arLoad() {
 }
 function arWire(m) {
   m.addEventListener('click', (e) => {
-    const b = e.target.closest('button'); if (!b || !G || G.tab !== 'arr') return; const d = b.dataset;
+    const b = e.target.closest('button'); if (!b || !G || G.tab !== 'trav') return; const d = b.dataset;
     if (d.arDir) { G.ar.dir = d.arDir; G.ar.place = ''; G.ar.day = ''; glPaint(); return; }
     if (d.arView) { G.ar.view = d.arView; glPaint(); return; }
     if (d.arPlace != null) { G.ar.place = d.arPlace; G.ar.none = false; glPaint(); return; }
@@ -11713,12 +12176,12 @@ function fdWire(m) {
   m.addEventListener('input', debounce((e) => { const i = e.target; if (!G || G.tab !== 'fld' || i.dataset.fdQ == null) return; G.fdS.q = i.value; glPaint(); const q = m.querySelector('[data-fd-q]'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 200));
 }
 // the household's own guest-visible fields, on its personal link
-function hhFieldsHTML(H) {
-  const fs = (H.fields || []).filter(f => f && (f.values || []).length); if (!fs.length) return '';
+function hhFieldsHTML(H, head) {
+  const fs = (H.fields || []).filter(f => f && (f.values || []).length); if (!fs.length) return ''; const hd = head === '' ? '' : `<small>${esc(head || t('Your details'))}</small>`;
   const nm = new Map((H.people || []).map(p => [p.id, p.name])); const pids = [...new Set(fs.flatMap(f => f.values.map(v => v.person_id)))];
-  if (pids.length === 1) return `<div class="hh-fd"><small>${t('Your details')}</small><dl>${fs.map(f => `<div><dt>${esc(f.label)}</dt><dd>${esc(f.values[0].value)}</dd></div>`).join('')}</dl></div>`;
-  return `<div class="hh-fd"><small>${t('Your details')}</small>${pids.map(pid => `<p class="hh-fdn">${esc(nm.get(pid) || '')}</p><dl>${fs.map(f => { const v = f.values.find(x => x.person_id === pid); return v ? `<div><dt>${esc(f.label)}</dt><dd>${esc(v.value)}</dd></div>` : ''; }).join('')}</dl>`).join('')}</div>`;
+  if (pids.length === 1) return `<div class="hh-fd">${hd}<dl>${fs.map(f => `<div><dt>${esc(f.label)}</dt><dd>${esc(f.values[0].value)}</dd></div>`).join('')}</dl></div>`;
+  return `<div class="hh-fd">${hd}${pids.map(pid => `<p class="hh-fdn">${esc(nm.get(pid) || '')}</p><dl>${fs.map(f => { const v = f.values.find(x => x.person_id === pid); return v ? `<div><dt>${esc(f.label)}</dt><dd>${esc(v.value)}</dd></div>` : ''; }).join('')}</dl>`).join('')}</div>`;
 }
 
-window.__ep = { fd: { fdParseCSV, fdImport, fdEditDlg, fdImportDlg, fdCSV, hhFieldsHTML }, sh: { shSuggest, shEditDlg, shManifestHTML, shPrint, shCSV, hhShuttleHTML, shFromSug }, ar: { arRows, arFromTrips, arEditDlg, arCSV, hhTravelHTML, hhTravelSum, arShareMount }, iv: { ivRender, ivTexts, ivDefault, ivDate, ivPrepUpload, ivOpenBuilder, ivUploadDlg, ivTabHTML, ivLangs, ivTrailStep, IV_TPLS, ivPal }, lists: { B: () => B, G: () => G, setG: (g) => { G = g; }, ivBlank, buildForm, glMount, glPaint, conflictDlg, partName, glImportDlg, glEditDlg, stPickDlg, stEditDlg, stPrint, t, stLayout, stPlace, stAdd10, stFolded, FT: [FT_W, FT_H] }, cfgMerge3, cfgTakeTheirs, glParse, glGroupRows, joinFirst, rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtModel, rtSer, rtRead, rtEdToggle, rtSelect, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { ot: { roGuess, roParse, otOf, hhInfoHTML, otGuestNoRsvp, otYour, glTabList: () => glTabList(), modOn: (k) => modOn(k), OT_RACE, OT_CONF, OT_GUEST }, fd: { fdParseCSV, fdImport, fdEditDlg, fdImportDlg, fdCSV, hhFieldsHTML }, sh: { shSuggest, shEditDlg, shManifestHTML, shPrint, shCSV, hhShuttleHTML, shFromSug }, ar: { arRows, arFromTrips, arEditDlg, arCSV, hhTravelHTML, hhTravelSum, arShareMount }, iv: { ivRender, ivTexts, ivDefault, ivDate, ivPrepUpload, ivOpenBuilder, ivUploadDlg, ivTabHTML, ivLangs, ivTrailStep, IV_TPLS, ivPal }, lists: { B: () => B, G: () => G, setG: (g) => { G = g; }, ivBlank, buildForm, glMount, glPaint, conflictDlg, partName, glImportDlg, glEditDlg, stPickDlg, stEditDlg, stPrint, t, stLayout, stPlace, stAdd10, stFolded, FT: [FT_W, FT_H] }, cfgMerge3, cfgTakeTheirs, glParse, glGroupRows, joinFirst, rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtModel, rtSer, rtRead, rtEdToggle, rtSelect, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

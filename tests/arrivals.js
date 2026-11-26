@@ -34,7 +34,7 @@ const SETUP = `(() => {
     await page.goto(BASE + '#edit-ex=tulum-wedding'); await page.waitForTimeout(1500); await page.evaluate(SETUP); await page.waitForTimeout(300);
     const txt = () => page.$eval('.ar', e => e.innerText.replace(/\s+/g, ' '));
     if (w === 1280) {
-      ok(await page.$eval('[data-gl-tab="arr"]', b => b.getAttribute('aria-selected') === 'true' && !b.hidden), 'Arrivals tab is on the guest list');
+      ok(await page.$eval('[data-gl-tab="trav"]', b => b.getAttribute('aria-selected') === 'true' && !b.hidden), 'the arrivals board is on the Travel tab (11/26: travel first)');
       const days = await page.$$eval('.ar-day:not(.ar-und) .ar-dh span', xs => xs.map(x => x.textContent));
       ok(days.length === 2 && /March 11/.test(days[0]) && /March 12/.test(days[1]), `timeline by day: ${days.join(' | ')}`);
       const ports = await page.$$eval('.ar-day:not(.ar-und)', ds => ds.map(d => [...d.querySelectorAll('.ar-code > b')].map(b => b.getAttribute('aria-label') || b.textContent).join(',')));
