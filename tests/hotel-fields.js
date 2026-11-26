@@ -90,7 +90,7 @@ const USER = { id: 'u0000000-0000-4000-8000-0000000000ab', email: 'guest@example
       await page.fill('#it-hf-cxd', '2027-03-30'); ok(!(await page.$eval('.itin-form [data-hk="cxt"]', i => i.disabled)), `@${w} time opens once the date is set`);
       await page.fill('.itin-form [data-hk="cxt"]', '18:00');
       const note = 'Late check-in after 10pm.\nAsk for a high floor. ' + 'Breakfast is included for two guests every morning from 7. '.repeat(4);
-      await page.fill('#it-note', note); await page.fill('#it-confNo', 'GR-1');
+      await page.fill('#it-note + .rt-ed', note); await page.fill('#it-confNo', 'GR-1');
       ok((await overflow(page)).length === 0, `@${w} form fits ${await overflow(page)}`);
       await shot(page, `form-${w}`);
       await page.click('[data-itin-save]'); await page.waitForTimeout(300);
@@ -148,7 +148,7 @@ const USER = { id: 'u0000000-0000-4000-8000-0000000000ab', email: 'guest@example
       // every field is editable and saved
       await page.fill('#rv0-name', 'Gracery Shinjuku'); await page.fill('#rv0-hf-room', 'Deluxe Suite'); await page.click('[data-rv-card="0"] [data-hf-bed="Queen"]');
       await page.fill('#rv0-dt-guests', '3'); await page.fill('#rv0-dt-price', '¥70,000'); await page.fill('#rv0-confNo', 'GR-78'); await page.fill('#rv0-link', 'https://example.com/b');
-      await page.fill('#rv0-note', 'Quiet room please'); await page.fill('#rv0-hf-cxd', '2027-03-29'); await page.fill('[data-rv-card="0"] [data-hk="cxt"]', '12:00');
+      await page.fill('#rv0-note + .rt-ed', 'Quiet room please'); await page.fill('#rv0-hf-cxd', '2027-03-29'); await page.fill('[data-rv-card="0"] [data-hk="cxt"]', '12:00');
       await page.click('[data-rv-card="0"] [data-det-amen="pool"]'); await page.uncheck('[data-rv-card="1"] [data-hk="nonRef"]'); await page.fill('#rv1-hf-cxd', '2027-04-01');
       ok(!(await page.$eval('#rv0-hf-room', i => i.classList.contains('got'))), 'an edited field loses its highlight');
       await page.click('[data-rv-save]'); await page.waitForTimeout(400);
@@ -162,7 +162,7 @@ const USER = { id: 'u0000000-0000-4000-8000-0000000000ab', email: 'guest@example
     { const { ctx, page } = await setup(browser, { user: USER, items: [AI_HOTEL] });
       await open(page);
       await page.click('#sec-itinerary [data-itin-add]'); await page.click('[data-itin-mode="manual"]'); await page.selectOption('#it-kind', 'hotel');
-      await page.fill('#it-note', 'my own note');
+      await page.fill('#it-note + .rt-ed', 'my own note');
       await page.evaluate((b64) => { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
         const dt = new DataTransfer(); dt.items.add(new File([u], 'Screenshot.png', { type: 'image/png' })); document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); }, PNG.toString('base64'));
       await page.waitForFunction(() => (document.querySelector('#it-name') || {}).value === 'Hotel Gracery Shinjuku', null, { timeout: 5000 }).catch(() => {});
@@ -225,7 +225,7 @@ const USER = { id: 'u0000000-0000-4000-8000-0000000000ab', email: 'guest@example
       await p2.goto(BASE + '#edit=' + await p2.evaluate((c) => window.__ep.packEvent(c), { ...CFG, schedule: [{ date: '2027-04-01', time: '15:00', title: 'Check in: Park Hotel Tokyo', note: '', kind: 'reservation' }] }));
       await p2.waitForSelector('[data-card="schedule"]'); await p2.click('[data-card="schedule"]'); await p2.waitForSelector('#sheet[open] .hf-fold');
       await p2.click('#sheet .hf-fold > summary'); await p2.click('#sheet [data-hf-sug="Executive"]'); await p2.click('#sheet [data-hf-bed="2 Queens"]'); await p2.fill('#sheet [data-hk="cxd"]', '2027-03-20');
-      await p2.fill('#sheet textarea[data-s="0"][data-k="note"]', 'Rooms held under Tanaka\nBreakfast included'); await p2.waitForTimeout(500);
+      await p2.fill('#sheet textarea[data-s="0"][data-k="note"] + .rt-ed', 'Rooms held under Tanaka\nBreakfast included'); await p2.waitForTimeout(500);
       if (SHOTS) await p2.screenshot({ path: `${SHOTS}/hotelfields-builder-row.png` });
       let d = await p2.evaluate(() => JSON.parse(localStorage.getItem('ep:draft')).schedule[0]);
       ok(d.room === 'Executive' && d.beds === '2 Queens' && d.cancelBy === '2027-03-20' && /\nBreakfast/.test(d.note), `builder check-in row stores room, bed, cancellation, notes ${JSON.stringify(d)}`);
@@ -236,7 +236,7 @@ const USER = { id: 'u0000000-0000-4000-8000-0000000000ab', email: 'guest@example
       await p2.click('[data-card="stays"]'); await p2.waitForSelector('#sheet [data-b="add-preset"]'); await p2.click('#sheet [data-b="add-preset"]');
       await p2.fill('#sheet [data-pr="0"][data-k="h"]', 'Park Hotel Tokyo'); await p2.evaluate(() => { const s = document.querySelector('#sheet'); s.close(); }); await p2.click('[data-card="stays"]'); await p2.waitForSelector('#sheet [data-hf-pr="0"]', { state: 'attached' });
       await p2.evaluate(() => document.querySelector('#sheet .hf-fold').open = true);
-      await p2.fill('#sheet [data-hf-pr="0"] [data-hk="room"]', 'Deluxe'); await p2.fill('#sheet [data-hf-pr="0"] [data-hk="note"]', 'Code TANAKA at the desk'); await p2.waitForTimeout(400);
+      await p2.fill('#sheet [data-hf-pr="0"] [data-hk="room"]', 'Deluxe'); await p2.fill('#sheet [data-hf-pr="0"] [data-hk="note"] + .rt-ed', 'Code TANAKA at the desk'); await p2.waitForTimeout(400);
       const pr = await p2.evaluate(() => JSON.parse(localStorage.getItem('ep:draft')).presets[0]);
       ok(pr.h && pr.h.name === 'Park Hotel Tokyo' && pr.h.room === 'Deluxe' && pr.h.note === 'Code TANAKA at the desk', `stay option hotel stores its fields ${JSON.stringify(pr)}`);
       const norm = await p2.evaluate((p) => window.__ep.normalize({ v: 2, type: 'Trip', title: 'x', start: '2027-04-01', presets: [p] }).presets[0], pr);
@@ -246,7 +246,7 @@ const USER = { id: 'u0000000-0000-4000-8000-0000000000ab', email: 'guest@example
       const { ctx: c3, page: p3 } = await setup(browser);
       const wed = { v: 2, type: 'Wedding', title: 'W', start: '2027-06-05T16:00', end: '2027-06-05T23:00', venue: { name: 'Hotel Esencia', address: 'Xpu-Ha', lat: 20.47, lon: -87.26, city: 'Xpu-Ha', country: 'Mexico', cc: 'mx' }, x: { Wedding: { blockHotel: 'Hotel Esencia', blockCode: 'SMITH' } }, tools: { stay: true } };
       await p3.goto(BASE + '#edit=' + await p3.evaluate((c) => window.__ep.packEvent(c), wed)); await p3.waitForSelector('[data-card="block"]'); await p3.click('[data-card="block"]'); await p3.waitForSelector('#sheet [data-hf-block]');
-      await p3.click('#sheet [data-hf-sug="Deluxe"]'); await p3.click('#sheet [data-hf-bed="King"]'); await p3.fill('#sheet [data-hk="cxd"]', '2027-05-20'); await p3.fill('#sheet [data-hk="note"]', 'Mention the Smith wedding'); await p3.waitForTimeout(400);
+      await p3.click('#sheet [data-hf-sug="Deluxe"]'); await p3.click('#sheet [data-hf-bed="King"]'); await p3.fill('#sheet [data-hk="cxd"]', '2027-05-20'); await p3.fill('#sheet [data-hk="note"] + .rt-ed', 'Mention the Smith wedding'); await p3.waitForTimeout(400);
       if (SHOTS) await p3.screenshot({ path: `${SHOTS}/hotelfields-builder-block.png` });
       const x = await p3.evaluate(() => JSON.parse(localStorage.getItem('ep:draft')).x.Wedding);
       ok(x.blockRoom === 'Deluxe' && x.blockBeds === 'King' && x.blockCancel === '2027-05-20' && x.blockNote === 'Mention the Smith wedding', `room block stores its fields ${JSON.stringify(x)}`);

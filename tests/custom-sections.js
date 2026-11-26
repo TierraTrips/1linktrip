@@ -46,14 +46,14 @@ const overflow = (page) => page.evaluate(() => {
   ok(await page.textContent('#sheet h2') === 'Custom section×', 'sheet title');
   const img = BASE + 'icon-192.png';
   await page.fill('[data-cs="0"][data-k="title"]', 'Getting to the dock');
-  await page.fill('[data-cs="0"][data-k="text"]', 'Take the gravel road past the gate.\n\nBoats leave at 4.');
+  await page.fill('[data-cs="0"][data-k="text"] + .rt-ed', 'Take the gravel road past the gate.\n\nBoats leave at 4.');
   await page.fill('[data-cs="0"][data-k="label"]', 'Ferry times');
   await page.fill('[data-cs="0"][data-k="url"]', 'https://example.com/ferry');
   await page.fill('[data-cs="0"][data-k="img"]', img);
   await page.click('[data-b="add-custom"]'); await page.waitForSelector('[data-cs="1"][data-k="title"]'); await page.waitForTimeout(150);
   ok(await page.evaluate(() => document.activeElement.matches('[data-cs="1"][data-k="title"]')), 'Add section focuses the new title');
   await page.fill('[data-cs="1"][data-k="title"]', 'House rules');
-  await page.fill('[data-cs="1"][data-k="text"]', 'Shoes off inside.');
+  await page.fill('[data-cs="1"][data-k="text"] + .rt-ed', 'Shoes off inside.');
   if (SHOTS) await page.locator('#sheet').screenshot({ path: `${SHOTS}/custom-sheet-390.png` });
   ok((await overflow(page)).length === 0, 'sheet @390: no overflow');
   await page.click('#sheet .btn.primary.big'); await page.waitForTimeout(600);

@@ -46,7 +46,7 @@ const sheetOverflow = (page) => page.evaluate(() => { const d = document.querySe
     ok(await sheetOverflow(page) <= 0, `@${w} item: no sideways scroll`);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/es-item-${w}.png` });
     // autosave: title, note
-    await page.fill('#sheet .es-title', 'Lunch at Nishiki'); await page.fill('#sheet .es-note textarea', 'Cash only stalls'); await page.waitForTimeout(900);
+    await page.fill('#sheet .es-title', 'Lunch at Nishiki'); await page.fill('#sheet .es-note .rt-ed', 'Cash only stalls'); await page.waitForTimeout(900);
     c = await draft(page); ok(c.schedule[si].title === 'Lunch at Nishiki' && c.schedule[si].note === 'Cash only stalls', `@${w} item: title and note save as typed`);
     ok(/Saved/.test(await page.$eval('#sheet .sh-saved', e => e.textContent)), `@${w} item: Saved shows after the edit`);
     ok(/Lunch at Nishiki/.test(await page.$eval('#preview', e => e.textContent)), `@${w} item: the page behind updates`);

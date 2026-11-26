@@ -73,7 +73,7 @@ const AFF = '#preview [data-ed], #preview .onp, #preview .onp-mk, #preview .onp-
   // About: only the About fields; live preview + saved
   await tap(page, 'sec:about');
   ok(await page.textContent('#sheet h2') === 'About×' && !!(await page.$('#sheet #f-desc')) && !(await page.$('#sheet [data-s]')), 'About section → About sheet only');
-  await page.fill('#sheet #f-desc', 'Sunset vows on the beach.');
+  await page.fill('#sheet #f-desc + .rt-ed', 'Sunset vows on the beach.');
   await page.waitForTimeout(800);
   ok(/Sunset vows on the beach/.test(await page.textContent('#preview #sec-about')), 'About edit shows on the page live (sheet still open)');
   ok((await draft(page)).description === 'Sunset vows on the beach.', 'About edit autosaved');
@@ -122,7 +122,7 @@ const AFF = '#preview [data-ed], #preview .onp, #preview .onp-mk, #preview .onp-
   ok(await page.evaluate(() => document.activeElement && document.activeElement.matches('#sheet [data-n][data-k="label"]')), 'new note: title field focused');
   await done(page); ok((await draft(page)).notes.length === nNotes, 'blank new note dropped on close');
   await tap(page, 'add:n'); const ni = nNotes;
-  await page.fill(`#sheet [data-n="${ni}"][data-k="label"]`, 'Sunscreen'); await page.fill(`#sheet [data-n="${ni}"][data-k="text"]`, 'Reef-safe only');
+  await page.fill(`#sheet [data-n="${ni}"][data-k="label"]`, 'Sunscreen'); await page.fill(`#sheet [data-n="${ni}"][data-k="text"] + .rt-ed`, 'Reef-safe only');
   await done(page);
   ok(/Sunscreen/.test(await page.textContent('#preview #sec-details')) && (await draft(page)).notes.length === nNotes + 1, 'new note on the page and saved');
   await tap(page, 'n:' + ni);
