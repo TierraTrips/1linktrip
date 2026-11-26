@@ -9783,10 +9783,10 @@ function hhFormHTML(cfg, src, hosted) {
   const H = hosted.hh; const reps = new Map((H.replies || []).map(r => { const p = rqParse(r.note); return [r.person_id, { ...r, x: p.x || {} }]; }));
   const people = hhOrder(H);
   if (!H.editing && people.length && people.every(p => reps.has(p.id))) {
-    return `${hhSeatHTML(H)}<div class="rsvp-done hh-done"><p><b>${esc(t('Thanks, {n}.', { n: H.name }))}</b></p><ul class="hh-sum">${people.map(p => { const r = reps.get(p.id); return `<li><span>${esc(p.name)}</span><b class="${r.attending ? 'y' : 'n'}">${r.attending ? t('Coming') : t('Can’t make it')}</b></li>`; }).join('')}</ul>
+    return `${hhSeatHTML(H)}${hhShuttleHTML(H)}<div class="rsvp-done hh-done"><p><b>${esc(t('Thanks, {n}.', { n: H.name }))}</b></p><ul class="hh-sum">${people.map(p => { const r = reps.get(p.id); return `<li><span>${esc(p.name)}</span><b class="${r.attending ? 'y' : 'n'}">${r.attending ? t('Coming') : t('Can’t make it')}</b></li>`; }).join('')}</ul>
       ${H.trOff ? '' : hhTravelSum(H)}<button type="button" class="btn sm" data-hh="edit">${t('Change replies')}</button></div>`;
   }
-  return `${hhSeatHTML(H)}<form class="rsvp hh-rsvp" novalidate onsubmit="return false"><p class="hh-for">${t('Replying for')} <b>${esc(H.name)}</b></p>
+  return `${hhSeatHTML(H)}${hhShuttleHTML(H)}<form class="rsvp hh-rsvp" novalidate onsubmit="return false"><p class="hh-for">${t('Replying for')} <b>${esc(H.name)}</b></p>
     <div class="hh-ps">${people.map(p => hhPersonHTML(cfg, src, H, p, reps.get(p.id))).join('')}</div>
     <div class="hh-adds">${hhAddersHTML(H)}</div>
     ${H.trOff ? '' : hhTravelHTML(H)}
@@ -9954,8 +9954,9 @@ function glPaint() {
   if (G.stOff && G.tab === 'seat') G.tab = 'list'; const sb2 = $('[data-gl-seat]', m); if (sb2) sb2.hidden = !!G.stOff;
   if (G.ivOff && G.tab === 'inv') G.tab = 'list'; const ib = $('[data-gl-inv]', m); if (ib) ib.hidden = !!G.ivOff; m.closest('.gl-page').classList.toggle('iv-wide', G.tab === 'inv');
   m.closest('.gl-page').classList.toggle('st-wide', G.tab === 'seat');
-  if (G.arrOff && G.tab === 'arr') G.tab = 'list'; const ab = $('[data-gl-arr]', m); if (ab) ab.hidden = !!G.arrOff; m.closest('.gl-page').classList.toggle('ar-wide', G.tab === 'arr');
-  $('[data-gl-body]', m).innerHTML = G.tab === 'diet' ? glDietHTML() : G.tab === 'groups' ? glGroupsHTML() : G.tab === 'seat' ? stHTML() : G.tab === 'inv' ? ivTabHTML() : G.tab === 'arr' ? arHTML() : glListHTML();
+  if (G.arrOff && G.tab === 'arr') G.tab = 'list'; const ab = $('[data-gl-arr]', m); if (ab) ab.hidden = !!G.arrOff; m.closest('.gl-page').classList.toggle('ar-wide', G.tab === 'arr' || G.tab === 'shut');
+  if ((G.shOff || G.arrOff) && G.tab === 'shut') G.tab = 'list'; const shb = $('[data-gl-shut]', m); if (shb) shb.hidden = !!(G.shOff || G.arrOff);
+  $('[data-gl-body]', m).innerHTML = G.tab === 'diet' ? glDietHTML() : G.tab === 'groups' ? glGroupsHTML() : G.tab === 'seat' ? stHTML() : G.tab === 'inv' ? ivTabHTML() : G.tab === 'arr' ? arHTML() : G.tab === 'shut' ? shHTML() : glListHTML();
   stFit();
   const bar = $('[data-gl-bar]', m); const n = G.sel.size; bar.hidden = !n || G.tab !== 'list';
   if (n) bar.innerHTML = `<b>${esc(t('{n} selected', { n }))}</b><select data-gl-bulkgrp aria-label="${esc(t('Set group'))}"><option value="">${t('Set group…')}</option>${G.gs.map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}<option value="none">${t('No group')}</option></select><button type="button" class="btn sm" data-gl-bulkcopy>${t('Copy links')}</button><button type="button" class="btn sm" data-gl-bulkmail>${t(G.ivOff ? 'Email invitations' : 'Send invitation')}</button><button type="button" class="link" data-gl-clear>${t('Clear')}</button>`;
@@ -9974,6 +9975,7 @@ async function glLoad() {
   await stLoad().catch(() => { G.stOff = true; });
   if (!G.iv) G.iv = ivBlank(); await ivLoad().catch(() => { G.ivOff = true; });
   await arLoad().catch(() => { G.arrOff = true; });
+  await shLoad().catch(() => { G.shOff = true; });
 }
 async function renderGuests(eid) {
   LANG = uiLang(); document.documentElement.lang = LANG; document.documentElement.dir = 'ltr'; document.title = t('Guest list') + ' · 1LinkTrip';
@@ -9984,7 +9986,7 @@ async function renderGuests(eid) {
   if (!user) { LS.del('signedIn'); LS.set('afterSignIn', '#guests/' + eid); return renderMine('', t('Sign in to see your guest list.')); }
   const c = await sb(); const { data: ev } = await c.from('events').select('id,slug,config,published,owner').eq('id', eid).maybeSingle();
   if (!ev) return shell(`<h1>${t('Guest list')}</h1><p>${t('Only the page’s organizers can see its guest list.')}</p><p><a href="#mine">${t('Back to My pages')}</a></p>`);
-  G = { eid, ev, cfg: normalize(ev.config), filter: 'all', grp: '', by: false, sel: new Set(), tab: /^seat/.test(location.hash.split('&t=')[1] || '') ? 'seat' : /^inv/.test(location.hash.split('&t=')[1] || '') ? 'inv' : /^arr/.test(location.hash.split('&t=')[1] || '') ? 'arr' : 'list', iv: null, hs: [], ps: [], rs: [], gs: [], hot: new Map(), opens: 0,
+  G = { eid, ev, cfg: normalize(ev.config), filter: 'all', grp: '', by: false, sel: new Set(), tab: /^seat/.test(location.hash.split('&t=')[1] || '') ? 'seat' : /^inv/.test(location.hash.split('&t=')[1] || '') ? 'inv' : /^arr/.test(location.hash.split('&t=')[1] || '') ? 'arr' : /^shut/.test(location.hash.split('&t=')[1] || '') ? 'shut' : 'list', iv: null, hs: [], ps: [], rs: [], gs: [], hot: new Map(), opens: 0,
     ts: [], seat: { show: false }, st: { pend: !!LS.get('stp:' + eid), grp: '', q: '', hh: false, fold: false, view: LS.get('stv:' + eid) || 'cards' } };
   try { await glLoad(); } catch (e) { return shell(`<h1>${t('Guest list')}</h1><p>${t('Couldn’t load it.')} ${esc(pubWhy(e))}</p>`); }
   // first visit: the usual groups for this kind of event (renameable, removable)
@@ -10006,12 +10008,12 @@ function glMount() {
     <section class="gl">
       <div class="gl-sum" data-gl-sum></div>
       ${G.ev.published ? '' : `<p class="b-note">${t('Share the page first: personal links open only once it’s shared.')}</p>`}
-      <div class="gl-head"><div class="seg2 gl-tabs" role="tablist"><button type="button" role="tab" data-gl-tab="list">${tCtx('tab', 'Guests')}</button><button type="button" role="tab" data-gl-tab="diet">${t('Dietary')}</button><button type="button" role="tab" data-gl-tab="groups">${t('Groups')}</button><button type="button" role="tab" data-gl-tab="seat" data-gl-seat>${t('Seating')}</button><button type="button" role="tab" data-gl-tab="inv" data-gl-inv>${t('Invitations')}</button><button type="button" role="tab" data-gl-tab="arr" data-gl-arr>${t('Arrivals')}</button></div>
+      <div class="gl-head"><div class="seg2 gl-tabs" role="tablist"><button type="button" role="tab" data-gl-tab="list">${tCtx('tab', 'Guests')}</button><button type="button" role="tab" data-gl-tab="diet">${t('Dietary')}</button><button type="button" role="tab" data-gl-tab="groups">${t('Groups')}</button><button type="button" role="tab" data-gl-tab="seat" data-gl-seat>${t('Seating')}</button><button type="button" role="tab" data-gl-tab="inv" data-gl-inv>${t('Invitations')}</button><button type="button" role="tab" data-gl-tab="arr" data-gl-arr>${t('Arrivals')}</button><button type="button" role="tab" data-gl-tab="shut" data-gl-shut>${t('Shuttles')}</button></div>
         <button type="button" class="btn sm primary" data-gl-add>${t('Add guests')}</button></div>
       <div data-gl-body></div>
       <div class="gl-bar" data-gl-bar hidden></div>
     </section>`);
-  glPaint(); glWire(); stWire(); { const m = $('.gl'); if (m && !m._iw) { m._iw = true; ivWire(m); arWire(m); } }
+  glPaint(); glWire(); stWire(); { const m = $('.gl'); if (m && !m._iw) { m._iw = true; ivWire(m); arWire(m); shWire(m); } }
 }
 function glCSV(rows, name) {
   const blob = new Blob(['﻿' + rows.map(l => l.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -10021,7 +10023,7 @@ function glWire() {
   const m = $('.gl'); if (!m || m._w) return; m._w = true;
   m.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset; const c = await sb();
-    if (d.glTab) { G.tab = d.glTab; glPaint(); if (G.tab === 'seat') { stPoll(); stSync(); } try { history.replaceState(history.state, '', '#guests/' + G.eid + (['seat', 'inv', 'arr'].includes(G.tab) ? '&t=' + G.tab : '')); } catch { /* fine */ } return; }
+    if (d.glTab) { G.tab = d.glTab; glPaint(); if (G.tab === 'seat') { stPoll(); stSync(); } try { history.replaceState(history.state, '', '#guests/' + G.eid + (['seat', 'inv', 'arr', 'shut'].includes(G.tab) ? '&t=' + G.tab : '')); } catch { /* fine */ } return; }
     if (d.glF) { G.filter = d.glF; glPaint(); return; }
     if (d.glGrp != null) { G.grp = d.glGrp; glPaint(); return; }
     if (d.glCopy) { const h = G.hs.find(x => x.id === d.glCopy); if (h) copy(glLink(h)); return; }
@@ -11179,7 +11181,7 @@ const apName = (c) => { if (!window.AIRPORTS) return ''; if (!apName.m) apName.m
 const AR_MODES = ['flight', 'train', 'bus', 'ferry', 'car'];
 const arCode = (s) => String(s || '').trim().replace(/\s+/g, ' ').slice(0, 80);
 const arKey = (s) => { const v = arCode(s); const m = v.toUpperCase().match(/\b[A-Z]{3}\b/); return m && apZone(m[0]) ? m[0] : v.toUpperCase(); }; // "lis" / "Lisbon LIS" → LIS
-const arFlight = (no) => { const c = String(no || '').replace(/\s+/g, '').toUpperCase(); return /^[A-Z0-9]{2}\d{1,4}$/.test(c) && AIRLINES[c.slice(0, 2)] ? c : ''; };
+const arFlight = (no) => { const c = String(no || '').replace(/\s+/g, '').toUpperCase(); return /^([A-Z]{2}|[A-Z][0-9]|[0-9][A-Z])\d{1,4}$/.test(c) ? c : ''; };
 const arStatusUrl = (no) => { const c = arFlight(no); return c ? `https://www.flightaware.com/live/flight/${c}` : ''; };
 const arDay = (s) => isoDay(String(s || '').slice(0, 10));
 const arHM = (s) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s || '') ? s.slice(11, 16) : '';
@@ -11326,6 +11328,7 @@ function hhTravelSum(H) {
 }
 async function arShareMount(cfg, hosted) {
   const slot = document.querySelector('[data-slot="arr-share"]'); if (!slot || !SB || !hosted || !hosted.slug) return;
+  if (cfg.type === 'Trip' && !hosted.hh) return; // a personal trip page has no organizers to share with (a household link always has)
   const key = 'arrShareGo:' + hosted.id; let on = false; let user = null;
   try { user = LS.get('signedIn') ? await sbUser() : null; } catch { user = null; }
   if (user) {
@@ -11345,5 +11348,155 @@ async function arShareMount(cfg, hosted) {
   };
 }
 
-window.__ep = { ar: { arRows, arFromTrips, arEditDlg, arCSV, hhTravelHTML, hhTravelSum, arShareMount }, iv: { ivRender, ivTexts, ivDefault, ivDate, ivPrepUpload, ivOpenBuilder, ivUploadDlg, ivTabHTML, ivLangs, ivTrailStep, IV_TPLS, ivPal }, lists: { B: () => B, G: () => G, setG: (g) => { G = g; }, ivBlank, buildForm, glMount, glPaint, conflictDlg, partName, glImportDlg, glEditDlg, stPickDlg, stEditDlg, stPrint, t, stLayout, stPlace, stAdd10, stFolded, FT: [FT_W, FT_H] }, cfgMerge3, cfgTakeTheirs, glParse, glGroupRows, joinFirst, rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtModel, rtSer, rtRead, rtEdToggle, rtSelect, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+// ================= shuttle runs (schema-shuttles.sql) =================
+// Guest list → Shuttles: runs (from → to, when, seats, vehicle, meeting point), riders assigned by household or person
+// (drag a household onto a run on a computer, or "Add to…" anywhere), suggested runs from the arrivals board (same
+// airport and day, arrivals within a time window), a seat warning, and a printable / CSV manifest per run. Each household
+// sees "Your shuttle" on its personal link.
+const SH_WIN = [30, 60, 90, 120];
+const shRun = (id) => (G.sr || []).find(r => r.id === id);
+const shRiders = (rid) => (G.srr || []).filter(x => x.run_id === rid).map(x => G.ps.find(p => p.id === x.person_id)).filter(Boolean).sort(stOrd);
+const shOf = (pid) => (G.srr || []).filter(x => x.person_id === pid).map(x => shRun(x.run_id)).filter(Boolean);
+const shWhen = (r) => [r.depart_date ? fmt(r.depart_date, { weekday: 'short', month: 'short', day: 'numeric' }) : '', r.depart_time ? fmtTime(r.depart_time) : ''].filter(Boolean).join(' · ');
+const shOrd = (a, b) => String(a.depart_date || '9999').localeCompare(String(b.depart_date || '9999')) || String(a.depart_time || '99').localeCompare(String(b.depart_time || '99')) || (a.sort - b.sort);
+const shComing = (p) => { const r = G.rep.get(p.id); return !r || r.attending; };
+const shHM = (m) => `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}`;
+const shMin = (hm) => { const [h, m] = String(hm || '').split(':').map(Number); return h * 60 + (m || 0); };
+// suggestions: arrivals (or departures) at the same place and day whose times fall within the window; people not on a run
+// of that direction yet. A run leaves 30 min after the last arrival (rounded up to 15), or 3 h before the first departure.
+function shSuggest() {
+  const dir = G.sh.dir; const win = G.sh.win; const rows = arRows().filter(r => !r.declined && r.h);
+  const taken = new Set((G.srr || []).filter(x => { const r = shRun(x.run_id); return r && shDirOf(r) === dir; }).map(x => x.person_id));
+  const legs = rows.map(r => ({ r, L: dir === 'dep' ? r.dep : r.arr })).filter(x => x.L && x.L.date && x.L.time && x.L.place)
+    .map(x => ({ ...x, ps: glPeople(x.r.h.id).filter(p => shComing(p) && !taken.has(p.id)), m: shMin(x.L.time), k: arKey(x.L.place) })).filter(x => x.ps.length);
+  const out = []; const by = new Map(); legs.forEach(x => { const k = x.k + '|' + x.L.date; if (!by.has(k)) by.set(k, []); by.get(k).push(x); });
+  by.forEach((xs) => { xs.sort((a, b) => a.m - b.m); let cur = null;
+    xs.forEach(x => { if (!cur || x.m - cur.first > win) { cur = { place: x.k, date: x.L.date, first: x.m, last: x.m, items: [] }; out.push(cur); } cur.last = x.m; cur.items.push(x); }); });
+  return out.map(g => { const n = g.items.reduce((s, x) => s + x.ps.length, 0); const leave = dir === 'dep' ? Math.max(0, g.first - 180) : Math.ceil((g.last + 30) / 15) * 15;
+    return { ...g, n, time: shHM(leave), pids: g.items.flatMap(x => x.ps.map(p => p.id)), names: g.items.map(x => x.r.name) }; }).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+}
+const shVenue = () => (G.cfg.venue && (G.cfg.venue.name || G.cfg.venue.city)) || G.cfg.title || '';
+const shDirOf = (r) => { const v = normName(shVenue()); return v && normName(r.from_place) === v ? 'dep' : 'arr'; };
+function shRunHTML(r) {
+  const ps = shRiders(r.id); const over = ps.length > r.capacity; const pct = Math.min(100, Math.round(100 * ps.length / Math.max(1, r.capacity)));
+  return `<article class="sh-run${over ? ' over' : ''}" data-sh-drop="${esc(r.id)}">
+    <header class="sh-hd"><div class="sh-when">${r.depart_time ? `<b class="sh-tm">${esc(fmtTime(r.depart_time))}</b>` : ''}<span>${esc(r.depart_date ? fmt(r.depart_date, { weekday: 'short', month: 'short', day: 'numeric' }) : t('Day not set'))}</span></div>
+      <div class="sh-route"><b>${esc(r.from_place || '?')}</b><i aria-hidden="true">→</i><b>${esc(r.to_place || '?')}</b></div>
+      <button type="button" class="btn sm ghost" data-sh-edit="${esc(r.id)}">${t('Edit')}</button></header>
+    ${r.name || r.vehicle || r.meet ? `<p class="sh-meta">${[r.name, r.vehicle, r.meet ? t('Meet: {m}', { m: r.meet }) : ''].filter(Boolean).map(esc).join(' · ')}</p>` : ''}
+    <div class="sh-cap"><i style="--w:${pct}%" aria-hidden="true"></i><span>${esc(t('{n} of {m} seats', { n: ps.length, m: r.capacity }))}</span>${over ? `<em role="alert">${esc(t('{n} over capacity', { n: ps.length - r.capacity }))}</em>` : ''}</div>
+    <ul class="sh-ps">${ps.map(p => { const h = stHH(p) || {}; return `<li><span>${esc(stName(p))}</span><small>${esc(h.name && h.name !== p.name ? h.name : '')}</small><button type="button" class="sh-x" data-sh-rm="${esc(r.id)}|${esc(p.id)}" aria-label="${esc(t('Take {n} off this run', { n: stName(p) }))}">×</button></li>`; }).join('') || `<li class="sh-empty">${t('Drop households here, or use Add to… on the left.')}</li>`}</ul>
+    <div class="sh-acts"><button type="button" class="btn sm" data-sh-print="${esc(r.id)}">${t('Print manifest')}</button><button type="button" class="btn sm" data-sh-csv="${esc(r.id)}">${t('CSV')}</button></div>
+  </article>`;
+}
+function shHTML() {
+  if (!G.sh) G.sh = { dir: 'arr', win: 60 }; const runs = [...(G.sr || [])].sort(shOrd);
+  const sug = shSuggest(); const opts = runs.map(r => `<option value="${esc(r.id)}">${esc([shWhen(r), `${r.from_place} → ${r.to_place}`].filter(Boolean).join(' · '))}</option>`).join('');
+  const rows = arRows().filter(r => !r.declined && r.h); const onRun = new Set((G.srr || []).map(x => x.person_id));
+  const waiting = rows.map(r => ({ r, ps: glPeople(r.h.id).filter(p => shComing(p) && !onRun.has(p.id)) })).filter(x => x.ps.length)
+    .sort((a, b) => ((a.r.arr && (a.r.arr.date + a.r.arr.time)) || 'z').localeCompare((b.r.arr && (b.r.arr.date + b.r.arr.time)) || 'z'));
+  const over = runs.filter(r => shRiders(r.id).length > r.capacity).length;
+  return `<div class="sh">
+    <div class="ar-bar"><button type="button" class="btn sm primary" data-sh-new>${t('Add a run')}</button><span class="muted small">${esc(t(runs.length === 1 ? '1 run' : '{n} runs', { n: runs.length }))} · ${esc((n => t(n === 1 ? '1 rider' : '{n} riders', { n }))(new Set((G.srr || []).map(x => x.person_id)).size))}</span>${over ? `<em class="sh-warn" role="alert">${esc(t(over === 1 ? '1 run is over capacity' : '{n} runs are over capacity', { n: over }))}</em>` : ''}</div>
+    <div class="sh-cols">
+      <aside class="sh-side">
+        <section class="sh-sug"><h3>${t('Suggested runs')}</h3>
+          <div class="sh-sugbar"><div class="seg2" role="tablist" aria-label="${esc(t('Show'))}">${[['arr', 'Arrivals'], ['dep', 'Departures']].map(([k, l]) => `<button type="button" role="tab" data-sh-dir="${k}" class="${G.sh.dir === k ? 'on' : ''}" aria-selected="${G.sh.dir === k}">${t(l)}</button>`).join('')}</div>
+            <label class="sh-win">${t('Within')} <select data-sh-win aria-label="${esc(t('Time window'))}">${SH_WIN.map(m => `<option value="${m}"${G.sh.win === m ? ' selected' : ''}>${esc(t('{n} min', { n: m }))}</option>`).join('')}</select></label></div>
+          ${sug.length ? `<ul class="sh-sl">${sug.map((g, i) => `<li><div><b>${esc(g.place)}</b> · ${esc(fmt(g.date, { weekday: 'short', month: 'short', day: 'numeric' }))} · ${esc(fmtTime(shHM(g.first)))}${g.last !== g.first ? '–' + esc(fmtTime(shHM(g.last))) : ''}<small>${esc(arPeople(g.n))} · ${esc(g.names.join(', '))}</small></div><button type="button" class="btn sm" data-sh-make="${i}">${esc(t(G.sh.dir === 'dep' ? 'Run at {t}' : 'Run at {t}', { t: fmtTime(g.time) }))}</button></li>`).join('')}</ul>${sug.length > 1 ? `<button type="button" class="link" data-sh-makeall>${t('Create all suggested runs')}</button>` : ''}`
+            : `<p class="muted small">${t(G.sh.dir === 'dep' ? 'Suggestions appear when guests add departures (day, time and place) on the Arrivals board.' : 'Suggestions appear when guests add arrivals (day, time and place) on the Arrivals board.')}</p>`}
+        </section>
+        <section class="sh-wait"><h3>${t('Not on a run')} <span>${waiting.reduce((n, x) => n + x.ps.length, 0)}</span></h3>
+          <ul>${waiting.map(({ r, ps }) => `<li draggable="true" data-sh-drag="${esc(ps.map(p => p.id).join(','))}"><div><b>${esc(r.name)}</b><small>${esc([arPeople(ps.length), r.arr ? [arWhen(r.arr), r.arr.place].filter(Boolean).join(' · ') : t('No arrival yet')].join(' · '))}</small></div>${runs.length ? `<select data-sh-add="${esc(ps.map(p => p.id).join(','))}" aria-label="${esc(t('Add {n} to a run', { n: r.name }))}"><option value="">${t('Add to…')}</option>${opts}</select>` : ''}</li>`).join('') || `<li class="muted small">${t('Everyone coming is on a run.')}</li>`}</ul>
+        </section>
+      </aside>
+      <div class="sh-runs">${runs.map(shRunHTML).join('') || `<p class="muted gl-empty">${t('No runs yet. Add one, or create one from a suggestion.')}</p>`}</div>
+    </div></div>`;
+}
+async function shLoad() {
+  const c = await sb(); const [r, x] = await Promise.all([c.from('shuttle_runs').select('*').eq('event_id', G.eid).order('sort').limit(300), c.from('shuttle_riders').select('run_id,person_id').eq('event_id', G.eid).limit(10000)]);
+  if (r.error) throw r.error; G.sr = r.data || []; G.srr = x.data || [];
+}
+async function shAdd(rid, pids) {
+  const have = new Set((G.srr || []).filter(x => x.run_id === rid).map(x => x.person_id)); const add = pids.filter(p => p && !have.has(p)); if (!add.length) return;
+  const c = await sb(); const { error } = await c.from('shuttle_riders').insert(add.map(person_id => ({ run_id: rid, person_id, event_id: G.eid })));
+  if (error) { toast(error.message); return; } G.srr = (G.srr || []).concat(add.map(person_id => ({ run_id: rid, person_id })));
+  const r = shRun(rid); const n = shRiders(rid).length; glPaint(); if (r && n > r.capacity) toast(t('{n} over capacity', { n: n - r.capacity }));
+}
+async function shRunSave(r) {
+  const c = await sb(); const row = { name: r.name || null, from_place: r.from_place || '', to_place: r.to_place || '', depart_date: r.depart_date || null, depart_time: r.depart_time || null, capacity: Math.max(1, Math.min(200, +r.capacity || 8)), vehicle: r.vehicle || null, meet: r.meet || null, notes: r.notes || null };
+  if (r.id && shRun(r.id)) { const { error } = await c.from('shuttle_runs').update(row).eq('id', r.id); if (error) throw error; Object.assign(shRun(r.id), row); return r.id; }
+  const id = crypto.randomUUID(); const { error } = await c.from('shuttle_runs').insert({ id, event_id: G.eid, sort: (G.sr || []).length, ...row }); if (error) throw error;
+  G.sr = (G.sr || []).concat([{ id, event_id: G.eid, sort: (G.sr || []).length, ...row }]); return id;
+}
+async function shFromSug(g) {
+  const dep = G.sh.dir === 'dep'; const id = await shRunSave({ from_place: dep ? shVenue() : g.place, to_place: dep ? g.place : shVenue(), depart_date: g.date, depart_time: g.time, capacity: Math.max(4, Math.ceil(g.n / 4) * 4) });
+  await shAdd(id, g.pids); return id;
+}
+function shEditDlg(id) {
+  const r = id ? shRun(id) : { from_place: '', to_place: shVenue(), capacity: 8 }; if (!r) return;
+  const f = (k, label, attrs = '') => `<label class="ar-in"><span>${esc(t(label))}</span><input data-she="${k}" value="${esc(r[k] ?? '')}" ${attrs}></label>`;
+  const d = glDlg(`<h2>${t(id ? 'Edit run' : 'Add a run')}</h2>
+    <div class="ar-grid">${f('from_place', 'From', 'maxlength="80" placeholder="' + esc(t('e.g. LIS')) + '"')}${f('to_place', 'To', 'maxlength="80"')}${f('depart_date', 'Date', 'type="date"')}${f('depart_time', 'Leaves at', 'type="time"')}${f('capacity', 'Seats', 'type="number" min="1" max="200" inputmode="numeric"')}${f('vehicle', 'Vehicle', 'maxlength="80" placeholder="' + esc(t('e.g. 8-seat van')) + '"')}</div>
+    ${f('meet', 'Meeting point', 'maxlength="200" placeholder="' + esc(t('e.g. Arrivals hall, exit 3')) + '"')}${f('name', 'Name (optional)', 'maxlength="60"')}${f('notes', 'Note for riders', 'maxlength="300"')}
+    <div class="btns cf-b">${id ? `<button type="button" class="link" data-she-del>${t('Delete run')}</button>` : ''}<button type="button" class="btn ghost" data-she-x>${t('Cancel')}</button><button type="button" class="btn primary" data-she-ok>${t('Save')}</button></div>`);
+  d.onclick = async (e) => {
+    if (e.target === d || e.target.closest('[data-she-x]')) { d.close(); return; }
+    if (e.target.closest('[data-she-del]')) { if (!await confirmDlg({ title: t('Delete this run?'), body: t('Its riders go back to Not on a run.'), ok: t('Delete'), cancel: t('Cancel') })) return; const c = await sb(); const { error } = await c.from('shuttle_runs').delete().eq('id', id); if (error) { toast(error.message); return; } G.sr = G.sr.filter(x => x.id !== id); G.srr = G.srr.filter(x => x.run_id !== id); d.close(); glPaint(); return; }
+    if (!e.target.closest('[data-she-ok]')) return;
+    const v = Object.fromEntries($$('[data-she]', d).map(i => [i.dataset.she, i.value.trim()]));
+    try { await shRunSave({ ...v, id }); d.close(); toast(t('Saved')); glPaint(); } catch (er) { toast(er.message || String(er)); }
+  };
+}
+function shManifestHTML(rid) {
+  const r = shRun(rid); const ps = shRiders(rid);
+  const lead = (p) => { const h = stHH(p); const tr = h && (G.tr || []).find(x => x.household_id === h.id); const row = h && arRows().find(x => x.id === h.id); const L = row && (shDirOf(r) === 'dep' ? row.dep : row.arr); return L ? [L.time ? fmtTime(L.time) : '', L.no].filter(Boolean).join(' · ') : (tr ? '' : ''); };
+  return `<header><p class="sp-k">${t('Passenger manifest')}</p><h1>${esc(r.from_place || '?')} → ${esc(r.to_place || '?')}</h1><p class="sp-sum">${esc([shWhen(r), r.vehicle, r.meet ? t('Meet: {m}', { m: r.meet }) : '', t('{n} of {m} seats', { n: ps.length, m: r.capacity })].filter(Boolean).join(' · '))}</p>${r.notes ? `<p class="sp-sum">${esc(r.notes)}</p>` : ''}</header>
+    <table class="sh-man"><thead><tr><th></th><th>${t('Name')}</th><th>${t('Household')}</th><th>${t(shDirOf(r) === 'dep' ? 'Departing' : 'Arriving')}</th><th>${t('Phone')}</th><th class="sh-ck">✓</th></tr></thead>
+    <tbody>${ps.map((p, i) => { const h = stHH(p) || {}; return `<tr><td>${i + 1}</td><td>${esc(stName(p))}</td><td>${esc(h.name || '')}</td><td>${esc(lead(p))}</td><td>${esc(h.phone || '')}</td><td class="sh-ck"><i></i></td></tr>`; }).join('')}</tbody></table>`;
+}
+function shPrint(rid) {
+  let el = $('#st-print'); if (!el) { el = document.createElement('div'); el.id = 'st-print'; document.body.appendChild(el); }
+  el.className = 'st-print sh'; el.innerHTML = shManifestHTML(rid); document.body.classList.add('st-printing');
+  const done = () => { document.body.classList.remove('st-printing'); window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done); setTimeout(() => window.print(), 60);
+}
+function shCSV(rid) {
+  const r = shRun(rid); const rows = [['Run', 'Leaves', 'Name', 'Household', 'Arriving', 'Flight or train number', 'Phone'].map(x => t(x))];
+  shRiders(rid).forEach(p => { const h = stHH(p) || {}; const row = arRows().find(x => x.id === h.id); const L = row && (shDirOf(r) === 'dep' ? row.dep : row.arr) || {};
+    rows.push([`${r.from_place} → ${r.to_place}`, [r.depart_date, r.depart_time].filter(Boolean).join(' '), stName(p), h.name || '', [L.date, L.time, L.place].filter(Boolean).join(' '), L.no || '', h.phone || '']); });
+  glCSV(rows, t('manifest') + '-' + (r.depart_date || '') + '-' + String(r.from_place || '').toLowerCase().replace(/[^\w]+/g, '-'));
+}
+function shWire(m) {
+  m.addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b || !G || G.tab !== 'shut') return; const d = b.dataset;
+    if (d.shNew != null) { shEditDlg(null); return; }
+    if (d.shEdit) { shEditDlg(d.shEdit); return; }
+    if (d.shDir) { G.sh.dir = d.shDir; glPaint(); return; }
+    if (d.shMake != null) { const g = shSuggest()[+d.shMake]; if (!g) return; b.disabled = true; try { await shFromSug(g); toast(t('Run added')); } catch (er) { toast(er.message || String(er)); } glPaint(); return; }
+    if (d.shMakeall != null) { b.disabled = true; let n = 0; for (;;) { const g = shSuggest()[0]; if (!g || n > 50) break; try { await shFromSug(g); n++; } catch (er) { toast(er.message || String(er)); break; } } toast(t(n === 1 ? '1 run added' : '{n} runs added', { n })); glPaint(); return; }
+    if (d.shRm) { const [rid, pid] = d.shRm.split('|'); const c = await sb(); const { error } = await c.from('shuttle_riders').delete().eq('run_id', rid).eq('person_id', pid); if (error) { toast(error.message); return; } G.srr = G.srr.filter(x => !(x.run_id === rid && x.person_id === pid)); glPaint(); return; }
+    if (d.shPrint) { shPrint(d.shPrint); return; }
+    if (d.shCsv) { shCSV(d.shCsv); return; }
+  });
+  m.addEventListener('change', (e) => {
+    const i = e.target; if (!G || G.tab !== 'shut') return;
+    if (i.dataset.shWin != null) { G.sh.win = +i.value || 60; glPaint(); return; }
+    if (i.dataset.shAdd && i.value) shAdd(i.value, i.dataset.shAdd.split(','));
+  });
+  m.addEventListener('dragstart', (e) => { const li = e.target.closest && e.target.closest('[data-sh-drag]'); if (!li) return; e.dataTransfer.setData('text/plain', 'sh:' + li.dataset.shDrag); e.dataTransfer.effectAllowed = 'move'; li.classList.add('drag'); });
+  m.addEventListener('dragend', (e) => { const li = e.target.closest && e.target.closest('[data-sh-drag]'); if (li) li.classList.remove('drag'); $$('.sh-run.hot', m).forEach(x => x.classList.remove('hot')); });
+  m.addEventListener('dragover', (e) => { const run = e.target.closest && e.target.closest('[data-sh-drop]'); if (!run) return; e.preventDefault(); $$('.sh-run.hot', m).forEach(x => x !== run && x.classList.remove('hot')); run.classList.add('hot'); });
+  m.addEventListener('drop', (e) => { const run = e.target.closest && e.target.closest('[data-sh-drop]'); if (!run) return; e.preventDefault(); run.classList.remove('hot'); const v = e.dataTransfer.getData('text/plain'); if (/^sh:/.test(v)) shAdd(run.dataset.shDrop, v.slice(3).split(',')); });
+}
+// the household's own runs, on its personal link
+function hhShuttleHTML(H) {
+  const rs = (H.shuttles || []).filter(r => r && (r.people || []).length); if (!rs.length) return '';
+  const nm = new Map((H.people || []).map(p => [p.id, p.name])); const all = (H.people || []).filter(p => p.id).length;
+  return `<div class="hh-shut"><small>${t(rs.length === 1 ? 'Your shuttle' : 'Your shuttles')}</small><ul>${rs.map(r => `<li><div class="hh-sh1">${r.time ? `<b class="sh-tm">${esc(fmtTime(r.time))}</b>` : ''}<span>${esc([r.date ? fmt(r.date, { weekday: 'short', month: 'short', day: 'numeric' }) : '', t('from {a} to {b}', { a: r.from || '?', b: r.to || '?' })].filter(Boolean).join(' · '))}</span></div>
+    ${r.meet ? `<p>${esc(t('Meet: {m}', { m: r.meet }))}</p>` : ''}${r.vehicle || r.notes ? `<p class="muted small">${esc([r.vehicle, r.notes].filter(Boolean).join(' · '))}</p>` : ''}
+    ${(r.people || []).length < all ? `<p class="muted small">${esc((r.people || []).map(id => nm.get(id)).filter(Boolean).join(', '))}</p>` : ''}</li>`).join('')}</ul></div>`;
+}
+
+window.__ep = { sh: { shSuggest, shEditDlg, shManifestHTML, shPrint, shCSV, hhShuttleHTML, shFromSug }, ar: { arRows, arFromTrips, arEditDlg, arCSV, hhTravelHTML, hhTravelSum, arShareMount }, iv: { ivRender, ivTexts, ivDefault, ivDate, ivPrepUpload, ivOpenBuilder, ivUploadDlg, ivTabHTML, ivLangs, ivTrailStep, IV_TPLS, ivPal }, lists: { B: () => B, G: () => G, setG: (g) => { G = g; }, ivBlank, buildForm, glMount, glPaint, conflictDlg, partName, glImportDlg, glEditDlg, stPickDlg, stEditDlg, stPrint, t, stLayout, stPlace, stAdd10, stFolded, FT: [FT_W, FT_H] }, cfgMerge3, cfgTakeTheirs, glParse, glGroupRows, joinFirst, rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtModel, rtSer, rtRead, rtEdToggle, rtSelect, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

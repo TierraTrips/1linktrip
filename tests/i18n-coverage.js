@@ -127,6 +127,11 @@ async function screens(page, kind, url, cb) {
     await L('G.ar.none = true; X.glPaint();'); await grab('arrivals no info');
     await L('G.ar.none = false; G.ar.dir = "dep"; G.ar.view = "time"; X.glPaint();'); await grab('departures');
     await L('window.__ep.ar.arEditDlg("h2");'); await page.waitForTimeout(200); await grab('arrivals edit dialog'); await close();
+    await L(`G.sr = [{ id: 'r1', event_id: 'e0', name: null, from_place: 'CUN', to_place: 'Hacienda', depart_date: G.tr[0].arr_date, depart_time: '12:15', capacity: 1, vehicle: 'Van', meet: 'Exit 3', notes: null, sort: 0 }];
+      G.srr = [{ run_id: 'r1', person_id: 'p1' }, { run_id: 'r1', person_id: 'p2' }]; window.__fakeData.push('Hacienda', 'Van', 'Exit 3'); G.tab = 'shut'; X.glPaint();`); await page.waitForTimeout(300); await grab('shuttles');
+    await L('G.sh.dir = "dep"; X.glPaint();'); await grab('shuttles departures');
+    await L('window.__ep.sh.shEditDlg("r1");'); await page.waitForTimeout(200); await grab('shuttle edit dialog'); await close();
+    await L('G.sr = []; G.srr = []; X.glPaint();'); await grab('shuttles empty');
     await L('G.tab = "list"; X.glPaint();');
   } else {
     await grab('owner page');

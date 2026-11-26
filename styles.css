@@ -2161,3 +2161,51 @@ a.ar-no { border-bottom: 1px solid var(--contour); } a.ar-no span { margin-left:
 p.hh-trs { display: block; }
 .arr-share { background: var(--card, #fff); border: 1.5px solid var(--line, var(--rule)); border-radius: 14px; padding: 12px 14px; margin: 14px 0; }
 .arr-share .tool b { font-weight: 650; } .arr-share p { margin: 6px 0 0; }
+
+/* ---- shuttle runs (Guest list → Shuttles): boarding passes — time in a flap cell, route, seats bar, riders ---- */
+.sh-warn { font-style: normal; font-weight: 650; color: var(--route-ink); }
+.sh-cols { display: grid; gap: 14px; }
+.sh-side { display: grid; gap: 12px; align-content: start; min-width: 0; } .sh-runs { min-width: 0; }
+.sh-side section { background: var(--paper); border-radius: 14px; padding: 12px 14px; min-width: 0; }
+.sh-side h3 { font: 500 1.1rem var(--brand); margin: 0 0 8px; display: flex; gap: 8px; align-items: baseline; } .sh-side h3 span { font: 600 .72rem var(--mono); color: var(--slate); }
+.sh-sugbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; } .sh-sugbar .seg2 button { padding: 6px 10px; }
+.sh-win { font-size: .85rem; color: var(--slate); display: inline-flex; gap: 6px; align-items: center; } .sh-win select { min-height: 36px; border-radius: 9px; border: 1.5px solid var(--rule); padding: 0 6px; background: var(--field); }
+.sh-sl, .sh-wait ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sh-sl li { flex-wrap: wrap; } .sh-sl li .btn { flex: none; margin-left: auto; }
+.sh-sl li, .sh-wait li { display: flex; gap: 10px; align-items: center; justify-content: space-between; background: var(--fog); border-radius: 10px; padding: 8px 10px; }
+.sh-sl li b { font-family: var(--mono); } .sh-sl small, .sh-wait small { display: block; color: var(--slate); font-size: .8rem; }
+.sh-sl li > div, .sh-wait li > div { min-width: 0; }
+.sh-wait li[draggable="true"] { cursor: grab; border-left: 3px solid var(--sage); } .sh-wait li.drag { opacity: .5; }
+.sh-wait select { flex: 0 1 46%; min-width: 0; max-width: 46%; min-height: 36px; border-radius: 9px; border: 1.5px solid var(--rule); background: var(--paper); font-size: .85rem; }
+.sh-runs { display: grid; gap: 12px; align-content: start; }
+.sh-run { background: var(--paper); border-radius: 16px; padding: 14px; border: 2px solid transparent; position: relative; }
+.sh-run::before { content: ''; position: absolute; left: 0; right: 0; top: 64px; border-top: 2px dashed var(--fog); }
+.sh-run.hot { border-color: var(--route); background: #FFF8F6; } .sh-run.over { border-color: #F0B9AE; }
+.sh-hd { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; min-height: 44px; margin-bottom: 14px; }
+.sh-when { display: grid; gap: 2px; } .sh-when span { font: 600 .66rem var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--slate); }
+.sh-tm { display: inline-block; font: 600 1.05rem var(--mono); background: var(--forest); color: #F2F7F5; border-radius: 6px; padding: .2em .45em; position: relative; font-variant-numeric: tabular-nums; }
+.sh-tm::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(0, 0, 0, .4); }
+.sh-route { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; min-width: 0; } .sh-route b { font: 500 1.15rem/1.15 var(--brand); overflow-wrap: anywhere; } .sh-route i { color: var(--route); font-style: normal; font-weight: 700; }
+.sh-meta { margin: 0 0 8px; color: var(--slate); font-size: .88rem; }
+.sh-cap { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 10px; font: 600 .74rem var(--mono); color: var(--slate); }
+.sh-cap i { flex: 1 1 100%; height: 6px; border-radius: 3px; background: var(--fog); position: relative; overflow: hidden; } .sh-cap i::after { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--w); background: var(--sage); border-radius: 3px; }
+.sh-run.over .sh-cap i::after { background: var(--route); width: 100%; } .sh-cap em { font-style: normal; color: var(--route-ink); }
+.sh-ps { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.sh-ps li { display: inline-flex; align-items: center; gap: 6px; background: var(--fog); border-radius: 999px; padding: 4px 4px 4px 10px; font-size: .88rem; } .sh-ps li small { color: var(--slate); font-size: .74rem; } .sh-ps li small:empty { display: none; }
+.sh-x { border: 0; background: transparent; width: 28px; height: 28px; border-radius: 50%; color: var(--slate); font-size: 1.1rem; cursor: pointer; } .sh-x:hover, .sh-x:focus-visible { background: var(--paper); color: var(--route-ink); }
+.sh-ps li.sh-empty { background: none; border: 1.5px dashed var(--rule); border-radius: 10px; padding: 10px 12px; color: var(--slate); width: 100%; }
+.sh-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (min-width: 900px) { .sh-cols { grid-template-columns: minmax(0, 340px) minmax(0, 1fr); align-items: start; } .sh-side { position: sticky; top: 12px; } }
+/* household link */
+.hh-shut { background: var(--fog); border-radius: 14px; padding: 12px 14px; margin: 0 0 12px; border-left: 4px solid var(--route); }
+.hh-shut > small { font: 600 .66rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted, #5D6372); }
+.hh-shut ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 10px; } .hh-shut p { margin: 4px 0 0; }
+.hh-sh1 { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-weight: 600; }
+/* printed manifest (same sheet as the seating lists) */
+@media print {
+  #st-print.sh .sh-man { width: 100%; border-collapse: collapse; font-size: 10.5pt; }
+  #st-print.sh .sh-man th { text-align: left; font: 600 7.5pt var(--mono); letter-spacing: .08em; text-transform: uppercase; color: #555; border-bottom: 1.5px solid #111; padding: 4pt; }
+  #st-print.sh .sh-man td { border-bottom: 1px solid #ccc; padding: 6pt 4pt; } #st-print.sh .sh-man td:first-child { color: #777; width: 18pt; }
+  #st-print.sh .sh-ck { width: 26pt; text-align: center; } #st-print.sh .sh-ck i { display: inline-block; width: 11pt; height: 11pt; border: 1.2px solid #333; border-radius: 2pt; }
+}
+.sh-sl > li, .sh-wait ul > li { min-width: 0; } .sh-wait select { width: 46%; }
