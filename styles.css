@@ -1104,6 +1104,14 @@ html.is-offline body::before { content: 'Offline'; position: fixed; top: max(12p
 /* Share sheet: the link box + its buttons hide until there's a link (signing in, creating the short link, an error) */
 .pub [hidden] { display: none !important; }
 .pub-alt { margin: 10px 0 0 !important; } .pub-host .link { font-size: inherit; }
+/* the page's name: 1linktrip.com/<name> (publish dialog + Settings) */
+.pn { margin: 8px 0 0; } .pn p.pn-cur { margin: 0; overflow-wrap: anywhere; } .pn .link { font-size: inherit; }
+.pn label { display: block; font: 600 .7rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted, var(--slate)); margin: 0 0 6px; }
+.pn-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.pn-pre { font: 500 .9rem var(--mono); color: var(--muted, var(--slate)); white-space: nowrap; }
+.pn-row input, .pub-host .pn-row input { flex: 1 1 140px; width: auto; min-width: 0; min-height: 44px; border: 1.5px solid var(--rule); border-radius: 10px; padding: .5em .7em; font: 16px var(--mono); background: #fff; }
+.pn-st { display: block; min-height: 1.2em; margin-top: 4px; } .pn-st[data-k="taken"], .pn-st[data-k="reserved"], .pn-st[data-k="invalid"] { color: #A23B2A; } .pn-st[data-k="ok"], .pn-st[data-k="alias"] { color: #1E6B3A; }
+.b-host p { margin: 0; }
 .b-long { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; } .b-long small { flex-basis: 100%; }
 /* setup: Start from a website / Start from a document */
 .su-ai-starts { display: flex; flex-wrap: wrap; gap: 4px 18px; }

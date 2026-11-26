@@ -134,6 +134,54 @@ const LS = {
   del(k) { try { localStorage.removeItem('ep:' + k); } catch {} }
 };
 
+// ---------- page names: https://1linktrip.com/<name> (Dylan 11/25: "customizable URLs") ----------
+// A hosted page can have a name (page_names, supabase/schema-names.sql). /<name> is served either by <name>.html — a copy
+// of index.html carrying that page's title/image for link previews, written by .github/workflows/names.yml — or, until
+// that file exists, by 404.html (the same app). Either way the app reads the name from the path and opens the page as if
+// the address were ?e=<slug>, keeping the pretty address. ?e= links keep working; a page's old names keep opening it and
+// move the address to its current name. "/<name>&g=…" (a ?e= style suffix glued on) is read as "/<name>?g=…".
+const APP_ROOT = (() => { try { const s = document.currentScript && document.currentScript.src; if (s) return new URL('./', s).pathname; } catch {} return '/'; })();
+const NAME_RE = /^(?!.*--)[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
+// kept in step with ep_private.name_reserved() (the server has the final say)
+const NAME_RESERVED = new Set(('about account accounts admin administrator ai api app apps apple-touch-icon assets auth billing blog book booking brand ' +
+  'callback cdn contact css dashboard demo dns-inbound docs domain download downloads edit email event events example examples faq favicon files ' +
+  'fonts google guest guests help home icon icons images img inbox index invite invites join js legal linktrip login logout mail manifest me mine my ' +
+  'new null oauth official onelinktrip page pages planner planners pricing privacy proposal public register resend robots root rsvp security settings ' +
+  'setup share shared sign-in sign-up signin signup sitemap static status support supabase sw system team terms test tests trip trips undefined ' +
+  'upload uploads user users www 1linktrip 404 500').split(' '));
+const NAME_BAD = /(fuck|shit|cunt|nigg|fagg|rape|nazi)/;
+const nameClean = (s) => String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '').slice(0, 40);
+const nameProblem = (n) => !NAME_RE.test(n) ? 'invalid' : NAME_RESERVED.has(n) || NAME_BAD.test(n) ? 'reserved' : '';
+// what this device knows: n = name → slug (opens /<name> offline / without a round trip), s = slug → current name (links)
+const pnGet = () => { const m = LS.get('pn') || {}; return { n: m.n || {}, s: m.s || {} }; };
+function pnRemember(name, slug, current) {
+  const m = pnGet(); if (name && slug) m.n[name] = slug; if (current && slug) { m.n[current] = slug; m.s[slug] = current; } LS.set('pn', m);
+}
+function pnForget(name) { const m = pnGet(); delete m.n[name]; LS.set('pn', m); }
+const pnName = (slug) => pnGet().s[slug] || '';
+const SLUG_RE0 = /^[a-z0-9][a-z0-9-]{1,46}[a-z0-9]$/;
+// the page the address names, if it is a /<name> address: { name, slug } (slug '' = not known yet), { bad } = not a name
+let PATH = (() => {
+  const p = location.pathname; if (!p.startsWith(APP_ROOT)) return null;
+  let rest = p.slice(APP_ROOT.length); try { rest = decodeURIComponent(rest); } catch { /* as typed */ }
+  rest = rest.replace(/\/+$/, '').replace(/\.html$/i, '');
+  if (!rest || /^index$/i.test(rest)) return null;
+  let extra = ''; const amp = rest.indexOf('&'); if (amp > 0) { extra = rest.slice(amp + 1); rest = rest.slice(0, amp); }
+  const name = rest.toLowerCase();
+  if (!NAME_RE.test(name)) return { bad: true, name: '', path: p };
+  const meta = document.querySelector('meta[name="ep-page"]'); // the preview copy for this name says which page it is
+  let slug = meta && meta.dataset.name === name && SLUG_RE0.test(meta.content || '') ? meta.content : '';
+  const cur = meta && slug && NAME_RE.test(meta.dataset.current || '') ? meta.dataset.current : name;
+  if (slug) pnRemember(name, slug, cur); else slug = pnGet().n[name] || '';
+  const q = new URLSearchParams(location.search); if (extra) new URLSearchParams(extra).forEach((v, k) => { if (!q.has(k)) q.set(k, v); });
+  const qs = q.toString(); const want = APP_ROOT + cur + (qs ? '?' + qs : '') + location.hash;
+  if (want !== p + location.search + location.hash) try { history.replaceState(history.state, '', want); } catch { /* keep */ }
+  return { name: cur, slug, fresh: !!(meta && slug), path: APP_ROOT + cur };
+})();
+// the address's query, with e=<slug> when the address is /<name>
+function locQ() { const q = new URLSearchParams(location.search); if (PATH && PATH.slug && !q.has('e')) q.set('e', PATH.slug); return q; }
+const withQ = (url, k, v) => url + (url.includes('?') ? '&' : '?') + k + '=' + encodeURIComponent(v);
+
 // the toast sits in the open sheet when there is one (a modal <dialog> is the top layer: a toast behind it can't be
 // tapped — "Replaced A with B · Undo" from a place sheet was unreachable), else in the page
 function toastEl() {
@@ -1426,7 +1474,7 @@ async function notifyEmail(kind, id) {
   } catch { /* in-app delivery already happened */ }
 }
 // where a guest returns after signing in on a hosted page: the same page and tab
-const hostedBack = (art) => { const p = art && art.querySelector('.ev-panel:not([hidden])'); const k = p ? p.dataset.panel : 'event'; return '?e=' + enc(new URLSearchParams(location.search).get('e') || '') + (k && k !== 'event' ? '#t=' + k : ''); };
+const hostedBack = (art) => { const p = art && art.querySelector('.ev-panel:not([hidden])'); const k = p ? p.dataset.panel : 'event'; return '?e=' + enc(locQ().get('e') || '') + (k && k !== 'event' ? '#t=' + k : ''); };
 const msgSignInHTML = () => `<div class="bk-signin gm-signin"><p><b>${t('Sign in first.')}</b></p>${signInFormHTML('')}</div>`;
 const msgListHTML = (rows, cfg, host) => rows.length ? `<ul class="msg-list">${rows.map(r => {
   const mine = host ? r.from_host : !r.from_host; const who = r.from_host ? (host ? t('You') : (cfg.host || t('Host'))) : (host ? (r.guest_name || r.guest_email || t('Guest')) : t('You'));
@@ -2147,14 +2195,14 @@ function wireTravelHide(cfg, art) {
 // tab part when it arrives, so it still opens what it asks for; a plain shared link opens on Event.
 function tabURL(art, k, opts = {}) {
   if (opts.preview && !art.closest('#preview')) return; // setup's preview and the like
-  const h = location.hash, q = new URLSearchParams(location.search); const cc = q.has('city') || q.has('cat'); let nh = null;
+  const h = location.hash, q = locQ(); const cc = q.has('city') || q.has('cat'); let nh = null;
   if (/^#(e|ex|page)=/.test(h)) { const base = h.split('&t=')[0]; nh = k === 'event' && !cc ? base : `${base}&t=${k}`; }
   else if ((q.get('e') || q.get('demo')) && (h === '' || h === '#' || /^#t=/.test(h))) nh = k === 'event' && !cc ? '' : '#t=' + k;
   if (nh === null || nh === h || (nh === '' && h === '#')) return;
   try { history.replaceState(history.state, '', location.pathname + location.search + nh); } catch {}
 }
 // ...and the scroll position within that tab (this browser tab only: sessionStorage), restored on a reload
-const vyKey = () => { const p = document.querySelector('.viewer #ev-root .ev-panel:not([hidden])'); if (!p) return ''; const q = new URLSearchParams(location.search);
+const vyKey = () => { const p = document.querySelector('.viewer #ev-root .ev-panel:not([hidden])'); if (!p) return ''; const q = locQ();
   return 'epY:' + (q.get('e') ? 'e:' + q.get('e') : q.get('demo') ? 'd:' + q.get('demo') : 'h:' + hashStr(location.hash.split('&t=')[0])) + ':' + p.dataset.panel; };
 let vyBusy = false, vyTried = false;
 addEventListener('scroll', debounce(() => { if (vyBusy) return; const k = vyKey(); if (k) try { sessionStorage.setItem(k, String(Math.round(scrollY))); } catch {} }, 150), { passive: true });
@@ -2580,7 +2628,7 @@ function renderBuilder(cfg, source, hosted, pid) {
     <div data-shr-p="trip" hidden><div data-shr-box></div><div class="btns"><button class="btn ghost">Close</button></div></div>
   </form></dialog>`;
   buildForm(); saveStatus('');
-  if (new URLSearchParams(location.search).get('e')) $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase())); // '#' can't leave a ?e= link
+  if (locQ().get('e')) $$('#app a[href="#"]').forEach(x => x.setAttribute('href', siteBase())); // '#' can't leave a ?e= link
   const bl = $('.builder');
   { const top = $('.b-top'); const set = () => { if (top.isConnected) bl.style.setProperty('--btop', Math.round(top.getBoundingClientRect().height) + 'px'); }; set(); if (typeof ResizeObserver === 'function') new ResizeObserver(set).observe(top); }
   bl.addEventListener('click', (e) => {
@@ -2606,6 +2654,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   wireInputs(sh.querySelector('.sheet-in')); esWire(sh);
   DU = null; PH = null; wireDocs(sh.querySelector('.sheet-in')); wireDocs($('.b-form')); wirePageDrop(); docAIKnown(); wirePhotos(sh.querySelector('.sheet-in')); wirePhotos($('.b-form'));
   if (typeof wirePubHost === 'function') wirePubHost();
+  pnWire();
   if (SB && (LS.get('signedIn') || B.hosted)) msgReady().then(ok => { if (ok && B && !$('[data-card="msgs"]')) buildForm(); }); // no network for signed-out drafts
   if (LS.get('signedIn') && SB) aiModes().then(m => { if (m.includes('translate') && B && !$('[data-card="langs"]')) buildForm(); });
   preview();
@@ -3638,8 +3687,10 @@ async function aboutFill() {
 const SB = window.EP_SUPABASE && window.EP_SUPABASE.url ? window.EP_SUPABASE : null;
 const SB_JS = { src: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js', integrity: 'sha384-uteMfOloLDGt042uDz+xHGF3ym63/WQ6rFq7murQRG8Ih7QrXGEGNtWd8688sb4O' };
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,46}[a-z0-9]$/;
-const siteBase = () => location.origin + location.pathname;
-const shortURL = (slug) => `${siteBase()}?e=${slug}`;
+const siteBase = () => location.origin + APP_ROOT; // the app itself (a /<name> address is a page, not the app)
+// a hosted page's link: the pretty one when the page has a name, else ?e=<slug>
+const shortURL = (slug) => pnName(slug) ? siteBase() + pnName(slug) : `${siteBase()}?e=${slug}`;
+const linkText = (slug) => pnName(slug) ? location.host + APP_ROOT + pnName(slug) : '?e=' + slug;
 let sbClient = null, sbLoading = null;
 function sb() {
   if (sbClient) return Promise.resolve(sbClient);
@@ -3742,6 +3793,12 @@ function wireOffline(cfg, art, opts) {
   const offMap = () => { const el = art.querySelector('[data-slot="map-off"]'); if (!el) return; el.innerHTML = navigator.onLine === false ? `<p class="muted off-msg"><b>${t('Offline')}</b> · ${t('The map needs a connection. Open in Google Maps works with its offline maps.')}</p>${spotsHTML(cfg)}` : ''; };
   art._offMap = offMap; offMap(); addEventListener('online', offMap);
 }
+// the current name of a published page (a ?e= link's share sheet / QR then show 1linktrip.com/<name>); never waits long
+function pnFetchFor(slug) {
+  if (!SB || !SLUG_RE.test(slug) || navigator.onLine === false) return Promise.resolve();
+  const p = rest('rpc/page_name_for', { method: 'POST', body: { sl: slug } }).then(n => { if (typeof n === 'string' && NAME_RE.test(n)) pnRemember('', slug, n); }).catch(() => {});
+  return Promise.race([p, sleep(2500)]);
+}
 async function fetchHosted(slug) {
   if (!SLUG_RE.test(slug)) return null;
   const rows = await rest(`events?slug=eq.${enc(slug)}&select=id,slug,config,updated_at&limit=1`);
@@ -3761,9 +3818,10 @@ const fmtStamp = (iso) => { try { return new Intl.DateTimeFormat(LOCALES[LANG] |
 async function renderHosted(slug, tab) {
   LANG = pickLang(); document.documentElement.lang = LANG;
   $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="#">${BRAND}</a></div><div id="ev-root"><div class="skel" role="status"><span></span><span></span><em>${t('Loading…')}</em></div></div></div>`;
-  let row = null;
+  let row = null; const nmP = PATH && PATH.slug === slug ? null : pnFetchFor(slug); // its pretty link, for the share sheet
   try { row = await fetchHosted(slug); }
   catch { return hostedProblem(t('Couldn’t load this page. Check your connection and try again.'), true); }
+  if (nmP) await nmP;
   if (!row && acctOn() && SLUG_RE.test(slug)) { // the signed-in organizer's own page, not shared yet
     try { const c = await sb(); const { data } = await c.from('events').select('id,slug,config,updated_at,published').eq('slug', slug).maybeSingle(); if (data) row = data; } catch { /* below */ }
   }
@@ -3775,7 +3833,7 @@ async function renderHosted(slug, tab) {
   // a "Share my trip" link (?s=<token>): the page plus that person's bookings, followed from now on (the token leaves the
   // address so it isn't passed on by accident)
   const sq = (new URLSearchParams(location.search).get('s') || '').toLowerCase(); let shArrived = false;
-  if (sq) { const q = new URLSearchParams(location.search); q.delete('s'); history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash); shArrived = /^[a-f0-9]{32}$/.test(sq); }
+  if (sq) { const q = new URLSearchParams(location.search); q.delete('s'); const qs2 = q.toString(); history.replaceState(null, '', location.pathname + (qs2 ? '?' + qs2 : '') + location.hash); shArrived = /^[a-f0-9]{32}$/.test(sq); }
   // the organizer (this device has the page in My pages) gets their page with tap-to-edit, right at its link; everyone else
   // gets the guest page (and "Edit a copy"). The account's copy wins over an older one on this device, as in the sync.
   let own = pagesAll().find(p => p.hosted && p.hosted.id === row.id);
@@ -4123,8 +4181,18 @@ async function acctSyncRun() {
   }
   const have = new Set(pagesAll().filter(x => x.hosted).map(x => x.hosted.id));
   rows.filter(r => !have.has(r.id)).reverse().forEach(r => { pageSave(newPid(), { cfg: normalize(r.config), hosted: { id: r.id, slug: r.slug, owner: user.id, pub: !!r.published }, edited: Date.parse(r.updated_at) || 0 }); moved = true; });
+  if (await pnSyncOwn(c).catch(() => false)) moved = true;
   if (moved) dispatchEvent(new Event('ep-pages'));
   return true;
+}
+// the names of this device's hosted pages (owner / co-planner: RLS gives only those rows) → their links show 1linktrip.com/<name>
+async function pnSyncOwn(c) {
+  const hs = pagesAll().filter(x => x.hosted && x.hosted.id && x.hosted.slug).map(x => x.hosted).slice(0, 200); if (!hs.length) return false;
+  const { data, error } = await c.from('page_names').select('name,event_id').eq('is_current', true).in('event_id', hs.map(h => h.id));
+  if (error || !Array.isArray(data)) return false;
+  const by = new Map(data.map(r => [r.event_id, r.name])); const m = pnGet(); const was = JSON.stringify(m.s);
+  hs.forEach(h => { const n = by.get(h.id); if (typeof n === 'string' && NAME_RE.test(n)) { m.s[h.slug] = n; m.n[n] = h.slug; } else delete m.s[h.slug]; });
+  LS.set('pn', m); return JSON.stringify(m.s) !== was;
 }
 // "Save to My pages" on a long (#e=) link: the page joins the account (its organizer's own page keeps its link public
 // and gets the short link; anyone else gets their own copy, not shared until they Share), then opens at the short link
@@ -4172,10 +4240,91 @@ function pubHostHTML() {
   const P = B.pub || {};
   if (!SB) return '';
   if (P.state === 'busy') return `<div class="pub-host" role="status"><p><b>Getting your link…</b></p></div>`;
-  if (P.state === 'done') return `<div class="pub-host ok"><p>Your edits show up on this link automatically. <a href="#mine">Replies in My pages</a></p></div>`;
+  if (P.state === 'done') return `<div class="pub-host ok"><p>Your edits show up on this link automatically. <a href="#mine">Replies in My pages</a></p>${B.hosted ? pnEditHTML(B.hosted, !pnName(B.hosted.slug) && !!B.pnSug) : ''}</div>`;
   if (P.state === 'signin') return `<div class="pub-host"><p><b>Sign in to share</b></p>${signInFormHTML(P.msg, LS.get('signinEmail') || '')}<p class="pub-alt">${LONG_BTN}<br>${longNoteHTML(false) || '<small class="muted">That link won’t show later edits.</small>'}</p></div>`;
   if (P.state === 'long') return `<div class="pub-host">${longNoteHTML(true)}<p class="muted small">This link won’t show later edits.</p></div>`;
   return `<div class="pub-host" role="alert"><p><b>Couldn’t share.</b> ${esc(P.msg || '')}</p><button type="button" class="btn primary" data-ph="go">Try again</button><p class="pub-alt">${LONG_BTN}${longNoteHTML(false) ? '<br>' + longNoteHTML(false) : ''}</p></div>`;
+}
+// ---------- the page's name: https://1linktrip.com/<name> (publish dialog + Settings) ----------
+// Sharing a page for the first time gives it a name made from its title (japan-trip, else japan-trip-2026, -2, -3); a page
+// that was shared before gets the same name offered, not taken. Change it any time: the old name keeps opening the page.
+const PN_MSG = { ok: 'Available', yours: 'This is the page’s link now', alias: 'An earlier link of this page. You can use it again.',
+  taken: 'Taken. Try another.', reserved: 'That name is reserved. Try another.', invalid: 'Use 3–40 letters, numbers or hyphens.' };
+const pnPrefix = () => location.host + APP_ROOT;
+function pnBase(cfg) { let b = nameClean(cfg && cfg.title).replace(/-+$/, '').slice(0, 34).replace(/-+$/, ''); if (b.length < 3) b = b ? b + '-page' : ''; return b; }
+async function pnSuggest(c, cfg, eid) {
+  const b = pnBase(cfg); if (!b) return ''; const y = String((cfg && cfg.start) || '').slice(0, 4);
+  for (const n of [b, /^\d{4}$/.test(y) && !b.includes(y) ? b + '-' + y : '', b + '-2', b + '-3'].filter(Boolean)) {
+    if (nameProblem(n)) continue;
+    const { data, error } = await c.rpc('page_name_check', { nm: n, eid }); if (error) return '';
+    if (data === 'ok' || data === 'alias') return n;
+  }
+  return '';
+}
+async function pnAfterPublish(h, first) {
+  try {
+    const c = await sb();
+    const { data, error } = await c.from('page_names').select('name').eq('event_id', h.id).eq('is_current', true).limit(1);
+    if (error) return; // names not set up on this database
+    if (Array.isArray(data) && data[0] && NAME_RE.test(data[0].name)) { pnRemember('', h.slug, data[0].name); return; }
+    const sug = await pnSuggest(c, B.cfg, h.id); if (!sug) return;
+    if (first) { const { data: nm, error: e2 } = await c.rpc('page_name_set', { eid: h.id, nm: sug }); if (!e2 && typeof nm === 'string' && NAME_RE.test(nm)) { pnRemember('', h.slug, nm); return; } }
+    B.pnSug = sug;
+  } catch { /* the ?e= link works without a name */ }
+}
+// open: the field is showing. A page without a name shows it straight away (with the offered name)
+function pnEditHTML(h, open) {
+  const cur = pnName(h.slug); const val = cur || (B && B.pnSug) || '';
+  if (!open) return `<div class="pn" data-pn data-pn-eid="${esc(h.id)}" data-pn-slug="${esc(h.slug)}"><p class="pn-cur">${cur ? `Link name: <b>${esc(pnPrefix())}${esc(cur)}</b> <button type="button" class="link" data-pn-open>Change</button>` : `<button type="button" class="link" data-pn-open>Choose a link name: ${esc(pnPrefix())}…</button>`}</p></div>`;
+  return `<div class="pn open" data-pn data-pn-eid="${esc(h.id)}" data-pn-slug="${esc(h.slug)}"><label for="pn-in-${esc(h.slug)}">${cur ? 'Change the link' : 'Choose a link name'}</label>
+    <div class="pn-row"><span class="pn-pre" aria-hidden="true">${esc(pnPrefix())}</span><input id="pn-in-${esc(h.slug)}" data-pn-in value="${esc(val)}" maxlength="40" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" inputmode="url" aria-describedby="pn-st-${esc(h.slug)}"><button type="button" class="btn sm primary" data-pn-save disabled>${cur ? 'Save' : 'Use this link'}</button>${cur ? '<button type="button" class="btn sm ghost" data-pn-cancel>Cancel</button>' : ''}</div>
+    <small class="pn-st muted" id="pn-st-${esc(h.slug)}" data-pn-st role="status" aria-live="polite">${cur ? 'Old links keep working.' : ''}</small></div>`;
+}
+const pnCheck = debounce(async (box) => {
+  const inp = box.querySelector('[data-pn-in]'), st = box.querySelector('[data-pn-st]'), btn = box.querySelector('[data-pn-save]'); if (!inp) return;
+  const n = inp.value; const seq = box._seq = (box._seq || 0) + 1;
+  const put = (k) => { if (box._seq !== seq) return; st.textContent = PN_MSG[k] || ''; st.dataset.k = k; btn.disabled = !(k === 'ok' || k === 'alias'); };
+  if (!n) { st.textContent = ''; btn.disabled = true; return; }
+  const bad = nameProblem(n); if (bad) return put(bad);
+  st.textContent = 'Checking…'; st.dataset.k = ''; btn.disabled = true;
+  try { const c = await sb(); const { data, error } = await c.rpc('page_name_check', { nm: n, eid: box.dataset.pnEid }); if (error) throw error; put(String(data)); }
+  catch (e) { if (box._seq === seq) { st.textContent = navigator.onLine === false ? 'You’re offline.' : 'Couldn’t check that name. Try again.'; st.dataset.k = ''; } }
+}, 300);
+// an open field: check what's in it, or offer a name made from the title
+async function pnFill(box) {
+  const i = box && box.querySelector('[data-pn-in]'); if (!i) return;
+  if (!i.value && B && B.cfg) { try { const sug = await pnSuggest(await sb(), B.cfg, box.dataset.pnEid); if (sug && !i.value) { B.pnSug = sug; i.value = sug; } } catch { /* type one */ } }
+  if (i.value && !pnName(box.dataset.pnSlug)) pnCheck(box);
+}
+function pnRepaint(slug) {
+  if (B && B.hosted && B.hosted.slug === slug) {
+    if ($('#pub') && $('#pub').open && B.pub && B.pub.state === 'done') pubLink(shortURL(slug));
+    renderHostNote();
+  }
+  $$('[data-pn]').forEach(box => { if (box.dataset.pnSlug === slug) box.outerHTML = pnEditHTML({ id: box.dataset.pnEid, slug }, false); });
+}
+function pnWire() {
+  if (pnWire.on) return; pnWire.on = true;
+  document.addEventListener('input', (e) => {
+    const inp = e.target.closest && e.target.closest('[data-pn-in]'); if (!inp) return;
+    const v = nameClean(inp.value); if (v !== inp.value) { const at = inp.selectionStart; inp.value = v; try { inp.setSelectionRange(Math.min(at, v.length), Math.min(at, v.length)); } catch {} }
+    pnCheck(inp.closest('[data-pn]'));
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.closest && e.target.closest('[data-pn-in]')) { e.preventDefault(); const b = e.target.closest('[data-pn]').querySelector('[data-pn-save]'); if (b && !b.disabled) b.click(); } });
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest && e.target.closest('[data-pn-open],[data-pn-cancel],[data-pn-save]'); if (!b) return; e.preventDefault();
+    const box = b.closest('[data-pn]'); const h = { id: box.dataset.pnEid, slug: box.dataset.pnSlug };
+    if ('pnOpen' in b.dataset) { box.outerHTML = pnEditHTML(h, true); const i = document.getElementById('pn-in-' + h.slug); if (!i) return; i.focus(); i.select(); pnFill(i.closest('[data-pn]')); return; }
+    if ('pnCancel' in b.dataset) { box.outerHTML = pnEditHTML(h, false); return; }
+    const inp = box.querySelector('[data-pn-in]'), st = box.querySelector('[data-pn-st]'); const n = inp.value;
+    if (nameProblem(n)) { st.textContent = PN_MSG[nameProblem(n)]; return; }
+    b.disabled = true; st.textContent = 'Saving…';
+    try {
+      const c = await sb(); const { data, error } = await c.rpc('page_name_set', { eid: h.id, nm: n }); if (error) throw error;
+      const had = pnName(h.slug); pnRemember(had, h.slug, data); if (B) B.pnSug = '';
+      pnRepaint(h.slug); toast(had ? 'Link changed. The old link still works.' : 'Link saved'); dispatchEvent(new Event('ep-pages'));
+    } catch (er) { b.disabled = false; st.textContent = navigator.onLine === false ? 'You’re offline.' : (er && er.message) || 'Couldn’t save. Try again.'; }
+  });
 }
 function renderPubHost() { const box = $('#pub-host'); if (box) box.innerHTML = pubHostHTML(); }
 const pubWhy = (e) => navigator.onLine === false ? 'You’re offline.' : (e && (e.message || e.error_description || e.details)) || 'Try again.';
@@ -4186,11 +4335,13 @@ async function hostNow() {
   try { user = await sbUser(); } catch (e) { const msg = pubWhy(e); toast('Couldn’t share: ' + msg); B.pub = { state: 'error', msg }; renderPubHost(); return; }
   if (!user) { LS.del('signedIn'); pubLink(null, 'Share your page'); B.pub = { state: 'signin' }; renderPubHost(); setTimeout(() => $('#si-email')?.focus(), 0); return; }
   LS.set('signedIn', true); clearTimeout(B.pushT); B.pushT = null; LS.set('draft', B.cfg); pageSave(B.pid, { cfg: B.cfg });
+  const first = !(B.hosted && B.hosted.pub); // sharing for the first time: the page gets a name made from its title
   try {
     const h = await acctSave(B.pid, { publish: true, fetchOsm: true });
     if (!h) throw new Error('This page belongs to another account. Edit a copy to share it.');
+    await pnAfterPublish(h, first);
     const url = shortURL(h.slug); pubLink(url, 'Your link');
-    B.pub = { state: 'done' }; renderPubHost(); renderHostNote(); saveStatus('saved');
+    B.pub = { state: 'done' }; renderPubHost(); renderHostNote(); saveStatus('saved'); pnFill($('#pub [data-pn].open'));
     { const sg = $('#pub [data-pub-seg]'), sb2 = $('#pub [data-pub-sub]'); if (sg) sg.hidden = false; if (sb2) sb2.hidden = false; } // Invite guests | Share my trip
   } catch (e) { const msg = pubWhy(e); toast('Couldn’t share: ' + msg); pubLink(null, 'Share your page'); B.pub = { state: 'error', msg }; renderPubHost(); }
 }
@@ -4210,8 +4361,8 @@ function wirePubHost() {
 function renderHostNote() {
   const f = $('.b-form'); if (!f || !B) return; let n = $('.b-host', f);
   if (!B.hosted || !B.hosted.pub) { if (n) n.remove(); return; }
-  const html = `<p class="b-note b-host">Your link: <a href="${esc(shortURL(B.hosted.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(B.hosted.slug)}</a> · <a href="#mine">My pages</a></p>`;
-  if (n) n.outerHTML = html; else f.insertAdjacentHTML('afterbegin', html);
+  const html = `<div class="b-note b-host"><p>Your link: <a href="${esc(shortURL(B.hosted.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(B.hosted.slug))}</a> · <a href="#mine">My pages</a></p>${SB ? pnEditHTML(B.hosted, false) : ''}</div>`;
+  if (n) { if (n.querySelector('[data-pn].open') && n.contains(document.activeElement)) return; n.outerHTML = html; } else f.insertAdjacentHTML('afterbegin', html);
 }
 
 // ---------- organizer: My pages, replies, updates ----------
@@ -4237,7 +4388,7 @@ async function renderMine(id, notice) {
   if (error) return shell(`<h1>My pages</h1><p>Couldn’t load your pages. ${esc(error.message)}</p>`);
   shell(`<div class="mine-h"><h1>My pages</h1><span class="muted small">${esc(user.email || '')} · <button type="button" class="link" data-mine="signout">Sign out</button></span></div>
     <section data-slot="mine-inbox"></section>
-    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · not shared'}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a>` : ''}</div><div class="btns"><button type="button" class="btn sm primary" data-mine-edit="${esc(r.id)}">Open</button><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button>` : ''}<button type="button" class="btn sm ghost" data-mine-del="${esc(r.id)}" aria-label="Delete ${esc(cfg.title || 'Untitled')}">Delete</button></div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Share, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
+    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || 'Untitled')}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · not shared'}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(r.slug))}</a>` : ''}</div><div class="btns"><button type="button" class="btn sm primary" data-mine-edit="${esc(r.id)}">Open</button><a class="btn sm" href="#mine/${esc(r.id)}">Replies and updates</a>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">Copy link</button>` : ''}<button type="button" class="btn sm ghost" data-mine-del="${esc(r.id)}" aria-label="Delete ${esc(cfg.title || 'Untitled')}">Delete</button></div></li>`; }).join('')}</ul>` : `<p class="lede">No short links yet. Make a page, tap Share, then Get a short link.</p><a class="btn primary" href="#setup">Make a page</a>`}`);
   mineInbox(c, data).catch(() => {});
   if (data.length) msgReady().then(async ok => { // "2 new" next to pages with unanswered guest messages
     if (!ok) return; const { data: ms } = await c.from('event_messages').select('event_id,guest,from_host,created_at').in('event_id', data.map(x => x.id)).order('created_at', { ascending: true }).limit(5000);
@@ -4308,7 +4459,7 @@ async function renderMineEvent(id, shell, c, user) {
   const replies = [...latest.values()].reverse().map(x => { const p = rqParse(x.note); return { ...x, note: p.text, x: p.x || {} }; }); const yes = replies.filter(x => x.attending); const no = replies.filter(x => !x.attending);
   const RQ = rqReplyCols(cfg, replies); const rqSum = rqSummary(yes);
   const guests = LS.get(guestListKey(id), []) || []; const waiting = notReplied(guests, replies);
-  shell(`<p><a href="#mine">← My pages</a></p><div class="mine-h"><h1>${esc(cfg.title || 'Untitled')}</h1><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">?e=${esc(r.slug)}</a></div>
+  shell(`<p><a href="#mine">← My pages</a></p><div class="mine-h"><h1>${esc(cfg.title || 'Untitled')}</h1><a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(r.slug))}</a></div>
     ${msgs ? `<section class="mine-sec" id="mine-msgs"><h2>${t('Messages')}</h2><label class="tool gm-on"><input type="checkbox" data-gm-on ${cfg.guestMessages ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>${t('Let guests message you')}</label>${inboxHTML(msgs, seen)}</section>` : ''}
     <section class="mine-sec"><h2>Updates</h2><p class="muted small">Guests see these at the top of your page.</p>
       <form class="ann-form" onsubmit="return false"><textarea id="an-body" rows="3" maxlength="2000" placeholder="Shuttle leaves the hotel at 4:30. Bring a jacket."></textarea>${msgs ? sendToHTML(groups) : ''}<div class="btns"><button type="button" class="btn primary" data-an="post">Post update</button></div><p class="hint" role="status" aria-live="polite"></p></form>
@@ -4925,7 +5076,7 @@ addEventListener('ep-pages', () => {
   const land = $('.land.home');
   if (land) { const h = myPagesHTML(), sec = $('#my-pages', land); if (sec) { if (h) sec.outerHTML = h; else sec.remove(); } else if (h) $('.land-hero', land)?.insertAdjacentHTML('afterend', h); }
   // a guest page that turns out to be this account's own (pages arrived from the account): reopen it as the owner's page
-  const v = $('.viewer .vbar a[href^="#edit="]'); const slug = new URLSearchParams(location.search).get('e');
+  const v = $('.viewer .vbar a[href^="#edit="]'); const slug = locQ().get('e');
   if (v && slug && !$('#sheet[open], dialog.ds-sheet[open]') && pagesAll().some(p => p.hosted && p.hosted.slug === slug)) route();
 });
 
@@ -7521,7 +7672,7 @@ async function shrTripLoad(box, ctx) {
     else { const r = await c.from('trip_shares').insert({ owner: u.id, event_id: ctx.eid, page_key: key, name: shName(u), data }).select('token').single(); row = r.data;
       if (!row) ({ data: row } = await c.from('trip_shares').select('token').eq('owner', u.id).eq('event_id', ctx.eid).maybeSingle()); if (!row) throw r.error || new Error(''); }
     LS.set('shOut:' + key, { tok: row.token, eid: ctx.eid });
-    paint({ s: 'link', url: `${shortURL(ctx.slug)}&s=${row.token}`, n: { bk: data.bk.length, pl: data.pl.length } });
+    paint({ s: 'link', url: withQ(shortURL(ctx.slug), 's', row.token), n: { bk: data.bk.length, pl: data.pl.length } });
   } catch (e) { paint({ s: 'err', msg: navigator.onLine === false ? t('You’re offline.') : '' }); }
 }
 function shrTripWire(box, ctx) {
@@ -9066,13 +9217,35 @@ function whenToggle(c) {
 }
 
 // ---------- router ----------
+// /<name>: ask the server which page it is (bg = the page is already open from this device's memory: only correct it)
+async function pathResolve(bg) {
+  const P = PATH; if (!P || !P.name) return;
+  if (!bg) $('#app').innerHTML = `<div class="viewer"><div class="vbar"><a class="brand sm" href="${esc(siteBase())}">${BRAND}</a></div><div id="ev-root"><div class="skel" role="status"><span></span><span></span><em>${t('Loading…')}</em></div></div></div>`;
+  let r = null, ok = false;
+  try { const x = await rest('rpc/page_name_resolve', { method: 'POST', body: { nm: P.name } }); ok = Array.isArray(x); r = ok && x[0] && SLUG_RE.test(x[0].slug || '') ? x[0] : null; } catch { /* below */ }
+  if (ok && !r && acctOn()) { // the signed-in organizer's own page that isn't shared yet
+    try { const c = await sb(); const { data } = await c.rpc('page_name_resolve', { nm: P.name }); if (Array.isArray(data) && data[0] && SLUG_RE.test(data[0].slug || '')) r = data[0]; } catch { /* as anon */ }
+  }
+  if (PATH !== P) return;
+  if (!ok) { if (!bg) hostedProblem(t('Couldn’t load this page. Check your connection and try again.'), true); return; }
+  if (!r) { pnForget(P.name); if (bg) { P.slug = ''; P.checked = false; } return bg ? route() : hostedProblem(t('This page isn’t available. It may have been removed or hidden by its organizer.')); }
+  const cur = NAME_RE.test(r.name || '') ? r.name : P.name; pnRemember(P.name, r.slug, cur);
+  if (cur !== P.name) { P.name = cur; P.path = APP_ROOT + cur; try { history.replaceState(history.state, '', APP_ROOT + cur + location.search + location.hash); } catch { /* keep */ } }
+  if (r.slug !== P.slug) { P.slug = r.slug; P.checked = true; route(); } else if (!bg) route();
+}
 function route() {
   if (B && B.pushT) acctPushNow(); // leaving the builder: save to the account now
   const full = location.hash.slice(1);
   if (/(^|&)(access_token|error_description|error_code)=/.test(full)) return authReturn();
   const [h, tab] = full.split('&t=');
   maps.forEach(m => { try { m.remove(); } catch {} }); maps.clear();
-  const qs = new URLSearchParams(location.search); const qe = qs.get('e'), qd = qs.get('demo');
+  if (PATH && location.pathname !== PATH.path) PATH = null; // the app moved the address off the page (My pages, the editor…)
+  if (PATH && (h === '' || h.startsWith('t='))) { // a /<name> address
+    if (PATH.bad) { SU = null; return hostedProblem(t('This page isn’t available. It may have been removed or hidden by its organizer.')); }
+    if (!PATH.slug) { SU = null; return pathResolve(false); }
+    if (!PATH.fresh && !PATH.checked) { PATH.checked = true; pathResolve(true); } // known on this device: open now, check in the background
+  }
+  const qs = locQ(); const qe = qs.get('e'), qd = qs.get('demo');
   if (qe && (h === '' || h.startsWith('t='))) { SU = null; return renderHosted(qe.toLowerCase(), h.startsWith('t=') ? h.slice(2) : tab); }
   if (qd && DEMOS[qd] && (h === '' || h.startsWith('t='))) { SU = null; return renderViewer(normalize(clone(window.EXAMPLES[DEMOS[qd]])), { exampleId: DEMOS[qd], tab: h.startsWith('t=') ? h.slice(2) : tab }); }
   if (qe || qd) history.replaceState(null, '', siteBase() + location.hash);
