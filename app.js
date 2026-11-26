@@ -10189,7 +10189,7 @@ const ORG_MODS = [['rsvp', 'Guest list & RSVP', 'Households, plus-ones and repli
   ['inv', 'Invitations', 'Design and email invitations'], ['shut', 'Shuttles', 'Rides from the airport or hotel'], ['groups', 'Groups', 'Sort people into groups, send updates to one'],
   ['fld', 'Custom fields', 'Your own columns, like shirt size or room'], ['vol', 'Volunteers', 'Shifts people sign up for with a link'], ['badge', 'Badges & check-in', 'Printable name badges and a check-in list']];
 const MOD_TAB = { diet: 'Dietary', seat: 'Seating', inv: 'Invitations', shut: 'Shuttles', groups: 'Groups', fld: 'Fields', vol: 'Volunteers', badge: 'Badges' };
-const OT_SINCE = '2026-11-27'; // guest lists made before per-type layouts keep their household view
+const OT_SINCE = '2026-11-26T06:20'; // (UTC, when this shipped) // guest lists made before per-type layouts keep their household view
 const modSet = (cfg) => (cfg && cfg.org && cfg.org.mods && typeof cfg.org.mods === 'object' ? cfg.org.mods : {});
 const otRosterKeys = () => new Set(OT().cols.map(k => (otField(k) || {}).id).filter(Boolean));
 const otCustom = () => (G.fd || []).filter(f => !otRosterKeys().has(f.id));
