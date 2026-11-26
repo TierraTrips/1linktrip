@@ -1875,3 +1875,14 @@ dialog.gl-dlg { width: min(560px, calc(100vw - 16px)); max-height: min(90vh, 900
 .gl-er2 { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; } .gl-er2 select { width: auto !important; flex: 1 1 30%; min-width: 0; }
 .gl-dlg-in .cf-b { justify-content: flex-end; align-items: center; } .gl-del { margin-right: auto; color: var(--route-ink); }
 @media (max-width: 380px) { .gl-sum { grid-template-columns: repeat(3, minmax(0, 1fr)); } .gl-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* the formatting editor: the field's own look is copied onto the box inline (rtLook); these are its states */
+.rt-src { display: none !important; }
+.rt-ed { display: block; box-sizing: border-box; width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; outline: none; -webkit-user-select: text; user-select: text; -webkit-tap-highlight-color: transparent; }
+.rt-ed.rt-empty::before { content: attr(data-ph); float: left; height: 0; color: var(--rt-ph, color-mix(in srgb, currentColor 50%, transparent)); pointer-events: none; }
+.rt-ed[data-look="box"]:focus { border-color: var(--rt-focus) !important; }
+.rt-ed[data-look="line"]:focus { box-shadow: 0 2px 0 var(--accent, #0B7A75) !important; }
+.rt-ed[contenteditable="false"] { opacity: .6; cursor: default; }
+.rt-ed.got { background: color-mix(in srgb, var(--accent, #1E7FA8) 10%, #fff) !important; border-color: color-mix(in srgb, var(--accent, #1E7FA8) 55%, #ccc) !important; }
+.rt-ed strong, .rt-ed b { font-weight: 700; }
+.rt-ed mark { background: #FFE58A; color: #1A1A1A; padding: 0 .12em; border-radius: 3px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }

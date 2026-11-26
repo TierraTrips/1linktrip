@@ -75,61 +75,306 @@ function rtFromTags(s) {
   }
   out.push(s.slice(last)); return out.join('');
 }
-// the formatting toolbar: select text in a formattable field → B / I / highlight above it (below it on touch screens,
-// clear of the phone's own copy/paste bar); Cmd/Ctrl+B and Cmd/Ctrl+I. Toggles the markers around the selection.
+// ---------- the formatting editor: formatted text you edit directly (Dylan 11/25: editing showed the raw ** == markers) ----------
+// Every formattable field (RT_FIELDS: About, Notes, custom sections, schedule / booking / plan notes) keeps its <textarea>
+// or <input> — hidden — as the value the rest of the app reads and listens to, and gets a contenteditable box right after
+// it that shows the formatting. The box only ever holds text, <br> and <strong>/<em>/<mark>: its HTML is built from
+// rtHTML (everything escaped), paste and drop come in as plain text, and anything else a browser slips in is read as text
+// and rebuilt. Each edit is read back into marker text (**bold**, *italic*, ==highlight==) and written to the hidden field
+// with the input / change events typing in it used to fire. Stars and equals typed as text stay text: where they'd read as
+// markers they're stored escaped (\*, \=). The box is never rebuilt while typing (the caret stays put) or mid-composition
+// (Japanese / Chinese input); only the B / I / H toggles, a value set by the app, or something unexpected rebuild it.
 const RT_FIELDS = '#f-desc, textarea[data-cs][data-k="text"], [data-n][data-k="text"], [data-s][data-k="note"], [data-hk="note"], [data-it="note"], [data-dsp="note"], #ov-note, [data-rt]';
-function rtToggle(el, m) {
-  let a = el.selectionStart, b = el.selectionEnd; const v = el.value; if (a == null || a === b) return false;
-  while (a < b && /\s/.test(v[a])) a++; while (b > a && /\s/.test(v[b - 1])) b--; if (a === b) return false;
-  const L = m.length; let nv, na, nb;
-  const wrapped = (x, y) => v.slice(x - L, x) === m && v.slice(y, y + L) === m && (m !== '*' || (v[x - L - 1] !== '*' && v[y + L] !== '*') || (v.slice(x - 3, x) === '***' && v.slice(y, y + 3) === '***'));
-  if (wrapped(a, b)) { nv = v.slice(0, a - L) + v.slice(a, b) + v.slice(b + L); na = a - L; nb = b - L; } // just inside the markers
-  else if (v.slice(a, a + L) === m && v.slice(b - L, b) === m && b - a > 2 * L && (m !== '*' || (v[a + 1] !== '*' && v[b - 2] !== '*'))) { nv = v.slice(0, a) + v.slice(a + L, b - L) + v.slice(b); na = a; nb = b - 2 * L; } // markers selected too
-  else { // per line: a marker can't span a line break
-    const parts = v.slice(a, b).split('\n').map(l => { const w = l.match(/^(\s*)(.*?)(\s*)$/); return w[2] ? w[1] + m + w[2] + m + w[3] : l; }).join('\n');
-    nv = v.slice(0, a) + parts + v.slice(b); na = a + L; nb = a + parts.length - L;
+const RT_BIT = { '**': 1, '*': 2, '==': 4 }, RT_MK = { 1: '**', 2: '*', 4: '==' };
+// marker text → { t: the text as shown, f: for each character the formats on it (1 bold, 2 italic, 4 highlight) }
+function rtModel(s) {
+  const h = rtParse(s, { text: (x) => x.replace(/[-]/g, '$&'), open: (g) => '' + g[0], close: (g) => '' + g[0] });
+  const n = { s: 0, e: 0, m: 0 }, f = []; let t = '', cur = 0;
+  for (let i = 0; i < h.length; i++) {
+    let c = h[i];
+    if (c === '' || c === '') { n[h[++i]] += c === '' ? 1 : -1; cur = (n.s > 0 ? 1 : 0) | (n.e > 0 ? 2 : 0) | (n.m > 0 ? 4 : 0); continue; }
+    if (c === '') c = h[++i];
+    t += c; f.push(c === '\n' ? 0 : cur);
   }
-  if (el.maxLength > 0 && nv.length > el.maxLength) { toast(t('That’s over this field’s length limit.')); return true; }
-  el.focus(); el.value = nv; el.setSelectionRange(na, nb);
-  el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return true;
+  return { t, f };
 }
-// where the selection's start sits on screen, via a mirror of the field
-function rtCaret(el, pos) {
-  const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); const d = document.createElement('div');
-  ['fontFamily', 'fontSize', 'fontWeight', 'letterSpacing', 'lineHeight', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'boxSizing', 'textIndent', 'wordSpacing'].forEach(k => { d.style[k] = cs[k]; });
-  Object.assign(d.style, { position: 'fixed', visibility: 'hidden', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', whiteSpace: el.tagName === 'TEXTAREA' ? 'pre-wrap' : 'pre', overflowWrap: 'break-word', overflow: 'hidden' });
-  d.textContent = el.value.slice(0, pos); const sEl = document.createElement('span'); sEl.textContent = el.value.slice(pos, pos + 1) || '.'; d.appendChild(sEl); document.body.appendChild(d);
-  const sr = sEl.getBoundingClientRect(); d.remove();
-  return { x: Math.min(Math.max(sr.left - el.scrollLeft, r.left), r.right), top: Math.max(sr.top - el.scrollTop, r.top), bottom: Math.min(sr.bottom - el.scrollTop, r.bottom) };
+// a format never starts or ends on a space and never crosses a line (markers can't)
+function rtTrim(t, f) {
+  f = f.slice(); for (let i = 0; i < t.length; i++) if (t[i] === '\n') f[i] = 0;
+  for (const b of [1, 2, 4]) for (let i = 0; i < t.length;) {
+    if (!(f[i] & b)) { i++; continue; }
+    let j = i; while (j < t.length && f[j] & b) j++;
+    let a = i, z = j; while (a < z && /\s/.test(t[a])) f[a++] &= ~b; while (z > a && /\s/.test(t[z - 1])) f[--z] &= ~b;
+    i = j;
+  }
+  return f;
 }
+// text + formats → marker text; lit 1 / 2: escape the stars / equals that are text (where they could read as markers / all)
+function rtSerial(t, f, lit) {
+  const seg = [], st = [];
+  const end = (i, b) => { let j = i; while (j < t.length && f[j] & b) j++; return j; };
+  for (let i = 0; i < t.length;) {
+    let j = i + 1; while (j < t.length && f[j] === f[i]) j++; const w = f[i];
+    const k = st.findIndex(b => !(w & b)); if (k >= 0) while (st.length > k) seg.push([RT_MK[st.pop()], 1]);
+    [1, 2, 4].filter(b => w & b && !st.includes(b)).sort((a, b) => end(i, b) - end(i, a)).forEach(b => { st.push(b); seg.push([RT_MK[b], 1]); }); // the longest-lasting format outermost
+    seg.push([t.slice(i, j), 0]); i = j;
+  }
+  while (st.length) seg.push([RT_MK[st.pop()], 1]);
+  return seg.map(([s, mk], k) => {
+    if (mk) return s;
+    const nx = ((seg.slice(k + 1).find(x => x[0]) || [''])[0])[0] || '';
+    s = s.replace(/(\\+)(?=([*=]?))/g, (m, b, c, o, all) => (c || (o + b.length === all.length && /[*=]/.test(nx))) ? b + b : b); // a backslash before a star / equals would escape it
+    if (lit === 2) return s.replace(/[*=]/g, '\\$&');
+    // lit 1: only runs that could read as a marker (a ** or == or * touching text); "5 * 3", "a = b", "****" stay as typed
+    return lit ? s.replace(/\*+|=+/g, (r, o, all) => (r[0] === '=' && r.length !== 2) || r.length > 3 || (o > 0 && /\s/.test(all[o - 1]) && o + r.length < all.length && /\s/.test(all[o + r.length])) ? r : r.replace(/./g, '\\$&')) : s;
+  }).join('');
+}
+// text + formats → the marker text that reads back as exactly that: as typed where possible, else with stars / equals
+// escaped; a format the markers can't carry (italic inside a Latin word, a few back-to-back combinations) is dropped, the
+// text always survives
+function rtSer(t, f) {
+  f = rtTrim(t, f); const same = (m) => m.t === t && m.f.every((x, i) => x === f[i]);
+  const span = (q, b) => { if (!(f[q] & b)) return false; let a = q, z = q; while (a > 0 && f[a - 1] & b) a--; while (z < t.length && f[z] & b) z++; for (let i = a; i < z; i++) f[i] &= ~b; return true; };
+  for (let g = 0; g < 200; g++) {
+    let s, m; for (const lit of [0, 1, 2]) { s = rtSerial(t, f, lit); m = rtModel(s); if (same(m)) return s; }
+    if (f.every(x => !x)) return s;
+    let p = 0; while (p < t.length && m.t[p] === t[p] && m.f[p] === f[p]) p++;
+    // drop one format at the first difference: one starting there first (its opener failed), then one ending there
+    const fa = f[p] | 0, fb = p > 0 ? f[p - 1] | 0 : 0, mf = m.f[p] | 0;
+    const tries = [[p, fa & ~fb], [p - 1, fb & ~fa], [p, fa ^ mf], [p - 1, fb ^ (m.f[p - 1] | 0)], [p, fa], [p - 1, fb], [p + 1, f[p + 1] | 0]];
+    if (!tries.some(([q, bits]) => q >= 0 && [4, 2, 1].some(b => bits & b && span(q, b)))) f = f.map(() => 0);
+  }
+  return rtSerial(t, f.map(() => 0), 2);
+}
+// the box's DOM → { t, f, pos: node → [start, end] in t }. <br> is a line break, except the last one in a block (the
+// browser's placeholder that lets an empty last line show); a block (div / p) starts a new line
+const RT_BLOCK = /^(DIV|P|LI|UL|OL|H[1-6]|BLOCKQUOTE|PRE|TABLE|TR)$/;
+function rtFmt(n, cur) {
+  const g = n.nodeName;
+  if (g === 'B' || g === 'STRONG') cur |= 1; else if (g === 'I' || g === 'EM') cur |= 2; else if (g === 'MARK') cur |= 4;
+  const st = n.style; if (!st) return cur;
+  const w = st.fontWeight; if (w) cur = w === 'bold' || w === 'bolder' || +w >= 600 ? cur | 1 : cur & ~1;
+  const it = st.fontStyle; if (it) cur = it === 'italic' || it === 'oblique' ? cur | 2 : cur & ~2;
+  const bg = st.backgroundColor; if (bg) cur = /^(transparent|initial|inherit|unset|rgba\(.*,\s*0\))$/.test(bg) ? cur & ~4 : cur | 4;
+  return cur;
+}
+function rtRead(ed) {
+  const f = [], pos = new Map(); let t = '', nl = false, seen = false, br = -1;
+  const brk = () => { if (nl) { nl = false; if (seen) { t += '\n'; f.push(0); } } };
+  const ph = () => { if (br >= 0 && t.length === br + 1) { t = t.slice(0, -1); f.pop(); const n = ph.n; if (n) pos.set(n, [br, br]); } br = -1; };
+  const walk = (el, cur) => {
+    for (const n of el.childNodes) {
+      if (n.nodeType === 3) { const v = n.data.replace(/ /g, ' ').replace(/\r/g, ' '); if (v) { brk(); br = -1; seen = true; } const a = t.length; t += v; for (let k = 0; k < v.length; k++) f.push(v[k] === '\n' ? 0 : cur); pos.set(n, [a, t.length]); }
+      else if (n.nodeName === 'BR') { brk(); br = t.length; ph.n = n; t += '\n'; f.push(0); seen = true; pos.set(n, [br, t.length]); }
+      else if (n.nodeType === 1) {
+        const blk = RT_BLOCK.test(n.nodeName); if (blk) { ph(); if (seen) nl = true; }
+        const a = t.length; walk(n, rtFmt(n, cur)); if (blk) { ph(); nl = true; } pos.set(n, [a, t.length]);
+      }
+    }
+  };
+  walk(ed, 0); ph(); return { t, f, pos };
+}
+const rtSame = (m, R) => m.t === R.t && m.f.join() === R.f.join();
+// anything but text, <br> and the formatting tags (or an attribute other than a browser's style) → rebuild the box
+const rtBad = (ed) => !!ed.querySelector(':not(b, strong, i, em, mark, br, span, font, div, p)') || [...ed.querySelectorAll('*')].some(n => [...n.attributes].some(a => a.name !== 'style'));
+function rtEdSet(ed, v) { ed.innerHTML = rtHTML(v).replace(/\n/g, '<br>') + (/\n$/.test(v) ? '<br>' : ''); ed.classList.toggle('rt-empty', !rtModel(v).t); }
+// the selection as [start, end] offsets into the text, and back
+function rtOffs(ed, R) {
+  const s = getSelection(); if (!s || !s.rangeCount) return null; const r = s.getRangeAt(0); if (!ed.contains(r.startContainer) || !ed.contains(r.endContainer)) return null;
+  const at = (n, o) => {
+    if (n.nodeType === 3) { const p = R.pos.get(n); return p ? Math.min(p[0] + o, p[1]) : 0; }
+    const c = n.childNodes[o]; const p = c && R.pos.get(c); if (p) return p[0];
+    const q = n === ed ? [0, R.t.length] : R.pos.get(n); return q ? q[1] : R.t.length;
+  };
+  return [at(r.startContainer, r.startOffset), at(r.endContainer, r.endOffset)];
+}
+function rtPoint(ed, o) {
+  const w = document.createTreeWalker(ed, NodeFilter.SHOW_ALL); let n, k = 0;
+  const ix = (x) => Array.prototype.indexOf.call(x.parentNode.childNodes, x);
+  while ((n = w.nextNode())) {
+    if (n.nodeType === 3) { if (o <= k + n.length) return [n, Math.max(0, o - k)]; k += n.length; }
+    else if (n.nodeName === 'BR') { if (o <= k) return [n.parentNode, ix(n)]; k++; if (o === k && !n.nextSibling && n.parentNode === ed) return [ed, ix(n) + 1]; }
+  }
+  return [ed, ed.childNodes.length];
+}
+function rtSelect(ed, a, b) {
+  const s = getSelection(); if (!s) return; const r = document.createRange(); const p = rtPoint(ed, a), q = b === a ? p : rtPoint(ed, b);
+  try { r.setStart(p[0], p[1]); r.setEnd(q[0], q[1]); s.removeAllRanges(); s.addRange(r); } catch { /* offsets past the end */ }
+}
+const RT_VD = { TEXTAREA: Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value'), INPUT: Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value') };
+const rtRaw = (el, v) => v === undefined ? RT_VD[el.tagName].get.call(el) : RT_VD[el.tagName].set.call(el, v);
+const rtFire = (el, type) => el.dispatchEvent(new Event(type, { bubbles: true }));
+// the box → the hidden field + its input event; the stored text is left as it was when it already says the same thing
+function rtEdSync(ed) {
+  if (ed._comp) return; const src = ed._src; const R = rtRead(ed); ed.classList.toggle('rt-empty', !R.t);
+  const cur = rtRaw(src); const m = rtModel(cur); if (m.t === R.t && m.f.join() === rtTrim(R.t, R.f).join()) return;
+  const v = rtSer(R.t, R.f); if (v === cur) return; rtRaw(src, v); rtFire(src, 'input');
+}
+// the hidden field → the box (a value the app set, or after an edit the box can't show as typed); keeps the selection
+function rtEdLoad(ed, force) {
+  if (ed._comp) { ed._stale = true; return; }
+  const v = rtRaw(ed._src); const R = rtRead(ed); if (!force && rtSame(rtModel(v), R)) return;
+  const o = document.activeElement === ed && rtOffs(ed, R); rtEdSet(ed, v);
+  if (o) { const n = rtModel(v).t.length; rtSelect(ed, Math.min(o[0], n), Math.min(o[1], n)); }
+}
+// B / I / H on the selected text: toggles the format (on unless all of it already has it)
+function rtEdToggle(ed, m) {
+  if (!ed || ed._comp || ed.contentEditable !== 'true') return false;
+  const R = rtRead(ed); const o = rtOffs(ed, R); if (!o) return false; let [a, b] = o[0] <= o[1] ? o : [o[1], o[0]];
+  while (a < b && /\s/.test(R.t[a])) a++; while (b > a && /\s/.test(R.t[b - 1])) b--; if (a === b) return false;
+  const bit = RT_BIT[m], f = R.f.slice(); let on = false;
+  for (let i = a; i < b; i++) if (!/\s/.test(R.t[i]) && !(f[i] & bit)) on = true;
+  for (let i = a; i < b; i++) if (R.t[i] !== '\n') f[i] = on ? f[i] | bit : f[i] & ~bit;
+  const src = ed._src, v = rtSer(R.t, f);
+  if (src.maxLength > 0 && v.length > src.maxLength) { toast(t('That’s over this field’s length limit.')); return true; }
+  if (document.activeElement !== ed) ed.focus({ preventScroll: true });
+  const was = rtRaw(src); rtEdSet(ed, v); rtSelect(ed, a, b);
+  if (v !== was) { (ed._hist = ed._hist || []).push({ a: was, b: v, sel: [a, b] }); ed._hist.splice(0, ed._hist.length - 50); ed._redo = []; rtRaw(src, v); rtFire(src, 'input'); rtFire(src, 'change'); ed._v0 = v; }
+  return true;
+}
+// undo / redo of a B / I / H toggle (the box was rebuilt, so the browser's own undo can't step back over it)
+function rtEdUndo(ed, redo) {
+  const st = redo ? ed._redo : ed._hist, top = st && st[st.length - 1], src = ed._src;
+  if (!top || ed._comp || rtRaw(src) !== (redo ? top.a : top.b)) return false;
+  st.pop(); (redo ? ed._hist : ed._redo).push(top); const v = redo ? top.b : top.a;
+  rtEdSet(ed, v); rtSelect(ed, top.sel[0], top.sel[1]); rtRaw(src, v); rtFire(src, 'input'); rtFire(src, 'change'); ed._v0 = v; return true;
+}
+// typed / pasted / dropped text goes in as text only (formatting at the caret carries on, like typing)
+function rtInsert(ed, text) {
+  text = String(text || '').replace(/\r\n?/g, '\n'); if (ed._one) text = text.replace(/[ \t]*\n+[ \t]*/g, ' ');
+  const max = ed._src.maxLength; if (max > 0) { const room = max - rtRaw(ed._src).length + String(getSelection() || '').length; if (room <= 0) return; text = text.slice(0, room); }
+  if (!text) return;
+  ed._ins = true; try { text.split('\n').forEach((p, k) => { if (k) document.execCommand('insertLineBreak'); if (p) document.execCommand('insertText', false, p); }); } finally { ed._ins = false; }
+  rtEdSync(ed);
+}
+function rtCaretEnd(ed) { const n = rtRead(ed).t.length; rtSelect(ed, n, n); }
+function rtEdAttrs(ed) {
+  const src = ed._src; ed.dataset.ph = src.placeholder || ''; ed.classList.toggle('got', src.classList.contains('got'));
+  const off = src.disabled || src.readOnly; ed.contentEditable = off ? 'false' : 'true'; if (off) ed.setAttribute('aria-disabled', 'true'); else ed.removeAttribute('aria-disabled');
+  const lab = src.getAttribute('aria-label') || (() => { const l = src.labels && src.labels[0]; if (!l) return ''; const c = l.cloneNode(true); c.querySelectorAll('input, textarea, select, .rt-ed').forEach(x => x.remove()); return c.textContent.trim(); })() || src.placeholder || '';
+  if (lab) ed.setAttribute('aria-label', lab);
+}
+// the box looks like the field it stands in for: its computed look is copied once (focus / AI-filled states in CSS)
+function rtLook(src, ed) {
+  const cs = getComputedStyle(src), st = ed.style, px = (v) => parseFloat(v) || 0;
+  ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'color', 'backgroundColor', 'backgroundImage', 'textAlign',
+    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderTopStyle', 'borderRightStyle', 'borderBottomStyle', 'borderLeftStyle',
+    'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor', 'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
+    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'boxShadow', 'flexGrow', 'flexShrink', 'flexBasis', 'minWidth'].forEach(k => { st[k] = cs[k]; });
+  const lh = cs.lineHeight === 'normal' || !px(cs.lineHeight) ? px(cs.fontSize) * 1.25 : px(cs.lineHeight);
+  const box = px(cs.paddingTop) + px(cs.paddingBottom) + px(cs.borderTopWidth) + px(cs.borderBottomWidth);
+  const rows = ed._one ? 1 : (+src.getAttribute('rows') || 2), h = Math.max(px(cs.minHeight), Math.round(rows * lh + box));
+  st.minHeight = h + 'px';
+  if (ed._one && h > lh + box + 1) { const d = (h - lh - box) / 2; st.paddingTop = px(cs.paddingTop) + d + 'px'; st.paddingBottom = px(cs.paddingBottom) + d + 'px'; } // a one-line field: text centred like the input's
+  ed.dataset.look = px(cs.borderTopWidth) + px(cs.borderBottomWidth) > 0 ? 'box' : 'line';
+  st.setProperty('--rt-focus', src.closest('.ev') ? 'var(--accent, #0F4A50)' : 'var(--gate, #0F4A50)');
+  let ph = ''; try { ph = getComputedStyle(src, '::placeholder').color; } catch { /* no pseudo styles */ }
+  if (ph && ph !== cs.color) st.setProperty('--rt-ph', ph);
+}
+function rtEnhance(src) {
+  if (src._rtEd || !src.isConnected || !RT_VD[src.tagName] || (src.tagName === 'INPUT' && !/^(text|search|)$/.test(src.getAttribute('type') || ''))) return;
+  const ed = document.createElement('div'); const one = src.tagName === 'INPUT';
+  ed.className = 'rt-ed'; ed._src = src; ed._one = one; src._rtEd = ed;
+  ed.setAttribute('role', 'textbox'); if (!one) ed.setAttribute('aria-multiline', 'true');
+  ed.spellcheck = true; ed.setAttribute('autocapitalize', src.getAttribute('autocapitalize') || 'sentences'); ed.setAttribute('enterkeyhint', one ? 'done' : 'enter');
+  rtLook(src, ed); rtEdAttrs(ed);
+  const had = document.activeElement === src;
+  src.classList.add('rt-src'); src.setAttribute('aria-hidden', 'true'); src.tabIndex = -1; src.after(ed);
+  // the app keeps reading and setting the hidden field: a value it sets shows in the box; focusing it focuses the box
+  Object.defineProperty(src, 'value', { configurable: true, get() { return rtRaw(src); }, set(v) { rtRaw(src, v); rtEdLoad(ed); } });
+  src.focus = (o) => { const was = document.activeElement === ed; ed.focus(o); if (!was) rtCaretEnd(ed); };
+  src.blur = () => ed.blur(); src.select = () => { ed.focus(); rtSelect(ed, 0, rtRead(ed).t.length); };
+  new MutationObserver(() => rtEdAttrs(ed)).observe(src, { attributes: true, attributeFilter: ['class', 'placeholder', 'disabled', 'readonly', 'aria-label'] });
+  ed.addEventListener('compositionstart', () => { ed._comp = true; });
+  ed.addEventListener('compositionend', () => { ed._comp = false; rtEdSync(ed); if (ed._stale) { ed._stale = false; rtEdLoad(ed); } });
+  ed.addEventListener('input', (e) => {
+    e.stopPropagation(); // the app listens on the hidden field (rtEdSync fires its input event), not on the box
+    if (ed._comp || e.isComposing || ed._ins) return; rtEdSync(ed); if (rtBad(ed)) rtEdLoad(ed, true);
+  });
+  ed.addEventListener('keydown', (e) => {
+    if (e.isComposing || e.keyCode === 229 || ed._comp) return;
+    if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); if (!one) rtInsert(ed, '\n'); }
+    const k = (e.key || '').toLowerCase();
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && (k === 'z' || (k === 'y' && e.ctrlKey)) && rtEdUndo(ed, e.shiftKey || k === 'y')) e.preventDefault();
+  });
+  ed.addEventListener('beforeinput', (e) => {
+    if (ed._ins) return; const it = e.inputType || '';
+    if ((it === 'historyUndo' || it === 'historyRedo') && rtEdUndo(ed, it === 'historyRedo')) { e.preventDefault(); return; }
+    if (it.startsWith('format')) { e.preventDefault(); const m = { formatBold: '**', formatItalic: '*' }[it]; if (m) rtEdToggle(ed, m); return; } // iOS B I U menu, native shortcuts
+    if (it === 'insertParagraph' || it === 'insertLineBreak') { e.preventDefault(); if (!one) rtInsert(ed, '\n'); return; }
+    if (/^insertFrom(Paste|Drop|Yank|PasteAsQuotation)$/.test(it) || (it === 'insertText' && /[\r\n]/.test(e.data || ''))) {
+      e.preventDefault(); const dt = e.dataTransfer; rtInsert(ed, e.data != null ? e.data : dt ? dt.getData('text/plain') : ''); return; }
+    if (it === 'insertText' && !e.isComposing && src.maxLength > 0 && e.data && rtRaw(src).length - String(getSelection() || '').length + e.data.length > src.maxLength) e.preventDefault();
+  });
+  ed.addEventListener('paste', (e) => {
+    e.preventDefault(); const d = e.clipboardData; let tx = d ? d.getData('text/plain') : '';
+    if (!tx && d && d.getData('text/html')) tx = new DOMParser().parseFromString(d.getData('text/html'), 'text/html').body.textContent || ''; // inert: nothing in it loads or runs
+    rtInsert(ed, tx);
+  });
+  ed.addEventListener('dragstart', (e) => e.preventDefault()); // moving text around inside would carry HTML along
+  ed.addEventListener('drop', (e) => {
+    e.preventDefault(); const tx = e.dataTransfer && e.dataTransfer.getData('text/plain'); if (!tx) return;
+    ed.focus(); let r = null;
+    if (document.caretRangeFromPoint) r = document.caretRangeFromPoint(e.clientX, e.clientY);
+    else if (document.caretPositionFromPoint) { const p = document.caretPositionFromPoint(e.clientX, e.clientY); if (p) { r = document.createRange(); r.setStart(p.offsetNode, p.offset); } }
+    if (r && ed.contains(r.startContainer)) { const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+    rtInsert(ed, tx);
+  });
+  ed.addEventListener('focus', () => { ed._v0 = rtRaw(src); });
+  ed.addEventListener('blur', () => {
+    ed._comp = false; rtEdSync(ed); rtEdLoad(ed); // shows what was saved (e.g. a format markers can't carry)
+    if (rtRaw(src) !== ed._v0) { ed._v0 = rtRaw(src); rtFire(src, 'change'); }
+  });
+  rtEdSet(ed, rtRaw(src));
+  if (had) { ed.focus({ preventScroll: true }); rtCaretEnd(ed); }
+  return ed;
+}
+// the B / I / highlight bar: select text in a formattable field → above it (below it on touch screens, clear of the
+// phone's own copy/paste bar); Cmd/Ctrl+B and Cmd/Ctrl+I
 let rtBar = null, rtEl = null;
 function rtHide() { if (rtBar) rtBar.hidden = true; rtEl = null; }
-function rtShow(el) {
+function rtSel(ed) {
+  if (!ed || !ed.classList || !ed.classList.contains('rt-ed') || ed._comp || ed.contentEditable !== 'true') return null;
+  const s = getSelection(); if (!s || !s.rangeCount || s.isCollapsed) return null; const r = s.getRangeAt(0);
+  return ed.contains(r.startContainer) && ed.contains(r.endContainer) && /\S/.test(r.toString()) ? r : null;
+}
+function rtShow(ed) {
+  const r = rtSel(ed); if (!r) { rtHide(); return; }
   if (!rtBar) {
     rtBar = document.createElement('div'); rtBar.className = 'rt-bar'; rtBar.setAttribute('role', 'toolbar'); rtBar.setAttribute('aria-label', t('Format text')); rtBar.hidden = true;
     rtBar.innerHTML = [['**', '<b>B</b>', 'Bold', '⌘B'], ['*', '<i>I</i>', 'Italic', '⌘I'], ['==', '<mark>H</mark>', 'Highlight', '']].map(([m, l, a, k]) => `<button type="button" data-rt-m="${m}" aria-label="${esc(t(a))}" title="${esc(t(a) + (k ? ' (' + (/Mac|iPhone|iPad/.test(navigator.platform) ? k : k.replace('⌘', 'Ctrl+')) + ')' : ''))}">${l}</button>`).join('');
     // keep the field's selection: the bar never takes focus
     rtBar.addEventListener('pointerdown', (e) => e.preventDefault()); rtBar.addEventListener('mousedown', (e) => e.preventDefault());
-    rtBar.addEventListener('click', (e) => { const b = e.target.closest('[data-rt-m]'); if (!b || !rtEl) return; const el = rtEl; rtToggle(el, b.dataset.rtM); requestAnimationFrame(() => rtShow(el)); });
+    rtBar.addEventListener('click', (e) => { const b = e.target.closest('[data-rt-m]'); if (!b || !rtEl) return; const el = rtEl; rtEdToggle(el, b.dataset.rtM); requestAnimationFrame(() => rtShow(el)); });
   }
-  const host = el.closest('dialog[open]') || document.body; if (rtBar.parentNode !== host) host.appendChild(rtBar); // inside an open sheet: above its backdrop
-  rtEl = el; rtBar.hidden = false;
-  const c = rtCaret(el, el.selectionStart); const touch = matchMedia('(pointer: coarse)').matches; const w = rtBar.offsetWidth || 120, h = rtBar.offsetHeight || 40;
-  const e2 = touch ? rtCaret(el, Math.max(el.selectionStart, el.selectionEnd - 1)) : c;
-  let y = touch ? e2.bottom + 10 : c.top - h - 8; if (!touch && y < 4) y = rtCaret(el, el.selectionEnd).bottom + 8; if (y + h > innerHeight - 4) y = Math.max(4, c.top - h - 8);
-  const x = Math.min(Math.max(4, c.x - w / 2 + 8), innerWidth - w - 4);
+  const host = ed.closest('dialog[open]') || document.body; if (rtBar.parentNode !== host) host.appendChild(rtBar); // inside an open sheet: above its backdrop
+  rtEl = ed; rtBar.hidden = false;
+  const rs = [...r.getClientRects()].filter(x => x.width || x.height), bb = r.getBoundingClientRect(), c = rs[0] || bb, e2 = rs[rs.length - 1] || bb;
+  const touch = matchMedia('(pointer: coarse)').matches; const w = rtBar.offsetWidth || 120, h = rtBar.offsetHeight || 40;
+  let y = touch ? e2.bottom + 10 : c.top - h - 8; if (!touch && y < 4) y = e2.bottom + 8; if (y + h > innerHeight - 4) y = Math.max(4, c.top - h - 8);
+  const x = Math.min(Math.max(4, c.left - w / 2 + 8), innerWidth - w - 4);
   rtBar.style.left = x + 'px'; rtBar.style.top = y + 'px';
 }
 function rtWatch() {
   if (document._rtOn) return; document._rtOn = true;
-  const check = () => { const el = document.activeElement; if (el && el.matches && el.matches(RT_FIELDS) && el.selectionStart !== el.selectionEnd && /\S/.test(el.value.slice(el.selectionStart, el.selectionEnd))) rtShow(el); else rtHide(); };
+  const scan = (n) => { if (n.nodeType !== 1) return; if (n.matches(RT_FIELDS)) rtEnhance(n); n.querySelectorAll(RT_FIELDS).forEach(rtEnhance);
+    if (n._rtEd && n.nextSibling !== n._rtEd) n.after(n._rtEd); }; // a field moved: its box goes along
+  scan(document.documentElement);
+  new MutationObserver((rs) => rs.forEach(r => { r.addedNodes.forEach(scan); r.removedNodes.forEach(n => { if (n._rtEd && !n.isConnected && n._rtEd.isConnected) n._rtEd.remove(); }); }))
+    .observe(document.documentElement, { childList: true, subtree: true });
+  const check = () => { const ed = document.activeElement; if (rtSel(ed)) rtShow(ed); else rtHide(); };
   document.addEventListener('selectionchange', () => requestAnimationFrame(check));
-  ['select', 'mouseup', 'keyup', 'touchend'].forEach(ev => document.addEventListener(ev, (e) => { if (e.target && e.target.matches && e.target.matches(RT_FIELDS)) setTimeout(check, 0); }, true));
+  ['mouseup', 'keyup', 'touchend'].forEach(ev => document.addEventListener(ev, (e) => { if (e.target && e.target.closest && e.target.closest('.rt-ed')) setTimeout(check, 0); }, true));
   document.addEventListener('focusout', () => setTimeout(check, 0), true);
   document.addEventListener('scroll', () => { if (rtEl) check(); }, true); addEventListener('resize', () => { if (rtEl) check(); });
   document.addEventListener('keydown', (e) => {
-    const el = e.target; if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || !el.matches || !el.matches(RT_FIELDS)) return;
-    const m = { b: '**', i: '*' }[e.key.toLowerCase()]; if (!m) return; e.preventDefault(); if (rtToggle(el, m)) requestAnimationFrame(check);
+    const ed = e.target; if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || !ed.classList || !ed.classList.contains('rt-ed')) return;
+    const m = { b: '**', i: '*' }[(e.key || '').toLowerCase()]; if (!m || e.isComposing) return; e.preventDefault(); if (rtEdToggle(ed, m)) requestAnimationFrame(check);
+  }, true);
+  // a <label> of a formattable field focuses its box (the field itself is hidden)
+  document.addEventListener('click', (e) => {
+    const l = e.target.closest && e.target.closest('label'); const c = l && l.control; if (!c || !c._rtEd) return;
+    if (c._rtEd.contains(e.target)) return; e.preventDefault(); c.focus();
   }, true);
 }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -9951,5 +10196,5 @@ window.addEventListener('hashchange', route);
 rtWatch();
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { cfgMerge3, cfgTakeTheirs, glParse, glGroupRows, joinFirst, rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtToggle, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { cfgMerge3, cfgTakeTheirs, glParse, glGroupRows, joinFirst, rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtModel, rtSer, rtRead, rtEdToggle, rtSelect, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

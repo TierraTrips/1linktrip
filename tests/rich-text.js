@@ -3,8 +3,8 @@
 //    <strong>/<em>/<mark> (XSS payloads stay text); unmatched markers stay as typed ("5 * 3", "*sold out").
 //  - rendered in About, Notes, custom sections, schedule notes (Event row + its sheet) and the guest's own notes (My trip);
 //    the .ics export carries the text without markers; translation keeps the formatting (<b>/<i>/<mark> on the wire).
-//  - editing: select text in a formattable field → floating B / I / highlight bar (above on desktop, below on touch);
-//    Cmd/Ctrl+B / I; toggling twice gives back the original text.
+//  - editing: formattable fields edit the formatted text itself (WYSIWYG, see tests/rt-editor.js); select text →
+//    floating B / I / highlight bar (above on desktop, below on touch); Cmd/Ctrl+B / I; toggling twice gives back the original.
 //
 //   python3 -m http.server 18765 --bind 127.0.0.1 &  node tests/rich-text.js
 const { chromium } = require(process.env.PW || 'playwright');
@@ -106,18 +106,20 @@ async function ctxPage(browser, w, init) {
       ok(n0[0] === '<strong>Gratis</strong> después de las 6, <mark>trae tu boleto</mark>', `translated page keeps bold + highlight: ${n0[0]}`);
       await ctx.close();
     }
-    // ---- editing: the toolbar + shortcuts (organizer's About; a note; a custom section) ----
+    // ---- editing: the toolbar + shortcuts (organizer's About), in the formatted editor ----
     for (const w of [390, 1280]) {
       const { ctx, page } = await ctxPage(browser, w);
       const base = { ...CFG, description: '', notes: [], custom: [], schedule: [] };
       const packed = await page.evaluate((c) => window.__ep.packEvent(window.__ep.normalize(c)), base);
       await page.goto(BASE + '#edit=' + packed); await page.waitForSelector('[data-card="about"]');
-      await page.click('[data-card="about"]'); await page.waitForSelector('#sheet[open] #f-desc');
-      await page.fill('#f-desc', 'Ceremony starts at 4 pm sharp. Bring sunscreen.');
-      const sel = (a, b) => page.evaluate(([a, b]) => { const el = document.querySelector('#f-desc'); el.focus(); el.setSelectionRange(a, b); el.dispatchEvent(new Event('select', { bubbles: true })); document.dispatchEvent(new Event('selectionchange')); }, [a, b]);
+      await page.click('[data-card="about"]'); await page.waitForSelector('#sheet[open] #f-desc + .rt-ed');
+      const ED = '#f-desc + .rt-ed';
+      await page.fill(ED, 'Ceremony starts at 4 pm sharp. Bring sunscreen.');
+      const sel = (a, b) => page.evaluate(([a, b]) => { const ed = document.querySelector('#f-desc + .rt-ed'); ed.focus(); window.__ep.rtSelect(ed, a, b); document.dispatchEvent(new Event('selectionchange')); }, [a, b]);
       const txt = 'Ceremony starts at 4 pm sharp. Bring sunscreen.'; const a = txt.indexOf('4 pm sharp'), b = a + '4 pm sharp'.length;
+      ok(await page.inputValue('#f-desc') === txt, `@${w} typing in the editor fills the field`);
       await sel(a, b); await page.waitForSelector('.rt-bar:not([hidden])', { timeout: 3000 }).catch(() => {});
-      const bar = await page.evaluate(() => { const b = document.querySelector('.rt-bar'); if (!b || b.hidden) return null; const r = b.getBoundingClientRect(); const f = document.querySelector('#f-desc').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, fy: f.top, fb: f.bottom, n: b.querySelectorAll('button').length, labels: [...b.querySelectorAll('button')].map(x => x.getAttribute('aria-label')), inDialog: !!b.closest('dialog') }; });
+      const bar = await page.evaluate(() => { const b = document.querySelector('.rt-bar'); if (!b || b.hidden) return null; const r = b.getBoundingClientRect(); const f = document.querySelector('#f-desc + .rt-ed').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, fy: f.top, fb: f.bottom, n: b.querySelectorAll('button').length, labels: [...b.querySelectorAll('button')].map(x => x.getAttribute('aria-label')), inDialog: !!b.closest('dialog') }; });
       ok(bar && bar.n === 3 && bar.labels.join() === 'Bold,Italic,Highlight', `@${w} selecting text shows B / I / highlight ${JSON.stringify(bar)}`);
       ok(bar && bar.x >= 0 && bar.x + bar.w <= w && bar.h >= 36, `@${w} toolbar on screen, tappable (${bar && [bar.x, bar.w, bar.h]})`);
       ok(bar && (w < 600 ? bar.y > bar.fy : bar.y + bar.h <= bar.fy + 40), `@${w} toolbar ${w < 600 ? 'below the selection (clear of the phone bar)' : 'above the selection'} (${bar && [bar.y, bar.fy]})`);
@@ -125,7 +127,8 @@ async function ctxPage(browser, w, init) {
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/rich-toolbar-${w}.png` });
       await page.click('.rt-bar [data-rt-m="**"]'); await page.waitForTimeout(150);
       let v = await page.inputValue('#f-desc'); ok(v === 'Ceremony starts at **4 pm sharp**. Bring sunscreen.', `@${w} B wraps: ${v}`);
-      const keep = await page.evaluate(() => { const el = document.querySelector('#f-desc'); return [document.activeElement === el, el.value.slice(el.selectionStart, el.selectionEnd)]; });
+      const shown = await page.$eval(ED, e => e.innerHTML); ok(shown === 'Ceremony starts at <strong>4 pm sharp</strong>. Bring sunscreen.', `@${w} the editor shows it bold, no markers: ${shown}`);
+      const keep = await page.evaluate(() => { const ed = document.querySelector('#f-desc + .rt-ed'); return [document.activeElement === ed, String(getSelection())]; });
       ok(keep[0] && keep[1] === '4 pm sharp', `@${w} focus + selection kept on the text (${keep})`);
       await page.click('.rt-bar [data-rt-m="=="]'); await page.waitForTimeout(150); v = await page.inputValue('#f-desc');
       ok(v === 'Ceremony starts at **==4 pm sharp==**. Bring sunscreen.', `@${w} highlight on top: ${v}`);
@@ -137,7 +140,7 @@ async function ctxPage(browser, w, init) {
       await page.keyboard.press('Meta+i'); await page.waitForTimeout(100); v = await page.inputValue('#f-desc'); ok(v === 'Ceremony starts at 4 pm sharp. Bring ***sunscreen***.', `@${w} Cmd+I adds italic: ${v}`);
       await page.keyboard.press('Control+b'); await page.waitForTimeout(100); v = await page.inputValue('#f-desc'); ok(v === 'Ceremony starts at 4 pm sharp. Bring *sunscreen*.', `@${w} Ctrl+B again removes bold, italic stays: ${v}`);
       // no selection → no bar; the page preview renders it
-      await page.evaluate(() => { const el = document.querySelector('#f-desc'); el.setSelectionRange(2, 2); document.dispatchEvent(new Event('selectionchange')); }); await page.waitForTimeout(150);
+      await sel(2, 2); await page.waitForTimeout(150);
       ok(await page.evaluate(() => { const b = document.querySelector('.rt-bar'); return !b || b.hidden; }), `@${w} collapsed selection hides the bar`);
       await page.click('#sheet .btn.primary.big').catch(() => {}); await page.waitForTimeout(600);
       const prev = await page.evaluate(() => { const d = document.querySelector('#preview #sec-about .rm-box, .ev #sec-about .rm-box'); return d ? d.innerHTML : ''; });
@@ -145,6 +148,7 @@ async function ctxPage(browser, w, init) {
       // not on unrelated fields (title)
       const tb = await page.evaluate(() => { const el = document.querySelector('[data-f="title"]'); if (!el) return 'none'; el.focus(); el.setSelectionRange(0, 3); document.dispatchEvent(new Event('selectionchange')); return new Promise(r => setTimeout(() => { const b = document.querySelector('.rt-bar'); r(!b || b.hidden ? 'hidden' : 'shown'); }, 120)); });
       ok(tb !== 'shown', `@${w} no toolbar on the title field (${tb})`);
+      ok(!(await page.$('[data-f="title"] + .rt-ed')), `@${w} the title stays a plain input`);
       ok(!page._err.length, `@${w} no page errors ${page._err.join(' | ')}`);
       await ctx.close();
     }
