@@ -9,7 +9,10 @@
 //          SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are provided to Edge Functions automatically.
 //
 // POST { "kind": "message", "id": "<event_messages.id>" }   guest wrote → email the page owner; host replied → email that guest
-// POST { "kind": "announcement", "id": "<announcements.id>" } owner posted → email the chosen groups (or everyone known)
+// POST { "kind": "announcement", "id": "<announcements.id>" } owner / planner posted → email the chosen groups (or everyone known)
+// POST { "kind": "planner", "id": "<page_planners.id>" }     owner invited a co-planner → email the invite link
+// POST { "kind": "household", "id": "<guest_households.id>" } owner / planner → email that household its personal link,
+//                                                            in the household's language
 // GET  → { ok, ready } (ready = RESEND_API_KEY is set)
 // Each row is emailed at most once (notified_at). The host's own email address is never sent to guests.
 
@@ -20,6 +23,24 @@ const ALLOWED_ORIGINS = ["https://1linktrip.com", "https://www.1linktrip.com", "
 const SITE = "https://1linktrip.com/";
 const MAX_RECIPIENTS = 300;
 const THREAD_QUIET_MS = 10 * 60 * 1000; // one email per thread per 10 minutes
+const RESEND_MS = 10 * 60 * 1000; // an invite can be emailed again after 10 minutes
+
+// household invitation email, per language (the household's own language when the page has it)
+export const INVITE: Record<string, { s: string; hi: string; body: string; btn: string }> = {
+  en: { s: "Invitation: {t}", hi: "Hi {n},", body: "You're invited to {t}. Your page has the details, and you can reply for everyone in your household there.", btn: "Open your invitation" },
+  es: { s: "Invitación: {t}", hi: "Hola, {n}:", body: "Estás invitado a {t}. En tu página están todos los detalles y puedes responder por todos los de tu hogar.", btn: "Abrir tu invitación" },
+  fr: { s: "Invitation : {t}", hi: "Bonjour {n},", body: "Vous êtes invités à {t}. Votre page contient tous les détails, et vous pouvez y répondre pour tout votre foyer.", btn: "Ouvrir votre invitation" },
+  pt: { s: "Convite: {t}", hi: "Olá, {n},", body: "Você está convidado para {t}. Sua página tem todos os detalhes, e você pode responder por todos da sua casa.", btn: "Abrir seu convite" },
+  de: { s: "Einladung: {t}", hi: "Hallo {n},", body: "Ihr seid zu {t} eingeladen. Auf eurer Seite stehen alle Details, und ihr könnt dort für euren ganzen Haushalt antworten.", btn: "Einladung öffnen" },
+  it: { s: "Invito: {t}", hi: "Ciao {n},", body: "Siete invitati a {t}. Nella vostra pagina trovate tutti i dettagli e potete rispondere per tutta la famiglia.", btn: "Apri l'invito" },
+  ja: { s: "ご招待：{t}", hi: "{n} 様", body: "{t} にご招待します。ページに詳細があり、ご家族全員分の出欠をまとめて返信できます。", btn: "招待状を開く" },
+};
+const AND: Record<string, string> = { en: "and", es: "y", fr: "et", pt: "e", de: "und", it: "e", ja: "と" };
+export const joinNames = (xs: string[], lang: string) => { const a = AND[lang] || AND.en; if (lang === "ja") return xs.join("、").replace(/、([^、]*)$/, a + "$1");
+  return xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " " + a + " " + xs[xs.length - 1]; };
+// deno-lint-ignore no-explicit-any
+type Row = Record<string, any>;
+const fill = (s: string, v: Record<string, string>) => s.replace(/\{(\w)\}/g, (_, k) => v[k] ?? "");
 
 export function corsFor(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") || "";
@@ -59,6 +80,25 @@ async function claim(admin: Admin, table: string, id: string): Promise<boolean> 
   const { data, error } = await admin.from(table).update({ notified_at: new Date().toISOString() }).eq("id", id).is("notified_at", null).select("id");
   return !error && Array.isArray(data) && data.length === 1;
 }
+// invites: once, or again after RESEND_MS (guarded on the value read, so two taps send one)
+async function claimAgain(admin: Admin, table: string, id: string, was: string | null, now: number): Promise<boolean> {
+  if (was && now - Date.parse(was) < RESEND_MS) return false;
+  let q = admin.from(table).update({ notified_at: new Date(now).toISOString() }).eq("id", id);
+  q = was ? q.eq("notified_at", was) : q.is("notified_at", null);
+  const { data, error } = await q.select("id");
+  return !error && Array.isArray(data) && data.length === 1;
+}
+// a failed send gives the claim back, so the invite can be tried again
+async function unclaim(admin: Admin, table: string, id: string, was: string | null) {
+  try { await admin.from(table).update({ notified_at: was }).eq("id", id); } catch { /* the 10-minute wait still applies */ }
+}
+// the page's owner, or an accepted planner (signed in with the invited, confirmed email)
+async function plans(admin: Admin, ev: { id: string; owner: string }, me: { id: string; email?: string; email_confirmed_at?: string }): Promise<boolean> {
+  if (ev.owner === me.id) return true;
+  if (!me.email || !me.email_confirmed_at) return false;
+  const { data } = await admin.from("page_planners").select("id").eq("event_id", ev.id).eq("user_id", me.id).eq("email", String(me.email).toLowerCase()).not("accepted_at", "is", null).limit(1);
+  return Array.isArray(data) && data.length > 0;
+}
 
 // Every answer carries the CORS headers for this request's Origin.
 export async function handler(req: Request, deps?: Deps): Promise<Response> {
@@ -81,7 +121,7 @@ async function route(req: Request, deps?: Deps): Promise<Response> {
   let b: { kind?: string; id?: string };
   try { b = await req.json(); } catch { return json(400, { ok: false, error: "Send JSON" }); }
   const id = String(b.id || "");
-  if (!UUID.test(id) || (b.kind !== "message" && b.kind !== "announcement")) return json(400, { ok: false, error: "Unknown request" });
+  if (!UUID.test(id) || !["message", "announcement", "planner", "household"].includes(String(b.kind))) return json(400, { ok: false, error: "Unknown request" });
   if (!d.ready) return json(200, { ok: true, sent: 0, skipped: "email not set up" });
   const now = d.now ? d.now() : Date.now();
 
@@ -90,8 +130,8 @@ async function route(req: Request, deps?: Deps): Promise<Response> {
     if (!m) return json(404, { ok: false, error: "Not found" });
     const { data: ev } = await d.admin.from("events").select("id,slug,owner,config").eq("id", m.event_id).maybeSingle();
     if (!ev) return json(404, { ok: false, error: "Not found" });
-    // only the person who wrote it can ask for its email
-    if (m.from_host ? ev.owner !== me.id : m.guest !== me.id) return json(403, { ok: false, error: "Not yours" });
+    // only the person who wrote it can ask for its email (a host reply: the owner or a planner)
+    if (m.from_host ? !(await plans(d.admin, ev, me)) : m.guest !== me.id) return json(403, { ok: false, error: "Not yours" });
     if (m.notified_at) return json(200, { ok: true, sent: 0, skipped: "already sent" });
     const title = String((ev.config && ev.config.title) || "your page").slice(0, 120);
     // a burst of messages in one thread becomes one email
@@ -112,11 +152,53 @@ async function route(req: Request, deps?: Deps): Promise<Response> {
     return json(200, { ok: true, sent: 1 });
   }
 
-  // announcement: only the page owner, and only once
+  if (b.kind === "planner") { // the owner's invite to a co-planner
+    const { data: p } = await d.admin.from("page_planners").select("id,event_id,email,token,accepted_at,notified_at").eq("id", id).maybeSingle();
+    if (!p) return json(404, { ok: false, error: "Not found" });
+    const { data: ev } = await d.admin.from("events").select("id,slug,owner,config").eq("id", p.event_id).maybeSingle();
+    if (!ev || ev.owner !== me.id) return json(403, { ok: false, error: "Not yours" });
+    if (p.accepted_at) return json(200, { ok: true, sent: 0, skipped: "already joined" });
+    if (!EMAIL.test(p.email)) return json(200, { ok: true, sent: 0, skipped: "no email" });
+    const was = p.notified_at;
+    if (!(await claimAgain(d.admin, "page_planners", id, was, now))) return json(200, { ok: true, sent: 0, skipped: "recently emailed" });
+    const title = String((ev.config && ev.config.title) || "a page").slice(0, 120);
+    const who = String((me.user_metadata && (me.user_metadata.full_name || me.user_metadata.name)) || "").trim().slice(0, 60) || "The organizer";
+    const out = mail(p.email, `${who} invited you to plan ${title}`, [`${who} invited you to plan ${title} on 1LinkTrip with them.`, `Sign in with this email address (${p.email}) to edit the page together.`], `${SITE}?e=${ev.slug}&p=${p.token}`, "Open the page");
+    try { await d.send([out]); } catch (e) { await unclaim(d.admin, "page_planners", id, was); return json(502, { ok: false, error: String((e as Error).message || e).slice(0, 200) }); }
+    return json(200, { ok: true, sent: 1 });
+  }
+
+  if (b.kind === "household") { // a household's personal invitation link, in its language
+    const { data: h } = await d.admin.from("guest_households").select("id,event_id,name,email,lang,token,notified_at,greeting").eq("id", id).maybeSingle();
+    if (!h) return json(404, { ok: false, error: "Not found" });
+    const { data: ev } = await d.admin.from("events").select("id,slug,owner,config,published").eq("id", h.event_id).maybeSingle();
+    if (!ev || !(await plans(d.admin, ev, me))) return json(403, { ok: false, error: "Not yours" });
+    if (!ev.published) return json(200, { ok: true, sent: 0, skipped: "page not shared" });
+    if (!h.email || !EMAIL.test(h.email)) return json(200, { ok: true, sent: 0, skipped: "no email" });
+    const was = h.notified_at;
+    if (!(await claimAgain(d.admin, "guest_households", id, was, now))) return json(200, { ok: true, sent: 0, skipped: "recently emailed" });
+    const langs: string[] = [String((ev.config && ev.config.lang) || "en"), ...((ev.config && Array.isArray(ev.config.langs)) ? ev.config.langs : [])];
+    const lang = h.lang && langs.includes(h.lang) ? h.lang : "";
+    const T = INVITE[lang || String((ev.config && ev.config.lang) || "en")] || INVITE.en;
+    const tr = lang && ev.config && ev.config.tr && ev.config.tr[lang]; // the page's own translated title, when it has one
+    const title = String((tr && tr.title && tr.title.t) || (ev.config && ev.config.title) || "").slice(0, 120);
+    let n = String(h.name).slice(0, 120);
+    if (h.greeting === "names") { // "Michael and Sarah": the first names of the adults the organizer listed
+      const { data: ps } = await d.admin.from("guest_people").select("name,age,added_by").eq("household_id", h.id).eq("added_by", "host").limit(30);
+      const fs = (ps || []).filter((p: Row) => p.age !== "child" && p.age !== "infant").map((p: Row) => String(p.name || "").trim().split(/\s+/)[0]).filter(Boolean);
+      if (fs.length) n = joinNames(fs, lang || String((ev.config && ev.config.lang) || "en"));
+    }
+    const v = { t: title, n };
+    const out = mail(h.email, fill(T.s, v), [fill(T.hi, v), fill(T.body, v)], `${SITE}?e=${ev.slug}&g=${h.token}${lang ? "&lang=" + lang : ""}`, T.btn);
+    try { await d.send([out]); } catch (e) { await unclaim(d.admin, "guest_households", id, was); return json(502, { ok: false, error: String((e as Error).message || e).slice(0, 200) }); }
+    return json(200, { ok: true, sent: 1 });
+  }
+
+  // announcement: the page owner or a planner, and only once
   const { data: a } = await d.admin.from("announcements").select("id,event_id,body,group_ids,notified_at").eq("id", id).maybeSingle();
   if (!a) return json(404, { ok: false, error: "Not found" });
   const { data: ev } = await d.admin.from("events").select("id,slug,owner,config,published").eq("id", a.event_id).maybeSingle();
-  if (!ev || ev.owner !== me.id) return json(403, { ok: false, error: "Not yours" });
+  if (!ev || !(await plans(d.admin, ev, me))) return json(403, { ok: false, error: "Not yours" });
   if (a.notified_at) return json(200, { ok: true, sent: 0, skipped: "already sent" });
   const gids: string[] = Array.isArray(a.group_ids) ? a.group_ids : [];
   const emails = new Set<string>();

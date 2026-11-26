@@ -2648,7 +2648,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   });
   dlg.addEventListener('click', (e) => { const tb = e.target.closest('[data-shr-tab]'); if (tb && B.hosted) { B.shrCtx = B.shrCtx && B.shrCtx.eid === B.hosted.id ? B.shrCtx : { cfg: B.cfg, eid: B.hosted.id, slug: B.hosted.slug, owner: true, back: location.hash }; B.shrCtx.cfg = B.cfg; shrTab(dlg, tb.dataset.shrTab, B.shrCtx); } });
   const sh = $('#sheet');
-  sh.addEventListener('close', () => { if (B.onp) onpCleanup(); B.onp = false; B.focus = null; B.onpSec = null; sh.classList.remove('onp'); B.card = null; if (DU && DU.key !== 'main') DU = null; buildForm(); });
+  sh.addEventListener('close', () => { if (B.mergeLater) { B.mergeLater = false; setTimeout(acctPushNow, 0); } if (B.onp) onpCleanup(); B.onp = false; B.focus = null; B.onpSec = null; sh.classList.remove('onp'); B.card = null; if (DU && DU.key !== 'main') DU = null; buildForm(); });
   $('#preview').addEventListener('click', onpTap, true); $('#preview').addEventListener('keydown', onpTap, true);
   $('.onp-bar').addEventListener('click', (e) => { const b = e.target.closest('[data-pv-lang]'); if (!b) return; B.pvLang = b.dataset.pvLang === srcLang(B.cfg) ? '' : b.dataset.pvLang; paintPvLang(); preview(); });
   $('[data-guest-tg]').addEventListener('change', (e) => { B.asGuest = e.target.checked; bl.classList.toggle('as-guest', B.asGuest); if (B.asGuest && sh.open && B.onp) sh.close(); preview(); });
@@ -2664,7 +2664,7 @@ function renderBuilder(cfg, source, hosted, pid) {
   preview();
   if (window.__openCard) { const id = window.__openCard; window.__openCard = null; openCard(id); }
   if (acctOn()) acctPushNow(); // signed in: the page is on the account from the start (not shared until Share)
-  wireVendors(); vnSync();
+  wireVendors(); vnSync(); teamStart();
 }
 // Settings (type, design, sections, vendors, documents, AI edit): a panel over the page on phones, a column beside it on wide screens
 function setPanel(on) {
@@ -2786,6 +2786,8 @@ function buildForm() {
     ${sectionsHTML(c)}
   </div></details>
   ${vnAccHTML(c, open.has('vendors'))}
+  ${teamAccHTML(open.has('team'))}
+  ${glAccHTML()}
   ${docBlockHTML('main')}
   <h2 class="b-h">${t('Add to your page')}</h2>
   ${cards.type.length ? `<p class="grp">${esc(t(TYPE_GROUP[c.type]))}</p><div class="cards">${cards.type.map(x => cardBtn(c, x)).join('')}</div>` : ''}
@@ -2972,6 +2974,7 @@ function onpDecorate(cfg, art) {
     if (id === 'details') add('add:n', 'Add note');
   });
   if (!body.querySelector('[data-ed="gallery"]')) body.insertAdjacentHTML('beforeend', `<button type="button" class="onp-add onp-more" data-ed="gallery">+ ${t('Add section')}</button>`);
+  teamTags(cfg, art);
   // sections filled in later (access, the RSVP slot) get theirs when they arrive
   if (!art._onpMo && typeof MutationObserver === 'function') { art._onpMo = new MutationObserver(() => { if (document.body.contains(art) && body.querySelector('[data-sec]:not([data-ed])')) onpDecorate(cfg, art); }); art._onpMo.observe(body, { childList: true, subtree: true }); }
 }
@@ -3831,10 +3834,27 @@ async function renderHosted(slug, tab) {
     try { const c = await sb(); const { data } = await c.from('events').select('id,slug,config,updated_at,published').eq('slug', slug).maybeSingle(); if (data) row = data; } catch { /* below */ }
   }
   if (!row) return hostedProblem(t('This page isn’t available. It may have been removed or hidden by its organizer.'));
+  { // personal tokens leave the address bar (so they aren't passed on): ?p= co-planner invite, ?g= household link
+    const lq = locQ(); const pq = (lq.get('p') || '').toLowerCase(), gq = (lq.get('g') || '').toLowerCase(); const q = new URLSearchParams(location.search);
+    const pOk = /^[a-f0-9]{32}$/.test(pq), gOk = /^[a-f0-9]{24}$/.test(gq);
+    if (pOk || gOk) { if (pOk) q.delete('p'); if (gOk) q.delete('g'); const qs2 = q.toString(); history.replaceState(null, '', location.pathname + (qs2 ? '?' + qs2 : '') + location.hash); }
+    if (/^[a-f0-9]{24}$/.test(gq)) LS.set('hh:' + row.id, gq);
+    if (/^[a-f0-9]{32}$/.test(pq) && await plannerArrive(pq, slug)) return renderHosted(slug, tab);
+  }
   const osm = row.config && row.config.osm; const cfg = normalize(row.config); const hosted = { id: row.id, slug: row.slug, url: shortURL(row.slug) };
   if (osm && cfg.venue && Array.isArray(osm.food)) memo.set(osmKey(cfg.venue.lat, cfg.venue.lon), Promise.resolve(osm));
   document.title = (cfg.title || 'Event') + ' · 1LinkTrip';
-  LANG = guestLangPick(cfg); document.documentElement.lang = LANG; document.documentElement.dir = RTL.has(LANG) ? 'rtl' : 'ltr';
+  // a household's personal link: its RSVP, its language (an explicit ?lang= or the guest's own pick still wins); opens are
+  // recorded on the server, once per visit
+  const htok = LS.get('hh:' + row.id);
+  if (htok && !pagesAll().some(p => p.hosted && p.hosted.id === row.id)) {
+    const k = 'hho:' + row.id; let rec = true; try { rec = !sessionStorage.getItem(k); } catch { /* private mode */ }
+    try { const hh = await hhRpc('household_get', { s: row.slug, tok: htok, record: rec }); if (hh && hh.people) { hosted.hh = { tok: htok, ...hh }; try { sessionStorage.setItem(k, '1'); } catch {} } else LS.del('hh:' + row.id); }
+    catch { /* offline: the page without the household form */ }
+  } else if (!htok && !pagesAll().some(p => p.hosted && p.hosted.id === row.id)) pageOpenOnce(row);
+  LANG = guestLangPick(cfg);
+  if (hosted.hh && hosted.hh.lang && !locQ().get('lang') && !LS.get('lang') && pageLangs(cfg).includes(hosted.hh.lang)) LANG = hosted.hh.lang;
+  document.documentElement.lang = LANG; document.documentElement.dir = RTL.has(LANG) ? 'rtl' : 'ltr';
   // a "Share my trip" link (?s=<token>): the page plus that person's bookings, followed from now on (the token leaves the
   // address so it isn't passed on by accident)
   const sq = (new URLSearchParams(location.search).get('s') || '').toLowerCase(); let shArrived = false;
@@ -3844,7 +3864,7 @@ async function renderHosted(slug, tab) {
   let own = pagesAll().find(p => p.hosted && p.hosted.id === row.id);
   if (own) {
     const rt = Date.parse(row.updated_at) || 0;
-    if (!((own.edited || 0) > rt + 1000) && builderHash(row.config) !== builderHash(own.cfg)) { pageSave(own.pid, { cfg: normalize(row.config), edited: rt }); own = pagesAll().find(p => p.pid === own.pid) || own; }
+    if (!((own.edited || 0) > rt + 1000) && builderHash(row.config) !== builderHash(own.cfg)) { pageSave(own.pid, { cfg: normalize(row.config), edited: rt }); pbSet(row.id, row.updated_at, row.config); own = pagesAll().find(p => p.pid === own.pid) || own; }
     if (row.published !== undefined && own.hosted.pub !== !!row.published) pageSave(own.pid, { hosted: { ...own.hosted, pub: !!row.published } });
     window.__ownTab = tab; return renderBuilder(own.cfg, null, own.hosted, own.pid);
   }
@@ -3976,14 +3996,15 @@ function wireHosted(cfg, art, hosted, opts = {}) {
   const src = opts.src || cfg;
   const body = art.querySelector('.ev-panel[data-panel="event"] .ev-body'); if (!body) return;
   body.insertAdjacentHTML('afterbegin', '<div data-slot="ann"></div>');
-  const R = rsvpOf(cfg);
-  if (R.on && R.via === 'form') {
-    const html = sec('rsvp', t('RSVP'), `<div data-slot="rsvp">${rsvpFormHTML(cfg, hosted, src)}</div>`);
+  const R = rsvpOf(cfg); const HH = !!(hosted.hh && !isTrip(cfg));
+  if ((R.on && R.via === 'form') || HH) {
+    const html = sec('rsvp', t('RSVP'), `<div data-slot="rsvp">${HH ? hhFormHTML(cfg, src, hosted) : rsvpFormHTML(cfg, hosted, src)}</div>`);
     const wrap = body.querySelector('[data-slot="rsvp-wrap"]');
     if (wrap) wrap.innerHTML = html; else body.querySelector('[data-slot="ann"]').insertAdjacentHTML('afterend', html);
     if (art._cx) art._cx(); // its title folds like the others
   }
   if (opts.preview) { art.querySelectorAll('.rsvp input, .rsvp textarea, .rsvp select, .rsvp button').forEach(x => { x.disabled = true; }); return; }
+  if (HH) wireHousehold(cfg, art, hosted, src);
   // groups guests can pick at RSVP, and messages (both hidden until schema-3 is installed)
   art._fillPick = () => { const g = art.querySelector('[data-rsvp-group]'); const P = art._gm; if (g && P && P.picks.length) g.innerHTML = groupPickHTML(P.picks, (LS.get('rsvp:' + hosted.id) || {}).group || ''); };
   if (!hosted.demo) wireGuestMsgs(cfg, art, hosted);
@@ -4063,13 +4084,15 @@ async function authReturn() {
   history.replaceState(null, '', siteBase());
   if (!session) { LS.del('pendingPublish'); return renderMine('', 'That sign-in link has expired or was already used. Send yourself a new one.'); }
   LS.set('signedIn', true);
+  const pp = LS.get('pendingPlanner'); LS.del('pendingPlanner'); // signed in from a co-planner invite: join, then open the page
+  if (pp && pp.tok && SLUG_RE.test(pp.slug || '')) { await plannerJoin(pp.tok); history.replaceState(null, '', siteBase() + '?e=' + pp.slug); return route(); }
   const sync = acctSyncAll(); // this device's pages join the account
   const ps = LS.get('pendingSave'); LS.del('pendingSave');
   if (ps && ps.packed) { history.replaceState(null, '', siteBase() + '#e=' + ps.packed); route(); return saveLongToMine(ps.packed, $('[data-save-mine]')); }
   const p = LS.get('pendingPublish'); LS.del('pendingPublish');
   if (p && p.cfg) { LS.set('draft', p.cfg); LS.set('draftHosted', p.hosted || null); history.replaceState(null, '', siteBase() + '#new'); renderBuilder(p.cfg, null, p.hosted || null, LS.get('draftId') || undefined); publish({ host: true }); return; }
   const back = LS.get('afterSignIn'); LS.del('afterSignIn');
-  if (back && back !== '#mine' && /^#(mine|new|setup|page=[\w-]+$)/.test(back)) { history.replaceState(null, '', siteBase() + back); return route(); }
+  if (back && back !== '#mine' && /^#(mine|new|setup|page=[\w-]+$|guests\/[0-9a-f-]{36}$)/.test(back)) { history.replaceState(null, '', siteBase() + back); return route(); }
   if (back && /^\?e=[a-z0-9-]+(#t=[a-z]+)?$/.test(back)) { history.replaceState(null, '', siteBase() + back); return route(); } // a guest signed in on a hosted page
   history.replaceState(null, '', siteBase() + '#mine'); await sync; renderMine('');
 }
@@ -4104,27 +4127,34 @@ async function acctSaveNow(pid, { publish = false, fetchOsm = false } = {}) {
   const c = await sb(); const mine = openPid() === pid;
   if (!x.cfg.ek) { const ek = eventKey(x.cfg); pageSave(pid, { cfg: { ...x.cfg, ek }, edited: x.edited || x.updated || 0 }); if (mine) B.cfg.ek = ek; x = pagesAll().find(p => p.pid === pid); }
   const config = await hostConfig(pid, x.cfg, fetchOsm); const patch = publish ? { config, published: true } : { config };
+  const pl = !!(x.hosted && x.hosted.planner); // a co-planner's copy of someone else's page
   const done = (r, pub) => {
-    const hosted = { id: r.id, slug: r.slug, owner: user.id, pub: !!pub };
+    const hosted = { id: r.id, slug: r.slug, owner: pl ? x.hosted.owner : user.id, pub: !!pub, ...(pl ? { planner: true } : {}) };
     pageSave(pid, { hosted }); if (openPid() === pid) { B.hosted = hosted; LS.set('draftHosted', hosted); }
     return hosted;
   };
-  const update = async (id) => { const { data, error } = await c.from('events').update(patch).eq('id', id).select('id,slug,published'); if (error) throw error; return data && data[0]; };
+  // a saved page is changed only if nobody else saved it since this device last saw it (updated_at); otherwise the two
+  // versions are merged (teamMerge) — never a silent overwrite of a co-planner's (or another device's) edit
+  const update = async (id, body = patch, t) => { let q = c.from('events').update(body).eq('id', id); if (t) q = q.eq('updated_at', t); const { data, error } = await q.select('id,slug,published,updated_at'); if (error) throw error; return data && data[0]; };
   if (x.hosted && x.hosted.id) {
-    const r = await update(x.hosted.id); if (r) return done(r, r.published);
-    const { data: seen } = await c.from('events').select('id').eq('id', x.hosted.id).maybeSingle();
+    const base = pbGet(x.hosted.id);
+    const r = await update(x.hosted.id, patch, base && base.t); if (r) { pbSet(r.id, r.updated_at, config); return done(r, r.published); }
+    const { data: seen } = await c.from('events').select('id,slug,config,published,updated_at').eq('id', x.hosted.id).maybeSingle();
+    if (seen && base) { const r2 = await teamMerge(pid, base, config, seen, (body, t) => update(seen.id, publish ? { ...body, published: true } : body, t)); return r2 ? done(r2, r2.published) : null; }
     if (seen) return null; // another account's page: never copied into this one
+    if (pl) { pageRemove(pid); return null; } // no longer a planner of it
     // deleted from the account: saved again below as a new page
   }
+  if (pl) return null;
   // the same page already on the account (saved from another device or browser): one page, the newer version wins
   const { data: same, error: se } = await c.from('events').select('id,slug,config,published,updated_at').eq('owner', user.id).eq('config->>ek', x.cfg.ek).order('updated_at', { ascending: false }).limit(1);
   if (se) throw se;
   const r0 = same && same[0];
   if (r0) {
     const rt = Date.parse(r0.updated_at) || 0;
-    if ((mine && B.touched) || (x.edited || 0) > rt) { const r = await update(r0.id); if (r) return done(r, r.published); }
+    if ((mine && B.touched) || (x.edited || 0) > rt) { const r = await update(r0.id); if (r) { pbSet(r.id, r.updated_at, config); return done(r, r.published); } }
     else {
-      const cfg = normalize(r0.config); pageSave(pid, { cfg, edited: rt });
+      const cfg = normalize(r0.config); pageSave(pid, { cfg, edited: rt }); pbSet(r0.id, r0.updated_at, r0.config);
       if (publish && !r0.published) await c.from('events').update({ published: true }).eq('id', r0.id);
       const h = done(r0, publish || r0.published);
       if (mine && !B.touched) { B.cfg = cfg; LS.set('draft', cfg); buildForm(); preview(); renderHostNote(); }
@@ -4132,8 +4162,8 @@ async function acctSaveNow(pid, { publish = false, fetchOsm = false } = {}) {
     }
   }
   for (let i = 0; i < 4; i++) {
-    const { data, error } = await c.from('events').insert({ slug: makeSlug(x.cfg.title), config, published: !!publish }).select('id,slug,published').single();
-    if (!error) return done(data, data.published);
+    const { data, error } = await c.from('events').insert({ slug: makeSlug(x.cfg.title), config, published: !!publish }).select('id,slug,published,updated_at').single();
+    if (!error) { pbSet(data.id, data.updated_at, config); return done(data, data.published); }
     if (error.code !== '23505') throw error;
   }
   throw new Error('Could not pick a free link. Try again.');
@@ -4169,23 +4199,29 @@ async function acctSyncRun() {
   const gone = goneGet();
   for (const r of rows.filter(r => gone.ids.includes(r.id))) { const { error: de } = await c.from('events').delete().eq('id', r.id).eq('owner', user.id); if (!de) moved = true; }
   rows = rows.filter(r => !gone.ids.includes(r.id));
+  // pages this account plans with their owner (co-planner): read and saved like its own, never deleted from here
+  let plOk = false;
+  { const { data: pl, error: pe } = await c.from('page_planners').select('event_id,accepted_at').eq('user_id', user.id).limit(500);
+    if (!pe && Array.isArray(pl)) { plOk = true; const ids = pl.filter(p => p.accepted_at).map(p => p.event_id).filter(id => !rows.some(r => r.id === id));
+      if (ids.length) { const { data: pr } = await c.from('events').select('id,slug,config,published,updated_at,owner').in('id', ids); if (Array.isArray(pr)) rows = rows.concat(pr.map(r => ({ ...r, planner: true }))); else plOk = false; } } }
+  const hostedOf = (r, pub) => r.planner ? { owner: r.owner, planner: true, pub } : { owner: user.id, pub };
   const byId = new Map(rows.map(r => [r.id, r]));
   for (const x of pagesAll()) {
     if (openPid() === x.pid) continue; // the page open in the builder saves itself
     if (pageGone({ pid: x.pid, id: x.hosted && x.hosted.id, ek: x.cfg && x.cfg.ek })) { pageRemove(x.pid); moved = true; continue; } // a copy of a deleted page
     if (x.hosted && x.hosted.id) {
       const r = byId.get(x.hosted.id);
-      if (!r) { if (complete && x.hosted.owner === user.id) { pageRemove(x.pid); moved = true; } continue; } // deleted from the account elsewhere
-      const rt = Date.parse(r.updated_at) || 0, pub = !!r.published;
+      if (!r) { if ((complete && x.hosted.owner === user.id) || (plOk && x.hosted.planner)) { pageRemove(x.pid); moved = true; } continue; } // deleted from the account elsewhere / no longer a planner
+      const rt = Date.parse(r.updated_at) || 0, pub = !!r.published; const hp = hostedOf(r, pub);
       if ((x.edited || 0) > rt + 1000) { await acctSave(x.pid).catch(() => {}); moved = true; } // edited here while offline
-      else if (builderHash(r.config) !== builderHash(x.cfg)) { pageSave(x.pid, { cfg: normalize(r.config), edited: rt, hosted: { ...x.hosted, owner: user.id, pub } }); moved = true; }
-      else if (x.hosted.pub !== pub || x.hosted.owner !== user.id) pageSave(x.pid, { hosted: { ...x.hosted, owner: user.id, pub } });
+      else if (builderHash(r.config) !== builderHash(x.cfg)) { pageSave(x.pid, { cfg: normalize(r.config), edited: rt, hosted: { ...x.hosted, ...hp } }); pbSet(r.id, r.updated_at, r.config); moved = true; }
+      else { pbSet(r.id, r.updated_at, r.config); if (x.hosted.pub !== pub || x.hosted.owner !== hp.owner || !!x.hosted.planner !== !!r.planner) pageSave(x.pid, { hosted: { id: x.hosted.id, slug: x.hosted.slug, ...hp } }); }
       continue;
     }
     if (x.cfg && String(x.cfg.title || '').trim()) { await acctSave(x.pid).catch(() => {}); moved = true; }
   }
   const have = new Set(pagesAll().filter(x => x.hosted).map(x => x.hosted.id));
-  rows.filter(r => !have.has(r.id)).reverse().forEach(r => { pageSave(newPid(), { cfg: normalize(r.config), hosted: { id: r.id, slug: r.slug, owner: user.id, pub: !!r.published }, edited: Date.parse(r.updated_at) || 0 }); moved = true; });
+  rows.filter(r => !have.has(r.id) && !pageGone({ id: r.id, ek: r.config && r.config.ek })).reverse().forEach(r => { pageSave(newPid(), { cfg: normalize(r.config), hosted: { id: r.id, slug: r.slug, ...hostedOf(r, !!r.published) }, edited: Date.parse(r.updated_at) || 0 }); pbSet(r.id, r.updated_at, r.config); moved = true; });
   if (await pnSyncOwn(c).catch(() => false)) moved = true;
   if (moved) dispatchEvent(new Event('ep-pages'));
   return true;
@@ -4245,7 +4281,7 @@ function pubHostHTML() {
   const P = B.pub || {};
   if (!SB) return '';
   if (P.state === 'busy') return `<div class="pub-host" role="status"><p><b>${t('Getting your link…')}</b></p></div>`;
-  if (P.state === 'done') return `<div class="pub-host ok"><p>${t('Your edits show up on this link automatically.')} <a href="#mine">${t('Replies in My pages')}</a></p>${B.hosted ? pnEditHTML(B.hosted, !pnName(B.hosted.slug) && !!B.pnSug) : ''}</div>`;
+  if (P.state === 'done') return `<div class="pub-host ok"><p>${t('Your edits show up on this link automatically.')} <a href="#mine">${t('Replies in My pages')}</a></p>${B.hosted ? pnEditHTML(B.hosted, !pnName(B.hosted.slug) && !!B.pnSug) : ''}</div>${B.hosted && B.hosted.id ? `<div class="pub-team">${B.hosted.planner ? '' : `<button type="button" class="btn sm" data-pub-team>${t('Invite a co-planner')}</button>`}<a class="btn sm" href="#guests/${esc(B.hosted.id)}">${t('Personal guest links')}</a></div>` : ''}`;
   if (P.state === 'signin') return `<div class="pub-host"><p><b>${t('Sign in to share')}</b></p>${signInFormHTML(P.msg, LS.get('signinEmail') || '')}<p class="pub-alt">${longBtn()}<br>${longNoteHTML(false) || `<small class="muted">${t('That link won’t show later edits.')}</small>`}</p></div>`;
   if (P.state === 'long') return `<div class="pub-host">${longNoteHTML(true)}<p class="muted small">${t('This link won’t show later edits.')}</p></div>`;
   return `<div class="pub-host" role="alert"><p><b>${t('Couldn’t share.')}</b> ${esc(P.msg || '')}</p><button type="button" class="btn primary" data-ph="go">${t('Try again')}</button><p class="pub-alt">${longBtn()}${longNoteHTML(false) ? '<br>' + longNoteHTML(false) : ''}</p></div>`;
@@ -4366,7 +4402,7 @@ function wirePubHost() {
 function renderHostNote() {
   const f = $('.b-form'); if (!f || !B) return; let n = $('.b-host', f);
   if (!B.hosted || !B.hosted.pub) { if (n) n.remove(); return; }
-  const html = `<div class="b-note b-host"><p>${t('Your link:')} <a href="${esc(shortURL(B.hosted.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(B.hosted.slug))}</a> · <a href="#mine">${t('My pages')}</a></p>${SB ? pnEditHTML(B.hosted, false) : ''}</div>`;
+  const html = `<div class="b-note b-host"><p>${B.hosted.planner ? t('Co-planner · Link:') : t('Your link:')} <a href="${esc(shortURL(B.hosted.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(B.hosted.slug))}</a> · <a href="#mine">${t('My pages')}</a></p>${SB ? pnEditHTML(B.hosted, false) : ''}</div>`;
   if (n) { if (n.querySelector('[data-pn].open') && n.contains(document.activeElement)) return; n.outerHTML = html; } else f.insertAdjacentHTML('afterbegin', html);
 }
 
@@ -4391,9 +4427,15 @@ async function renderMine(id, notice) {
   await acctSyncAll(); // pages made on this device (or before signing in) are on the account before the list loads
   const { data, error } = await c.from('events').select('id,slug,config,published,updated_at').eq('owner', user.id).order('updated_at', { ascending: false });
   if (error) return shell(`<h1>${t('My pages')}</h1><p>${t('Couldn’t load your pages.')} ${esc(error.message)}</p>`);
+  // pages planned with their owner, and invitations waiting
+  const [plq, pend] = await Promise.all([c.from('page_planners').select('event_id,accepted_at').eq('user_id', user.id).limit(500), c.rpc ? c.rpc('planner_pending') : null]);
+  const plIds = !plq.error && Array.isArray(plq.data) ? plq.data.filter(x => x.accepted_at).map(x => x.event_id) : [];
+  if (plIds.length) { const { data: pr } = await c.from('events').select('id,slug,config,published,updated_at').in('id', plIds); (pr || []).forEach(r => { if (!data.some(x => x.id === r.id)) data.push({ ...r, planner: true }); }); data.sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at))); }
+  const invites = pend && !pend.error ? pend.data || [] : [];
   shell(`<div class="mine-h"><h1>${t('My pages')}</h1><span class="muted small">${esc(user.email || '')} · <button type="button" class="link" data-mine="signout">${t('Sign out')}</button></span></div>
+    ${invites.length ? `<section class="mine-sec mine-inv"><h2>${t('Invitations to plan')}</h2><ul class="mine-list">${invites.map(v => `<li><div><b>${esc(v.title || t('Untitled'))}</b></div><div class="btns"><button type="button" class="btn sm primary" data-mine-join="${esc(v.token)}">${t('Join')}</button><button type="button" class="btn sm ghost" data-mine-decline="${esc(v.token)}">${t('Decline')}</button></div></li>`).join('')}</ul></section>` : ''}
     <section data-slot="mine-inbox"></section>
-    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || t('Untitled'))}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · ' + t('not shared')}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(r.slug))}</a>` : ''}</div><div class="btns"><button type="button" class="btn sm primary" data-mine-edit="${esc(r.id)}">${t('Open')}</button><a class="btn sm" href="#mine/${esc(r.id)}">${t('Replies and updates')}</a>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">${t('Copy link')}</button>` : ''}<button type="button" class="btn sm ghost" data-mine-del="${esc(r.id)}" aria-label="${esc(t('Delete {n}', { n: cfg.title || t('Untitled') }))}">${t('Delete')}</button></div></li>`; }).join('')}</ul>` : `<p class="lede">${t('No short links yet. Make a page, tap Share, then Get a short link.')}</p><a class="btn primary" href="#setup">${t('Make a page')}</a>`}`);
+    ${data.length ? `<ul class="mine-list">${data.map(r => { const cfg = spanFixed(normalize(r.config)); return `<li><div><b>${esc(cfg.title || t('Untitled'))}</b><span>${esc(cfg.start ? dateRange(cfg.start, cfg.end) : '')}${r.published ? '' : ' · ' + t('not shared')}${r.planner ? ' · ' + t('co-planner') : ''}</span>${r.published ? `<a class="mono small" href="${esc(shortURL(r.slug))}" target="_blank" rel="noopener noreferrer">${esc(linkText(r.slug))}</a>` : ''}</div><div class="btns"><button type="button" class="btn sm primary" data-mine-edit="${esc(r.id)}">${t('Open')}</button><a class="btn sm" href="#mine/${esc(r.id)}">${t('Replies and updates')}</a>${r.published ? `<button type="button" class="btn sm ghost" data-mine-copy="${esc(r.slug)}">${t('Copy link')}</button>` : ''}${r.planner ? `<button type="button" class="btn sm ghost" data-mine-leave="${esc(r.id)}" aria-label="${esc(t('Leave {n}', { n: cfg.title || t('Untitled') }))}">${t('Leave')}</button>` : `<button type="button" class="btn sm ghost" data-mine-del="${esc(r.id)}" aria-label="${esc(t('Delete {n}', { n: cfg.title || t('Untitled') }))}">${t('Delete')}</button>`}</div></li>`; }).join('')}</ul>` : `<p class="lede">${t('No short links yet. Make a page, tap Share, then Get a short link.')}</p><a class="btn primary" href="#setup">${t('Make a page')}</a>`}`);
   mineInbox(c, data).catch(() => {});
   if (data.length) msgReady().then(async ok => { // "2 new" next to pages with unanswered guest messages
     if (!ok) return; const { data: ms } = await c.from('event_messages').select('event_id,guest,from_host,created_at').in('event_id', data.map(x => x.id)).order('created_at', { ascending: true }).limit(5000);
@@ -4405,6 +4447,11 @@ async function renderMine(id, notice) {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.mine === 'signout') { await c.auth.signOut(); LS.del('signedIn'); LS.del('draftHosted'); location.hash = '#'; }
     if (b.dataset.mineCopy) copy(shortURL(b.dataset.mineCopy));
+    if (b.dataset.mineJoin) { b.disabled = true; if (await plannerJoin(b.dataset.mineJoin)) renderMine(''); else b.disabled = false; }
+    if (b.dataset.mineDecline) { const { error: de } = await c.from('page_planners').delete().eq('token', b.dataset.mineDecline); if (!de) renderMine(''); }
+    if (b.dataset.mineLeave) { const r = data.find(x => x.id === b.dataset.mineLeave); if (!r || !await confirmDlg({ title: `Leave “${normalize(r.config).title || 'Untitled'}”?`, body: 'It leaves My pages. The owner can invite you again.', ok: 'Leave' })) return;
+      const { error: le } = await c.from('page_planners').delete().eq('event_id', r.id).eq('user_id', user.id); if (le) { toast('Couldn’t leave: ' + le.message); return; }
+      pagesAll().filter(x => x.hosted && x.hosted.id === r.id).forEach(x => pageRemove(x.pid)); LS.del(pbKey(r.id)); renderMine(''); }
     if (b.dataset.mineDel) {
       const r = data.find(x => x.id === b.dataset.mineDel); if (!r) return; const name = normalize(r.config).title || t('Untitled');
       if (!await confirmDlg({ title: t('Delete “{n}”?', { n: name }), body: t(r.published ? 'It’s removed from your account on every device, its link stops working, and its replies and updates are deleted too.' : 'It’s removed from your account on every device and its replies and updates are deleted too.'), ok: t('Delete') })) return;
@@ -4412,7 +4459,7 @@ async function renderMine(id, notice) {
       try { await pageDelete({ id: r.id }); } catch (err) { b.disabled = false; toast(t('Couldn’t delete:') + ' ' + pubWhy(err)); return; }
       await renderMine(''); toast(t('Deleted “{n}”', { n: name }));
     }
-    if (b.dataset.mineEdit) { const r = data.find(x => x.id === b.dataset.mineEdit); const cfg = normalize(r.config); const ex = pagesAll().find(x => x.hosted && x.hosted.id === r.id); LS.set('draft', cfg); LS.set('draftHosted', { id: r.id, slug: r.slug, owner: user.id, pub: !!r.published }); LS.set('draftId', ex ? ex.pid : newPid()); location.hash = '#new'; }
+    if (b.dataset.mineEdit) { const r = data.find(x => x.id === b.dataset.mineEdit); const cfg = normalize(r.config); const ex = pagesAll().find(x => x.hosted && x.hosted.id === r.id); LS.set('draft', cfg); LS.set('draftHosted', ex ? ex.hosted : { id: r.id, slug: r.slug, owner: user.id, pub: !!r.published }); LS.set('draftId', ex ? ex.pid : newPid()); location.hash = '#new'; }
   });
 }
 // a change made to the account row from My pages (messages on, translated updates) goes into this device's copy too,
@@ -4470,12 +4517,9 @@ async function renderMineEvent(id, shell, c, user) {
       <form class="ann-form" onsubmit="return false"><textarea id="an-body" rows="3" maxlength="2000" placeholder="${t('Shuttle leaves the hotel at 4:30. Bring a jacket.')}"></textarea>${msgs ? sendToHTML(groups) : ''}<div class="btns"><button type="button" class="btn primary" data-an="post">${t('Post update')}</button></div><p class="hint" role="status" aria-live="polite"></p></form>
       <ul class="ann-list own">${(an.data || []).map(a => `<li><time>${esc(fmtStamp(a.created_at))}${(a.group_ids || []).length ? ' · ' + esc(t('Send to')) + ': ' + esc(a.group_ids.map(gName).filter(Boolean).join(', ')) : ''}</time><p>${esc(a.body)}</p><button type="button" class="link" data-an-del="${esc(a.id)}">${t('Delete')}</button></li>`).join('')}</ul></section>
     <section class="mine-sec"><h2>${t('Replies')}</h2>
-      <p class="rs-sum"><b>${yes.reduce((n, x) => n + (x.guests || 1), 0)}</b> ${t('coming')} <span class="muted">(${esc(t(yes.length === 1 ? '1 reply' : '{n} replies', { n: yes.length }))})</span> · <b>${no.length}</b> ${t('can’t make it')}${guests.length ? ` · ${esc(t('{w} of {n} on your list haven’t replied', { w: waiting.length, n: guests.length }))}` : ''}</p>${rqSum}
+      <p class="rs-sum"><b>${yes.reduce((n, x) => n + (x.guests || 1), 0)}</b> ${t('coming')} <span class="muted">(${esc(t(yes.length === 1 ? '1 reply' : '{n} replies', { n: yes.length }))})</span> · <b>${no.length}</b> ${t('can’t make it')}</p>${rqSum}
       ${replies.length ? `<div class="tbl-wrap"><table class="rs-tbl"><thead><tr><th>${t('Name')}</th><th>${t('Reply')}</th><th>${t('Party')}</th>${groups.length ? `<th>${t('Group')}</th>` : ''}${RQ.map(c => `<th data-rq-col="${c[0]}">${esc(c[1])}</th>`).join('')}<th>${t('Email')}</th><th>${t('Note')}</th></tr></thead><tbody>${replies.map(x => `<tr><td>${esc(x.name)}</td><td>${x.attending ? 'Coming' : 'Can’t make it'}</td><td>${x.attending ? esc(x.guests) : '–'}</td>${groups.length ? `<td>${esc(gName(x.group_id))}</td>` : ''}${RQ.map(c => `<td data-rq-col="${c[0]}">${esc(c[2](x))}</td>`).join('')}<td>${esc(x.email || '')}</td><td data-note-id="${esc(x.id)}">${esc(x.note || '')}</td></tr>`).join('')}</tbody></table></div><div class="btns"><button type="button" class="btn sm" data-rs="csv">${t('Download CSV')}</button></div>` : '<p class="muted">No replies yet. Share your short link and they’ll show up here.</p>'}
-      <h3 class="sub-h">${t('Guest list')}</h3><p class="muted small">${t('Import a CSV or paste names (one per line, optional email) to see who hasn’t replied. Your list stays on this device.')}</p>
-      <div class="btns"><label class="btn sm file-btn">${t('Import CSV')}<input type="file" data-gl-file accept=".csv,.txt,text/csv,text/plain"></label>${guests.length ? '<button type="button" class="btn sm ghost" data-gl="clear">Clear list</button>' : ''}</div>
-      <textarea id="gl-paste" rows="3" placeholder="Ana Ruiz, ana@example.com&#10;Ben Okafor"></textarea><div class="btns"><button type="button" class="btn sm" data-gl="add">${t('Add to list')}</button></div>
-      ${guests.length ? `<h3 class="sub-h">${t('Haven’t replied')} (${waiting.length})</h3>${waiting.length ? `<ul class="gl-list">${waiting.map(g => `<li>${esc(g.name || g.email)}${g.name && g.email ? ` <span class="muted small">${esc(g.email)}</span>` : ''}</li>`).join('')}</ul>` : `<p class="muted">${t('Everyone on your list has replied.')}</p>`}` : ''}
+      <h3 class="sub-h">${t('Guest list')}</h3><div class="btns"><a class="btn sm primary" href="#guests/${esc(id)}">${t('Open guest list')}</a></div>
     </section>
     ${msgs ? `<section class="mine-sec" id="mine-groups"><h2>${t('Groups')}</h2><div data-grp-root>${groupsEdHTML(groups)}</div></section>` : ''}
     <section class="mine-sec"><h2>${t('Page')}</h2><div class="btns"><button type="button" class="btn sm" data-pg="edit">${t('Open page')}</button><button type="button" class="btn sm ghost" data-pg="vis">${r.published ? 'Hide page' : 'Show page'}</button></div><p class="muted small">${r.published ? 'Anyone with the link can see it.' : 'Only you can see it.'}</p></section>`);
@@ -5047,7 +5091,7 @@ function myPagesHTML() {
   const cur = LS.get('draftId');
   return `<section class="land-mine" id="my-pages"><h2>${t('My pages')}${acctOn() ? '' : ` <small class="muted">${t('on this device')}</small>`}</h2><ul class="mp-list">${xs.slice(0, 30).map(x => { const c = spanFixed(normalize(clone(x.cfg))); const open = x.hosted ? (x.hosted.pub ? shortURL(x.hosted.slug) : '') : x.url;
     return `<li style="${themeStyle(c.theme)}"><i class="mp-dot" aria-hidden="true"></i><div class="mp-t"><b>${esc(c.title || t('Untitled'))}</b><span>${esc([t(TYPE_LABEL[c.type] || c.type), c.start ? dateRange(c.start, c.end) : '', open ? t('shared') : '', x.pid === cur ? t('last opened') : ''].filter(Boolean).join(' · '))}</span></div>
-      <div class="mp-b"><a class="btn sm primary" href="#page=${esc(x.pid)}" aria-label="${esc(t('Open {n}', { n: c.title || t('Untitled') }))}">${t('Open')}</a><a class="btn sm ghost" href="#dup=${esc(x.pid)}">${t('Duplicate')}</a><button type="button" class="btn sm ghost" data-mp-del="${esc(x.pid)}" aria-label="${esc(t('Delete {n}', { n: c.title || t('Untitled') }))}">${t('Delete')}</button></div></li>`; }).join('')}</ul></section>`;
+      <div class="mp-b"><a class="btn sm primary" href="#page=${esc(x.pid)}" aria-label="${esc(t('Open {n}', { n: c.title || t('Untitled') }))}">${t('Open')}</a><a class="btn sm ghost" href="#dup=${esc(x.pid)}">${t('Duplicate')}</a>${x.hosted && x.hosted.planner ? `<a class="btn sm ghost" href="#mine">${t('Co-planner')}</a>` : `<button type="button" class="btn sm ghost" data-mp-del="${esc(x.pid)}" aria-label="${esc(t('Delete {n}', { n: c.title || t('Untitled') }))}">${t('Delete')}</button>`}</div></li>`; }).join('')}</ul></section>`;
 }
 function renderExamples() {
   document.title = t('Example pages') + ' · 1LinkTrip'; scrollTo(0, 0);
@@ -9221,6 +9265,634 @@ function whenToggle(c) {
   }
 }
 
+
+// ================= co-planners (schema-6): plan a page together =================
+// The owner invites people by email (Settings → Planners, or Share → Invite a co-planner). An invitee who signs in with
+// that email gets the same page in My pages and the same tap-to-edit page; RLS lets them change it (never delete it,
+// change its link or its planners). Saves are guarded on updated_at: a page someone else saved meanwhile is merged
+// (three-way, per page field and per schedule item); the same part changed on both sides asks Keep mine / Use theirs.
+const ago = (iso) => { const s = (Date.now() - Date.parse(iso)) / 1000; if (!(s >= -60)) return ''; if (s < 60) return 'now'; if (s < 3600) return Math.floor(s / 60) + 'm'; if (s < 86400) return Math.floor(s / 3600) + 'h'; if (s < 7 * 86400) return Math.floor(s / 86400) + 'd'; return fmt(String(iso).slice(0, 10), { month: 'short', day: 'numeric' }); };
+const plannerLink = (slug, tok) => withQ(shortURL(slug), 'p', tok);
+const pbKey = (id) => 'pb:' + id;
+const pbStrip = (cfg) => { const c = clone(cfg || {}); delete c.osm; return c; };
+function pbSet(id, t, cfg) { if (id && t && cfg) try { LS.set(pbKey(id), { t, c: pbStrip(cfg) }); } catch { /* storage full: the next save merges against the account copy */ } }
+const pbGet = (id) => { const x = id && LS.get(pbKey(id)); return x && x.t && x.c ? x : null; };
+const jeq = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+// three-way merge of a page: page fields one by one, schedule items by id. conflicts = parts changed differently on both sides
+function cfgMerge3(base, mine, theirs) {
+  base = base || {}; mine = mine || {}; theirs = theirs || {};
+  const out = {}; const conflicts = [];
+  const pick = (b, m, t, key) => { if (jeq(m, b)) return t; if (jeq(t, b) || jeq(m, t)) return m; conflicts.push(key); return m === undefined ? t : m; };
+  for (const k of new Set([...Object.keys(base), ...Object.keys(mine), ...Object.keys(theirs)])) {
+    if (k === 'schedule' || k === 'osm') continue;
+    const v = pick(base[k], mine[k], theirs[k], 'f:' + k); if (v !== undefined) out[k] = clone(v);
+  }
+  const by = (xs) => new Map((Array.isArray(xs) ? xs : []).filter(x => x && x.id).map(x => [x.id, x]));
+  const B0 = by(base.schedule), M = by(mine.schedule), T = by(theirs.schedule); const seen = new Set(); const sched = [];
+  const one = (x) => { if (!x || !x.id) { if (x) sched.push(clone(x)); return; } if (seen.has(x.id)) return; seen.add(x.id); const v = pick(B0.get(x.id), M.get(x.id), T.get(x.id), 'sc:' + x.id); if (v) sched.push(clone(v)); };
+  (Array.isArray(mine.schedule) ? mine.schedule : []).forEach(one); (Array.isArray(theirs.schedule) ? theirs.schedule : []).forEach(one);
+  if (sched.length || mine.schedule || theirs.schedule) out.schedule = sched;
+  return { cfg: out, conflicts };
+}
+// a conflict settled for "their" version
+function cfgTakeTheirs(merged, theirs, conflicts) {
+  const out = clone(merged);
+  conflicts.forEach(k => {
+    if (k.startsWith('f:')) { const f = k.slice(2); if (theirs[f] === undefined) delete out[f]; else out[f] = clone(theirs[f]); return; }
+    const id = k.slice(3); const t = (theirs.schedule || []).find(x => x && x.id === id); const i = (out.schedule || []).findIndex(x => x && x.id === id);
+    if (i >= 0) { if (t) out.schedule[i] = clone(t); else out.schedule.splice(i, 1); } else if (t) (out.schedule = out.schedule || []).push(clone(t));
+  });
+  return out;
+}
+const PART_NAMES = { title: 'Title', tagline: 'Tagline', start: 'Date', end: 'End date', venue: 'Place', tz: 'Time zone', description: 'About', host: 'Hosted by', cover: 'Cover photo',
+  notes: 'Need to know', custom: 'Sections', stops: 'Stops', theme: 'Design', rsvp: 'RSVP', rsvpq: 'RSVP questions', presets: 'Where to stay', bring: 'What to bring',
+  langs: 'Guest languages', guestMessages: 'Messages', order: 'Section order', tools: 'Tabs', off: 'Hidden sections', type: 'Event type', flyInto: 'Fly into', x: 'Details', photos: 'Photos' };
+function partName(cfg, k) {
+  if (k.startsWith('f:')) return PART_NAMES[k.slice(2)] || k.slice(2);
+  const id = k.replace(/^sc-?:/, ''); const x = ((cfg && cfg.schedule) || []).find(y => y && y.id === id);
+  return x && x.title ? String(x.title).slice(0, 40) : 'An item';
+}
+function conflictDlg(who, names) {
+  return new Promise((resolve) => {
+    let d = $('#mergedlg'); if (!d) { d = document.createElement('dialog'); d.id = 'mergedlg'; d.className = 'confirm-dlg'; document.body.appendChild(d); }
+    d.innerHTML = `<form method="dialog" class="cf-in"><h2>${esc(who || 'A co-planner')} changed the same ${names.length === 1 ? 'part' : 'parts'}</h2>
+      <ul class="mg-l">${names.map(n => `<li>${esc(n)}</li>`).join('')}</ul><p class="muted small">Everything else is merged.</p>
+      <div class="btns cf-b"><button type="submit" class="btn" value="theirs">Use theirs</button><button type="submit" class="btn primary" value="mine">Keep mine</button></div></form>`;
+    d.returnValue = ''; d.oncancel = (e) => e.preventDefault(); // no silent default: one of the two
+    d.onclose = () => { d.onclose = null; resolve(d.returnValue === 'theirs' ? 'theirs' : 'mine'); };
+    d.showModal();
+  });
+}
+// someone else saved the page since this device last did: merge, ask if the same part changed, save the result
+async function teamMerge(pid, base, mineCfg, cur, save) {
+  const live = openPid() === pid;
+  if (live && $('#sheet') && $('#sheet').open) { B.mergeLater = true; return null; } // after the open sheet closes
+  const theirs = pbStrip(cur.config); const m = cfgMerge3(base.c, pbStrip(mineCfg), theirs);
+  let who = '';
+  try { const c = await sb(); const { data } = await c.from('page_activity').select('actor_name').eq('event_id', cur.id).order('id', { ascending: false }).limit(1); who = (data && data[0] && data[0].actor_name) || ''; } catch { /* name is optional */ }
+  let final = m.cfg;
+  if (m.conflicts.length) {
+    if (!live) return null; // settled when the page is opened (its first save comes back here)
+    const pick = await conflictDlg(who, [...new Set(m.conflicts.map(k => partName(theirs, k).trim() || partName(mineCfg, k)))]);
+    if (pick === 'theirs') final = cfgTakeTheirs(m.cfg, theirs, m.conflicts);
+  }
+  if (live && B && B.pid === pid) { const now = pbStrip(B.cfg); if (!jeq(now, pbStrip(mineCfg))) final = cfgMerge3(pbStrip(mineCfg), now, final).cfg; } // typed while this ran
+  const send = { ...final, ...(mineCfg.osm || cur.config.osm ? { osm: mineCfg.osm || cur.config.osm } : {}) };
+  const r = await save({ config: send }, cur.updated_at); if (!r) return null;
+  pbSet(r.id, r.updated_at, send);
+  const cfg = normalize(clone(send)); pageSave(pid, { cfg, edited: Date.parse(r.updated_at) || Date.now() });
+  if (live && B && B.pid === pid) { B.cfg = cfg; LS.set('draft', B.cfg); buildForm(); preview(); if (!m.conflicts.length && !jeq(theirs, pbStrip(base.c))) toast(`Merged with ${who || 'a co-planner'}’s changes`); teamLoad(); }
+  return r;
+}
+
+const teamOn = () => !!(B && B.hosted && (B.hosted.planner || (B.team && B.team.rows.length > 1)));
+function teamStart() {
+  if (!B || !B.hosted || !B.hosted.id || !acctOn()) return;
+  const eid = B.hosted.id; B.team = null; B.actMap = null; teamLoad();
+  clearInterval(teamStart.iv);
+  teamStart.iv = setInterval(() => { if (!B || !B.hosted || B.hosted.id !== eid || !$('.builder')) { clearInterval(teamStart.iv); return; } if (!document.hidden && teamOn()) teamPoll().catch(() => {}); }, 15000);
+}
+// a co-planner saved: bring it in (unsaved edits here go through the merge instead)
+async function teamPoll() {
+  if (!B || B.pushT || ($('#sheet') && $('#sheet').open) || $('#mergedlg[open]')) return;
+  const eid = B.hosted.id; const base = pbGet(eid); if (!base) return;
+  const c = await sb(); const { data } = await c.from('events').select('updated_at').eq('id', eid).maybeSingle();
+  if (!data || data.updated_at === base.t || !B || B.hosted.id !== eid || B.pushT) return;
+  if (builderHash(B.cfg) !== builderHash(base.c)) { acctPushNow(); return; }
+  const { data: r } = await c.from('events').select('config,updated_at').eq('id', eid).maybeSingle(); if (!r || !B || B.hosted.id !== eid || B.pushT) return;
+  pbSet(eid, r.updated_at, r.config); B.cfg = normalize(clone(r.config)); LS.set('draft', B.cfg); pageSave(B.pid, { cfg: B.cfg, edited: Date.parse(r.updated_at) || Date.now() });
+  buildForm(); preview(); teamLoad();
+}
+async function teamLoad() {
+  if (!B || !B.hosted || !B.hosted.id || !acctOn()) return;
+  const eid = B.hosted.id;
+  try {
+    const c = await sb(); const u = await sbUser(); if (!u) return;
+    const [tm, act, gl] = await Promise.all([c.rpc('page_team', { eid }), c.from('page_activity').select('actor,actor_name,keys,at').eq('event_id', eid).order('id', { ascending: false }).limit(40),
+      c.from('guest_households').select('id,first_opened_at').eq('event_id', eid).limit(2000)]);
+    if (!B || !B.hosted || B.hosted.id !== eid || tm.error) return;
+    B.team = { rows: tm.data || [], act: (act.data || []).filter(a => a.keys && a.keys.length), me: u.id };
+    B.glSum = gl.error ? null : { n: (gl.data || []).length, opened: (gl.data || []).filter(h => h.first_opened_at).length };
+    const map = new Map(); const cut = Date.now() - 30 * 86400e3;
+    B.team.act.forEach(a => { if (a.actor === u.id || Date.parse(a.at) < cut) return; a.keys.forEach(k => { if (!map.has(k)) map.set(k, { name: a.actor_name || 'A co-planner', at: a.at }); }); });
+    const had = B.actMap && B.actMap.size; B.actMap = map;
+    teamRepaint(); if (map.size || had) preview();
+  } catch { /* offline / not installed: the panel stays as it was */ }
+}
+function teamRepaint() {
+  const d = $('details[data-acc="team"]'); if (d) { const n = document.createElement('div'); n.innerHTML = teamAccHTML(d.open); const x = n.firstElementChild; if (x) { const em = $('#team-email', d), nm = $('#team-name', d); const keep = [em && em.value, nm && nm.value]; d.replaceWith(x); if (keep[0]) $('#team-email').value = keep[0]; if (keep[1]) $('#team-name').value = keep[1]; } }
+  const g = $('details[data-acc="guests"]'); if (g) { const n = document.createElement('div'); n.innerHTML = glAccHTML(); if (n.firstElementChild) g.replaceWith(n.firstElementChild); }
+}
+const initial = (s) => esc((String(s || '?').trim()[0] || '?').toUpperCase());
+function teamAccHTML(open) {
+  if (!SB || !B || !B.hosted || !B.hosted.id || !acctOn()) return '';
+  const T = B.team; const owner = !B.hosted.planner; const rows = T ? T.rows : [];
+  const pls = rows.filter(r => r.role === 'planner');
+  const sum = T ? (pls.length ? `${pls.length} ${pls.length === 1 ? 'planner' : 'planners'}` : owner ? 'Just you' : '') : '';
+  const row = (r) => `<li class="tm-r"><span class="tm-av" aria-hidden="true">${initial(r.name || r.email)}</span><div class="tm-n"><b>${esc(r.name || r.email)}${r.me ? ' <span class="muted">(you)</span>' : ''}</b><span>${esc(r.name ? r.email : '')}</span></div>
+    <span class="tm-st ${r.role === 'owner' ? 'own' : r.joined ? 'in' : 'wait'}">${r.role === 'owner' ? 'Owner' : r.joined ? 'Planner' : 'Invited'}</span>
+    ${r.role === 'planner' && (owner || r.me) ? `<div class="tm-b">${owner && !r.joined && r.token ? `<button type="button" class="btn sm" data-team-copy="${esc(r.token)}">Copy invite link</button>` : ''}<button type="button" class="btn sm ghost" data-team-rm="${esc(r.id)}" data-me="${r.me ? 1 : 0}">${r.me ? 'Leave' : 'Remove'}</button></div>` : ''}</li>`;
+  const act = T ? T.act.slice(0, 8) : [];
+  const actHTML = act.length ? `<p class="grp">Recent changes</p><ul class="tm-act">${act.map(a => { const names = [...new Set(a.keys.map(k => partName(B.cfg, k)))]; return `<li><b>${esc(a.actor === T.me ? 'You' : a.actor_name || 'A co-planner')}</b> ${a.keys.some(k => k.startsWith('sc-:')) && names.length === 1 ? 'removed' : 'changed'} ${esc(names.slice(0, 3).join(', '))}${names.length > 3 ? ` +${names.length - 3}` : ''}<time>${esc(ago(a.at))}</time></li>`; }).join('')}</ul>` : '';
+  const form = owner ? `<div class="tm-inv"><div class="field"><label for="team-email">Invite by email</label><input id="team-email" type="email" inputmode="email" autocomplete="off" placeholder="name@example.com" maxlength="254"></div>
+    <div class="field"><label for="team-name">Name <span class="muted">(optional)</span></label><input id="team-name" maxlength="60" autocomplete="off" placeholder="Ana"></div>
+    <div class="btns"><button type="button" class="btn primary sm" data-team-invite>Invite</button></div><p class="hint" data-team-msg role="status" aria-live="polite"></p></div>` : '';
+  return `<details class="acc tm-acc" data-acc="team" ${open ? 'open' : ''}><summary><span class="st ${pls.some(r => r.joined) ? 'ok' : ''}" aria-hidden="true"></span><b>Planners</b><small>${esc(sum)}</small></summary><div class="acc-b">
+    ${T ? `<ul class="tm-l">${rows.map(row).join('')}</ul>` : '<p class="muted small">Loading…</p>'}${form}${actHTML}</div></details>`;
+}
+// Settings → Guest list: the count and the way in
+function glAccHTML() {
+  if (!SB || !B || !B.hosted || !B.hosted.id || !acctOn()) return '';
+  const S = B.glSum; const sum = S && S.n ? `${S.n} ${S.n === 1 ? 'household' : 'households'} · ${S.opened} opened` : '';
+  return `<details class="acc" data-acc="guests"><summary><span class="st ${S && S.n ? 'ok' : ''}" aria-hidden="true"></span><b>Guest list</b><small>${esc(sum)}</small></summary><div class="acc-b">
+    <div class="btns"><a class="btn sm primary" href="#guests/${esc(B.hosted.id)}">Open guest list</a></div></div></details>`;
+}
+// "Edited by Ana · 2m" on the parts a co-planner changed (the organizers' page only, never Preview as guest)
+const TAG_KEYS = { hero: ['f:title', 'f:tagline', 'f:cover'], when: ['f:start', 'f:end', 'f:venue', 'f:tz'], 'sec:about': ['f:description', 'f:host'], 'sec:details': ['f:notes', 'f:x'],
+  'sec:route': ['f:stops'], 'sec:rsvp': ['f:rsvp', 'f:rsvpq'], 'sec:access': ['f:access'] };
+function teamTags(cfg, art) {
+  const A = B && B.actMap; if (!A || !A.size || !onpOn()) return;
+  const tag = (el, keys, into) => { const a = keys.map(k => A.get(k)).filter(Boolean).sort((p, q) => String(q.at).localeCompare(String(p.at)))[0]; const box = into || el; if (!a || box.querySelector(':scope > .ed-by')) return;
+    box.insertAdjacentHTML('beforeend', `<span class="ed-by" title="${esc(a.name + ' · ' + fmtStamp(a.at))}">Edited by ${esc(hhFirst(a.name) || a.name)} · ${esc(ago(a.at))}</span>`); };
+  $$('[data-ed^="s:"]', art).forEach(el => { const x = cfg.schedule[+el.dataset.ed.slice(2)]; if (x && x.id) tag(el, ['sc:' + x.id], el.querySelector('.tl-main, .tl-b, div') || el); });
+  Object.entries(TAG_KEYS).forEach(([ed, keys]) => { const el = art.querySelector(`[data-ed="${ed}"]`); if (el) tag(el, keys, el.querySelector(':scope > .sec-h') || el); });
+  $$('[data-ed^="sec:c-"]', art).forEach(el => tag(el, ['f:custom'], el.querySelector(':scope > .sec-h') || el));
+}
+async function notifyCall(kind, id) {
+  try {
+    if (!SB) return null; const c = await sb(); const { data } = await c.auth.getSession(); const tok = data && data.session && data.session.access_token; if (!tok) return null;
+    const r = await fetchTimeout(`${SB.url}/functions/v1/notify`, { method: 'POST', headers: { Authorization: 'Bearer ' + tok, apikey: SB.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, id }) }, 20000);
+    return await r.json().catch(() => null);
+  } catch { return null; }
+}
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-team-invite],[data-team-copy],[data-team-rm],[data-pub-team]'); if (!b || !B || !B.hosted) return;
+  const eid = B.hosted.id;
+  if (b.dataset.pubTeam != null) { $('#pub').close(); setPanel(true); const d = $('details[data-acc="team"]'); if (d) { d.open = true; d.scrollIntoView({ block: 'start' }); setTimeout(() => $('#team-email')?.focus(), 50); } return; }
+  if (b.dataset.teamCopy) { copy(plannerLink(B.hosted.slug, b.dataset.teamCopy)); return; }
+  const c = await sb();
+  if (b.dataset.teamRm) {
+    const me = b.dataset.me === '1'; const r = (B.team.rows || []).find(x => x.id === b.dataset.teamRm); if (!r) return;
+    if (!await confirmDlg(me ? { title: 'Leave this page?', body: 'It leaves My pages. The owner can invite you again.', ok: 'Leave' } : { title: `Remove ${r.name || r.email}?`, body: 'They can no longer see or change this page.', ok: 'Remove' })) return;
+    const { error } = await c.from('page_planners').delete().eq('id', r.id); if (error) { toast('Couldn’t remove: ' + error.message); return; }
+    if (me) { const pid = B.pid; clearTimeout(B.pushT); B.pushT = null; pageRemove(pid); LS.del(pbKey(eid)); location.href = siteBase() + '#mine'; return; }
+    toast(`Removed ${r.name || r.email}`); teamLoad(); return;
+  }
+  const msg = $('[data-team-msg]'); const email = ($('#team-email').value || '').trim().toLowerCase(); const name = ($('#team-name').value || '').trim().slice(0, 60);
+  if (!EMAIL_RE.test(email)) { msg.textContent = 'Enter their email address.'; $('#team-email').focus(); return; }
+  if (!B.hosted.pub) { msg.textContent = 'Share the page first, then invite planners.'; return; }
+  b.disabled = true; msg.textContent = 'Inviting…';
+  const { data, error } = await c.from('page_planners').insert({ event_id: eid, email, name }).select('id,token').single();
+  if (error) { b.disabled = false; msg.textContent = error.code === '23505' ? 'Already invited.' : /owner/.test(error.message) ? 'That’s your own email.' : 'Couldn’t invite: ' + error.message; return; }
+  const j = await notifyCall('planner', data.id); b.disabled = false;
+  $('#team-email').value = ''; $('#team-name').value = '';
+  await teamLoad();
+  const m2 = $('[data-team-msg]'); if (m2) m2.innerHTML = j && j.sent ? `Invite emailed to ${esc(email)}.` : `Invite ready. <button type="button" class="link" data-team-copy="${esc(data.token)}">Copy the link</button> and send it to ${esc(email)}.`;
+});
+
+// an invite link (?e=<slug>&p=<token>): signed in → join and open the page to edit; signed out → sign in first
+async function plannerArrive(tok, slug) {
+  let user = null; try { user = acctOn() ? await sbUser() : null; } catch { /* below */ }
+  if (!user) {
+    let info = null; try { info = ((await rest('rpc/planner_invite_info', { method: 'POST', body: { tok } })) || [])[0]; } catch { /* below */ }
+    if (!info) { toast('This invite was removed.'); return false; }
+    setTimeout(() => signInDlg(`Sign in as ${info.email_hint} to plan ${info.title || 'this page'}`, () => LS.set('pendingPlanner', { tok, slug })), 300);
+    return false;
+  }
+  return plannerJoin(tok);
+}
+async function plannerJoin(tok) {
+  try {
+    const c = await sb(); const { data, error } = await c.rpc('planner_accept', { tok });
+    if (error) { toast(error.message || 'Couldn’t join'); return false; }
+    await acctSyncAll(); toast('You’re a planner on this page'); return !!(data && data[0]);
+  } catch (e) { toast('Couldn’t join: ' + pubWhy(e)); return false; }
+}
+
+// ================= household invitations (schema-6): the guest's side =================
+// A household's personal link (?e=<slug>&g=<token>[&lang=xx]) opens the page with that household's RSVP: every person,
+// yes / no each, which events, meal, dietary needs; plus-ones the organizer allowed are named here and become guests of
+// the household. The token stays on this device (not in the address bar), so later opens still count as theirs.
+const HH_DIETS = [['vegetarian', 'Vegetarian'], ['vegan', 'Vegan'], ['gluten_free', 'Gluten-free'], ['dairy_free', 'Dairy-free'], ['nut_allergy', 'Nut allergy'], ['shellfish', 'Shellfish allergy'], ['halal', 'Halal'], ['kosher', 'Kosher']];
+async function hhRpc(fn, args) {
+  if (acctOn()) { try { if (await sbUser()) { const c = await sb(); const { data, error } = await c.rpc(fn, args); if (error) throw error; return data; } } catch (e) { if (e && e.message && !/fetch|network|load/i.test(e.message)) throw e; } }
+  return rest('rpc/' + fn, { method: 'POST', body: args });
+}
+// a plain link: one count per device per day (organizers' own opens are skipped by the server)
+function pageOpenOnce(row) { const k = 'po:' + row.id, d = todayYMD(); if (LS.get(k) === d) return; LS.set(k, d); hhRpc('page_open', { s: row.slug }).catch(() => LS.del(k)); }
+// people in reply order: each host-listed guest followed by their plus-ones, then the household's own plus-ones
+function hhOrder(H) {
+  const ps = H.people || []; const out = [];
+  ps.filter(p => p.added_by === 'host').forEach(p => { out.push(p); ps.filter(q => q.plus_of === p.id).forEach(q => out.push(q)); });
+  ps.filter(p => p.added_by === 'guest' && !p.plus_of).forEach(p => out.push(p));
+  return out;
+}
+const hhFirst = (n) => String(n || '').trim().split(/\s+/)[0] || '';
+function hhPersonHTML(cfg, src, H, p, rep) {
+  const P = rqParts(src) || { events: [], meal: false }; const x = (rep && rep.x) || {}; const att = rep ? rep.attending : null;
+  const key = p.id || p.k; const host = p.plus_of ? (H.people || []).find(q => q.id === p.plus_of) : null; const guestAdded = p.added_by === 'guest' || !p.id;
+  const had = Array.isArray(x.events) ? new Set(x.events) : null; const ds = new Set(Array.isArray(x.diets) ? x.diets : []);
+  const nameIn = guestAdded ? `<input class="hh-nm" data-hh-name maxlength="120" autocomplete="off" placeholder="${esc(t('Guest’s name'))}" aria-label="${esc(t('Guest’s name'))}" value="${esc(p.name || '')}">` : `<b class="hh-nm">${esc(p.name)}</b>`;
+  return `<fieldset class="hh-p${guestAdded ? ' plus' : ''}" data-hh-p="${esc(key)}"${p.plus_of ? ` data-plus-of="${esc(p.plus_of)}"` : ''}${rep && rep.at ? ` data-seen="${esc(rep.at)}"` : ''}>
+    <legend class="hh-lg">${nameIn}${guestAdded ? `<span class="hh-tag">+1${host ? ' · ' + esc(hhFirst(host.name)) : ''}</span>` : ''}</legend>
+    <div class="seg2" role="radiogroup" aria-label="${esc(p.name || t('Your guest'))}"><button type="button" role="radio" data-hh-att="1" aria-checked="${att === true}" class="${att === true ? 'on' : ''}">${t('Yes, I’ll be there')}</button><button type="button" role="radio" data-hh-att="0" aria-checked="${att === false}" class="${att === false ? 'on' : ''}">${t('Can’t make it')}</button></div>
+    <div class="hh-more"${att === false ? ' hidden' : ''}>
+      ${P.events.length ? `<fieldset class="field rs-evs"><legend class="lbl-s">${t('Which events will you attend?')}</legend><div class="rs-chips">${P.events.map(e => `<label class="rs-chip"><input type="checkbox" data-hh-ev="${esc(e.t)}"${!had || had.has(e.t) ? ' checked' : ''}><span>${esc(String((cfg.schedule[e.i] || {}).title || e.t).trim())}</span></label>`).join('')}</div></fieldset>` : ''}
+      ${P.meal ? `<div class="field"><label>${t('Meal')}${rqMealSel(cfg, src, 'hh-meal-' + key, x.meal || '', '', ' data-hh-meal')}</label></div>` : ''}
+      <fieldset class="field hh-diet"><legend class="lbl-s">${t('Dietary needs')}</legend><div class="rs-chips">${HH_DIETS.map(([k, l]) => `<label class="rs-chip"><input type="checkbox" data-hh-diet="${k}"${ds.has(k) ? ' checked' : ''}><span>${esc(t(l))}</span></label>`).join('')}</div>
+        <input data-hh-dnote maxlength="200" placeholder="${esc(t('Other needs (optional)'))}" aria-label="${esc(t('Other needs (optional)'))}" value="${esc(x.diet || '')}"></fieldset>
+    </div>
+    ${guestAdded ? `<button type="button" class="link hh-rm" data-hh-rm>${t('Remove')}</button>` : ''}
+  </fieldset>`;
+}
+function hhAddersHTML(H, extra = []) {
+  const ps = (H.people || []).concat(extra);
+  const per = (H.people || []).filter(p => p.added_by === 'host' && (p.plus_ones || 0) > ps.filter(q => q.plus_of === p.id).length)
+    .map(p => `<button type="button" class="btn sm hh-add" data-hh-plus="${esc(p.id)}">+ ${esc(t('Add a guest for {n}', { n: hhFirst(p.name) }))}</button>`);
+  const own = (H.plus_ones || 0) > ps.filter(q => q.added_by === 'guest' && !q.plus_of).length ? [`<button type="button" class="btn sm hh-add" data-hh-plus="">+ ${esc(t('Add a guest'))}</button>`] : [];
+  return per.concat(own).join('');
+}
+function hhFormHTML(cfg, src, hosted) {
+  const H = hosted.hh; const reps = new Map((H.replies || []).map(r => { const p = rqParse(r.note); return [r.person_id, { ...r, x: p.x || {} }]; }));
+  const people = hhOrder(H);
+  if (!H.editing && people.length && people.every(p => reps.has(p.id))) {
+    return `<div class="rsvp-done hh-done"><p><b>${esc(t('Thanks, {n}.', { n: H.name }))}</b></p><ul class="hh-sum">${people.map(p => { const r = reps.get(p.id); return `<li><span>${esc(p.name)}</span><b class="${r.attending ? 'y' : 'n'}">${r.attending ? t('Coming') : t('Can’t make it')}</b></li>`; }).join('')}</ul>
+      <button type="button" class="btn sm" data-hh="edit">${t('Change replies')}</button></div>`;
+  }
+  return `<form class="rsvp hh-rsvp" novalidate onsubmit="return false"><p class="hh-for">${t('Replying for')} <b>${esc(H.name)}</b></p>
+    <div class="hh-ps">${people.map(p => hhPersonHTML(cfg, src, H, p, reps.get(p.id))).join('')}</div>
+    <div class="hh-adds">${hhAddersHTML(H)}</div>
+    <p class="rsvp-msg" role="status" aria-live="polite">${H.msg ? esc(H.msg) : ''}</p>
+    <button type="button" class="btn primary" data-hh="send">${t('Send replies')}</button>
+    <p class="muted small">${t('Only the host sees your reply.')}</p></form>`;
+}
+function hhCollect(slot, src) {
+  const P = rqParts(src) || { meal: false }; const q = src.rsvpq || {}; const out = []; let bad = '';
+  $$('.hh-p', slot).forEach(fs => {
+    const k = fs.dataset.hhP; const on = fs.querySelector('[data-hh-att].on'); const nameEl = fs.querySelector('[data-hh-name]'); const name = nameEl ? nameEl.value.trim().slice(0, 120) : '';
+    if (!on) { bad = bad || t('Choose yes or no for everyone.'); return; }
+    if (nameEl && !name) { bad = bad || t('Add your guest’s name.'); nameEl.focus(); return; }
+    const att = on.dataset.hhAtt === '1'; const x = { v: 1 };
+    if (att) {
+      const evs = $$('[data-hh-ev]', fs); if (evs.length) x.events = evs.filter(i => i.checked).map(i => i.dataset.hhEv);
+      const m = fs.querySelector('[data-hh-meal]'); if (P.meal && m && m.value !== '') x.meal = (q.meals || [])[+m.value] || '';
+      const ds = $$('[data-hh-diet]', fs).filter(i => i.checked).map(i => i.dataset.hhDiet); if (ds.length) x.diets = ds;
+      const dn = (fs.querySelector('[data-hh-dnote]') || {}).value; if (dn && dn.trim()) x.diet = dn.trim().slice(0, 200);
+    }
+    const note = Object.keys(x).length > 1 ? rqPack('', x) : null;
+    if (/^n\d/.test(k)) out.push({ ...(fs.dataset.plusOf ? { plus_of: fs.dataset.plusOf } : {}), name, attending: att, note });
+    else out.push({ person_id: k, attending: att, note, seen: fs.dataset.seen || null, ...(nameEl ? { name } : {}) });
+  });
+  return bad ? { bad } : { replies: out };
+}
+function wireHousehold(cfg, art, hosted, src) {
+  const slot = art.querySelector('[data-slot="rsvp"]'); if (!slot || slot._hh) return; slot._hh = true; let n = 0; const H = hosted.hh;
+  const paint = () => { slot.innerHTML = hhFormHTML(cfg, src, hosted); };
+  slot.addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const fs = b.closest('.hh-p');
+    if (b.dataset.hhAtt != null && fs) { $$('[data-hh-att]', fs).forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-checked', String(on)); }); fs.querySelector('.hh-more').hidden = b.dataset.hhAtt === '0'; return; }
+    if (b.dataset.hhPlus != null) { const k = 'n' + (++n); const p = { k, name: '', added_by: 'guest', ...(b.dataset.hhPlus ? { plus_of: b.dataset.hhPlus } : {}) };
+      const extra = $$('.hh-p[data-hh-p^="n"]', slot).map(f => ({ added_by: 'guest', plus_of: f.dataset.plusOf || null })).concat([p]);
+      const after = b.dataset.hhPlus ? (slot.querySelector(`.hh-p[data-plus-of="${CSS.escape(b.dataset.hhPlus)}"]:last-of-type`) || slot.querySelector(`.hh-p[data-hh-p="${CSS.escape(b.dataset.hhPlus)}"]`)) : null;
+      const html = hhPersonHTML(cfg, src, H, p, null); if (after) after.insertAdjacentHTML('afterend', html); else slot.querySelector('.hh-ps').insertAdjacentHTML('beforeend', html);
+      slot.querySelector('.hh-adds').innerHTML = hhAddersHTML(H, extra); slot.querySelector(`[data-hh-p="${k}"] [data-hh-name]`)?.focus(); return; }
+    if (b.dataset.hhRm != null && fs) { const k = fs.dataset.hhP; if (/^n\d/.test(k)) fs.remove(); else { fs.hidden = true; fs.dataset.rm = '1'; }
+      const extra = $$('.hh-p[data-hh-p^="n"]', slot).map(f => ({ added_by: 'guest', plus_of: f.dataset.plusOf || null }));
+      const gone = new Set($$('.hh-p[data-rm]', slot).map(f => f.dataset.hhP)); slot.querySelector('.hh-adds').innerHTML = hhAddersHTML({ ...H, people: (H.people || []).filter(p => !gone.has(p.id)) }, extra); return; }
+    if (b.dataset.hh === 'edit') { H.editing = true; H.msg = ''; paint(); return; }
+    if (b.dataset.hh !== 'send') return;
+    const msg = slot.querySelector('.rsvp-msg'); const rm = $$('.hh-p[data-rm]', slot).map(f => ({ person_id: f.dataset.hhP, remove: true }));
+    $$('.hh-p[data-rm]', slot).forEach(f => f.remove()); const r = hhCollect(slot, src);
+    if (r.bad) { msg.textContent = r.bad; return; }
+    b.disabled = true; msg.textContent = t('Sending…');
+    try {
+      const j = await hhRpc('household_rsvp', { s: hosted.slug, tok: H.tok, replies: rm.concat(r.replies) });
+      if (!j) throw new Error('no answer');
+      const clash = (j.conflicts || []).map(id => ((j.people || []).find(p => p.id === id) || {}).name).filter(Boolean);
+      Object.assign(H, j, { editing: !!clash.length, msg: clash.length ? t('{n} changed since you opened this. Check and send again.', { n: clash.join(', ') }) : '' });
+      LS.set('rsvp:' + hosted.id, { name: H.name, attending: (j.replies || []).some(x => x.attending), at: Date.now(), hh: true });
+      paint();
+    } catch (err) { b.disabled = false; msg.textContent = t('Couldn’t send your replies. Check your connection and try again.'); }
+  });
+}
+
+// ================= guest list (schema-6): households, personal links, opens, replies, diets, groups =================
+// #guests/<event id> — the page's owner and co-planners only (RLS). One personal link per household; the trail on each
+// household reads Opened → Replied → Hotel. Groups are the page's event_groups (the same groups updates can be sent to).
+const GL_PRESETS = { Wedding: ['Bride’s family', 'Bride’s friends', 'Groom’s family', 'Groom’s friends', 'Mutual friends', 'Work'],
+  Conference: ['Speakers', 'Sponsors', 'Staff', 'Attendees'], Retreat: ['Family', 'Friends', 'Work'], Reunion: ['Family', 'Friends'], Birthday: ['Family', 'Friends', 'Work'], Party: ['Family', 'Friends', 'Work'],
+  'Bachelor party': ['Friends', 'Family'], 'Bachelorette party': ['Friends', 'Family'] };
+const GL_HUES = ['#0F4A50', '#E35B47', '#5E9C93', '#C98B2B', '#6B5CA5', '#3E7CB1', '#9C4F7A', '#5E8C3A', '#8A6A4F', '#B4402F'];
+const INV_TXT = { en: 'Hi {n}, here’s your invitation to {t}: {l}', es: 'Hola, {n}: aquí está tu invitación a {t}: {l}', fr: 'Bonjour {n}, voici votre invitation à {t} : {l}',
+  pt: 'Olá, {n}! Aqui está seu convite para {t}: {l}', de: 'Hallo {n}, hier ist eure Einladung zu {t}: {l}', it: 'Ciao {n}, ecco il vostro invito a {t}: {l}', ja: '{n} 様　{t} への招待状です：{l}' };
+const INV_AND = { en: 'and', es: 'y', fr: 'et', pt: 'e', de: 'und', it: 'e', ja: 'と' };
+const joinFirst = (xs, lang) => { const a = INV_AND[lang] || INV_AND.en; if (lang === 'ja') return xs.join('、').replace(/、([^、]*)$/, a + '$1'); return xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' ' + a + ' ' + xs[xs.length - 1]; };
+const AGE_L = { adult: 'Adult', child: 'Child', infant: 'Infant' };
+let G = null; // guest list state
+const glLink = (h) => { const u = withQ(shortURL(G.ev.slug), 'g', h.token); return h.lang && h.lang !== srcLang(G.cfg) ? withQ(u, 'lang', h.lang) : u; };
+const glPeople = (hid) => G.ps.filter(p => p.household_id === hid).sort((a, b) => (a.sort - b.sort) || String(a.created_at).localeCompare(String(b.created_at)));
+const glGroup = (id) => G.gs.find(g => g.id === id);
+const glHue = (id) => { const i = G.gs.findIndex(g => g.id === id); return i < 0 ? '' : GL_HUES[i % GL_HUES.length]; };
+function glGreeting(h, lang) {
+  if (h.greeting !== 'names') return h.name;
+  const fs = glPeople(h.id).filter(p => p.added_by === 'host' && p.age === 'adult').map(p => hhFirst(p.name)).filter(Boolean);
+  return fs.length ? joinFirst(fs, lang) : h.name;
+}
+function glInvText(h) { const lang = INV_TXT[h.lang] ? h.lang : (INV_TXT[srcLang(G.cfg)] ? srcLang(G.cfg) : 'en'); const tr = G.cfg.tr && G.cfg.tr[h.lang]; const title = (tr && tr.title && tr.title.t) || G.cfg.title || '';
+  return INV_TXT[lang].replace('{n}', glGreeting(h, lang)).replace('{t}', title).replace('{l}', glLink(h)); }
+// replies: each person's own row (household link); someone who replied on the open form is matched by name or email
+function glReplies() {
+  const by = new Map(); G.rs.filter(r => r.person_id).forEach(r => by.set(r.person_id, r));
+  const loose = new Map(); G.rs.filter(r => !r.person_id).forEach(r => { loose.set(normName(r.name), r); if (r.email) loose.set(r.email.toLowerCase(), r); });
+  G.ps.forEach(p => { if (by.has(p.id)) return; const h = G.hs.find(x => x.id === p.household_id); const r = loose.get(normName(p.name)) || (h && h.email && glPeople(h.id)[0] === p && loose.get(h.email)); if (r) by.set(p.id, { ...r, loose: true }); });
+  G.rep = new Map([...by].map(([k, r]) => [k, { ...r, x: rqParse(r.note).x || {} }]));
+}
+function glStat(h) {
+  const ps = glPeople(h.id); const host = ps.filter(p => p.added_by === 'host');
+  const replied = ps.filter(p => G.rep.has(p.id)).length; const coming = ps.filter(p => (G.rep.get(p.id) || {}).attending).length;
+  const plusLeft = Math.max(0, (h.plus_ones || 0) - ps.filter(p => p.added_by === 'guest' && !p.plus_of).length) + host.reduce((n, p) => n + Math.max(0, (p.plus_ones || 0) - ps.filter(q => q.plus_of === p.id).length), 0);
+  return { ps, host, replied, coming, plusLeft, noReply: host.some(p => !G.rep.has(p.id)) || !ps.length, hotel: G.hot.has(h.id) ? G.hot.get(h.id) : null, opened: !!h.first_opened_at };
+}
+const GL_FILTERS = [['all', 'All'], ['unopened', 'Not opened'], ['norsvp', 'No RSVP'], ['nohotel', 'No hotel'], ['plus', 'Unused plus-ones']];
+const glPass = (f, s) => f === 'all' || (f === 'unopened' && !s.opened) || (f === 'norsvp' && s.noReply) || (f === 'nohotel' && s.hotel !== true) || (f === 'plus' && s.plusLeft > 0);
+function glDietOf(x) { return [...(x.diets || []).map(k => t((HH_DIETS.find(d => d[0] === k) || [k, k])[1])), x.diet].filter(Boolean); }
+
+function glHouseHTML(h) {
+  const s = glStat(h); const g = glGroup(h.group_id); const hue = glHue(h.group_id);
+  const trail = [
+    [s.opened ? 'on' : 'off', s.opened ? `Opened ${ago(h.first_opened_at)}${h.opens > 1 ? ` · ${h.opens}×` : ''}` : 'Not opened'],
+    [!s.ps.length || !s.replied ? 'off' : s.replied >= s.ps.length && !s.noReply ? 'on' : 'part', s.replied ? `Replied ${s.replied}/${s.ps.length}` : 'No reply'],
+    [s.hotel === true ? 'on' : s.hotel === false ? 'off' : 'unk', s.hotel === true ? 'Hotel chosen' : s.hotel === false ? 'No hotel' : 'Hotel ?']];
+  const person = (p) => { const r = G.rep.get(p.id); const ds = r && r.attending ? glDietOf(r.x) : []; const host = p.plus_of && G.ps.find(q => q.id === p.plus_of);
+    return `<li><span class="gl-pn">${esc(p.name || 'Guest')}${p.age !== 'adult' ? ` <small>${esc(AGE_L[p.age])}</small>` : ''}${p.added_by === 'guest' ? ` <small class="gl-plus">+1${host ? ' of ' + esc(hhFirst(host.name)) : ''} · added by guest</small>` : ''}</span>
+      <em class="${r ? (r.attending ? 'y' : 'n') : 'q'}">${r ? (r.attending ? 'Coming' : 'Can’t come') : 'No reply'}</em>${ds.length ? `<span class="gl-d">${esc(ds.join(' · '))}</span>` : ''}</li>`; };
+  const phone = (h.phone || '').replace(/[^\d+]/g, '');
+  return `<li class="gl-h" data-h="${esc(h.id)}"${hue ? ` style="--g:${hue}"` : ''}>
+    <div class="gl-top"><label class="gl-sel"><input type="checkbox" data-gl-sel="${esc(h.id)}"${G.sel.has(h.id) ? ' checked' : ''} aria-label="Select ${esc(h.name)}"></label>
+      <div class="gl-hd"><b>${esc(h.name)}</b><span class="gl-meta">${[g ? `<span class="gl-g"><i aria-hidden="true"></i>${esc(g.name)}</span>` : '', h.lang ? esc(langName(h.lang)) : '', s.plusLeft ? `+${s.plusLeft} open` : ''].filter(Boolean).join(' · ')}</span></div>
+      <button type="button" class="btn sm ghost gl-ed" data-gl-edit="${esc(h.id)}" aria-label="Edit ${esc(h.name)}">Edit</button></div>
+    <ol class="gl-trail">${trail.map(([c, l]) => `<li class="${c}">${esc(l)}</li>`).join('')}</ol>
+    <ul class="gl-ps">${s.ps.map(person).join('') || '<li class="muted">No guests yet</li>'}</ul>
+    <div class="gl-acts"><button type="button" class="btn sm" data-gl-copy="${esc(h.id)}">Copy link</button>${phone ? `<a class="btn sm" href="sms:${esc(phone)}?&body=${enc(glInvText(h))}">Text</a>` : `<a class="btn sm" href="sms:?&body=${enc(glInvText(h))}">Text</a>`}<a class="btn sm" href="mailto:${esc(h.email || '')}?subject=${enc(G.cfg.title || '')}&body=${enc(glInvText(h))}">Email</a></div>
+  </li>`;
+}
+function glListHTML() {
+  const S = new Map(G.hs.map(h => [h.id, glStat(h)])); const cnt = (f) => G.hs.filter(h => glPass(f, S.get(h.id))).length;
+  const vis = G.hs.filter(h => glPass(G.filter, S.get(h.id)) && (!G.grp || h.group_id === G.grp));
+  const gChips = G.gs.length ? `<div class="chips gl-gchips" role="group" aria-label="Group"><button type="button" class="chip ${!G.grp ? 'on' : ''}" data-gl-grp="">All groups</button>${G.gs.map(g => { const n = G.hs.filter(h => h.group_id === g.id && glPass(G.filter, S.get(h.id))).length; return n || G.grp === g.id ? `<button type="button" class="chip gl-gc ${G.grp === g.id ? 'on' : ''}" style="--g:${glHue(g.id)}" data-gl-grp="${esc(g.id)}"><i aria-hidden="true"></i>${esc(g.name)} <span>${n}</span></button>` : ''; }).join('')}</div>` : '';
+  const sections = G.by && G.gs.length ? [...G.gs.map(g => [g.name, vis.filter(h => h.group_id === g.id), glHue(g.id)]), ['No group', vis.filter(h => !glGroup(h.group_id)), '']].filter(x => x[1].length) : [[null, vis]];
+  const unopened = G.hs.filter(h => !h.first_opened_at).length;
+  return `<div class="chips gl-filters" role="group" aria-label="Show">${GL_FILTERS.map(([k, l]) => `<button type="button" class="chip ${G.filter === k ? 'on' : ''}" data-gl-f="${k}">${l} <span>${cnt(k)}</span></button>`).join('')}</div>
+    ${gChips}
+    <div class="gl-tools">${G.gs.length ? `<label class="tool"><input type="checkbox" data-gl-by ${G.by ? 'checked' : ''}><span class="sw" aria-hidden="true"></span>Group by group</label>` : ''}${unopened ? `<button type="button" class="btn sm" data-gl-copyall>Copy not-opened links (${unopened})</button>` : ''}</div>
+    ${vis.length ? sections.map(([name, hs, hue]) => `${name ? `<h3 class="gl-sh"${hue ? ` style="--g:${hue}"` : ''}><i aria-hidden="true"></i>${esc(name)} <span>${hs.length}</span></h3>` : ''}<ul class="gl-list">${hs.map(glHouseHTML).join('')}</ul>`).join('') : `<p class="muted gl-empty">${G.hs.length ? 'No households match.' : ''}</p>`}`;
+}
+function glDietHTML() {
+  const yes = G.ps.filter(p => (G.rep.get(p.id) || {}).attending);
+  const ages = ['adult', 'child', 'infant'].map(a => [a, yes.filter(p => p.age === a).length]);
+  const diets = HH_DIETS.map(([k, l]) => [l, yes.filter(p => (G.rep.get(p.id).x.diets || []).includes(k)).length]).filter(x => x[1]);
+  const meals = new Map(); yes.forEach(p => { const m = G.rep.get(p.id).x.meal; if (m) meals.set(m, (meals.get(m) || 0) + 1); });
+  const notes = yes.filter(p => G.rep.get(p.id).x.diet);
+  const tile = (l, n) => `<div><small>${esc(l)}</small><b>${n}</b></div>`;
+  return `<div class="gl-tiles">${tile('Coming', yes.length)}${ages.map(([a, n]) => tile(AGE_L[a] + (a === 'adult' ? 's' : a === 'child' ? 'ren' : 's'), n)).join('')}</div>
+    ${diets.length ? `<p class="grp">Dietary needs</p><ul class="gl-bars">${diets.map(([l, n]) => `<li><span>${esc(l)}</span><i style="--w:${Math.round(100 * n / Math.max(1, yes.length))}%" aria-hidden="true"></i><b>${n}</b></li>`).join('')}</ul>` : '<p class="muted small">No dietary needs yet.</p>'}
+    ${meals.size ? `<p class="grp">Meals</p><ul class="gl-bars">${[...meals].map(([l, n]) => `<li><span>${esc(l)}</span><i style="--w:${Math.round(100 * n / Math.max(1, yes.length))}%" aria-hidden="true"></i><b>${n}</b></li>`).join('')}</ul>` : ''}
+    ${notes.length ? `<p class="grp">Notes</p><ul class="gl-notes">${notes.map(p => `<li><b>${esc(p.name)}</b> ${esc(G.rep.get(p.id).x.diet)}</li>`).join('')}</ul>` : ''}
+    <div class="btns"><button type="button" class="btn sm primary" data-gl-csv>Download for the caterer (CSV)</button></div>`;
+}
+function glGroupsHTML() {
+  const S = new Map(G.hs.map(h => [h.id, glStat(h)]));
+  const row = (g) => { const hs = G.hs.filter(h => h.group_id === g.id); const ppl = hs.flatMap(h => S.get(h.id).ps);
+    return `<li style="--g:${glHue(g.id)}"><div class="gl-gr1"><i aria-hidden="true"></i><input data-gl-gname="${esc(g.id)}" value="${esc(g.name)}" maxlength="60" aria-label="Group name"><button type="button" class="link" data-gl-gdel="${esc(g.id)}" aria-label="Delete ${esc(g.name)}">Delete</button></div>
+      <p class="gl-gst"><span><b>${ppl.length}</b> invited</span><span><b>${hs.filter(h => h.first_opened_at).length}</b>/${hs.length} opened</span><span><b>${ppl.filter(p => (G.rep.get(p.id) || {}).attending).length}</b> coming</span></p></li>`; };
+  return `<ul class="gl-groups">${G.gs.map(row).join('')}</ul><div class="search gl-gadd"><input id="gl-gnew" maxlength="60" placeholder="New group" aria-label="New group"><button type="button" class="btn sm" data-gl-gadd>Add group</button></div>`;
+}
+function glPaint() {
+  const m = $('.gl'); if (!m) return; glReplies();
+  const S = G.hs.map(glStat); const ppl = S.reduce((n, s) => n + s.ps.length, 0);
+  $('[data-gl-sum]', m).innerHTML = [['Invites', G.hs.length], ['Guests', ppl], ['Opened', `${G.hs.filter(h => h.first_opened_at).length}/${G.hs.length}`], ['Coming', S.reduce((n, s) => n + s.coming, 0)], ['No reply', S.filter(s => s.noReply).length]].map(([l, v]) => `<div><small>${l}</small><b>${v}</b></div>`).join('');
+  $('[data-gl-plain]').textContent = G.opens ? `Plain link opened ${G.opens} ${G.opens === 1 ? 'time' : 'times'}` : '';
+  $$('[data-gl-tab]', m).forEach(b => { const on = b.dataset.glTab === G.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
+  $('[data-gl-body]', m).innerHTML = G.tab === 'diet' ? glDietHTML() : G.tab === 'groups' ? glGroupsHTML() : glListHTML();
+  const bar = $('[data-gl-bar]', m); const n = G.sel.size; bar.hidden = !n || G.tab !== 'list';
+  if (n) bar.innerHTML = `<b>${n} selected</b><select data-gl-bulkgrp aria-label="Set group"><option value="">Set group…</option>${G.gs.map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}<option value="none">No group</option></select><button type="button" class="btn sm" data-gl-bulkcopy>Copy links</button><button type="button" class="btn sm" data-gl-bulkmail>Email invitations</button><button type="button" class="link" data-gl-clear>Clear</button>`;
+}
+async function glLoad() {
+  const c = await sb(); const eid = G.eid;
+  const [hs, ps, rs, gs, hot, op] = await Promise.all([c.from('guest_households').select('*').eq('event_id', eid).order('sort').order('created_at').limit(2000),
+    c.from('guest_people').select('*').eq('event_id', eid).limit(10000),
+    c.from('rsvps').select('id,name,email,attending,guests,note,created_at,person_id,household_id').eq('event_id', eid).order('created_at').limit(10000),
+    c.from('event_groups').select('id,name,sort,self_pick').eq('event_id', eid).order('sort').order('created_at'),
+    c.rpc('household_hotels', { eid }), c.from('page_opens').select('n').eq('event_id', eid)]);
+  if (hs.error) throw hs.error;
+  Object.assign(G, { hs: hs.data || [], ps: ps.data || [], rs: rs.data || [], gs: gs.data || [], hot: new Map((hot.data || []).map(x => [x.id, x.has_hotel])), opens: (op.data || []).reduce((n, x) => n + (x.n || 0), 0) });
+}
+async function renderGuests(eid) {
+  LANG = 'en'; document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr'; document.title = 'Guest list · 1LinkTrip';
+  const shell = (inner) => { $('#app').innerHTML = `<main class="mine gl-page"><header class="land-top"><a class="brand" href="#">${BRAND}</a><nav class="mine-nav"><a href="#mine">My pages</a></nav></header><div class="mine-in">${inner}</div></main>`; };
+  if (!SB) return shell('<h1>Hosting isn’t set up</h1>');
+  shell('<p class="muted">Loading…</p>');
+  let user = null; try { user = await sbUser(); } catch { /* below */ }
+  if (!user) { LS.del('signedIn'); LS.set('afterSignIn', '#guests/' + eid); return renderMine('', 'Sign in to see your guest list.'); }
+  const c = await sb(); const { data: ev } = await c.from('events').select('id,slug,config,published,owner').eq('id', eid).maybeSingle();
+  if (!ev) return shell('<h1>Guest list</h1><p>Only the page’s organizers can see its guest list.</p><p><a href="#mine">Back to My pages</a></p>');
+  G = { eid, ev, cfg: normalize(ev.config), filter: 'all', grp: '', by: false, sel: new Set(), tab: 'list', hs: [], ps: [], rs: [], gs: [], hot: new Map(), opens: 0 };
+  try { await glLoad(); } catch (e) { return shell(`<h1>Guest list</h1><p>Couldn’t load it. ${esc(pubWhy(e))}</p>`); }
+  // first visit: the usual groups for this kind of event (renameable, removable)
+  if (!G.gs.length && !G.hs.length && !LS.get('glSeed:' + eid) && GL_PRESETS[G.cfg.type]) {
+    LS.set('glSeed:' + eid, 1); const ins = await c.from('event_groups').insert(GL_PRESETS[G.cfg.type].map((name, i) => ({ event_id: eid, name, sort: i }))).select('id,name,sort,self_pick');
+    if (!ins.error) G.gs = ins.data || [];
+  }
+  const own = pagesAll().find(x => x.hosted && x.hosted.id === eid);
+  shell(`<p><a href="${own ? '#page=' + esc(own.pid) : esc(shortURL(ev.slug))}">← ${esc(G.cfg.title || 'Your page')}</a></p>
+    <div class="mine-h"><h1>Guest list</h1><span class="muted small" data-gl-plain></span></div>
+    <section class="gl">
+      <div class="gl-sum" data-gl-sum></div>
+      ${ev.published ? '' : '<p class="b-note">Share the page first: personal links open only once it’s shared.</p>'}
+      <div class="gl-head"><div class="seg2 gl-tabs" role="tablist"><button type="button" role="tab" data-gl-tab="list">Guests</button><button type="button" role="tab" data-gl-tab="diet">Dietary</button><button type="button" role="tab" data-gl-tab="groups">Groups</button></div>
+        <button type="button" class="btn sm primary" data-gl-add>Add guests</button></div>
+      <div data-gl-body></div>
+      <div class="gl-bar" data-gl-bar hidden></div>
+    </section>`);
+  glPaint(); glWire();
+  const local = LS.get(guestListKey(eid), []) || []; // the old on-this-device list from My pages
+  if (local.length && !G.hs.length) toast(`Add your ${local.length} saved names with Add guests`);
+}
+function glCSV(rows, name) {
+  const blob = new Blob(['﻿' + rows.map(l => l.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (G.cfg.title || 'event').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() + '-' + name + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+function glWire() {
+  const m = $('.gl'); if (!m || m._w) return; m._w = true;
+  m.addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return; const d = b.dataset; const c = await sb();
+    if (d.glTab) { G.tab = d.glTab; glPaint(); return; }
+    if (d.glF) { G.filter = d.glF; glPaint(); return; }
+    if (d.glGrp != null) { G.grp = d.glGrp; glPaint(); return; }
+    if (d.glCopy) { const h = G.hs.find(x => x.id === d.glCopy); if (h) copy(glLink(h)); return; }
+    if (d.glCopyall != null) { copy(G.hs.filter(h => !h.first_opened_at).map(h => `${h.name}: ${glLink(h)}`).join('\n')); return; }
+    if (d.glBulkcopy != null) { copy(G.hs.filter(h => G.sel.has(h.id)).map(h => `${h.name}: ${glLink(h)}`).join('\n')); return; }
+    if (d.glClear != null) { G.sel.clear(); glPaint(); return; }
+    if (d.glBulkmail != null) {
+      const hs = G.hs.filter(h => G.sel.has(h.id) && h.email); if (!hs.length) { toast('None of these has an email'); return; }
+      if (!G.ev.published) { toast('Share the page first'); return; }
+      b.disabled = true; let sent = 0, skip = 0; for (const h of hs) { const j = await notifyCall('household', h.id); if (j && j.sent) sent++; else skip++; }
+      b.disabled = false; toast(sent ? `Emailed ${sent} ${sent === 1 ? 'invitation' : 'invitations'}${skip ? ` · ${skip} not sent` : ''}` : 'Couldn’t email them. Copy the links instead.'); return;
+    }
+    if (d.glCsv != null) {
+      const rows = [['Household', 'Name', 'Age', 'Reply', 'Events', 'Meal', 'Dietary needs', 'Dietary notes', 'Plus-one of', 'Group']];
+      G.hs.forEach(h => glPeople(h.id).forEach(p => { const r = G.rep.get(p.id); const x = (r && r.x) || {}; const host = p.plus_of && G.ps.find(q => q.id === p.plus_of);
+        rows.push([h.name, p.name, AGE_L[p.age], r ? (r.attending ? 'Coming' : 'Can’t come') : 'No reply', (x.events || []).join('; '), x.meal || '', (x.diets || []).map(k => (HH_DIETS.find(z => z[0] === k) || [k, k])[1]).join('; '), x.diet || '', host ? host.name : '', (glGroup(p.group_id || h.group_id) || {}).name || '']); }));
+      glCSV(rows, 'guests'); return;
+    }
+    if (d.glGadd != null) { const v = ($('#gl-gnew').value || '').trim().slice(0, 60); if (!v) return; const { error } = await c.from('event_groups').insert({ event_id: G.eid, name: v, sort: G.gs.length }); if (error) { toast(error.code === '23505' ? 'That group exists' : error.message); return; } await glLoad(); glPaint(); return; }
+    if (d.glGdel) { const g = glGroup(d.glGdel); if (!g || !await confirmDlg({ title: `Delete “${g.name}”?`, body: 'Households in it stay on the list, without a group.', ok: 'Delete' })) return; await c.from('event_groups').delete().eq('id', g.id); await glLoad(); glPaint(); return; }
+    if (d.glAdd != null) { glImportDlg(); return; }
+    if (d.glEdit) { glEditDlg(d.glEdit); return; }
+  });
+  m.addEventListener('change', async (e) => {
+    const i = e.target; const c = await sb();
+    if (i.dataset.glSel) { if (i.checked) G.sel.add(i.dataset.glSel); else G.sel.delete(i.dataset.glSel); glPaint(); return; }
+    if (i.dataset.glBy != null) { G.by = i.checked; glPaint(); return; }
+    if (i.dataset.glGname) { const v = i.value.trim().slice(0, 60); if (!v) return; const { error } = await c.from('event_groups').update({ name: v }).eq('id', i.dataset.glGname); if (error) toast(error.code === '23505' ? 'That group exists' : error.message); else { const g = glGroup(i.dataset.glGname); if (g) g.name = v; toast('Renamed'); } return; }
+    if (i.dataset.glBulkgrp != null && i.value) { const gid = i.value === 'none' ? null : i.value; const ids = [...G.sel];
+      const { error } = await c.from('guest_households').update({ group_id: gid }).in('id', ids); if (error) { toast(error.message); return; }
+      G.hs.forEach(h => { if (G.sel.has(h.id)) h.group_id = gid; }); toast(`${ids.length} moved to ${gid ? glGroup(gid).name : 'No group'}`); G.sel.clear(); glPaint(); }
+  });
+}
+
+// ---- adding guests: paste lines or a CSV (household / name / email / phone / address / group / language / age) ----
+const PHONE_RE = /^\+?[\d\s().\-]{7,}$/;
+function glSplitNames(s) { // "Ana & Luis Garcia" → Ana Garcia, Luis Garcia
+  const parts = String(s || '').split(/\s*(?:&|\+|\band\b|\by\b|\bet\b|\bund\b)\s*/i).map(x => x.trim()).filter(Boolean);
+  if (parts.length < 2) return parts; const last = parts[parts.length - 1].split(/\s+/); const sur = last.length > 1 ? last.slice(1).join(' ') : '';
+  return parts.map((p, i) => (i < parts.length - 1 && sur && !/\s/.test(p) ? p + ' ' + sur : p));
+}
+function glParse(text) {
+  const lines = String(text || '').split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) return { rows: [], cols: {} };
+  const split = (l) => { const out = []; let cur = '', q = false; for (const ch of l) { if (ch === '"') q = !q; else if (!q && /[,;\t]/.test(ch)) { out.push(cur.trim()); cur = ''; } else cur += ch; } out.push(cur.trim()); return out; };
+  const head = split(lines[0]).map(h => h.toLowerCase());
+  const col = (re) => head.findIndex(h => re.test(h));
+  const cols = { hh: col(/house|party|family|invit/), first: col(/^first/), last: col(/^last|surname/), name: col(/name|guest/), email: col(/e-?mail/), phone: col(/phone|mobile|cell|tel/), addr: col(/addr|street/), grp: col(/group|side|category|tag/), lang: col(/lang/), age: col(/^age\b|\bage$|child|kid|adult/) };
+  const isHead = Object.values(cols).some(i => i >= 0) && !head.some(h => /@/.test(h));
+  const rows = [];
+  for (const l of (isHead ? lines.slice(1) : lines)) {
+    const r = split(l); const v = (i) => (i >= 0 ? (r[i] || '').trim() : '');
+    let name = cols.first >= 0 ? [v(cols.first), v(cols.last)].filter(Boolean).join(' ') : v(cols.name);
+    let email = v(cols.email), phone = v(cols.phone);
+    if (!isHead) { email = r.find(x => /@/.test(x)) || ''; phone = r.find(x => PHONE_RE.test(x)) || ''; name = r.filter(x => x && x !== email && x !== phone).join(' '); }
+    const lang = v(cols.lang).toLowerCase(); const ag = v(cols.age).toLowerCase();
+    rows.push({ names: glSplitNames(name), email: email.toLowerCase().slice(0, 254), phone: phone.slice(0, 40), hh: v(cols.hh).slice(0, 120), addr: v(cols.addr).slice(0, 300), grp: v(cols.grp).slice(0, 60),
+      lang: (GUEST_LANGS.find(x => x[0] === lang.slice(0, 2) || x[1].toLowerCase() === lang) || [''])[0], age: /infant|baby/.test(ag) ? 'infant' : /child|kid|^y|^\d$|^1[0-7]$/.test(ag) ? 'child' : 'adult' });
+  }
+  return { rows: rows.filter(r => r.names.length || r.email), cols: isHead ? cols : {} };
+}
+const glLast = (n) => { const w = String(n || '').trim().split(/\s+/); return w.length > 1 ? w[w.length - 1] : ''; };
+const glFamily = (last) => `The ${last}${/(s|x|z|ch|sh)$/i.test(last) ? 'es' : 's'}`;
+// rows → households: by the household column, else the same address, else (optional) the same last name, else one per line
+function glGroupRows(rows, byLast) {
+  const map = new Map(); const order = [];
+  rows.forEach((r, i) => {
+    const key = r.hh ? 'h:' + r.hh.toLowerCase() : r.addr ? 'a:' + normName(r.addr) : byLast && r.names.length && glLast(r.names[0]) ? 'l:' + glLast(r.names[0]).toLowerCase() : 'r:' + i;
+    if (!map.has(key)) { map.set(key, { name: r.hh, email: '', phone: '', addr: r.addr, grp: r.grp, lang: r.lang, people: [] }); order.push(key); }
+    const h = map.get(key); h.email = h.email || r.email; h.phone = h.phone || r.phone; h.grp = h.grp || r.grp; h.lang = h.lang || r.lang;
+    r.names.forEach(n => h.people.push({ name: n.slice(0, 120), age: r.age })); if (!r.names.length) h.people.push({ name: r.email.split('@')[0], age: r.age });
+  });
+  return order.map(k => { const h = map.get(k); if (!h.name) { const lasts = [...new Set(h.people.map(p => glLast(p.name)).filter(Boolean))];
+    h.name = h.people.length === 1 ? h.people[0].name : lasts.length === 1 ? glFamily(lasts[0]) : h.people.map(p => hhFirst(p.name)).join(' & '); } return h; });
+}
+function glDlg(html) {
+  let d = $('#gldlg'); if (!d) { d = document.createElement('dialog'); d.id = 'gldlg'; d.className = 'gl-dlg'; document.body.appendChild(d); d.addEventListener('click', (e) => { if (e.target === d) d.close(); }); }
+  d.innerHTML = `<form class="gl-dlg-in" onsubmit="return false">${html}</form>`; if (!d.open) d.showModal(); return d;
+}
+function glImportDlg() {
+  const local = LS.get(guestListKey(G.eid), []) || [];
+  const d = glDlg(`<h2>Add guests</h2>
+    <p class="muted small">One household per line, or a CSV with a Household column.</p>
+    <textarea id="gl-paste" rows="6" placeholder="Ana & Luis Garcia, ana@example.com&#10;Ben Okafor, +1 555 0100&#10;The Kims, kims@example.com"></textarea>
+    <div class="btns"><label class="btn sm file-btn">Import CSV<input type="file" data-gl-file accept=".csv,.txt,text/csv,text/plain"></label><button type="button" class="btn sm" data-gl-fromrs>From replies</button>${local.length ? `<button type="button" class="btn sm" data-gl-fromlocal>Saved list (${local.length})</button>` : ''}</div>
+    <label class="tool"><input type="checkbox" id="gl-bylast"><span class="sw" aria-hidden="true"></span>Same last name = one household</label>
+    <div data-gl-prev></div>
+    <div class="btns cf-b"><button type="button" class="btn ghost" data-gl-x>Cancel</button><button type="button" class="btn primary" data-gl-go disabled>Add</button></div>`);
+  let src = { rows: [] };
+  const prev = () => { const hs = glGroupRows(src.rows, $('#gl-bylast', d).checked); d._hs = hs; const n = hs.reduce((k, h) => k + h.people.length, 0);
+    $('[data-gl-prev]', d).innerHTML = hs.length ? `<p class="grp">${hs.length} ${hs.length === 1 ? 'household' : 'households'} · ${n} ${n === 1 ? 'guest' : 'guests'}</p><ul class="gl-prev">${hs.slice(0, 60).map(h => `<li><b>${esc(h.name)}</b><span>${esc(h.people.map(p => p.name).join(', '))}${h.grp ? ' · ' + esc(h.grp) : ''}${h.lang ? ' · ' + esc(langName(h.lang)) : ''}</span></li>`).join('')}${hs.length > 60 ? `<li class="muted">+${hs.length - 60} more</li>` : ''}</ul>` : '';
+    $('[data-gl-go]', d).disabled = !hs.length; $('[data-gl-go]', d).textContent = hs.length ? `Add ${hs.length}` : 'Add'; };
+  const set = (txt, byLastDefault) => { src = glParse(txt); if (byLastDefault != null) $('#gl-bylast', d).checked = byLastDefault && src.cols.hh == null && src.cols.addr == null; prev(); };
+  d.oninput = (e) => { if (e.target.id === 'gl-paste') set(e.target.value, null); };
+  d.onchange = (e) => { if (e.target.id === 'gl-bylast') prev(); if (e.target.dataset.glFile != null && e.target.files[0]) e.target.files[0].text().then(tx => { $('#gl-paste', d).value = tx; set(tx, true); }); };
+  d.onclick = async (e) => {
+    if (e.target === d) { d.close(); return; } const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.glX != null) d.close();
+    if (b.dataset.glFromrs != null) { const have = new Set(G.ps.map(p => normName(p.name))); const seen = new Set(); const txt = G.rs.filter(r => !r.person_id && !have.has(normName(r.name)) && !seen.has(normName(r.name)) && seen.add(normName(r.name))).map(r => [r.name, r.email || ''].filter(Boolean).join(', ')).join('\n'); $('#gl-paste', d).value = txt; set(txt, false); if (!txt) toast('Everyone who replied is on the list'); }
+    if (b.dataset.glFromlocal != null) { const txt = local.map(g => [g.name, g.email].filter(Boolean).join(', ')).join('\n'); $('#gl-paste', d).value = txt; set(txt, false); }
+    if (b.dataset.glGo != null) { b.disabled = true; b.textContent = 'Adding…'; try { await glInsert(d._hs || []); d.close(); await glLoad(); glPaint(); toast(`Added ${(d._hs || []).length} ${(d._hs || []).length === 1 ? 'household' : 'households'}`); } catch (err) { b.disabled = false; b.textContent = 'Add'; toast('Couldn’t add: ' + pubWhy(err)); } }
+  };
+}
+async function glInsert(hs) {
+  const c = await sb(); const gid = async (name) => { if (!name) return null; let g = G.gs.find(x => x.name.toLowerCase() === name.toLowerCase()); if (g) return g.id;
+    const { data, error } = await c.from('event_groups').insert({ event_id: G.eid, name, sort: G.gs.length }).select('id,name,sort,self_pick').single(); if (error) return null; G.gs.push(data); return data.id; };
+  const H = [], P = []; let sort = G.hs.reduce((n, h) => Math.max(n, h.sort || 0), 0);
+  for (const h of hs) { const id = crypto.randomUUID(); H.push({ id, event_id: G.eid, name: h.name.slice(0, 120) || 'Guest', email: EMAIL_RE.test(h.email) ? h.email : null, phone: h.phone || null, address: h.addr || null, lang: h.lang || '', group_id: await gid(h.grp), sort: ++sort });
+    h.people.forEach((p, i) => P.push({ id: crypto.randomUUID(), household_id: id, name: p.name, age: p.age || 'adult', sort: i })); }
+  for (let i = 0; i < H.length; i += 200) { const { error } = await c.from('guest_households').insert(H.slice(i, i + 200)); if (error) throw error; }
+  for (let i = 0; i < P.length; i += 500) { const { error } = await c.from('guest_people').insert(P.slice(i, i + 500)); if (error) throw error; }
+}
+// one household: its details, its people (rename, age, plus-ones, move to another household, remove, add)
+function glEditDlg(hid) {
+  const h = G.hs.find(x => x.id === hid); if (!h) return; const ps = glPeople(hid);
+  const langs = pageLangs(G.cfg); const others = G.hs.filter(x => x.id !== hid);
+  const pRow = (p, i) => `<li class="gl-er" data-p="${esc(p.id || '')}" data-i="${i}"><input data-pk="name" value="${esc(p.name)}" maxlength="120" aria-label="Name" placeholder="Name"${p.added_by === 'guest' ? ' readonly' : ''}>
+    <div class="gl-er2"><select data-pk="age" aria-label="Age">${Object.entries(AGE_L).map(([k, l]) => `<option value="${k}"${p.age === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+    ${p.added_by === 'guest' ? '<span class="muted small">+1 added by guest</span>' : `<select data-pk="plus_ones" aria-label="Plus-ones for ${esc(p.name)}">${[0, 1, 2, 3].map(n => `<option value="${n}"${(p.plus_ones || 0) === n ? ' selected' : ''}>${n ? '+' + n : 'No +1'}</option>`).join('')}</select>`}
+    ${p.id ? `<select data-pk="move" aria-label="Move ${esc(p.name)}"><option value="">Move to…</option><option value="new">New household</option>${others.map(o => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select>` : ''}
+    <button type="button" class="link" data-gl-prm aria-label="Remove ${esc(p.name)}">Remove</button></div></li>`;
+  const d = glDlg(`<h2>${esc(h.name)}</h2>
+    <div class="field"><label for="gle-name">Household name</label><input id="gle-name" value="${esc(h.name)}" maxlength="120"></div>
+    <div class="field"><span class="lbl-s">Greeting</span><div class="seg2"><button type="button" data-gle-greet="household" class="${h.greeting !== 'names' ? 'on' : ''}">${esc(h.name)}</button><button type="button" data-gle-greet="names" class="${h.greeting === 'names' ? 'on' : ''}">First names</button></div></div>
+    <div class="two"><div class="field"><label for="gle-lang">Language</label><select id="gle-lang"><option value="">Page language</option>${langs.map(l => `<option value="${l}"${h.lang === l ? ' selected' : ''}>${esc(langName(l))}</option>`).join('')}</select></div>
+    <div class="field"><label for="gle-grp">Group</label><select id="gle-grp"><option value="">No group</option>${G.gs.map(g => `<option value="${esc(g.id)}"${h.group_id === g.id ? ' selected' : ''}>${esc(g.name)}</option>`).join('')}</select></div></div>
+    <div class="two"><div class="field"><label for="gle-email">Email</label><input id="gle-email" type="email" value="${esc(h.email || '')}" maxlength="254"></div><div class="field"><label for="gle-phone">Phone</label><input id="gle-phone" type="tel" value="${esc(h.phone || '')}" maxlength="40"></div></div>
+    <div class="field"><label for="gle-plus">Extra guests they can name</label><select id="gle-plus">${[0, 1, 2, 3, 4, 5, 6].map(n => `<option value="${n}"${(h.plus_ones || 0) === n ? ' selected' : ''}>${n || 'None'}</option>`).join('')}</select></div>
+    <p class="grp">Guests</p><ul class="gl-ers">${ps.map(pRow).join('')}</ul><button type="button" class="btn sm" data-gl-padd>+ Add a guest</button>
+    <div class="btns cf-b"><button type="button" class="link gl-del" data-gl-hdel>Delete household</button><button type="button" class="btn ghost" data-gl-x>Cancel</button><button type="button" class="btn primary" data-gl-save>Save</button></div>`);
+  let greet = h.greeting || 'household'; let added = 0;
+  d.onchange = null; d.oninput = null;
+  d.onclick = async (e) => {
+    if (e.target === d) { d.close(); return; } const b = e.target.closest('button'); if (!b) return; const c = await sb();
+    if (b.dataset.gleGreet) { greet = b.dataset.gleGreet; $$('[data-gle-greet]', d).forEach(x => x.classList.toggle('on', x === b)); return; }
+    if (b.dataset.glX != null) { d.close(); return; }
+    if (b.dataset.glPadd != null) { $('.gl-ers', d).insertAdjacentHTML('beforeend', pRow({ id: '', name: '', age: 'adult', plus_ones: 0, added_by: 'host' }, 'n' + (++added))); $$('.gl-er:last-child [data-pk="name"]', d)[0]?.focus(); return; }
+    if (b.dataset.glPrm != null) { const li = b.closest('.gl-er'); if (li.dataset.p) { li.hidden = true; li.dataset.rm = '1'; } else li.remove(); return; }
+    if (b.dataset.glHdel != null) { if (!await confirmDlg({ title: `Delete ${h.name}?`, body: 'Their personal link stops working and their replies are deleted.', ok: 'Delete' })) return;
+      const { error } = await c.from('guest_households').delete().eq('id', hid); if (error) { toast(error.message); return; } d.close(); await glLoad(); glPaint(); toast(`Deleted ${h.name}`); return; }
+    if (b.dataset.glSave == null) return;
+    b.disabled = true;
+    try {
+      const v = (id) => ($('#' + id, d).value || '').trim();
+      const email = v('gle-email').toLowerCase();
+      if (email && !EMAIL_RE.test(email)) { toast('That email doesn’t look right'); b.disabled = false; return; }
+      const { error } = await c.from('guest_households').update({ name: v('gle-name') || h.name, greeting: greet, lang: v('gle-lang'), group_id: v('gle-grp') || null, email: email || null, phone: v('gle-phone') || null, plus_ones: +v('gle-plus') || 0 }).eq('id', hid);
+      if (error) throw error;
+      for (const li of $$('.gl-er', d)) {
+        const get = (k) => (li.querySelector(`[data-pk="${k}"]`) || {}).value;
+        if (li.dataset.rm) { const { error: e2 } = await c.from('guest_people').delete().eq('id', li.dataset.p); if (e2) throw e2; continue; }
+        const name = (get('name') || '').trim().slice(0, 120); const mv = get('move');
+        if (!li.dataset.p) { if (name) { const { error: e3 } = await c.from('guest_people').insert({ household_id: hid, name, age: get('age') || 'adult', plus_ones: +(get('plus_ones') || 0), sort: 100 + $$('.gl-er', d).indexOf(li) }); if (e3) throw e3; } continue; }
+        const patch = { age: get('age') || 'adult' }; if (get('plus_ones') != null) patch.plus_ones = +get('plus_ones'); const p0 = G.ps.find(p => p.id === li.dataset.p); if (p0 && p0.added_by === 'host' && name) patch.name = name;
+        if (mv === 'new') { const nid = crypto.randomUUID(); const { error: e4 } = await c.from('guest_households').insert({ id: nid, event_id: G.eid, name: name || 'Guest', lang: v('gle-lang'), group_id: v('gle-grp') || null, sort: G.hs.length + 1 }); if (e4) throw e4; patch.household_id = nid; }
+        else if (mv) patch.household_id = mv;
+        const { error: e5 } = await c.from('guest_people').update(patch).eq('id', li.dataset.p); if (e5) throw e5;
+        if (patch.household_id) await c.from('guest_people').update({ household_id: patch.household_id }).eq('plus_of', li.dataset.p); // their plus-ones go with them
+      }
+      d.close(); await glLoad(); glPaint(); toast('Saved');
+    } catch (err) { b.disabled = false; toast('Couldn’t save: ' + pubWhy(err)); }
+  };
+}
+
 // ---------- router ----------
 // /<name>: ask the server which page it is (bg = the page is already open from this device's memory: only correct it)
 async function pathResolve(bg) {
@@ -9255,6 +9927,7 @@ function route() {
   if (qd && DEMOS[qd] && (h === '' || h.startsWith('t='))) { SU = null; return renderViewer(normalize(clone(window.EXAMPLES[DEMOS[qd]])), { exampleId: DEMOS[qd], tab: h.startsWith('t=') ? h.slice(2) : tab }); }
   if (qe || qd) history.replaceState(null, '', siteBase() + location.hash);
   if (h === 'mine' || h.startsWith('mine/')) { SU = null; return renderMine(h.slice(5)); }
+  if (h.startsWith('guests/')) { SU = null; return renderGuests(h.slice(7)); }
   if (!h.startsWith('new') && !h.startsWith('setup')) SU = null;
   if (h.startsWith('e=')) { const c = unpackEvent(h.slice(2)); if (c) return renderViewer(c, { tab }); return renderBroken(); }
   if (h.startsWith('ex=')) { const e = window.EXAMPLES[h.slice(3)]; if (e) return renderViewer(normalize(clone(e)), { exampleId: h.slice(3), tab }); return renderBroken(); }
@@ -9272,5 +9945,5 @@ window.addEventListener('hashchange', route);
 rtWatch();
 route();
 if (acctOn() && !/(^|&)(access_token|error_description|error_code)=/.test(location.hash)) setTimeout(acctSyncAll, 800); // every open while signed in
-window.__ep = { rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtToggle, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
+window.__ep = { cfgMerge3, cfgTakeTheirs, glParse, glGroupRows, joinFirst, rtHTML, rtPlain, rtParas, rtToTags, rtFromTags, rtToggle, trWrap, trUnwrap, actKind, ACT_KINDS, gpFilter, actChipsHTML, tripCat, ovApply, ovPick, ovLoad, shareMerge, shareApply, shareData, orgBookingLine, guestView, schedIds, ccIcon, tSub, tSubOfText, ccIk, ccTrip, TRIP_CATS, legDirURL, schedFlightFix, schedZone, hfBadge, hfOfBk, hfOfEv, hostHotelHF, itinICS, freshEvent, rsvpOf, TYPES, rqParse, rqPack, airportChoices, airFor, homeCity, spotCity, spotsByCity, bkCity, bkClean, ccCities, sortStops, shiftDates, applyShifts, bkOffTrip, hotelsNow, hotelStops, stopSuspect, normalize, geocode, openDetail, dsHTML, schedEntries, sampleDropped, spanFixed, tripView, ccCatOfTypes, brandFromSite, brandFromPalette, imagePalette, aaAccent, contrast, closestFont, PAGE_BG, airlinesFor, airlinePickHTML, bkMatch, bkMerge, bkUpsert, bkDedupe, bkClean, hotelsNow, nameLike, startFromDocument, itinKeyOf: itinKey, flightArriveFix, flightAirports, apZone, acctSyncAll,  docItems, docApply, docsHTML, normFiles, shrinkPhoto, docPrepare, bookingFile, flightName, pickAirport, flightArrival, rentalHTML, flightsHTML, stayLinks, apKey, textFields, staleFields, translatedView, hashStr, planEdits, editRule, hotelBrand, hotelBookAction, AIRLINE_BOOK, carBrandURL, syncKey, aiEventToCfg, aiItemsToBookings, pagesAll, DEMOS, gNearby, gMerge, gSameName, GKEY, ohOpenAt, filterPlaces, allPlaces, bookingLink, PROVIDERS, sb, makeSlug, parseGuestList, notReplied, SB_JS, parseReservation, osmQuery, classify, osmKey, OVERPASS, packEvent, unpackEvent, icsText, nearestAirports, weatherFor, nearby, L };
 })();

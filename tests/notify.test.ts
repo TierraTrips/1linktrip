@@ -20,6 +20,7 @@ function fakeDb() {
     ],
     announcements: [{ id: A1, event_id: E, body: "VIP dinner 7pm", group_ids: [GV], notified_at: null }, { id: A2, event_id: E, body: "Shuttle 4:30", group_ids: [], notified_at: null }],
     event_group_members: [{ event_id: E, group_id: GV, email: "vip@x.com" }, { event_id: E, group_id: "other", email: "runner@x.com" }],
+    page_planners: [],
     rsvps: [{ event_id: E, email: "Rsvp@X.com", attending: true }, { event_id: E, email: "no@x.com", attending: false }, { event_id: E, email: "vip@x.com", attending: true }, { event_id: E, email: "host@x.com", attending: true }],
   };
   const users: Record<string, Row> = { [H]: { id: H, email: "host@x.com", email_confirmed_at: "x" }, [G]: { id: G, email: "g@x.com", email_confirmed_at: "x" }, [X]: { id: X, email: "x@x.com", email_confirmed_at: "x" } };
@@ -89,4 +90,38 @@ Deno.test("CORS: echoes an allowed Origin, falls back to 1linktrip.com otherwise
       assert(r.headers.get("Vary") === "Origin", "Vary");
     }
   }
+});
+
+Deno.test("planner invite: owner only, resend after 10 min; household invite in its language, owner or planner", async () => {
+  const db = fakeDb(); const sent: Mail[] = []; let now = Date.parse("2026-11-25T12:00:00Z");
+  const deps = { admin: db.admin, ready: true, now: () => now, send: (m: Mail[]) => { sent.push(...m); return Promise.resolve(); } };
+  const P1 = "00000000-0000-0000-0000-0000000000b9", HH = "00000000-0000-0000-0000-0000000000d9";
+  db.t.page_planners = [{ id: P1, event_id: E, email: "ana@x.com", token: "a".repeat(32), user_id: null, accepted_at: null, notified_at: null }];
+  db.t.events[0].config = { title: "Ana & Ben", lang: "en", langs: ["es"], tr: { es: { title: { h: 1, t: "Ana y Ben" } } } };
+  db.t.guest_households = [{ id: HH, event_id: E, name: "The Garcias", email: "garcia@x.com", lang: "es", token: "b".repeat(24), notified_at: null }];
+  assert((await call(X, { kind: "planner", id: P1 }, deps)).status === 403, "a stranger cannot send a planner invite");
+  let r = await call(H, { kind: "planner", id: P1 }, deps);
+  assert(r.j.sent === 1 && sent[0].to === "ana@x.com" && sent[0].text.includes("?e=w-abc12&p=" + "a".repeat(32)), "owner's invite carries the link: " + JSON.stringify(r.j));
+  r = await call(H, { kind: "planner", id: P1 }, deps); assert(r.j.sent === 0 && r.j.skipped === "recently emailed", "a second tap sends nothing");
+  now += 11 * 60 * 1000; r = await call(H, { kind: "planner", id: P1 }, deps); assert(r.j.sent === 1, "after 10 minutes it can go again");
+  assert((await call(X, { kind: "household", id: HH }, deps)).status === 403, "a stranger cannot email a household");
+  // X becomes an accepted planner
+  db.t.page_planners.push({ id: "p2", event_id: E, email: "x@x.com", user_id: X, accepted_at: "y", token: "c".repeat(32) });
+  r = await call(X, { kind: "household", id: HH }, deps);
+  const m = sent[sent.length - 1];
+  assert(r.j.sent === 1 && m.to === "garcia@x.com" && m.subject === "Invitación: Ana y Ben" && /Hola, The Garcias/.test(m.text) && m.text.includes("&g=" + "b".repeat(24) + "&lang=es"), "planner sends the household its link in Spanish: " + m.subject + " " + m.text);
+  // greeting by first names (adults the organizer listed)
+  db.t.guest_households[0].greeting = "names"; db.t.guest_people = [{ household_id: HH, name: "Michael Smith", age: "adult", added_by: "host" }, { household_id: HH, name: "Sarah Smith", age: "adult", added_by: "host" }, { household_id: HH, name: "Kid Smith", age: "child", added_by: "host" }];
+  now += 11 * 60 * 1000; r = await call(X, { kind: "household", id: HH }, deps);
+  assert(r.j.sent === 1 && /Hola, Michael y Sarah:/.test(sent[sent.length - 1].text), "first-name greeting: " + sent[sent.length - 1].text);
+  db.t.events[0].published = false; now += 11 * 60 * 1000;
+  r = await call(X, { kind: "household", id: HH }, deps); assert(r.j.sent === 0 && r.j.skipped === "page not shared", "no invitation for a hidden page");
+});
+
+Deno.test("a failed invite send gives the claim back", async () => {
+  const db = fakeDb(); const P1 = "00000000-0000-0000-0000-0000000000b9";
+  db.t.page_planners = [{ id: P1, event_id: E, email: "ana@x.com", token: "a".repeat(32), user_id: null, accepted_at: null, notified_at: null }];
+  const deps = { admin: db.admin, ready: true, send: () => Promise.reject(new Error("Resend 403")) };
+  const r = await call(H, { kind: "planner", id: P1 }, deps);
+  assert(r.status === 502 && db.t.page_planners[0].notified_at === null, "send failed → notified_at back to null: " + JSON.stringify(db.t.page_planners[0]));
 });
