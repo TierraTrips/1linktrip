@@ -6152,14 +6152,14 @@ function wireDetails(cfg, art) {
   art.addEventListener('change', async (e) => {
     const inp = e.target.closest('[data-ph-add]'); if (inp && inp.files && inp.files.length) {
       const ref = inp.dataset.phAdd; const x = itemByRef(cfg, ref); if (!x) return; const lab = inp.closest('.ph-add'); lab && lab.classList.add('busy');
-      const files = [...inp.files]; inp.value = ''; const got = [];
+      const files = [...inp.files]; inp.value = ''; const got = []; let note = ''; // shown after the sheet re-renders (a toast inside the sheet goes with it)
       for (const f of files) { const have = (x.photos || []).length + got.length; const local = (x.photos || []).concat(got).filter(p => p.local).length;
-        if (have >= PHOTO_MAX) { toast(t('Up to {n} photos', { n: PHOTO_MAX })); break; }
-        if (!LS.get('signedIn') && local >= LOCAL_PHOTO_MAX) { toast(t('Sign in to add more photos')); break; }
-        try { got.push(await photoAdd(f)); } catch (err) { toast(err.message || t('Upload failed.')); break; } }
+        if (have >= PHOTO_MAX) { note = t('Up to {n} photos', { n: PHOTO_MAX }); break; }
+        if (!LS.get('signedIn') && local >= LOCAL_PHOTO_MAX) { note = t('Sign in to add more photos'); break; }
+        try { got.push(await photoAdd(f)); } catch (err) { note = err.message || t('Upload failed.'); break; } }
       lab && lab.classList.remove('busy'); OPEN_DET.add(ref);
-      if (got.length) { try { itemMutate(cfg, art, ref, (y) => { y.photos = (y.photos || []).concat(got); }); } catch { toast(t('Not enough space on this device. Sign in to keep photos.')); } }
-      return; }
+      if (got.length) { try { itemMutate(cfg, art, ref, (y) => { y.photos = (y.photos || []).concat(got); }); } catch { note = t('Not enough space on this device. Sign in to keep photos.'); } }
+      if (note) toast(note); return; }
     const pd = e.target.closest('[data-pdet]'); if (pd) { const ref = pd.closest('[data-det-ref]').dataset.detRef; OPEN_DET.add(ref); itemMutate(cfg, art, ref, (y) => detSet(y, pd.dataset.pdet, pd.type === 'number' ? (pd.value ? String(Math.max(1, Math.min(99, +pd.value))) : '') : pd.value.trim().slice(0, 200))); }
   });
   art.addEventListener('click', (e) => {

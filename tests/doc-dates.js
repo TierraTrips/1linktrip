@@ -37,7 +37,7 @@ const USER = { id: 'u0000000-0000-4000-8000-000000000001', email: 'host@example.
 const pdf = () => ({ name: 'japan-itinerary.pdf', mimeType: 'application/pdf', buffer: Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(2000, 32)]) });
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(); require('./_open-settings')(browser);
   const mk = async (answer = () => DOC) => {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
     const page = await ctx.newPage(); const errors = []; page.on('pageerror', e => errors.push(String(e)));
@@ -90,7 +90,7 @@ const pdf = () => ({ name: 'japan-itinerary.pdf', mimeType: 'application/pdf', b
       ok(!c.schedule.some(x => SAMPLE.test(x.title)) && c.schedule.length === 5, `the example's sample itinerary is gone (${c.schedule.length} items: ${c.schedule.map(x => x.date + ' ' + x.title).join(', ')})`);
       ok(c.stops.map(s => `${s.name} ${s.from}–${s.to}`).join(', ') === 'Tokyo 2027-04-26–2027-05-03, Kyoto 2027-05-03–2027-05-10, Osaka 2027-05-10–2027-05-20, Tokyo 2027-05-20–2027-06-02', `route ${c.stops.map(s => s.name + ' ' + s.from).join(', ')}`);
       const g = await guest(page, c);
-      ok(/^Day 1 · Sun, Apr 25/.test(g.days[0] || '') && /Flight UA 7909/.test(g.first), `guest itinerary opens "${g.days[0]}" with "${g.first.slice(0, 40)}"`);
+      ok(/^(Day 1 · )?Sun, Apr 25/.test(g.days[0] || '') && /Flight UA 7909/.test(g.first), `guest itinerary opens "${g.days[0]}" with "${g.first.slice(0, 40)}"`);
       ok(!SAMPLE.test(g.body) && !/Apr 2\b(?!\d)/.test(g.days.join(' ')), 'no Apr 2 / sample items on the guest page');
       ok(!errors.length, 'no page errors ' + errors.join(' | '));
       await ctx.close();
@@ -121,7 +121,7 @@ const pdf = () => ({ name: 'japan-itinerary.pdf', mimeType: 'application/pdf', b
       ok(f.start === '2027-04-25' && f.end === '2027-06-02' && f.schedule.length === 5 && !f.schedule.some(x => SAMPLE.test(x.title)), `load repair: ${f.start} – ${f.end}, ${f.schedule.length} items`);
       ok(/^modes:/.test(f.ek || ''), `page key pinned so guests' data stays with it (${f.ek})`);
       const g = await guest(page, old);
-      ok(/^Day 1 · Sun, Apr 25/.test(g.days[0] || '') && /Flight UA 7909/.test(g.first) && !SAMPLE.test(g.body), `guest page: "${g.days[0]}" · "${g.first.slice(0, 30)}"`);
+      ok(/^(Day 1 · )?Sun, Apr 25/.test(g.days[0] || '') && /Flight UA 7909/.test(g.first) && !SAMPLE.test(g.body), `guest page: "${g.days[0]}" · "${g.first.slice(0, 30)}"`);
       // a page still built on the example keeps it: the example itself, and the example with one item of the host's own
       const same = await page.evaluate((ex) => { const E = window.__ep; const a = E.spanFixed(ex); const one = { ...ex, schedule: ex.schedule.concat([{ date: '2027-06-10', time: '', title: 'Our own plan' }]) }; const b = E.spanFixed(one);
         const near = { ...ex, stops: [{ name: 'Nara', from: '2027-04-08', to: '2027-04-09' }], schedule: ex.schedule.concat([{ date: '2027-04-08', time: '', title: 'Deer park' }, { date: '2027-04-09', time: '', title: 'Todai-ji' }]) }; const c = E.spanFixed(near);

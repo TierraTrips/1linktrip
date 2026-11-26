@@ -53,14 +53,16 @@ const PUB = 'sb_publishable_JHJJ_LFXQUBClNc68Eyi_A_b6se1P_a';
     ok(r1 && (await anon(r1.slug)).length === 0, 'not shared: the public can’t read it');
     await A.page.click('.b-top [data-act="publish"]'); await A.page.waitForSelector('#pub .pub-host.ok', { timeout: 30000 });
     const short = await A.page.inputValue('#pub-url');
-    ok(r1 && short.endsWith('?e=' + r1.slug), 'Share → the same row’s short link ' + short);
+    // page names (97eff35): the first Share names the page, so the short link is /<name> (or ?e=<slug> if naming failed)
+    const nm = r1 && /^[0-9a-f-]{36}$/.test(r1.id) ? ((await sql(`select name from public.page_names where event_id = '${r1.id}' and is_current`))[0] || {}).name : '';
+    ok(r1 && (short.endsWith('?e=' + r1.slug) || (!!nm && short.endsWith('/' + nm))), 'Share → the same row’s short link ' + short);
     ok((await anon(r1.slug)).length === 1, 'shared: the public can read it');
     await A.page.click('#pub button.ghost');
     const T2 = T1 + ' (edited)'; await setTitle(A.page, T2); await saved(A.page);
     ok(!(await A.page.$('[data-act="update-live"]')) && !/not live|Update page/.test(await A.page.textContent('.builder')), 'no Update page / not live anywhere in the builder');
     const pub = await until(async () => { const x = await anon(r1.slug); return x[0] && x[0].config.title === T2 && x; });
     ok(!!pub, 'edit → the public short link has it (no button)');
-    const G = await mk(); await G.page.goto(short); await G.page.waitForSelector('.ev-hero');
+    const G = await mk(); await G.page.goto(BASE + '?e=' + r1.slug); await G.page.waitForSelector('.ev-hero'); // /<name> needs the Pages 404 router (tests/page-names.js); the slug link is the same row
     ok((await G.page.textContent('.ev-hero')).includes(T2) && /Edit a copy/.test(await G.page.textContent('.vbar')), 'a guest browser opening the short link sees the edit');
     await G.ctx.close();
 

@@ -65,7 +65,7 @@ const itin = (page) => page.evaluate((k) => JSON.parse(localStorage.getItem('ep:
 const card = (page, re) => page.evaluateHandle((s) => [...document.querySelectorAll('#sec-itinerary .bookings > li')].find(li => new RegExp(s).test(li.querySelector('b').textContent)), re);
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(); require('./_open-settings')(browser);
   try {
     for (const w of [390, 320]) {
       const { ctx, page } = await setup(browser, w);
@@ -93,6 +93,8 @@ const card = (page, re) => page.evaluateHandle((s) => [...document.querySelector
       xs = await itin(page); ok(xs.find(x => x.kind === 'hotel').det.beds === 'King' && xs.find(x => x.kind === 'hotel').det.amen.includes('pool'), `@${w} edit form saves the bed chip + amenity chip`);
       // photos signed out: small copies on this device, 3 per item; remove ×
       const ref = 'bk:' + xs.find(x => x.kind === 'tour').id;
+      // My trip opens on Hotels when the guest has a hotel (trip chips, c34f7e0): show All to reach the tour
+      await page.$eval('[data-ccb="trip"] [data-dd="cat"] [data-dd-v="all"]', e => e.click()).catch(() => {}); await page.waitForTimeout(250);
       await page.click(`#sec-itinerary [data-ds="${ref}"]`); await page.waitForSelector('dialog.ds-sheet[open]');
       await page.setInputFiles(`[data-ph-add="${ref}"]`, [JPG(1), JPG(2)]); await page.waitForTimeout(600);
       let ps = (await itin(page)).find(x => x.kind === 'tour').photos || [];
@@ -121,7 +123,7 @@ const card = (page, re) => page.evaluateHandle((s) => [...document.querySelector
       await page.goto(page.url().replace(/\?d=[^#]*/, '')); await page.waitForSelector('#sec-itinerary'); await page.click('#sec-itinerary [data-ds="bk:h1"]'); await page.waitForTimeout(400);
       ok(page._g.filter(u => /\/places\/h-gracery\?|\/places\/h-gracery$/.test(u)).length === n0, 'not fetched again');
       // a place in the plan: tour fields right there (saved on change)
-      await page.click('dialog.ds-sheet [data-ds-close]'); await page.waitForTimeout(150); await page.click('#sec-plan [data-ds="pl:pl1"]'); await page.waitForSelector('dialog.ds-sheet[open]');
+      await page.click('dialog.ds-sheet [data-ds-close]'); await page.waitForTimeout(150); await page.$eval('[data-ccb="trip"] [data-dd="cat"] [data-dd-v="all"]', e => e.click()).catch(() => {}); await page.waitForTimeout(250); await page.locator('[data-ds="pl:pl1"]:visible').first().click(); /* plans live in the one My trip list now (c34f7e0), under All */ await page.waitForSelector('dialog.ds-sheet[open]');
       const pd = '[data-det-ref="pl:pl1"]'; await page.click(`${pd} summary`); await page.waitForTimeout(200);
       await page.fill(`${pd} [data-pdet="meet"]`, 'Tsukiji Station exit 1'); await page.press(`${pd} [data-pdet="meet"]`, 'Tab'); await page.waitForTimeout(200);
       await page.fill(`${pd} [data-pdet="duration"]`, '3 hours'); await page.press(`${pd} [data-pdet="duration"]`, 'Tab'); await page.waitForTimeout(200);

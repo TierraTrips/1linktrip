@@ -24,7 +24,7 @@ function fakeSupabase(user) {
 const USER = { id: 'u0000000-0000-4000-8000-000000000001', email: 'host@example.com' };
 (async () => {
   const { PAGE } = await import('./ai-edit-cases.mjs');
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(); require('./_open-settings')(browser);
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
   const page = await ctx.newPage(); const errors = []; page.on('pageerror', e => errors.push(String(e)));
   await page.addInitScript(fakeSupabase, USER);
